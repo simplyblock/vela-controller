@@ -1,0 +1,40 @@
+ARG FOUNDATIONDB_VERSION=7.3.69
+
+FROM ubuntu:latest as downloader
+ARG FOUNDATIONDB_VERSION
+
+RUN --mount=type=cache,target=/var/cache/apt \
+    --mount=type=cache,target=/var/lib/apt \
+    apt-get update && \
+    apt-get install -y wget
+RUN \
+    (test -f /tmp/downloads/foundationdb-clients_${FOUNDATIONDB_VERSION}-1_amd64.deb || \
+     wget -P /tmp/downloads https://github.com/apple/foundationdb/releases/download/${FOUNDATIONDB_VERSION}/foundationdb-clients_${FOUNDATIONDB_VERSION}-1_amd64.deb)
+RUN --mount=type=cache,target=/tmp/downloads ls /tmp/downloads
+
+
+FROM python:3.13-slim
+ARG FOUNDATIONDB_VERSION
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app
+
+RUN --mount=type=cache,target=/var/cache/apt \
+    --mount=type=cache,target=/var/lib/apt \
+    apt-get update && \
+    apt-get install -y git
+
+COPY --from=downloader /tmp/downloads/foundationdb-clients_${FOUNDATIONDB_VERSION}-1_amd64.deb .
+RUN \
+    dpkg -i foundationdb-clients_${FOUNDATIONDB_VERSION}-1_amd64.deb && \
+    rm foundationdb-clients_${FOUNDATIONDB_VERSION}-1_amd64.deb
+
+WORKDIR /app
+
+COPY .. .
+
+RUN --mount=type=cache,target=/root/.cache/pip pip install .
+RUN rm -r /app/*
+
+CMD ["uvicorn", "simplyblock.vela:app", "--host", "0.0.0.0"]

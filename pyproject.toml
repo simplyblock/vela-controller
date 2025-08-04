@@ -1,0 +1,72 @@
+[build-system]
+requires = ['setuptools>=61.0', 'setuptools-scm']
+build-backend = 'setuptools.build_meta'
+
+[project]
+name = 'vela'
+requires-python = '>=3.13'
+dynamic = ['version']
+dependencies = [
+    'fastapi',
+    'uvicorn',
+    'foundationdb<7.4',
+]
+
+[project.optional-dependencies]
+dev = [
+    'ruff',
+    'mypy',
+]
+
+[tool.setuptools]
+package-dir = {'simplyblock.vela' = 'src'}
+packages = ['simplyblock.vela']
+
+
+[tool.tox]
+requires = ['tox']
+env_list = ['lint', 'type-check']
+
+[tool.tox.env.lint]
+description = 'Run linter'
+deps = ['ruff']
+commands = [['ruff', 'check']]
+
+[tool.tox.env.type-check]
+description = 'Run type checks'
+deps = ['mypy']
+commands = [['mypy', 'src']]
+
+
+[tool.ruff]
+target-version = 'py313'
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    'E',
+    'W',
+    'F',
+    'I',
+    'B',
+    'C4',
+    'UP',
+    'ARG001',
+    'ARG002',
+    'ARG003',
+    'ARG004',
+    'ARG005',
+    'N',
+    'SIM',
+    'TCH',
+    'FBT',
+    'A',
+    'COM',
+    'C90',
+]
+
+
+[tool.mypy]
+python_version = '3.13'
+check_untyped_defs = true
+follow_untyped_imports = true
