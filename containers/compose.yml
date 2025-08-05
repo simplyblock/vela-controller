@@ -8,21 +8,21 @@ services:
     depends_on:
       - fdb
     volumes:
+      - ..:/app
       - fdb-config:/etc/foundationdb
+    command: 'bash -c "python -m venv /tmp/venv && source /tmp/venv/bin/activate && pip install -e . && uvicorn --host 0.0.0.0 --reload simplyblock.vela:app"'
     restart: unless-stopped
 
   fdb:
     image: docker.io/foundationdb/foundationdb:7.3.69
     ports:
       - "4500:4500"
-      - "4501:4501"
     environment:
       FDB_NETWORKING_MODE: container
       FDB_CLUSTER_FILE: '/etc/foundationdb/fdb.cluster'
       FDB_CLUSTER_FILE_CONTENTS: 'docker:docker@fdb:4500'
     volumes:
       - fdb-config:/etc/foundationdb
-      - fdb-data:/var/fdb/data
     restart: unless-stopped
     post_start:
       - command: fdbcli --exec 'configure new single ssd'
@@ -30,4 +30,3 @@ services:
 
 volumes:
   fdb-config:
-  fdb-data:
