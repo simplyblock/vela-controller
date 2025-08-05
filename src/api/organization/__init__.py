@@ -1,26 +1,21 @@
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Response, Request
-import fdb
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
-from .models.organization import Organization, OrganizationCreate
+from ...models.organization import Organization, OrganizationCreate
+from ...models.project import Project
+from ..util import DB
 
-
-db = fdb.open()
-
-
-api = APIRouter()
+api = APIRouter(prefix='/organizations')
 
 
-org_api = APIRouter(prefix='/organizations')
-
-
-@org_api.get('/')
-def list_organizations() -> list[Organization]:
+@api.get('/', name='organizations:list')
+def list_(db: DB) -> list[Organization]:
     return Organization.list(db)
 
 
-@org_api.post(
+@api.post(
         '/', name='organizations:create', status_code=201,
         responses={201: {
             'content': None,
@@ -42,30 +37,37 @@ def list_organizations() -> list[Organization]:
             },
         }},
 )
-def create_organization(request: Request, parameters: OrganizationCreate) -> Response:
+def create(db: DB, request: Request, parameters: OrganizationCreate) -> Response:
     entity = Organization.create(db, **parameters.model_dump())
     entity_url = request.app.url_path_for('organizations:detail', organization_id=entity.id)
     return Response(status_code=201, headers={'Location': entity_url})
 
 
-instance_org_api = APIRouter(prefix='/{organization_id}')
+instance_api = APIRouter(prefix='/{organization_id}')
 
 
-@instance_org_api.get(
+def _lookup_organization(db: DB, organization_id: UUID) -> Organization:
+    try:
+        return Organization.get(db, organization_id)
+    except KeyError as e:
+        raise HTTPException(404, str(e)) from e
+
+
+OrganizationDep = Annotated[Organization, Depends(_lookup_organization)]
+
+
+@instance_api.get(
         '/', name='organizations:detail',
         responses={
             404: {},
             422: {},
         },
 )
-def get_organization(organization_id: UUID):
-    try:
-        return Organization.get(db, organization_id)
-    except KeyError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
+def detail(organization: OrganizationDep) -> Organization:
+    return organization
 
 
-@instance_org_api.delete(
+@instance_api.delete(
         '/', name='organizations:delete',
         status_code=204,
         responses={
@@ -73,16 +75,13 @@ def get_organization(organization_id: UUID):
             422: {},
         },
 )
-def delete_organization(organization_id: UUID):
-    try:
-        organization = Organization.get(db, organization_id)
-        organization.delete(db)
-        return Response(status_code=204)
-    except KeyError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
+def delete_organization(db: DB, organization: OrganizationDep):
+    tr = db.create_transaction()
+    for project in Project.by_organization(tr, organization.id):
+        project.delete(tr)
+    organization.delete(tr)
+    tr.commit().wait()
+    return Response(status_code=204)
 
 
-org_api.include_router(instance_org_api)
-
-
-api.include_router(org_api)
+api.include_router(instance_api)
