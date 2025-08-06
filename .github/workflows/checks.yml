@@ -92,6 +92,11 @@ jobs:
           POSTGRES_URL: postgresql://user:password@postgres:5432/database
         ports:
           - 8000:8000
+        options: >-
+          --health-cmd "curl --head --fail http://localhost:8000/openapi.json || exit 1"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
     - name: Checkout
