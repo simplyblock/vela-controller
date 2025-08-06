@@ -1,18 +1,19 @@
+from collections.abc import Sequence
 from typing import Annotated
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from sqlalchemy.exc import NoResultFound
+from sqlmodel import select
 
+from ...db import SessionDep
 from ...models.organization import Organization, OrganizationCreate
-from ...models.project import Project
-from ..util import DB
 
 api = APIRouter(prefix='/organizations')
 
 
 @api.get('/', name='organizations:list')
-def list_(db: DB) -> list[Organization]:
-    return Organization.list(db)
+def list_(session: SessionDep) -> Sequence[Organization]:
+    return session.exec(select(Organization)).all()
 
 
 @api.post(
@@ -34,11 +35,21 @@ def list_(db: DB) -> list[Organization]:
                     'operationId': 'organizations:delete',
                     'parameters': {'organization_id': '$response.header.Location#regex:/organizations/(.+)'},
                 },
+                'create_project': {
+                    'operationId': 'organizations:projects:create',
+                    'parameters': {'organization_id': '$response.header.Location#regex:/organizations/(.+)'},
+                },
+                'list_projects': {
+                    'operationId': 'organizations:projects:list',
+                    'parameters': {'organization_id': '$response.header.Location#regex:/organizations/(.+)'},
+                },
             },
         }},
 )
-def create(db: DB, request: Request, parameters: OrganizationCreate) -> Response:
-    entity = Organization.create(db, **parameters.model_dump())
+def create(session: SessionDep, request: Request, parameters: OrganizationCreate) -> Response:
+    entity = Organization(**parameters.model_dump())
+    session.add(entity)
+    session.commit()
     entity_url = request.app.url_path_for('organizations:detail', organization_id=entity.id)
     return Response(status_code=201, headers={'Location': entity_url})
 
@@ -46,10 +57,10 @@ def create(db: DB, request: Request, parameters: OrganizationCreate) -> Response
 instance_api = APIRouter(prefix='/{organization_id}')
 
 
-def _lookup_organization(db: DB, organization_id: UUID) -> Organization:
+def _lookup_organization(session: SessionDep, organization_id: int) -> Organization:
     try:
-        return Organization.get(db, organization_id)
-    except KeyError as e:
+        return session.exec(select(Organization).where(Organization.id == organization_id)).one()
+    except NoResultFound as e:
         raise HTTPException(404, str(e)) from e
 
 
@@ -75,12 +86,9 @@ def detail(organization: OrganizationDep) -> Organization:
             422: {},
         },
 )
-def delete_organization(db: DB, organization: OrganizationDep):
-    tr = db.create_transaction()
-    for project in Project.by_organization(tr, organization.id):
-        project.delete(tr)
-    organization.delete(tr)
-    tr.commit().wait()
+def delete_organization(session: SessionDep, organization: OrganizationDep):
+    session.delete(organization)
+    session.commit()
     return Response(status_code=204)
 
 

@@ -6,27 +6,18 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      - fdb
+      - db
     volumes:
       - ..:/app
-      - fdb-config:/etc/foundationdb
+    environment:
+      POSTGRES_URL: 'postgresql://vela:vela@db:5432/vela'
     command: 'bash -c "python -m venv /tmp/venv && source /tmp/venv/bin/activate && pip install -e . && uvicorn --host 0.0.0.0 --reload simplyblock.vela:app"'
     restart: unless-stopped
 
-  fdb:
-    image: docker.io/foundationdb/foundationdb:7.3.69
-    ports:
-      - "4500:4500"
+  db:
+    image: docker.io/postgres:17
     environment:
-      FDB_NETWORKING_MODE: container
-      FDB_CLUSTER_FILE: '/etc/foundationdb/fdb.cluster'
-      FDB_CLUSTER_FILE_CONTENTS: 'docker:docker@fdb:4500'
-    volumes:
-      - fdb-config:/etc/foundationdb
+      POSTGRES_USER: vela
+      POSTGRES_PASSWORD: vela
+      POSTGRES_DATABASE: vela
     restart: unless-stopped
-    post_start:
-      - command: fdbcli --exec 'configure new single ssd'
-        user: root
-
-volumes:
-  fdb-config:

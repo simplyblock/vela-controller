@@ -9,13 +9,8 @@ dynamic = ['version']
 dependencies = [
     'fastapi',
     'uvicorn',
-    'foundationdb<7.4',
-]
-
-[project.optional-dependencies]
-dev = [
-    'ruff',
-    'mypy',
+    'sqlmodel',
+    'psycopg2-binary',
 ]
 
 [tool.setuptools]
@@ -25,7 +20,7 @@ packages = ['simplyblock.vela']
 
 [tool.tox]
 requires = ['tox']
-env_list = ['lint', 'type-check']
+env_list = ['lint', 'type-check', 'test']
 
 [tool.tox.env.lint]
 description = 'Run linter'
@@ -35,7 +30,12 @@ commands = [['ruff', 'check']]
 [tool.tox.env.type-check]
 description = 'Run type checks'
 deps = ['mypy']
-commands = [['mypy', 'src']]
+commands = [['mypy', '--python-executable=python', 'src']]
+
+[tool.tox.env.test]
+description = 'Run API tests'
+deps = ['schemathesis', 'httpx']
+commands = [['python3', 'tests/schemathesis.py']]
 
 
 [tool.ruff]
