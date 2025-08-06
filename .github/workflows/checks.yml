@@ -1,0 +1,62 @@
+name: Check project
+
+on:
+  push:
+    branches: ['main']
+  pull_request:
+
+jobs:
+  lint:
+    name: Linter
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+        cache: 'pip'
+
+    - name: Install linter
+      run: pip install ruff
+
+    - name: Execute linter
+      run: ruff check
+
+
+  type-check:
+    name: Type checks
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+        cache: 'pip'
+
+    - name: Install type checker
+      run: pip install mypy .
+
+    - name: Execute type checker
+      run: mypy src
+
+
+  test:
+    name: API tests
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Set up deployment
+      uses: hoverkraft-tech/compose-action@v2.3.0
+      with:
+        compose-file: containers/compose.yml
+
+    - name: Test API
+      uses: schemathesis/action@v2
+      with:
+        schema: http://localhost:8000/openapi.json
