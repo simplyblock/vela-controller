@@ -100,4 +100,4 @@ jobs:
     - name: Test API
       uses: schemathesis/action@v2
       with:
-        schema: http://api:8000/openapi.json
+        schema: http://localhost:8000/openapi.json
