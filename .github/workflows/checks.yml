@@ -71,9 +71,9 @@ jobs:
       postgres:
         image: postgres:17
         env:
-          POSTGRES_USER=user
-          POSTGRES_PASSWORD=password
-          POSTGRES_DATABASE=database
+          POSTGRES_USER: user
+          POSTGRES_PASSWORD: password
+          POSTGRES_DATABASE: database
       api:
         image: ghcr.io/${{ github.repository }}/api:${{ github.sha }}
         env:
