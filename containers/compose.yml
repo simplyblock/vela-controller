@@ -10,7 +10,7 @@ services:
     volumes:
       - ..:/app
     environment:
-      POSTGRES_URL: 'postgresql://vela:vela@db:5432/vela'
+      POSTGRES_URL: 'postgresql+asyncpg://vela:vela@db:5432/vela'
     command: 'bash -c "python -m venv /tmp/venv && source /tmp/venv/bin/activate && pip install -e . && uvicorn --host 0.0.0.0 --reload simplyblock.vela:app"'
     restart: unless-stopped
 
