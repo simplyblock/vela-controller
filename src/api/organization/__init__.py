@@ -6,7 +6,7 @@ from sqlalchemy.exc import NoResultFound
 from sqlmodel import select
 
 from ...db import SessionDep
-from ...models.organization import Organization, OrganizationCreate
+from ...models.organization import Organization, OrganizationCreate, OrganizationUpdate
 
 api = APIRouter(prefix='/organizations')
 
@@ -29,6 +29,10 @@ def list_(session: SessionDep) -> Sequence[Organization]:
             'links': {
                 'detail': {
                     'operationId': 'organizations:detail',
+                    'parameters': {'organization_id': '$response.header.Location#regex:/organizations/(.+)'},
+                },
+                'update': {
+                    'operationId': 'organizations:update',
                     'parameters': {'organization_id': '$response.header.Location#regex:/organizations/(.+)'},
                 },
                 'delete': {
@@ -57,14 +61,14 @@ def create(session: SessionDep, request: Request, parameters: OrganizationCreate
 instance_api = APIRouter(prefix='/{organization_id}')
 
 
-def _lookup_organization(session: SessionDep, organization_id: int) -> Organization:
+def _lookup(session: SessionDep, organization_id: int) -> Organization:
     try:
         return session.exec(select(Organization).where(Organization.id == organization_id)).one()
     except NoResultFound as e:
         raise HTTPException(404, str(e)) from e
 
 
-OrganizationDep = Annotated[Organization, Depends(_lookup_organization)]
+OrganizationDep = Annotated[Organization, Depends(_lookup)]
 
 
 @instance_api.get(
@@ -78,15 +82,23 @@ def detail(organization: OrganizationDep) -> Organization:
     return organization
 
 
-@instance_api.delete(
-        '/', name='organizations:delete',
-        status_code=204,
-        responses={
-            404: {},
-            422: {},
-        },
+@instance_api.put(
+        '/', name='organizations:update', status_code=204,
+        responses={404: {}},
 )
-def delete_organization(session: SessionDep, organization: OrganizationDep):
+def update(session: SessionDep, organization: OrganizationDep, parameters: OrganizationUpdate):
+    for key, value in parameters.model_dump(exclude_unset=True, exclude_none=True).items():
+        assert(hasattr(organization, key))
+        setattr(organization, key, value)
+    session.commit()
+    return Response(status_code=204)
+
+
+@instance_api.delete(
+        '/', name='organizations:delete', status_code=204,
+        responses={404: {}},
+)
+def delete(session: SessionDep, organization: OrganizationDep):
     session.delete(organization)
     session.commit()
     return Response(status_code=204)

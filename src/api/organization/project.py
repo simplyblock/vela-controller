@@ -6,7 +6,7 @@ from sqlalchemy.exc import NoResultFound
 from sqlmodel import select
 
 from ...db import SessionDep
-from ...models.project import Project, ProjectCreate
+from ...models.project import Project, ProjectCreate, ProjectUpdate
 from ..organization import OrganizationDep
 
 api = APIRouter(prefix='/projects')
@@ -36,6 +36,10 @@ def list_(organization: OrganizationDep) -> Sequence[Project]:
                         'operationId': 'organizations:projects:detail',
                         'parameters': {'project_id': '$response.header.Location#regex:/projects/(.+)'},
                     },
+                    'update': {
+                        'operationId': 'organizations:projects:update',
+                        'parameters': {'project_id': '$response.header.Location#regex:/projects/(.+)'},
+                    },
                     'delete': {
                         'operationId': 'organizations:projects:delete',
                         'parameters': {'project_id': '$response.header.Location#regex:/projects/(.+)'},
@@ -60,14 +64,14 @@ def create(session: SessionDep, request: Request, organization: OrganizationDep,
 instance_api = APIRouter(prefix='/{project_id}')
 
 
-def _lookup_project(session: SessionDep, project_id: int) -> Project:
+def _lookup(session: SessionDep, project_id: int) -> Project:
     try:
         return session.exec(select(Project).where(Project.id == project_id)).one()
     except NoResultFound as e:
         raise HTTPException(404, str(e)) from e
 
 
-ProjectDep = Annotated[Project, Depends(_lookup_project)]
+ProjectDep = Annotated[Project, Depends(_lookup)]
 
 
 @instance_api.get(
@@ -76,6 +80,18 @@ ProjectDep = Annotated[Project, Depends(_lookup_project)]
 )
 def detail(_organization: OrganizationDep, project: ProjectDep) -> Project:
     return project
+
+
+@instance_api.put(
+        '/', name='organizations:projects:update',
+        status_code=204, responses={404: {}},
+)
+def update(session: SessionDep, _organization: OrganizationDep, project: ProjectDep, parameters: ProjectUpdate):
+    for key, value in parameters.model_dump(exclude_unset=True, exclude_none=True).items():
+        assert(hasattr(project, key))
+        setattr(project, key, value)
+    session.commit()
+    return Response(status_code=204)
 
 
 @instance_api.delete(
