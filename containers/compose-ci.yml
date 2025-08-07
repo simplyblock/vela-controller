@@ -9,7 +9,7 @@ services:
       database:
         condition: service_healthy
     environment:
-      POSTGRES_URL: 'postgresql://vela:vela@database:5432/vela'
+      POSTGRES_URL: 'postgresql+asyncpg://vela:vela@database:5432/vela'
     restart: unless-stopped
 
   database:

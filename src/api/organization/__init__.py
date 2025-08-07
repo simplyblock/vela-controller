@@ -2,18 +2,18 @@ from collections.abc import Sequence
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from sqlalchemy.exc import NoResultFound
 from sqlmodel import select
 
 from ...db import SessionDep
 from ...models.organization import Organization, OrganizationCreate, OrganizationUpdate
+from .._util import Int64
 
 api = APIRouter(prefix='/organizations')
 
 
 @api.get('/', name='organizations:list')
-def list_(session: SessionDep) -> Sequence[Organization]:
-    return session.exec(select(Organization)).all()
+async def list_(session: SessionDep) -> Sequence[Organization]:
+    return (await session.exec(select(Organization))).all()
 
 
 @api.post(
@@ -50,10 +50,11 @@ def list_(session: SessionDep) -> Sequence[Organization]:
             },
         }},
 )
-def create(session: SessionDep, request: Request, parameters: OrganizationCreate) -> Response:
+async def create(session: SessionDep, request: Request, parameters: OrganizationCreate) -> Response:
     entity = Organization(**parameters.model_dump())
     session.add(entity)
-    session.commit()
+    await session.commit()
+    await session.refresh(entity)
     entity_url = request.app.url_path_for('organizations:detail', organization_id=entity.id)
     return Response(status_code=201, headers={'Location': entity_url})
 
@@ -61,11 +62,11 @@ def create(session: SessionDep, request: Request, parameters: OrganizationCreate
 instance_api = APIRouter(prefix='/{organization_id}')
 
 
-def _lookup(session: SessionDep, organization_id: int) -> Organization:
-    try:
-        return session.exec(select(Organization).where(Organization.id == organization_id)).one()
-    except NoResultFound as e:
-        raise HTTPException(404, str(e)) from e
+async def _lookup(session: SessionDep, organization_id: Int64) -> Organization:
+    result = await session.get(Organization, organization_id)
+    if result is None:
+        raise HTTPException(404, f'Organization {organization_id} not found')
+    return result
 
 
 OrganizationDep = Annotated[Organization, Depends(_lookup)]
@@ -78,7 +79,7 @@ OrganizationDep = Annotated[Organization, Depends(_lookup)]
             422: {},
         },
 )
-def detail(organization: OrganizationDep) -> Organization:
+async def detail(organization: OrganizationDep) -> Organization:
     return organization
 
 
@@ -86,11 +87,11 @@ def detail(organization: OrganizationDep) -> Organization:
         '/', name='organizations:update', status_code=204,
         responses={404: {}},
 )
-def update(session: SessionDep, organization: OrganizationDep, parameters: OrganizationUpdate):
+async def update(session: SessionDep, organization: OrganizationDep, parameters: OrganizationUpdate):
     for key, value in parameters.model_dump(exclude_unset=True, exclude_none=True).items():
         assert(hasattr(organization, key))
         setattr(organization, key, value)
-    session.commit()
+    await session.commit()
     return Response(status_code=204)
 
 
@@ -98,9 +99,9 @@ def update(session: SessionDep, organization: OrganizationDep, parameters: Organ
         '/', name='organizations:delete', status_code=204,
         responses={404: {}},
 )
-def delete(session: SessionDep, organization: OrganizationDep):
-    session.delete(organization)
-    session.commit()
+async def delete(session: SessionDep, organization: OrganizationDep):
+    await session.delete(organization)
+    await session.commit()
     return Response(status_code=204)
 
 

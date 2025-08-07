@@ -10,7 +10,7 @@ dependencies = [
     'fastapi',
     'uvicorn',
     'sqlmodel',
-    'psycopg2-binary',
+    'asyncpg',
 ]
 
 [tool.setuptools]

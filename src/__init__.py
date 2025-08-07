@@ -7,8 +7,9 @@ from .api import api
 from .db import engine
 
 
-def _create_db_and_tables():
-    SQLModel.metadata.create_all(engine)
+async def _create_db_and_tables():
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
 
 
 def _use_route_names_as_operation_ids(app: FastAPI) -> None:
@@ -27,8 +28,8 @@ app = FastAPI()
 
 
 @app.on_event("startup")
-def on_startup():
-    _create_db_and_tables()
+async def on_startup():
+    await _create_db_and_tables()
 
 
 app.include_router(api)
