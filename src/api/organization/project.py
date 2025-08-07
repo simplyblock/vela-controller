@@ -34,15 +34,15 @@ def list_(organization: OrganizationDep) -> Sequence[Project]:
                 'links': {
                     'detail': {
                         'operationId': 'organizations:projects:detail',
-                        'parameters': {'project_id': '$response.header.Location#regex:/projects/(.+)'},
+                        'parameters': {'project_id': '$response.header.Location#regex:/projects/(.+)/'},
                     },
                     'update': {
                         'operationId': 'organizations:projects:update',
-                        'parameters': {'project_id': '$response.header.Location#regex:/projects/(.+)'},
+                        'parameters': {'project_id': '$response.header.Location#regex:/projects/(.+)/'},
                     },
                     'delete': {
                         'operationId': 'organizations:projects:delete',
-                        'parameters': {'project_id': '$response.header.Location#regex:/projects/(.+)'},
+                        'parameters': {'project_id': '$response.header.Location#regex:/projects/(.+)/'},
                     },
                 },
             },

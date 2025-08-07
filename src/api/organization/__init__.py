@@ -29,23 +29,23 @@ def list_(session: SessionDep) -> Sequence[Organization]:
             'links': {
                 'detail': {
                     'operationId': 'organizations:detail',
-                    'parameters': {'organization_id': '$response.header.Location#regex:/organizations/(.+)'},
+                    'parameters': {'organization_id': '$response.header.Location#regex:/organizations/(.+)/'},
                 },
                 'update': {
                     'operationId': 'organizations:update',
-                    'parameters': {'organization_id': '$response.header.Location#regex:/organizations/(.+)'},
+                    'parameters': {'organization_id': '$response.header.Location#regex:/organizations/(.+)/'},
                 },
                 'delete': {
                     'operationId': 'organizations:delete',
-                    'parameters': {'organization_id': '$response.header.Location#regex:/organizations/(.+)'},
+                    'parameters': {'organization_id': '$response.header.Location#regex:/organizations/(.+)/'},
                 },
                 'create_project': {
                     'operationId': 'organizations:projects:create',
-                    'parameters': {'organization_id': '$response.header.Location#regex:/organizations/(.+)'},
+                    'parameters': {'organization_id': '$response.header.Location#regex:/organizations/(.+)/'},
                 },
                 'list_projects': {
                     'operationId': 'organizations:projects:list',
-                    'parameters': {'organization_id': '$response.header.Location#regex:/organizations/(.+)'},
+                    'parameters': {'organization_id': '$response.header.Location#regex:/organizations/(.+)/'},
                 },
             },
         }},
