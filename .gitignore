@@ -1,4 +1,5 @@
 /build
 /dist
-/vela.egg-info
+/*.egg-info
+/.hypothesis
 __pycache__
