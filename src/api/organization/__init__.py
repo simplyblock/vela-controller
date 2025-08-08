@@ -74,10 +74,7 @@ OrganizationDep = Annotated[Organization, Depends(_lookup)]
 
 @instance_api.get(
         '/', name='organizations:detail',
-        responses={
-            404: {},
-            422: {},
-        },
+        responses={404: {}},
 )
 async def detail(organization: OrganizationDep) -> Organization:
     return organization

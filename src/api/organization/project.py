@@ -47,7 +47,6 @@ async def list_(session: SessionDep, organization: OrganizationDep) -> Sequence[
                 },
             },
             404: {},
-            422: {},
         },
 )
 async def create(
