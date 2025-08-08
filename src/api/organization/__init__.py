@@ -1,14 +1,13 @@
 from collections.abc import Sequence
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Request, Response
 from sqlmodel import select
 
 from ...db import SessionDep
-from ...models.organization import Organization, OrganizationCreate, OrganizationUpdate
-from .._util import Int64
+from ...models.organization import Organization, OrganizationCreate, OrganizationDep, OrganizationUpdate
+from .project import api as project_api
 
-api = APIRouter(prefix='/organizations')
+api = APIRouter()
 
 
 @api.get('/', name='organizations:list')
@@ -62,16 +61,6 @@ async def create(session: SessionDep, request: Request, parameters: Organization
 instance_api = APIRouter(prefix='/{organization_id}')
 
 
-async def _lookup(session: SessionDep, organization_id: Int64) -> Organization:
-    result = await session.get(Organization, organization_id)
-    if result is None:
-        raise HTTPException(404, f'Organization {organization_id} not found')
-    return result
-
-
-OrganizationDep = Annotated[Organization, Depends(_lookup)]
-
-
 @instance_api.get(
         '/', name='organizations:detail',
         responses={404: {}},
@@ -100,6 +89,9 @@ async def delete(session: SessionDep, organization: OrganizationDep):
     await session.delete(organization)
     await session.commit()
     return Response(status_code=204)
+
+
+instance_api.include_router(project_api, prefix='/projects')
 
 
 api.include_router(instance_api)

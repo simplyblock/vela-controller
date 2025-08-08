@@ -1,14 +1,12 @@
 from collections.abc import Sequence
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Request, Response
 
 from ...db import SessionDep
-from ...models.project import Project, ProjectCreate, ProjectUpdate
-from .._util import Int64
+from ...models.project import Project, ProjectCreate, ProjectDep, ProjectUpdate
 from ..organization import OrganizationDep
 
-api = APIRouter(prefix='/projects')
+api = APIRouter()
 
 
 @api.get(
@@ -66,16 +64,6 @@ async def create(
 
 
 instance_api = APIRouter(prefix='/{project_id}')
-
-
-async def _lookup(session: SessionDep, project_id: Int64) -> Project:
-    result = await session.get(Project, project_id)
-    if result is None:
-        raise HTTPException(404, f'Project {project_id} not found')
-    return result
-
-
-ProjectDep = Annotated[Project, Depends(_lookup)]
 
 
 @instance_api.get(

@@ -3,7 +3,7 @@ from fastapi.routing import APIRoute
 from sqlmodel import SQLModel
 
 from . import models
-from .api import api
+from .api import router
 from .db import engine
 
 
@@ -32,7 +32,7 @@ async def on_startup():
     await _create_db_and_tables()
 
 
-app.include_router(api)
+app.include_router(router)
 _use_route_names_as_operation_ids(app)
 
 

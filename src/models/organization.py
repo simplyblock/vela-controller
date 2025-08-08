@@ -1,10 +1,12 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated
 
+from fastapi import Depends, HTTPException
 from pydantic import BaseModel, StrictBool
 from sqlalchemy import BigInteger
 from sqlmodel import Field, Relationship, SQLModel
 
-from ._util import Slug
+from .._util import Int64, Slug
+from ..db import SessionDep
 
 if TYPE_CHECKING:
     from .project import Project
@@ -25,3 +27,13 @@ class OrganizationCreate(BaseModel):
 class OrganizationUpdate(BaseModel):
     name: Slug | None = None
     locked: StrictBool | None = None
+
+
+async def _lookup(session: SessionDep, organization_id: Int64) -> Organization:
+    result = await session.get(Organization, organization_id)
+    if result is None:
+        raise HTTPException(404, f'Organization {organization_id} not found')
+    return result
+
+
+OrganizationDep = Annotated[Organization, Depends(_lookup)]

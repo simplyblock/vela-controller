@@ -1,8 +1,12 @@
+from typing import Annotated
+
+from fastapi import Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import BigInteger
 from sqlmodel import Field, Relationship, SQLModel
 
-from ._util import Slug
+from .._util import Int64, Slug
+from ..db import SessionDep
 from .organization import Organization
 
 
@@ -19,3 +23,13 @@ class ProjectCreate(BaseModel):
 
 class ProjectUpdate(BaseModel):
     name: Slug | None = None
+
+
+async def _lookup(session: SessionDep, project_id: Int64) -> Project:
+    result = await session.get(Project, project_id)
+    if result is None:
+        raise HTTPException(404, f'Project {project_id} not found')
+    return result
+
+
+ProjectDep = Annotated[Project, Depends(_lookup)]
