@@ -2,4 +2,5 @@
 /dist
 /*.egg-info
 /.hypothesis
+.env
 __pycache__
