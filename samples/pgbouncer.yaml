@@ -1,0 +1,40 @@
+# pgbouncer-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgbouncer-deployment
+  labels:
+    app: pgbouncer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pgbouncer
+  template:
+    metadata:
+      labels:
+        app: pgbouncer
+    spec:
+      containers:
+      - name: pgbouncer
+        image: edoburu/pgbouncer:latest
+        ports:
+        - containerPort: 5432
+        env:
+        - name: DB_USER
+          value: db_user # The user PG Bouncer will use to connect to PostgreSQL
+        - name: DB_PASSWORD
+          value: db_password # The password for the PG Bouncer user
+        - name: DB_HOST
+          value: postgres-service
+        - name: DB_NAME
+          value: db_name
+        - name: AUTH_TYPE
+          value: scram-sha-256
+        - name: POOL_MODE
+          value: transaction
+        - name: ADMIN_USERS
+          value: postgres,dbuser
+
+## todo: session migration in postges
+

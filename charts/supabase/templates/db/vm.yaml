@@ -1,0 +1,76 @@
+{{- if .Values.db.enabled -}}
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: {{ include "supabase.db.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "supabase.labels" . | nindent 4 }}
+spec:
+  runStrategy: Always
+  template:
+    metadata:
+      {{- with .Values.db.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "supabase.db.selectorLabels" . | nindent 8 }}
+    spec:
+      domain:
+        cpu:
+          cores: 1
+          sockets: 4
+          threads: 1
+        memory:
+          guest: 1Gi
+        devices:
+          disks:
+            - name: rootdisk
+              disk:
+                bus: virtio
+            - name: datadisk
+              disk:
+                bus: virtio
+            - name: initdb-scripts-data
+              disk:
+                bus: virtio
+            - name: migrations-data
+              disk:
+                bus: virtio
+            - name: db-secrets
+              disk:
+                bus: virtio
+            - name: cloudinitdisk
+              disk:
+                bus: virtio
+          interfaces:
+          - name: default
+            masquerade: {}
+        resources:
+          requests:
+            memory: 2048M
+      networks:
+      - name: default
+        pod: {}
+      volumes:
+        - name: rootdisk
+          containerDisk:
+            image: manoharbrm/kubevirt:alpine-3.22.1
+        - name: datadisk
+          persistentVolumeClaim:
+            claimName: {{ include "supabase.db.fullname" . }}-pvc
+        - name: initdb-scripts-data
+          configMap:
+            name: {{ include "supabase.db.fullname" . }}-initdb
+        - name: migrations-data
+          configMap:
+            name: {{ include "supabase.db.fullname" . }}-migrations
+        - name: db-secrets
+          secret:
+            secretName: {{ include "supabase.secret.db" . }}
+        - name: cloudinitdisk
+          cloudInitNoCloud:
+            secretRef: 
+              name: "{{ include "supabase.db.fullname" . }}-cloudinit-userdata"
+{{- end }}

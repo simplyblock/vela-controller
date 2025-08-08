@@ -1,0 +1,68 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: testvm
+spec:
+  runStrategy: Always
+  template:
+    metadata:
+      labels:
+        kubevirt.io/size: small
+        kubevirt.io/domain: testvm
+    spec:
+      domain:
+        cpu:
+          cores: 1
+          sockets: 1
+          threads: 1
+        memory:
+          guest: 3Gi
+        devices:
+          disks:
+            - name: rootdisk
+              disk:
+                bus: virtio
+            - name: datadisk
+              disk:
+                bus: virtio
+            - name: initdb-scripts-data
+              disk:
+                bus: virtio
+            - name: migrations-data
+              disk:
+                bus: virtio
+            # - name: db-secrets
+            #   disk:
+            #     bus: virtio
+            - name: cloudinitdisk
+              disk:
+                bus: virtio
+          interfaces:
+          - name: default
+            masquerade: {}
+        resources:
+          requests:
+            memory: 2048M
+      networks:
+      - name: default
+        pod: {}
+      volumes:
+        - name: rootdisk
+          containerDisk:
+            image: manoharbrm/kubevirt:alpine-3.22.1
+        - name: datadisk
+          persistentVolumeClaim:
+            claimName: postgres-pvc
+        - name: initdb-scripts-data
+          configMap:
+            name: demo-supabase-db-initdb2
+        - name: migrations-data
+          configMap:
+            name: demo-supabase-db-migrations2
+        # - name: db-secrets
+        #   secret:
+        #     secretName: demo-supabase-db
+        - name: cloudinitdisk
+          cloudInitNoCloud:
+            secretRef: 
+              name: "cloudinit-userdata"

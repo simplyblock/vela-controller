@@ -1,0 +1,10 @@
+fastapi[standard]
+PyYAML
+sqlalchemy
+psycopg2-binary
+kubernetes
+python-multipart
+python-jose[cryptography]
+passlib[bcrypt]
+python-dotenv
+uuid
