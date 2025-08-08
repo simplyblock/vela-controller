@@ -1,3 +1,5 @@
-from pydantic import conint
+from typing import Annotated
 
-Int64 = conint(ge=-2 ** 63, lt=2 ** 63)
+from pydantic import Field
+
+Int64 = Annotated[int, Field(ge=-2 ** 63, lt=2 ** 63)]
