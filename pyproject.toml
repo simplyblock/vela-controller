@@ -8,6 +8,7 @@ requires-python = '>=3.13'
 dynamic = ['version']
 dependencies = [
     'fastapi',
+    'fastapi-users[sqlalchemy]',
     'uvicorn',
     'sqlmodel',
     'asyncpg',
