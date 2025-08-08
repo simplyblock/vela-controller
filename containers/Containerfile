@@ -7,7 +7,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN --mount=type=cache,target=/var/cache/apt \
     --mount=type=cache,target=/var/lib/apt \
     apt-get update && \
-    apt-get install -y git libpq-dev
+    apt-get install -y git libpq-dev curl && \
+    curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 && \
+    chmod 700 get_helm.sh && \
+    ./get_helm.sh && \
+    rm get_helm.sh
 
 WORKDIR /app
 
