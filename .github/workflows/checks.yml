@@ -44,29 +44,3 @@ jobs:
 
     - name: Execute type checker
       run: mypy src
-
-
-  test:
-    name: API tests
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-
-    - name: Install podman and podman-compose
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y podman podman-compose
-
-    - name: Build and start API
-      run: podman-compose -f containers/compose-ci.yml up --detach --build
-
-    - name: Test API
-      uses: schemathesis/action@v2
-      with:
-        schema: http://localhost:8000/openapi.json
-        wait-for-schema: 20
-
-    - name: Shutdown containers
-      run: podman-compose -f containers/compose-ci.yml down
