@@ -10,6 +10,7 @@ class VelaCreateRequest(BaseModel):
     ram: int  # MB
     db_storage: int  # GB
     iops: int
+    db_image_tag: str
 
 class ErrorResponse(BaseModel):
     error: str

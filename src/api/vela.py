@@ -43,13 +43,21 @@ async def create_vela_config(request: VelaCreateRequest, session: Session):
             values_content = yaml.safe_load(f)
         if 'db' not in values_content:
             values_content['db'] = {}
+
+        # validate input data
+        if request.db_image_tag not in ["15.1.0.147", "16.1.0.147"]:
+            raise HTTPException(status_code=400, detail="Invalid database image tag")
+
         values_content['db']['username'] = request.dbuser
         values_content['db']['database'] = request.dbname
         values_content['db']['password'] = request.dbpassword
+        values_content['db']['vcpu'] = request.vcpu
+        values_content['db']['ram'] = request.ram
+        values_content['db']['persistence']['size'] = request.db_storage
+        values_content['db']['image']['tag'] = request.db_image_tag
+        
+        # todo: create an storage class with the given IOPS
         values_content['provisioning'] = {
-            'vcpu': request.vcpu,
-            'ram': request.ram,
-            'db_storage': request.db_storage,
             'iops': request.iops
         }
         with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as temp_values:

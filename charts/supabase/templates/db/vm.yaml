@@ -19,11 +19,11 @@ spec:
     spec:
       domain:
         cpu:
-          cores: 1
-          sockets: 4
+          cores: {{ .Values.db.vcpu }}
+          sockets: 1
           threads: 1
         memory:
-          guest: 1Gi
+          guest: {{ .Values.db.ram }}Gi
         devices:
           disks:
             - name: rootdisk
@@ -49,14 +49,14 @@ spec:
             masquerade: {}
         resources:
           requests:
-            memory: 2048M
+            memory: {{ .Values.db.ram }}Gi
       networks:
       - name: default
         pod: {}
       volumes:
         - name: rootdisk
           containerDisk:
-            image: manoharbrm/kubevirt:alpine-3.22.1
+            image: manoharbrm/kubevirt:alpine-{{ .Values.db.image.tag }}
         - name: datadisk
           persistentVolumeClaim:
             claimName: {{ include "supabase.db.fullname" . }}-pvc
