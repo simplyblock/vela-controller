@@ -11,6 +11,7 @@ dependencies = [
     'uvicorn',
     'sqlmodel',
     'asyncpg',
+    'pydantic-settings',
 ]
 
 [tool.setuptools]
