@@ -8,4 +8,5 @@ class HTTPError(BaseModel):
 
 
 NotFound = {'model': HTTPError, 'description': 'Not found'}
+Forbidden = {'model': HTTPError, 'description': 'Forbidden'}
 Unauthenticated = {'model': HTTPError, 'description': 'Not authenticated'}
