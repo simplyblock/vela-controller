@@ -14,6 +14,7 @@ services:
       - ..:/app
     environment:
       VELA_POSTGRES_URL: 'postgresql+asyncpg://postgres:vela@database:5432/vela'
+      VELA_JWT_SECRET: 'secret'
     command: 'bash -c "python -m venv /tmp/venv && source /tmp/venv/bin/activate && pip install -e . && uvicorn --host 0.0.0.0 --reload simplyblock.vela:app"'
     restart: unless-stopped
 

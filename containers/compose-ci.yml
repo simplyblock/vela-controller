@@ -10,6 +10,7 @@ services:
         condition: service_healthy
     environment:
       VELA_POSTGRES_URL: 'postgresql+asyncpg://vela:vela@database:5432/vela'
+      VELA_JWT_SECRET: 'secret'
     restart: unless-stopped
 
   database:

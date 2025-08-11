@@ -4,6 +4,7 @@ from fastapi import APIRouter, Request, Response
 
 from ...db import SessionDep
 from ...models.project import Project, ProjectCreate, ProjectDep, ProjectUpdate
+from .._util import NotFound, Unauthenticated
 from ..organization import OrganizationDep
 
 api = APIRouter()
@@ -11,7 +12,7 @@ api = APIRouter()
 
 @api.get(
         '/', name='organizations:projects:list',
-        responses={404: {}},
+        responses={401: Unauthenticated, 404: NotFound},
 )
 async def list_(session: SessionDep, organization: OrganizationDep) -> Sequence[Project]:
     await session.refresh(organization, ['projects'])
@@ -44,7 +45,8 @@ async def list_(session: SessionDep, organization: OrganizationDep) -> Sequence[
                     },
                 },
             },
-            404: {},
+            401: Unauthenticated,
+            404: NotFound,
         },
 )
 async def create(
@@ -68,7 +70,7 @@ instance_api = APIRouter(prefix='/{project_id}')
 
 @instance_api.get(
         '/', name='organizations:projects:detail',
-        responses={404: {}},
+        responses={401: Unauthenticated, 404: NotFound},
 )
 async def detail(_organization: OrganizationDep, project: ProjectDep) -> Project:
     return project
@@ -76,7 +78,8 @@ async def detail(_organization: OrganizationDep, project: ProjectDep) -> Project
 
 @instance_api.put(
         '/', name='organizations:projects:update',
-        status_code=204, responses={404: {}},
+        status_code=204,
+        responses={401: Unauthenticated, 404: NotFound},
 )
 async def update(session: SessionDep, _organization: OrganizationDep, project: ProjectDep, parameters: ProjectUpdate):
     for key, value in parameters.model_dump(exclude_unset=True, exclude_none=True).items():
@@ -88,7 +91,7 @@ async def update(session: SessionDep, _organization: OrganizationDep, project: P
 
 @instance_api.delete(
         '/', name='organizations:projects:delete',
-        status_code=204, responses={404: {}},
+        responses={401: Unauthenticated, 404: NotFound},
 )
 async def delete(session: SessionDep, _organization: OrganizationDep, project: ProjectDep):
     await session.delete(project)
