@@ -16,4 +16,4 @@ COPY .. .
 RUN --mount=type=cache,target=/root/.cache/pip pip install .
 RUN rm -r /app/*
 
-CMD ["uvicorn", "simplyblock.vela:app", "--host", "0.0.0.0"]
+CMD ["uvicorn", "simplyblock.vela:app", "--host", "0.0.0.0", "--proxy-headers"]
