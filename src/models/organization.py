@@ -1,4 +1,5 @@
 from typing import TYPE_CHECKING, Annotated
+from uuid import UUID
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel, StrictBool
@@ -10,6 +11,12 @@ from ..db import SessionDep
 
 if TYPE_CHECKING:
     from .project import Project
+    from .user import User
+
+
+class OrganizationUserLink(SQLModel, table=True):
+    organization_id: int | None = Field(default=None, foreign_key='organization.id', primary_key=True)
+    user_id: UUID = Field(foreign_key='user.id', primary_key=True)
 
 
 class Organization(SQLModel, table=True):
@@ -17,6 +24,11 @@ class Organization(SQLModel, table=True):
     name: Slug
     locked: bool = False
     projects: list['Project'] = Relationship(back_populates='organization', cascade_delete=True)
+    users: list['User'] = Relationship(
+            back_populates='organizations',
+            link_model=OrganizationUserLink,
+            sa_relationship_kwargs={'lazy': 'selectin'},
+    )
 
 
 class OrganizationCreate(BaseModel):
