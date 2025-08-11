@@ -33,6 +33,8 @@ db:
     accessModes:
       - ReadWriteMany
     size: 10Gi
+  vcpu: 1
+  ram: 2
 
 studio:
   image:
