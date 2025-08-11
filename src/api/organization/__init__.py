@@ -1,10 +1,10 @@
 from collections.abc import Sequence
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from ...db import SessionDep
 from ...models.organization import Organization, OrganizationCreate, OrganizationDep, OrganizationUpdate
-from .._util import NotFound, Unauthenticated
+from .._util import Forbidden, NotFound, Unauthenticated
 from ..auth import UserDep
 from .project import api as project_api
 
@@ -70,12 +70,20 @@ async def create(
     return Response(status_code=201, headers={'Location': entity_url})
 
 
-instance_api = APIRouter(prefix='/{organization_id}')
+def _user_in_organization(user: UserDep, organization: OrganizationDep):
+    if user not in organization.users:
+        raise HTTPException(403, detail='Unauthorized access')
+
+
+instance_api = APIRouter(
+        prefix='/{organization_id}',
+        dependencies=[Depends(_user_in_organization)],
+)
 
 
 @instance_api.get(
         '/', name='organizations:detail',
-        responses={401: Unauthenticated, 404: NotFound},
+        responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def detail(organization: OrganizationDep) -> Organization:
     return organization
@@ -83,7 +91,7 @@ async def detail(organization: OrganizationDep) -> Organization:
 
 @instance_api.put(
         '/', name='organizations:update', status_code=204,
-        responses={401: Unauthenticated, 404: NotFound},
+        responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def update(session: SessionDep, organization: OrganizationDep, parameters: OrganizationUpdate):
     for key, value in parameters.model_dump(exclude_unset=True, exclude_none=True).items():
@@ -95,7 +103,7 @@ async def update(session: SessionDep, organization: OrganizationDep, parameters:
 
 @instance_api.delete(
         '/', name='organizations:delete', status_code=204,
-        responses={401: Unauthenticated, 404: NotFound},
+        responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def delete(session: SessionDep, organization: OrganizationDep):
     await session.delete(organization)
