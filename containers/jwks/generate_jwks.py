@@ -12,4 +12,4 @@ jwks = {"keys": [key_dict]}
 with open("jwks.json", "w") as f:
     json.dump(jwks, f, indent=2)
 
-print("✅ jwks.json generated")
+print("jwks.json generated")

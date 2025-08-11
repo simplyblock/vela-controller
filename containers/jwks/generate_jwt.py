@@ -7,13 +7,13 @@ with open("private.key", "r") as f:
 
 # JWT payload (customize as needed)
 payload = {
-    "sub": "testuser",                        # This becomes the Grafana username
-    "email": "testuser@example.com",         # This becomes the Grafana email
+    "sub": "testuser",                       
+    "email": "testuser@example.com",         
     "exp": datetime.datetime.utcnow() + datetime.timedelta(minutes=10)
 }
 
 headers = {
-    "kid": "my-test-key",                    # Must match kid in JWKS
+    "kid": "my-test-key",                    
     "alg": "RS256"
 }
 
