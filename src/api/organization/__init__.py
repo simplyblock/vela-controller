@@ -5,49 +5,56 @@ from sqlmodel import select
 
 from ...db import SessionDep
 from ...models.organization import Organization, OrganizationCreate, OrganizationDep, OrganizationUpdate
+from .._util import NotFound, Unauthenticated
 from .project import api as project_api
 
 api = APIRouter()
 
 
-@api.get('/', name='organizations:list')
+@api.get(
+        '/', name='organizations:list',
+        responses={401: Unauthenticated},
+)
 async def list_(session: SessionDep) -> Sequence[Organization]:
     return (await session.exec(select(Organization))).all()
 
 
 @api.post(
         '/', name='organizations:create', status_code=201,
-        responses={201: {
-            'content': None,
-            'headers': {
-                'Location': {
-                    'description': 'URL of the created item',
-                    'schema': {'type': 'string'},
+        responses={
+            201: {
+                'content': None,
+                'headers': {
+                    'Location': {
+                        'description': 'URL of the created item',
+                        'schema': {'type': 'string'},
+                    },
+                },
+                'links': {
+                    'detail': {
+                        'operationId': 'organizations:detail',
+                        'parameters': {'organization_id': '$response.header.Location#regex:/organizations/(.+)/'},
+                    },
+                    'update': {
+                        'operationId': 'organizations:update',
+                        'parameters': {'organization_id': '$response.header.Location#regex:/organizations/(.+)/'},
+                    },
+                    'delete': {
+                        'operationId': 'organizations:delete',
+                        'parameters': {'organization_id': '$response.header.Location#regex:/organizations/(.+)/'},
+                    },
+                    'create_project': {
+                        'operationId': 'organizations:projects:create',
+                        'parameters': {'organization_id': '$response.header.Location#regex:/organizations/(.+)/'},
+                    },
+                    'list_projects': {
+                        'operationId': 'organizations:projects:list',
+                        'parameters': {'organization_id': '$response.header.Location#regex:/organizations/(.+)/'},
+                    },
                 },
             },
-            'links': {
-                'detail': {
-                    'operationId': 'organizations:detail',
-                    'parameters': {'organization_id': '$response.header.Location#regex:/organizations/(.+)/'},
-                },
-                'update': {
-                    'operationId': 'organizations:update',
-                    'parameters': {'organization_id': '$response.header.Location#regex:/organizations/(.+)/'},
-                },
-                'delete': {
-                    'operationId': 'organizations:delete',
-                    'parameters': {'organization_id': '$response.header.Location#regex:/organizations/(.+)/'},
-                },
-                'create_project': {
-                    'operationId': 'organizations:projects:create',
-                    'parameters': {'organization_id': '$response.header.Location#regex:/organizations/(.+)/'},
-                },
-                'list_projects': {
-                    'operationId': 'organizations:projects:list',
-                    'parameters': {'organization_id': '$response.header.Location#regex:/organizations/(.+)/'},
-                },
-            },
-        }},
+            401: Unauthenticated,
+        },
 )
 async def create(session: SessionDep, request: Request, parameters: OrganizationCreate) -> Response:
     entity = Organization(**parameters.model_dump())
@@ -63,7 +70,7 @@ instance_api = APIRouter(prefix='/{organization_id}')
 
 @instance_api.get(
         '/', name='organizations:detail',
-        responses={404: {}},
+        responses={401: Unauthenticated, 404: NotFound},
 )
 async def detail(organization: OrganizationDep) -> Organization:
     return organization
@@ -71,7 +78,7 @@ async def detail(organization: OrganizationDep) -> Organization:
 
 @instance_api.put(
         '/', name='organizations:update', status_code=204,
-        responses={404: {}},
+        responses={401: Unauthenticated, 404: NotFound},
 )
 async def update(session: SessionDep, organization: OrganizationDep, parameters: OrganizationUpdate):
     for key, value in parameters.model_dump(exclude_unset=True, exclude_none=True).items():
@@ -83,7 +90,7 @@ async def update(session: SessionDep, organization: OrganizationDep, parameters:
 
 @instance_api.delete(
         '/', name='organizations:delete', status_code=204,
-        responses={404: {}},
+        responses={401: Unauthenticated, 404: NotFound},
 )
 async def delete(session: SessionDep, organization: OrganizationDep):
     await session.delete(organization)
