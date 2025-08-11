@@ -1,11 +1,11 @@
 from collections.abc import Sequence
 
 from fastapi import APIRouter, Request, Response
-from sqlmodel import select
 
 from ...db import SessionDep
 from ...models.organization import Organization, OrganizationCreate, OrganizationDep, OrganizationUpdate
 from .._util import NotFound, Unauthenticated
+from ..auth import UserDep
 from .project import api as project_api
 
 api = APIRouter()
@@ -15,8 +15,8 @@ api = APIRouter()
         '/', name='organizations:list',
         responses={401: Unauthenticated},
 )
-async def list_(session: SessionDep) -> Sequence[Organization]:
-    return (await session.exec(select(Organization))).all()
+async def list_(user: UserDep) -> Sequence[Organization]:
+    return user.organizations
 
 
 @api.post(
@@ -56,8 +56,13 @@ async def list_(session: SessionDep) -> Sequence[Organization]:
             401: Unauthenticated,
         },
 )
-async def create(session: SessionDep, request: Request, parameters: OrganizationCreate) -> Response:
-    entity = Organization(**parameters.model_dump())
+async def create(
+        session: SessionDep,
+        request: Request,
+        parameters: OrganizationCreate,
+        user: UserDep,
+) -> Response:
+    entity = Organization(**parameters.model_dump(), users=[user])
     session.add(entity)
     await session.commit()
     await session.refresh(entity)
