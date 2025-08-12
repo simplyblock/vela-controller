@@ -22,6 +22,9 @@ class KubernetesService:
 
         self.core_v1 = client.CoreV1Api()
 
+    def delete_namespace(self, namespace: str):
+        self.core_v1.delete_namespace(namespace)
+
     def check_namespace_status(self, namespace):
         """
         Check if all pods in the namespace are running

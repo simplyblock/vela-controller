@@ -2,21 +2,29 @@ from collections.abc import Sequence
 
 from fastapi import APIRouter, Request, Response
 
+from ...deployment import create_vela_config, delete_deployment, get_deployment_status
 from .._util import Forbidden, NotFound, Unauthenticated
 from ..db import SessionDep
-from ..models.project import Project, ProjectCreate, ProjectDep, ProjectUpdate
-from ..organization import OrganizationDep
+from ..models.organization import OrganizationDep
+from ..models.project import Project, ProjectCreate, ProjectDep, ProjectPublic, ProjectUpdate
 
 api = APIRouter()
+
+
+def _public(project: Project) -> ProjectPublic:
+    return ProjectPublic(
+            name=project.name,
+            status=get_deployment_status(project.dbid()),
+    )
 
 
 @api.get(
         '/', name='organizations:projects:list',
         responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
-async def list_(session: SessionDep, organization: OrganizationDep) -> Sequence[Project]:
+async def list_(session: SessionDep, organization: OrganizationDep) -> Sequence[ProjectPublic]:
     await session.refresh(organization, ['projects'])
-    return organization.projects
+    return [_public(project) for project in await organization.awaitable_attrs.projects]
 
 
 @api.post(
@@ -54,10 +62,16 @@ async def create(
         session: SessionDep, request: Request,
         organization: OrganizationDep, parameters: ProjectCreate,
 ) -> Response:
-    entity = Project(organization=organization, **parameters.model_dump())
+    entity = Project(
+            organization=organization,
+            name=parameters.name,
+            database=parameters.deployment.database,
+            database_user=parameters.deployment.database_user,
+    )
     session.add(entity)
     await session.commit()
     await session.refresh(entity)
+    create_vela_config(entity.dbid(), parameters.deployment)
     await session.refresh(organization)
     entity_url = request.app.url_path_for(
             'organizations:projects:detail',
@@ -73,8 +87,8 @@ instance_api = APIRouter(prefix='/{project_id}')
         '/', name='organizations:projects:detail',
         responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
-async def detail(_organization: OrganizationDep, project: ProjectDep) -> Project:
-    return project
+async def detail(_organization: OrganizationDep, project: ProjectDep) -> ProjectPublic:
+    return _public(project)
 
 
 @instance_api.put(
@@ -95,6 +109,7 @@ async def update(session: SessionDep, _organization: OrganizationDep, project: P
         responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def delete(session: SessionDep, _organization: OrganizationDep, project: ProjectDep):
+    delete_deployment(project.dbid())
     await session.delete(project)
     await session.commit()
     return Response(status_code=204)
