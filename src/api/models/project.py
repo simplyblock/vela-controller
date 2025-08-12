@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy import BigInteger
 from sqlmodel import Field, Relationship, SQLModel
 
-from .._util import Int64, Slug
+from ..._util import Int64, Slug
 from ..db import SessionDep
 from .organization import Organization
 

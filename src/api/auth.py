@@ -6,9 +6,9 @@ from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlmodel import select
 
-from ..db import SessionDep
-from ..models.user import User
-from ..settings import settings
+from .db import SessionDep
+from .models.user import User
+from .settings import settings
 
 # HTTPBearer returns 403 instead of 401. Avoid this by raising the error manually
 security = HTTPBearer(auto_error=False)
