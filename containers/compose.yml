@@ -1,4 +1,18 @@
 services:
+  reverse-proxy:
+    image: docker.io/haproxy:latest
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    ports:
+      - 8000:8000
+    depends_on:
+      vela:
+        condition: service_healthy
+      auth:
+        condition: service_healthy
+    restart: unless-stopped
+
+
   vela:
     build:
       context: ..
@@ -8,8 +22,6 @@ services:
       VELA_JWT_SECRET: 'secret'
     volumes:
       - ..:/app
-    ports:
-      - "8000:8000"
     command: 'bash -c "python -m venv /tmp/venv && source /tmp/venv/bin/activate && pip install -e . && uvicorn --host 0.0.0.0 --reload simplyblock.vela:app"'
     depends_on:
       database:
@@ -55,7 +67,7 @@ services:
       POSTGRES_PASSWORD: vela
       POSTGRES_DB: vela
     volumes:
-    - ./init.sql:/docker-entrypoint-initdb.d/90-init.sql:Z
+    - ./init.sql:/docker-entrypoint-initdb.d/90-init.sql:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres -d vela']
       timeout: 5s
