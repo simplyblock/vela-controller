@@ -3,46 +3,28 @@ services:
     build:
       context: ..
       dockerfile: containers/Containerfile
+    environment:
+      VELA_POSTGRES_URL: 'postgresql+asyncpg://postgres:vela@database:5432/vela'
+      VELA_JWT_SECRET: 'secret'
+    volumes:
+      - ..:/app
     ports:
       - "8000:8000"
+    command: 'bash -c "python -m venv /tmp/venv && source /tmp/venv/bin/activate && pip install -e . && uvicorn --host 0.0.0.0 --reload simplyblock.vela:app"'
     depends_on:
       database:
         condition: service_healthy
       auth:
         condition: service_healthy
-    volumes:
-      - ..:/app
-    environment:
-      VELA_POSTGRES_URL: 'postgresql+asyncpg://postgres:vela@database:5432/vela'
-      VELA_JWT_SECRET: 'secret'
-    command: 'bash -c "python -m venv /tmp/venv && source /tmp/venv/bin/activate && pip install -e . && uvicorn --host 0.0.0.0 --reload simplyblock.vela:app"'
     restart: unless-stopped
 
 
   auth:
     image: supabase/gotrue:v2.177.0
-    restart: unless-stopped
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "--no-verbose",
-          "--tries=1",
-          "--spider",
-          "http://localhost:9999/health"
-        ]
-      timeout: 5s
-      interval: 5s
-      retries: 3
-    depends_on:
-      database:
-        condition: service_healthy
     environment:
-      API_EXTERNAL_URL: 'http://localhost:9999/'
+      API_EXTERNAL_URL: 'http://localhost:8081/'
       GOTRUE_API_HOST: 0.0.0.0
-      GOTRUE_API_PORT: 9999
-      GOTRUE_SITE_URL: 'http://localhost:9999/'
+      GOTRUE_SITE_URL: 'http://localhost:8081/'
 
       GOTRUE_DB_DRIVER: postgres
       GOTRUE_DB_DATABASE_URL: 'postgresql://supabase_auth_admin:root@database:5432/vela'
@@ -51,6 +33,15 @@ services:
       GOTRUE_JWT_AUD: authenticated
       GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
       GOTRUE_JWT_SECRET: 'secret'
+    depends_on:
+      database:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost:8081/health']
+      timeout: 5s
+      interval: 5s
+      retries: 3
+    restart: unless-stopped
 
 
   database:
