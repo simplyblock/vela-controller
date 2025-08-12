@@ -1,6 +1,7 @@
+import logging
+
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
-import logging
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -15,10 +16,10 @@ class KubernetesService:
             try:
                 # Fall back to kubeconfig file (for local development)
                 config.load_kube_config()
-            except config.config_exception.ConfigException as e:
+            except config.config_exception.ConfigException:
                 logger.error("Could not configure kubernetes python client")
                 raise
-        
+
         self.core_v1 = client.CoreV1Api()
 
     def check_namespace_status(self, namespace):
@@ -38,19 +39,19 @@ class KubernetesService:
                     'all_running': False,
                     'status': 'pending',
                     'pods': [],
-                    'message': 'No pods found in namespace'
+                    'message': 'No pods found in namespace',
                 }
-            
+
             all_running = True
             pod_statuses = []
-            
+
             for pod in pods.items:
                 pod_status = {
                     'name': pod.metadata.name,
                     'status': 'unknown',
-                    'conditions': []
+                    'conditions': [],
                 }
-                
+
                 # Check pod phase
                 if pod.status.phase == 'Running':
                     # Check all containers are ready
@@ -61,16 +62,16 @@ class KubernetesService:
                         'name': c.name,
                         'ready': c.ready,
                         'restart_count': c.restart_count,
-                        'state': c.state.to_dict() if hasattr(c, 'state') else {}
+                        'state': c.state.to_dict() if hasattr(c, 'state') else {},
                     } for c in container_statuses]
                 else:
                     pod_status['status'] = pod.status.phase.lower()
-                
+
                 if pod_status['status'] != 'running':
                     all_running = False
-                
+
                 pod_statuses.append(pod_status)
-            
+
             # Determine overall status
             if all_running:
                 status = 'running'
@@ -80,19 +81,19 @@ class KubernetesService:
                 status = 'pending'
             else:
                 status = 'unknown'
-            
+
             return {
                 'all_running': all_running,
                 'status': status,
                 'pods': pod_statuses,
-                'message': f'Namespace {namespace} status: {status}'
+                'message': f'Namespace {namespace} status: {status}',
             }
-            
+
         except ApiException as e:
             logger.error(f"Error checking namespace status: {e}")
             return {
                 'all_running': False,
                 'status': 'error',
                 'pods': [],
-                'message': f'Error checking namespace status: {str(e)}'
+                'message': f'Error checking namespace status: {str(e)}',
             }
