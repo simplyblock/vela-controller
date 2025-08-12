@@ -13,6 +13,8 @@ dependencies = [
     'asyncpg',
     'pyjwt',
     'pydantic-settings',
+    'kubernetes',
+    'pyyaml',
 ]
 
 [tool.setuptools]
