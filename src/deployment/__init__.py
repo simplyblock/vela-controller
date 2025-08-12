@@ -1,7 +1,6 @@
-import os
+import logging
 import subprocess
 import tempfile
-from datetime import datetime
 from importlib import resources
 from typing import Annotated, Literal
 
@@ -10,31 +9,31 @@ from pydantic import BaseModel, Field
 
 from .kubernetes import KubernetesService
 
+logger = logging.getLogger(__name__)
+
 kube_service = KubernetesService()
 
-class Deployment(BaseModel):
-    namespace: str
-    release_name: str
-    database_user: str
-    database_name: str
-    status: Literal['pending', 'deploying', 'running', 'failed'] = 'pending'
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+def _deployment_namespace(id_: int) -> str:
+    return f'vela-deployment-{id_}'
+
+
+def _release_name(namespace: str) -> str:
+    return f'supabase-{namespace}'
 
 
 class DeploymentParameters(BaseModel):
-    namespace: str
     database: str
     database_user: str
     database_password: str
+    database_size: Annotated[int, Field(gt=0, multiple_of=2 ** 30)]
     vcpu: int
     memory: Annotated[int, Field(gt=0, multiple_of=2 ** 30)]
-    database_size: Annotated[int, Field(gt=0, multiple_of=2 ** 30)]
     iops: int
     database_image_tag: Literal['15.1.0.147']
 
 
 class DeploymentStatus(BaseModel):
-    namespace: str
     status: str
     pods: list
     message: str
@@ -46,14 +45,9 @@ class DeleteDeploymentResponse(BaseModel):
     helm_output: str
 
 
-def create_vela_config(parameters: DeploymentParameters):
-    os.environ['SECRET_DB_DATABASE'] = parameters.database
-    os.environ['SECRET_DB_USERNAME'] = parameters.database_user
-    os.environ['SECRET_DB_PASSWORD'] = parameters.database_password
-    print(f'Creating Vela configuration for namespace: {parameters.namespace}')
-    print(f'Database user: {parameters.database_user}')
-    print(f'Database name: {parameters.database}')
-    print('Database password: [REDACTED]')
+def create_vela_config(id_: int, parameters: DeploymentParameters):
+    logging.info(f'Creating Vela configuration for namespace: {_deployment_namespace(id_)}'
+        ' (database {parameters.database}, user {parameters.database_user})')
 
     chart = resources.files(__package__) / 'charts' / 'supabase'
     values_content = yaml.safe_load((chart / 'values.example.yaml').read_text())
@@ -65,8 +59,10 @@ def create_vela_config(parameters: DeploymentParameters):
     db_spec['password'] = parameters.database_password
     db_spec['vcpu'] = parameters.vcpu
     db_spec['ram'] = parameters.memory // (2 ** 30)
-    db_spec['persistence']['size'] = f'{parameters.database_size // (2 ** 30)}Gi'
-    db_spec['image']['tag'] = parameters.database_image_tag
+    db_spec.setdefault('persistence', {})['size'] = f'{parameters.database_size // (2 ** 30)}Gi'
+    db_spec.setdefault('image', {})['tag'] = parameters.database_image_tag
+
+    namespace = _deployment_namespace(id_)
 
     # todo: create an storage class with the given IOPS
     values_content['provisioning'] = {'iops': parameters.iops}
@@ -74,38 +70,29 @@ def create_vela_config(parameters: DeploymentParameters):
         yaml.dump(values_content, temp_values, default_flow_style=False)
 
         try:
-            release_name = f'supabase-{parameters.namespace}'
             subprocess.check_call([
-                'helm', 'install', release_name, str(chart),
-                '--namespace', parameters.namespace,
+                'helm', 'install', _release_name(namespace), str(chart),
+                '--namespace', namespace,
                 '--create-namespace',
                 '-f', temp_values.name,
             ])
-            return Deployment(
-                namespace=parameters.namespace,
-                release_name=release_name,
-                database_user=parameters.database_user,
-                database_name=parameters.database,
-                status='deploying',
-            )
         except subprocess.CalledProcessError:
             subprocess.check_call([
-                'helm', 'uninstall', f'supabase-{parameters.namespace}', '-n', parameters.namespace,
+                'helm', 'uninstall', f'supabase-{namespace}', '-n', namespace,
             ])
             raise
 
 
-def get_deployment_status(deployment: Deployment):
-    ns = deployment.namespace
-    k8s_status = kube_service.check_namespace_status(ns)
-    deployment.status = k8s_status['status']
+def get_deployment_status(id_: int) -> DeploymentStatus:
+    k8s_status = kube_service.check_namespace_status(_deployment_namespace(id_))
     return DeploymentStatus(
-        namespace=ns,
         status=k8s_status['status'],
         pods=k8s_status['pods'],
         message=k8s_status['message'],
     )
 
 
-def delete_deployment(deployment: Deployment):
-    subprocess.check_call(['helm', 'uninstall', deployment.release_name, '-n', deployment.namespace])
+def delete_deployment(id_: int):
+    namespace = _deployment_namespace(id_)
+    subprocess.check_call(['helm', 'uninstall', _release_name(namespace), '-n', namespace, '--wait'])
+    kube_service.delete_namespace(namespace)

@@ -2,6 +2,7 @@ from collections.abc import Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
+from ...deployment import delete_deployment
 from .._util import Forbidden, NotFound, Unauthenticated
 from ..auth import UserDep, authenticated_user
 from ..db import SessionDep
@@ -106,6 +107,9 @@ async def update(session: SessionDep, organization: OrganizationDep, parameters:
         responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def delete(session: SessionDep, organization: OrganizationDep):
+    for project in await organization.awaitable_attrs.projects:
+        delete_deployment(project.dbid())
+
     await session.delete(organization)
     await session.commit()
     return Response(status_code=204)
