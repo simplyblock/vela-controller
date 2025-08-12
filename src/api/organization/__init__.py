@@ -2,10 +2,10 @@ from collections.abc import Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
-from ...db import SessionDep
-from ...models.organization import Organization, OrganizationCreate, OrganizationDep, OrganizationUpdate
 from .._util import Forbidden, NotFound, Unauthenticated
 from ..auth import UserDep
+from ..db import SessionDep
+from ..models.organization import Organization, OrganizationCreate, OrganizationDep, OrganizationUpdate
 from .project import api as project_api
 
 api = APIRouter()

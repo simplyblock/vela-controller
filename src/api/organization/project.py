@@ -2,9 +2,9 @@ from collections.abc import Sequence
 
 from fastapi import APIRouter, Request, Response
 
-from ...db import SessionDep
-from ...models.project import Project, ProjectCreate, ProjectDep, ProjectUpdate
 from .._util import Forbidden, NotFound, Unauthenticated
+from ..db import SessionDep
+from ..models.project import Project, ProjectCreate, ProjectDep, ProjectUpdate
 from ..organization import OrganizationDep
 
 api = APIRouter()
