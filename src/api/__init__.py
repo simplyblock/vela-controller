@@ -1,8 +1,10 @@
-from fastapi import Depends, FastAPI
+from typing import Literal
+
+from fastapi import FastAPI
 from fastapi.routing import APIRoute
+from pydantic import BaseModel
 from sqlmodel import SQLModel
 
-from .auth import authenticated_user
 from .db import engine
 from .organization import api as organization_api
 
@@ -25,12 +27,22 @@ def _use_route_names_as_operation_ids(app: FastAPI) -> None:
             route.operation_id = route.name
 
 
-app = FastAPI(dependencies=[Depends(authenticated_user)])
+app = FastAPI()
 
 
 @app.on_event("startup")
 async def on_startup():
     await _create_db_and_tables()
+
+
+class Status(BaseModel):
+    service: Literal['vela'] = 'vela'
+
+
+@app.get('/health')
+def health():
+    return Status()
+
 
 
 app.include_router(organization_api, prefix='/organizations')

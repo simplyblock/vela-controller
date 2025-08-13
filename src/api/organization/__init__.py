@@ -3,12 +3,12 @@ from collections.abc import Sequence
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from .._util import Forbidden, NotFound, Unauthenticated
-from ..auth import UserDep
+from ..auth import UserDep, authenticated_user
 from ..db import SessionDep
 from ..models.organization import Organization, OrganizationCreate, OrganizationDep, OrganizationUpdate
 from .project import api as project_api
 
-api = APIRouter()
+api = APIRouter(dependencies=[Depends(authenticated_user)])
 
 
 @api.get(
