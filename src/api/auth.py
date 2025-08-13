@@ -30,7 +30,10 @@ async def authenticated_user(
         query = select(User).where(User.id == id_)
         db_user = (await session.exec(query)).one_or_none()
         return db_user if db_user is not None else User(id=id_)
-    except jwt.exceptions.PyJWTError as e:
+    except (
+            jwt.exceptions.PyJWTError,
+            ValueError,  # Invalid 'sub'
+    ) as e:
         raise HTTPException(401, str(e)) from e
 
 
