@@ -18,7 +18,7 @@ class Deployment(BaseModel):
     database_user: str
     database_name: str
     status: Literal['pending', 'deploying', 'running', 'failed'] = 'pending'
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.now(datetime.timezone.utc))
 
 
 class DeploymentParameters(BaseModel):
@@ -39,10 +39,12 @@ class DeploymentStatus(BaseModel):
     pods: list
     message: str
 
+class DeleteDeploymentRequest(BaseModel):
+    namespace: str
 
 class DeleteDeploymentResponse(BaseModel):
     status: str
-    deployment_id: str
+    namespace: str
     helm_output: str
 
 
@@ -107,5 +109,9 @@ def get_deployment_status(deployment: Deployment):
     )
 
 
-def delete_deployment(deployment: Deployment):
-    subprocess.check_call(['helm', 'uninstall', deployment.release_name, '-n', deployment.namespace])
+def delete_deployment(request: DeleteDeploymentRequest):
+    subprocess.check_call(['helm', 'uninstall', f'supabase-{request.namespace}', '-n', request.namespace])
+    return DeleteDeploymentResponse(
+        namespace=request.namespace,
+        helm_output='Deployment deleted successfully',
+    )
