@@ -16,7 +16,7 @@ api = APIRouter(dependencies=[Depends(authenticated_user)])
         responses={401: Unauthenticated},
 )
 async def list_(user: UserDep) -> Sequence[Organization]:
-    return user.organizations
+    return await user.awaitable_attrs.organizations
 
 
 @api.post(
@@ -70,8 +70,8 @@ async def create(
     return Response(status_code=201, headers={'Location': entity_url})
 
 
-def _user_in_organization(user: UserDep, organization: OrganizationDep):
-    if user not in organization.users:
+async def _user_in_organization(user: UserDep, organization: OrganizationDep):
+    if user not in await organization.awaitable_attrs.users:
         raise HTTPException(403, detail='Unauthorized access')
 
 
