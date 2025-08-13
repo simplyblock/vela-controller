@@ -43,7 +43,6 @@ class DeleteDeploymentRequest(BaseModel):
     namespace: str
 
 class DeleteDeploymentResponse(BaseModel):
-    status: str
     namespace: str
     helm_output: str
 

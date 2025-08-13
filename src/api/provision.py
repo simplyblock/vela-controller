@@ -1,16 +1,19 @@
 from fastapi import APIRouter, Request, Response
 
-from ._util import Forbidden, NotFound, Unauthenticated
-from .db import SessionDep
 from ..deployment import (
     Deployment,
     DeploymentParameters,
     DeploymentStatus,
     create_vela_config,
-    delete_deployment as deployment_delete,
+)
+from ..deployment import (
+    delete_deployment as deployment_delete, DeleteDeploymentRequest,
+)
+from ..deployment import (
     get_deployment_status as deployment_status,
 )
-
+from ._util import Forbidden, NotFound, Unauthenticated
+from .db import SessionDep
 
 api = APIRouter()
 
@@ -85,9 +88,8 @@ async def delete(_session: SessionDep, namespace: str):
 
     Returns 204 on success.
     """
-    dep = Deployment(namespace=namespace, release_name=f'supabase-{namespace}', database_user='', database_name='')
-    deployment_delete(dep)
-    return Response(status_code=204)
+    dep = DeleteDeploymentRequest(namespace=namespace)
+    return deployment_delete(dep)
 
 
 api.include_router(instance_api)
