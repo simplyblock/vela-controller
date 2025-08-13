@@ -4,6 +4,7 @@ from uuid import UUID
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel, StrictBool
 from sqlalchemy import BigInteger
+from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship, SQLModel
 
 from ..._util import Int64, Slug
@@ -14,21 +15,17 @@ if TYPE_CHECKING:
     from .user import User
 
 
-class OrganizationUserLink(SQLModel, table=True):
+class OrganizationUserLink(AsyncAttrs, SQLModel, table=True):
     organization_id: int | None = Field(default=None, foreign_key='organization.id', primary_key=True)
     user_id: UUID = Field(foreign_key='user.id', primary_key=True)
 
 
-class Organization(SQLModel, table=True):
+class Organization(AsyncAttrs, SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True, sa_type=BigInteger)
     name: Slug
     locked: bool = False
     projects: list['Project'] = Relationship(back_populates='organization', cascade_delete=True)
-    users: list['User'] = Relationship(
-            back_populates='organizations',
-            link_model=OrganizationUserLink,
-            sa_relationship_kwargs={'lazy': 'selectin'},
-    )
+    users: list['User'] = Relationship(back_populates='organizations', link_model=OrganizationUserLink)
 
 
 class OrganizationCreate(BaseModel):
