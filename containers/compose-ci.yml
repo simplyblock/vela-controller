@@ -1,0 +1,34 @@
+services:
+  vela:
+    container_name: vela
+    build:
+      context: ..
+      dockerfile: containers/Containerfile
+    environment:
+      VELA_POSTGRES_URL: 'postgresql+asyncpg://postgres:vela@database:5432/vela'
+      VELA_JWT_SECRET: 'secret'
+    ports:
+      - 8000:8000
+    depends_on:
+      database:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'curl', 'http://localhost:8000/health']
+      timeout: 5s
+      interval: 5s
+      retries: 3
+    restart: unless-stopped
+
+
+  database:
+    container_name: database
+    image: docker.io/postgres:17
+    environment:
+      POSTGRES_PASSWORD: vela
+      POSTGRES_DB: vela
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d vela']
+      timeout: 5s
+      interval: 5s
+      retries: 3
+    restart: unless-stopped

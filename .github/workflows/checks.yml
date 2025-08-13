@@ -86,23 +86,46 @@ jobs:
       run: ct install --target-branch=${{ github.head_ref || github.ref_name }} 
 
 
-  build-image:
-    name: Build image
+  test:
+    name: API tests
     runs-on: ubuntu-latest
 
     steps:
     - name: Checkout
       uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+    - name: Install podman and podman-compose
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y podman podman-compose
 
-    - name: Build and push
-      uses: docker/build-push-action@v6
+    - name: Build and start API
+      run: podman-compose -f containers/compose-ci.yml up --detach --build
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
       with:
-        context: .
-        file: containers/Containerfile
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+        python-version: '3.x'
+        cache: 'pip'
+
+    - name: Spoof token
+      id: token
+      run: |
+        pip install pyjwt
+        echo token=$(python3 -c "import jwt; from uuid import uuid4; print(jwt.encode({'sub': str(uuid4())}, 'secret', algorithm='HS256'))") >> $GITHUB_OUTPUT
+
+    - name: Test API
+      id: test
+      uses: schemathesis/action@v2
+      with:
+        schema: http://localhost:8000/openapi.json
+        wait-for-schema: 20
+        args: >-
+          --header "Authorization: Bearer ${{ steps.token.outputs.token }}"
+
+    - name: Get logs
+      if: failure() && steps.test.outcome == 'failure'
+      run: podman-compose -f containers/compose-ci.yml logs
+
+    - name: Shutdown containers
+      run: podman-compose -f containers/compose-ci.yml down
