@@ -1,13 +1,14 @@
 from fastapi import APIRouter, Request, Response
 
 from ..deployment import (
+    DeleteDeploymentRequest,
     Deployment,
     DeploymentParameters,
     DeploymentStatus,
     create_vela_config,
 )
 from ..deployment import (
-    delete_deployment as deployment_delete, DeleteDeploymentRequest,
+    delete_deployment as deployment_delete,
 )
 from ..deployment import (
     get_deployment_status as deployment_status,
