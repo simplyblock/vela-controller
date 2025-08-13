@@ -7,6 +7,7 @@ class Settings(BaseSettings):
 
     postgres_url: PostgresDsn
     jwt_secret: str
+    jwt_audience: str = 'authenticated'
 
 
 settings = Settings()  # type: ignore[call-arg]

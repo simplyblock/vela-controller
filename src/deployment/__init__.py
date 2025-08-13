@@ -18,7 +18,7 @@ class Deployment(BaseModel):
     database_user: str
     database_name: str
     status: Literal['pending', 'deploying', 'running', 'failed'] = 'pending'
-    created_at: datetime = Field(default_factory=datetime.now(datetime.timezone.utc))
+    created_at: datetime = Field(default_factory=datetime.now)
 
 
 class DeploymentParameters(BaseModel):

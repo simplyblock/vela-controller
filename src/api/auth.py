@@ -26,7 +26,13 @@ async def authenticated_user(
         )
 
     try:
-        id_ = UUID(jwt.decode(credentials.credentials, settings.jwt_secret, algorithms=['HS256'])['sub'])
+        payload = jwt.decode(
+            credentials.credentials,
+            settings.jwt_secret,
+            algorithms=['HS256'],
+            audience=settings.jwt_audience,
+        )
+        id_ = UUID(payload['sub'])
         query = select(User).where(User.id == id_)
         db_user = (await session.exec(query)).one_or_none()
         return db_user if db_user is not None else User(id=id_)

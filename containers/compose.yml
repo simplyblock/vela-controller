@@ -50,6 +50,7 @@ services:
       GOTRUE_JWT_AUD: authenticated
       GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
       GOTRUE_JWT_SECRET: 'secret'
+      GOTRUE_MAILER_AUTOCONFIRM: 'true'
     depends_on:
       database:
         condition: service_healthy
