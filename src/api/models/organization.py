@@ -4,10 +4,11 @@ from uuid import UUID
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel, StrictBool
 from sqlalchemy import BigInteger
+from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlmodel import Field, Relationship, SQLModel
+from sqlmodel import Field, Relationship, SQLModel, select
 
-from ..._util import Int64, Slug
+from .._util import Slug
 from ..db import SessionDep
 
 if TYPE_CHECKING:
@@ -22,7 +23,7 @@ class OrganizationUserLink(AsyncAttrs, SQLModel, table=True):
 
 class Organization(AsyncAttrs, SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True, sa_type=BigInteger)
-    name: Slug
+    name: Slug = Field(unique=True)
     locked: bool = False
     projects: list['Project'] = Relationship(back_populates='organization', cascade_delete=True)
     users: list['User'] = Relationship(back_populates='organizations', link_model=OrganizationUserLink)
@@ -38,11 +39,11 @@ class OrganizationUpdate(BaseModel):
     locked: StrictBool | None = None
 
 
-async def _lookup(session: SessionDep, organization_id: Int64) -> Organization:
-    result = await session.get(Organization, organization_id)
-    if result is None:
-        raise HTTPException(404, f'Organization {organization_id} not found')
-    return result
+async def _lookup(session: SessionDep, organization_slug: Slug) -> Organization:
+    try:
+        return (await session.exec(select(Organization).where(Organization.name == organization_slug))).one()
+    except NoResultFound as e:
+        raise HTTPException(404, f'Organization {organization_slug} not found') from e
 
 
 OrganizationDep = Annotated[Organization, Depends(_lookup)]

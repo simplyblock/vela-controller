@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import sys
 import unittest.mock
 from uuid import uuid4
 
@@ -23,6 +24,7 @@ async def run_schemathesis_tests(base_url, jwt_secret):
         '--max-examples', '10',
         '--header', f'Authorization: Bearer {token}',
         '--wait-for-schema', str(10),
+        '--suppress-health-check', 'filter_too_much',
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -46,7 +48,7 @@ async def main():
             PostgresContainer('postgres:latest', driver='asyncpg') as postgres,
             unittest.mock.patch('kubernetes.config.load_kube_config') as mock_load_config,
             unittest.mock.patch('simplyblock.vela.deployment.create_vela_config'),
-            unittest.mock.patch('simplyblock.vela.deployment.get_deployment_status'),
+            unittest.mock.patch('simplyblock.vela.deployment.get_deployment_status') as mock_status,
             unittest.mock.patch('simplyblock.vela.deployment.delete_deployment'),
     ):
         mock_load_config.return_value = None
@@ -55,14 +57,18 @@ async def main():
         os.environ['VELA_JWT_SECRET'] = jwt_secret
 
         from simplyblock.vela.api import app
+        from simplyblock.vela.deployment import DeploymentStatus
+
+        mock_status.return_value = DeploymentStatus(status='', pods=[], message='')
 
         config = uvicorn.Config(app, port=port, log_level="info")
         server = uvicorn.Server(config)
         asyncio.create_task(server.serve())
 
-        await run_schemathesis_tests(f'http://localhost:{port}', jwt_secret)
+        result = await run_schemathesis_tests(f'http://localhost:{port}', jwt_secret)
         await server.shutdown()
+        return result
 
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    sys.exit(0 if asyncio.run(main()) else 1)

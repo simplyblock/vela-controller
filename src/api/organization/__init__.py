@@ -1,9 +1,10 @@
 from collections.abc import Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from sqlalchemy.exc import IntegrityError
 
 from ...deployment import delete_deployment
-from .._util import Forbidden, NotFound, Unauthenticated
+from .._util import Conflict, Forbidden, NotFound, Unauthenticated
 from ..auth import UserDep, authenticated_user
 from ..db import SessionDep
 from ..models.organization import Organization, OrganizationCreate, OrganizationDep, OrganizationUpdate
@@ -20,6 +21,30 @@ async def list_(user: UserDep) -> Sequence[Organization]:
     return await user.awaitable_attrs.organizations
 
 
+_links = {
+    'detail': {
+        'operationId': 'organizations:detail',
+        'parameters': {'organization_slug': '$response.header.Location#regex:/organizations/(.+)/'},
+    },
+    'update': {
+        'operationId': 'organizations:update',
+        'parameters': {'organization_slug': '$response.header.Location#regex:/organizations/(.+)/'},
+    },
+    'delete': {
+        'operationId': 'organizations:delete',
+        'parameters': {'organization_slug': '$response.header.Location#regex:/organizations/(.+)/'},
+    },
+    'create_project': {
+        'operationId': 'organizations:projects:create',
+        'parameters': {'organization_slug': '$response.header.Location#regex:/organizations/(.+)/'},
+    },
+    'list_projects': {
+        'operationId': 'organizations:projects:list',
+        'parameters': {'organization_slug': '$response.header.Location#regex:/organizations/(.+)/'},
+    },
+}
+
+
 @api.post(
         '/', name='organizations:create', status_code=201,
         responses={
@@ -31,30 +56,10 @@ async def list_(user: UserDep) -> Sequence[Organization]:
                         'schema': {'type': 'string'},
                     },
                 },
-                'links': {
-                    'detail': {
-                        'operationId': 'organizations:detail',
-                        'parameters': {'organization_id': '$response.header.Location#regex:/organizations/(.+)/'},
-                    },
-                    'update': {
-                        'operationId': 'organizations:update',
-                        'parameters': {'organization_id': '$response.header.Location#regex:/organizations/(.+)/'},
-                    },
-                    'delete': {
-                        'operationId': 'organizations:delete',
-                        'parameters': {'organization_id': '$response.header.Location#regex:/organizations/(.+)/'},
-                    },
-                    'create_project': {
-                        'operationId': 'organizations:projects:create',
-                        'parameters': {'organization_id': '$response.header.Location#regex:/organizations/(.+)/'},
-                    },
-                    'list_projects': {
-                        'operationId': 'organizations:projects:list',
-                        'parameters': {'organization_id': '$response.header.Location#regex:/organizations/(.+)/'},
-                    },
-                },
+                'links': _links,
             },
             401: Unauthenticated,
+            409: Conflict,
         },
 )
 async def create(
@@ -65,9 +70,12 @@ async def create(
 ) -> Response:
     entity = Organization(**parameters.model_dump(), users=[user])
     session.add(entity)
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError as e:
+        raise HTTPException(409, f'Organization {parameters.name} already exists') from e
     await session.refresh(entity)
-    entity_url = request.app.url_path_for('organizations:detail', organization_id=entity.id)
+    entity_url = request.app.url_path_for('organizations:detail', organization_slug=entity.name)
     return Response(status_code=201, headers={'Location': entity_url})
 
 
@@ -77,7 +85,7 @@ async def _user_in_organization(user: UserDep, organization: OrganizationDep):
 
 
 instance_api = APIRouter(
-        prefix='/{organization_id}',
+        prefix='/{organization_slug}',
         dependencies=[Depends(_user_in_organization)],
 )
 
@@ -92,14 +100,37 @@ async def detail(organization: OrganizationDep) -> Organization:
 
 @instance_api.put(
         '/', name='organizations:update', status_code=204,
-        responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
+        responses={
+            204: {
+                'content': None,
+                'headers': {
+                    'Location': {
+                        'description': 'URL of the created item',
+                        'schema': {'type': 'string'},
+                    },
+                },
+                'links': _links,
+            },
+            401: Unauthenticated, 403: Forbidden, 404: NotFound, 409: Conflict,
+        },
 )
-async def update(session: SessionDep, organization: OrganizationDep, parameters: OrganizationUpdate):
+async def update(request: Request, session: SessionDep, organization: OrganizationDep, parameters: OrganizationUpdate):
     for key, value in parameters.model_dump(exclude_unset=True, exclude_none=True).items():
         assert(hasattr(organization, key))
         setattr(organization, key, value)
-    await session.commit()
-    return Response(status_code=204)
+
+    try:
+        await session.commit()
+    except IntegrityError as e:
+        raise HTTPException(409, f'Organization {parameters.name} already exists') from e
+
+    # Refer to potentially updated location
+    return Response(status_code=204, headers={
+            'Location': request.app.url_path_for(
+                'organizations:detail',
+                organization_slug=await organization.awaitable_attrs.name,
+            ),
+    })
 
 
 @instance_api.delete(
