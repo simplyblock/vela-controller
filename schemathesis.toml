@@ -1,0 +1,2 @@
+[checks]
+positive_data_acceptance.expected-statuses = [200, 201, 204, 404, 409]

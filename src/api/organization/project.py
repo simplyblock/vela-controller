@@ -1,9 +1,10 @@
 from collections.abc import Sequence
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, HTTPException, Request, Response
+from sqlalchemy.exc import IntegrityError
 
 from ...deployment import create_vela_config, delete_deployment, get_deployment_status
-from .._util import Forbidden, NotFound, Unauthenticated
+from .._util import Conflict, Forbidden, NotFound, Unauthenticated
 from ..db import SessionDep
 from ..models.organization import OrganizationDep
 from ..models.project import Project, ProjectCreate, ProjectDep, ProjectPublic, ProjectUpdate
@@ -27,6 +28,22 @@ async def list_(session: SessionDep, organization: OrganizationDep) -> Sequence[
     return [_public(project) for project in await organization.awaitable_attrs.projects]
 
 
+_links = {
+    'detail': {
+        'operationId': 'organizations:projects:detail',
+        'parameters': {'project_slug': '$response.header.Location#regex:/projects/(.+)/'},
+    },
+    'update': {
+        'operationId': 'organizations:projects:update',
+        'parameters': {'project_slug': '$response.header.Location#regex:/projects/(.+)/'},
+    },
+    'delete': {
+        'operationId': 'organizations:projects:delete',
+        'parameters': {'project_slug': '$response.header.Location#regex:/projects/(.+)/'},
+    },
+}
+
+
 @api.post(
         '/', name='organizations:projects:create', status_code=201,
         responses={
@@ -38,24 +55,12 @@ async def list_(session: SessionDep, organization: OrganizationDep) -> Sequence[
                         'schema': {'type': 'string'},
                     },
                 },
-                'links': {
-                    'detail': {
-                        'operationId': 'organizations:projects:detail',
-                        'parameters': {'project_id': '$response.header.Location#regex:/projects/(.+)/'},
-                    },
-                    'update': {
-                        'operationId': 'organizations:projects:update',
-                        'parameters': {'project_id': '$response.header.Location#regex:/projects/(.+)/'},
-                    },
-                    'delete': {
-                        'operationId': 'organizations:projects:delete',
-                        'parameters': {'project_id': '$response.header.Location#regex:/projects/(.+)/'},
-                    },
-                },
+                'links': _links,
             },
             401: Unauthenticated,
             403: Forbidden,
             404: NotFound,
+            409: Conflict,
         },
 )
 async def create(
@@ -69,18 +74,21 @@ async def create(
             database_user=parameters.deployment.database_user,
     )
     session.add(entity)
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError as e:
+        raise HTTPException(409, f'Organization already has project named {parameters.name}') from e
     await session.refresh(entity)
     create_vela_config(entity.dbid(), parameters.deployment)
     await session.refresh(organization)
     entity_url = request.app.url_path_for(
             'organizations:projects:detail',
-            organization_id=organization.id, project_id=entity.id,
+            organization_slug=organization.id, project_slug=entity.name,
     )
     return Response(status_code=201, headers={'Location': entity_url})
 
 
-instance_api = APIRouter(prefix='/{project_id}')
+instance_api = APIRouter(prefix='/{project_slug}')
 
 
 @instance_api.get(
@@ -94,18 +102,46 @@ async def detail(_organization: OrganizationDep, project: ProjectDep) -> Project
 @instance_api.put(
         '/', name='organizations:projects:update',
         status_code=204,
-        responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
+        responses={
+            204: {
+                'content': None,
+                'headers': {
+                    'Location': {
+                        'description': 'URL of the created item',
+                        'schema': {'type': 'string'},
+                    },
+                },
+                'links': _links,
+            },
+            401: Unauthenticated, 403: Forbidden, 404: NotFound, 409: Conflict,
+        },
 )
-async def update(session: SessionDep, _organization: OrganizationDep, project: ProjectDep, parameters: ProjectUpdate):
+async def update(
+        request: Request, session: SessionDep,
+        organization: OrganizationDep, project:
+        ProjectDep, parameters: ProjectUpdate,
+):
     for key, value in parameters.model_dump(exclude_unset=True, exclude_none=True).items():
         assert(hasattr(project, key))
         setattr(project, key, value)
-    await session.commit()
-    return Response(status_code=204)
+    try:
+        await session.commit()
+    except IntegrityError as e:
+        raise HTTPException(409, f'Organization already has project named {parameters.name}') from e
+
+    # Refer to potentially updated location
+    return Response(status_code=204, headers={
+            'Location': request.app.url_path_for(
+                'organizations:projects:detail',
+                organization_slug=await organization.awaitable_attrs.id,
+                project_slug=await project.awaitable_attrs.name,
+            ),
+    })
 
 
 @instance_api.delete(
         '/', name='organizations:projects:delete',
+        status_code=204,
         responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def delete(session: SessionDep, _organization: OrganizationDep, project: ProjectDep):

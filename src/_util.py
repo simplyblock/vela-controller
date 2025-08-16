@@ -1,13 +1,6 @@
 from typing import Annotated
 
-from pydantic import Field, StringConstraints
-
-Slug = Annotated[str, StringConstraints(
-        pattern=r'^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$',
-        max_length=50,
-)]
-
-Int64 = Annotated[int, Field(ge=-2 ** 63, lt=2 ** 63)]
+from pydantic import Field
 
 
 def single(xs):
@@ -28,3 +21,6 @@ def single(xs):
         raise ValueError('Multiple values present')
     except StopIteration:
         return x
+
+
+dbstr = Annotated[str, Field(pattern=r'^[^\x00]*$')]

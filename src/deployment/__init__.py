@@ -7,6 +7,7 @@ from typing import Annotated, Literal
 import yaml
 from pydantic import BaseModel, Field
 
+from .._util import dbstr
 from .kubernetes import KubernetesService
 
 logger = logging.getLogger(__name__)
@@ -23,9 +24,9 @@ def _release_name(namespace: str) -> str:
 
 
 class DeploymentParameters(BaseModel):
-    database: str
-    database_user: str
-    database_password: str
+    database: dbstr
+    database_user: dbstr
+    database_password: dbstr
     database_size: Annotated[int, Field(gt=0, multiple_of=2 ** 30)]
     vcpu: int
     memory: Annotated[int, Field(gt=0, multiple_of=2 ** 30)]
