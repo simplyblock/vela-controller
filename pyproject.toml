@@ -38,7 +38,7 @@ commands = [['mypy', '--python-executable=python', 'src']]
 
 [tool.tox.env.test]
 description = 'Run API tests'
-deps = ['schemathesis', 'httpx']
+deps = ['schemathesis', 'httpx', 'testcontainers[postgres]']
 commands = [['python3', 'tests/schemathesis.py']]
 
 
