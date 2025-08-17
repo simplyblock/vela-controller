@@ -1,66 +1,68 @@
 #!/usr/bin/env python3
 
-import logging
-import subprocess
-import sys
-import time
-from contextlib import contextmanager
-from functools import wraps
+import asyncio
+import os
+import unittest.mock
+from uuid import uuid4
 
-import httpx
-
-
-class RetriesExceededError(Exception):
-    pass
+import jwt
+import uvicorn
+from testcontainers.postgres import PostgresContainer
 
 
-def retry(
-        func,
-        predicate=None,
-        retries=0, delay=0.,
-        exceptions=(), expected_exceptions=(),
-        linear_backoff=0., multiplicative_backoff=1., exponential_backoff=1.,
-):
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        d = delay
-        for i in range(retries + 1):
-            try:
-                result = func(*args, **kwargs)
-                if expected_exceptions != ():
-                    pass  # We are waiting for a specific exception
-                elif predicate is not None and not predicate(result):
-                    logging.debug(f'{func.__name__}() returned bad value')
-                else:
-                    return result
-            except expected_exceptions:
-                return
-            except exceptions:
-                logging.debug(f'{func.__name__}() failed, retrying (attempt {i})...', exc_info=True)
+def serve_app(port, postgres_url, jwt_secret):
+    """Serve the FastAPI app asynchronously"""
 
 
-            logging.info(f'Retrying {func.__name__}() (attempt {i})...')
-            time.sleep(d)
-            d = linear_backoff + multiplicative_backoff * delay ** exponential_backoff
+async def run_schemathesis_tests(base_url, jwt_secret):
+    """Run schemathesis tests asynchronously"""
+    token = jwt.encode({'sub': str(uuid4())}, jwt_secret, algorithm='HS256')
+    process = await asyncio.create_subprocess_exec(
+        'schemathesis', 'run', f'{base_url}/openapi.json',
+        '--checks', 'all',
+        '--max-examples', '10',
+        '--header', f'Authorization: Bearer {token}',
+        '--wait-for-schema', str(10),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
 
-        raise RetriesExceededError(f'Retrying {func.__name__}() failed ({retries + 1} attempts)')
-    return wrapper
+    stdout, stderr = await process.communicate()
+
+    print("Schemathesis output:")
+    print(stdout.decode())
+    if stderr:
+        print("Schemathesis errors:")
+        print(stderr.decode())
+
+    return process.returncode == 0
 
 
-@contextmanager
-def podman_compose(file):
-    compose_cmd = ['podman-compose', f'--file={file}']
-    subprocess.check_output(compose_cmd + ['up', '--detach'])
-    try:
-        yield
-    finally:
-        subprocess.check_output(compose_cmd + ['down'])
+async def main():
+    jwt_secret = 'secret'
+    port = 5000
+
+    with (
+            PostgresContainer('postgres:latest', driver='asyncpg') as postgres,
+            unittest.mock.patch('kubernetes.config.load_kube_config') as mock_load_config,
+            unittest.mock.patch('simplyblock.vela.deployment.create_vela_config'),
+            unittest.mock.patch('simplyblock.vela.deployment.get_deployment_status'),
+            unittest.mock.patch('simplyblock.vela.deployment.delete_deployment'),
+    ):
+        mock_load_config.return_value = None
+
+        os.environ['VELA_POSTGRES_URL'] = postgres.get_connection_url()
+        os.environ['VELA_JWT_SECRET'] = jwt_secret
+
+        from simplyblock.vela.api import app
+
+        config = uvicorn.Config(app, port=port, log_level="info")
+        server = uvicorn.Server(config)
+        asyncio.create_task(server.serve())
+
+        await run_schemathesis_tests(f'http://localhost:{port}', jwt_secret)
+        await server.shutdown()
 
 
 if __name__ == '__main__':
-    url = 'http://localhost:8000/openapi.json'
-    with podman_compose('containers/compose.yml'):
-        print('Awaiting API...')
-        retry(httpx.head, retries=30, delay=1, exceptions=(httpx.ReadError,))(url)
-        result = subprocess.run(['schemathesis', 'run', url])
-    sys.exit(result.returncode)
+    asyncio.run(main())
