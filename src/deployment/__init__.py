@@ -145,3 +145,64 @@ def delete_deployment(id_: int):
     namespace = _deployment_namespace(id_)
     subprocess.check_call(['helm', 'uninstall', _release_name(namespace), '-n', namespace, '--wait'])
     kube_service.delete_namespace(namespace)
+
+
+def get_db_vmi_identity(id_: int) -> tuple[str, str]:
+    """
+    Return the (namespace, vmi_name) for the project's database VirtualMachineInstance.
+
+    The Helm chart defines the DB VM fullname as "{Release.Name}-{ChartName}-db" when no overrides
+    are provided. Our release name is "supabase-{namespace}" and chart name is "supabase".
+    Hence the VMI name resolves to: f"{_release_name(namespace)}-supabase-db".
+    """
+    namespace = _deployment_namespace(id_)
+    vmi_name = f"{_release_name(namespace)}-supabase-db"
+    return namespace, vmi_name
+
+class VmiPauseStatus(BaseModel):
+    namespace: str
+    vmi_name: str
+    phase: str | None = None
+    paused: bool
+    paused_message: str | None = None
+
+
+def get_vmi_pause_status(id_: int) -> VmiPauseStatus:
+    """Query the KubeVirt VMI for Paused condition and current phase.
+
+    A VMI is considered paused if it has a condition with type == "Paused" and status == "True".
+    An unpaused (running) VMI typically has phase == "Running" and no Paused condition.
+    """
+    namespace, vmi_name = get_db_vmi_identity(id_)
+    vmi_obj = None
+    try:
+        vmi_obj = kube_service.custom.get_namespaced_custom_object(
+            group='kubevirt.io', version='v1', namespace=namespace,
+            plural='virtualmachineinstances', name=vmi_name,
+        )
+    except Exception:
+        vmi_obj = None
+
+    phase: str | None = None
+    paused = False
+    paused_message: str | None = None
+    if isinstance(vmi_obj, dict):
+        status = (vmi_obj.get('status') or {})
+        phase = status.get('phase')
+        conditions = status.get('conditions') or []
+        for cond in conditions:
+            try:
+                if cond.get('type') == 'Paused' and str(cond.get('status')).lower() == 'true':
+                    paused = True
+                    paused_message = cond.get('message')
+                    break
+            except Exception:
+                continue
+
+    return VmiPauseStatus(
+        namespace=namespace,
+        vmi_name=vmi_name,
+        phase=phase,
+        paused=paused,
+        paused_message=paused_message,
+    )
