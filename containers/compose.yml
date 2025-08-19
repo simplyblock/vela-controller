@@ -17,6 +17,8 @@ services:
     build:
       context: ..
       dockerfile: containers/Containerfile
+    volumes:
+      - ~/.kube/config:/root/.kube/config:ro
     environment:
       VELA_POSTGRES_URL: 'postgresql+asyncpg://postgres:vela@database:5432/vela'
       VELA_JWT_SECRET: 'secret'
