@@ -4,15 +4,20 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
+from kubernetes.client.exceptions import ApiException
 from sqlalchemy.exc import IntegrityError
 
 from ...deployment import (
+    VmiPauseStatus,
     create_vela_config,
     delete_deployment,
+    get_db_vmi_identity,
     get_deployment_status,
+    get_vmi_pause_status,
 )
 from .._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ..db import SessionDep
+from ..kubevirt import KubeVirtActionResponse, _call_kubevirt_subresource
 from ..models.organization import OrganizationDep
 from ..models.project import Project, ProjectCreate, ProjectDep, ProjectPublic, ProjectUpdate
 
@@ -169,5 +174,58 @@ async def delete(session: SessionDep, _organization: OrganizationDep, project: P
     await session.commit()
     return Response(status_code=204)
 
+
+
+
+# KubeVirt project-scoped controls
+@instance_api.post(
+        '/pause', name='organizations:projects:pause',
+        response_model=KubeVirtActionResponse,
+        responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
+)
+async def pause(_organization: OrganizationDep, project: ProjectDep) -> KubeVirtActionResponse:
+    namespace, vmi_name = get_db_vmi_identity(project.dbid())
+    try:
+        _call_kubevirt_subresource(namespace, vmi_name, 'pause')
+        return KubeVirtActionResponse(namespace=namespace, name=vmi_name, action='pause', status='ok')
+    except ApiException as e:
+        status = 404 if e.status == 404 else 400
+        raise HTTPException(status_code=status, detail=e.body or str(e)) from e
+
+
+@instance_api.post(
+        '/unpause', name='organizations:projects:unpause',
+        response_model=KubeVirtActionResponse,
+        responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
+)
+async def unpause(_organization: OrganizationDep, project: ProjectDep) -> KubeVirtActionResponse:
+    namespace, vmi_name = get_db_vmi_identity(project.dbid())
+    try:
+        _call_kubevirt_subresource(namespace, vmi_name, 'unpause')
+        return KubeVirtActionResponse(namespace=namespace, name=vmi_name, action='unpause', status='ok')
+    except ApiException as e:
+        status = 404 if e.status == 404 else 400
+        raise HTTPException(status_code=status, detail=e.body or str(e)) from e
+
+
+# Pause/Unpause status
+@instance_api.get(
+        '/pause/status', name='organizations:projects:pause_status',
+        response_model=VmiPauseStatus,
+        responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
+)
+async def pause_status(_organization: OrganizationDep, project: ProjectDep) -> VmiPauseStatus:
+    # Returns paused==True and the Paused condition message when paused
+    return get_vmi_pause_status(project.dbid())
+
+
+@instance_api.get(
+        '/unpause/status', name='organizations:projects:unpause_status',
+        response_model=VmiPauseStatus,
+        responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
+)
+async def unpause_status(_organization: OrganizationDep, project: ProjectDep) -> VmiPauseStatus:
+    # When unpaused and running, this will report paused==False and phase=='Running'
+    return get_vmi_pause_status(project.dbid())
 
 api.include_router(instance_api)

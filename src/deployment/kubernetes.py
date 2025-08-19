@@ -20,6 +20,7 @@ class KubernetesService:
                 raise
 
         self.core_v1 = client.CoreV1Api()
+        self.custom = client.CustomObjectsApi()
 
     def delete_namespace(self, namespace: str):
         self.core_v1.delete_namespace(namespace)
