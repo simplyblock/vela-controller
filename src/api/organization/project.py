@@ -12,7 +12,16 @@ from ...deployment import get_db_vmi_identity
 from kubernetes.client.exceptions import ApiException
 from sqlalchemy.exc import IntegrityError
 
-from ...deployment import create_vela_config, delete_deployment, get_db_vmi_identity, get_deployment_status
+from ...deployment import (
+    ResizeParameters,
+    ResizeStatus,
+    create_vela_config,
+    delete_deployment,
+    get_db_vmi_identity,
+    get_deployment_status,
+    get_resize_status,
+    resize_deployment,
+)
 from .._util import Conflict, Forbidden, NotFound, Unauthenticated
 from ..db import SessionDep
 from ..kubevirt import KubeVirtActionResponse, _call_kubevirt_subresource
@@ -203,3 +212,23 @@ async def unpause(_organization: OrganizationDep, project: ProjectDep) -> KubeVi
     except ApiException as e:
         status = 404 if e.status == 404 else 400
         raise HTTPException(status_code=status, detail=e.body or str(e)) from e
+
+
+# Resize controls
+@instance_api.post(
+        '/resize', name='organizations:projects:resize', status_code=202,
+        responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
+)
+async def resize(_organization: OrganizationDep, project: ProjectDep, parameters: ResizeParameters):
+    # Trigger helm upgrade with provided parameters; returns 202 Accepted
+    resize_deployment(project.dbid(), parameters)
+    return Response(status_code=202)
+
+
+@instance_api.get(
+        '/resize/status', name='organizations:projects:resize_status',
+        response_model=ResizeStatus,
+        responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
+)
+async def resize_status(_organization: OrganizationDep, project: ProjectDep) -> ResizeStatus:
+    return get_resize_status(project.dbid())

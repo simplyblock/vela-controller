@@ -156,3 +156,98 @@ def get_db_vmi_identity(id_: int) -> tuple[str, str]:
     namespace = _deployment_namespace(id_)
     vmi_name = f"{_release_name(namespace)}-supabase-db"
     return namespace, vmi_name
+
+
+class ResizeParameters(BaseModel):
+    vcpu: int | None = None
+    memory: Annotated[int | None, Field(gt=0, multiple_of=2 ** 30)] = None
+    database_size: Annotated[int | None, Field(gt=0, multiple_of=2 ** 30)] = None
+
+
+class ResizeStatus(BaseModel):
+    namespace: str
+    vm_name: str
+    vm_cpu_cores: int | None = None
+    vm_memory_guest: str | None = None
+    pvc_name: str
+    pvc_phase: str | None = None
+    pvc_capacity: str | None = None
+
+
+def resize_deployment(id_: int, parameters: ResizeParameters):
+    """Perform an in-place Helm upgrade to resize CPU, memory, and/or disk.
+
+    Only parameters provided will be updated; others are preserved using --reuse-values.
+    """
+    chart = resources.files(__package__) / 'charts' / 'supabase'
+    # Minimal values file with only overrides
+    values_content: dict = {}
+    db_spec = values_content.setdefault('db', {})
+    if parameters.vcpu is not None:
+        db_spec['vcpu'] = parameters.vcpu
+    if parameters.memory is not None:
+        db_spec['ram'] = parameters.memory // (2 ** 30)
+    if parameters.database_size is not None:
+        db_spec.setdefault('persistence', {})['size'] = f'{parameters.database_size // (2 ** 30)}Gi'
+
+    namespace = _deployment_namespace(id_)
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as temp_values:
+        yaml.dump(values_content, temp_values, default_flow_style=False)
+
+        subprocess.check_call([
+            'helm', 'upgrade', _release_name(namespace), str(chart),
+            '--namespace', namespace,
+            '--reuse-values',
+            '-f', temp_values.name,
+        ])
+
+
+def get_resize_status(id_: int) -> ResizeStatus:
+    """Query KubeVirt VM and bound PVC for current status and capacity."""
+    namespace, vm_name = get_db_vmi_identity(id_)
+    # VM from KubeVirt
+    vm_obj = None
+    try:
+        vm_obj = kube_service.custom.get_namespaced_custom_object(
+            group='kubevirt.io', version='v1', namespace=namespace,
+            plural='virtualmachines', name=vm_name,
+        )
+    except Exception:
+        vm_obj = None
+
+    # PVC from CoreV1
+    pvc_name = f'{vm_name}-pvc'
+    pvc_obj = None
+    try:
+        pvc_obj = kube_service.core_v1.read_namespaced_persistent_volume_claim(name=pvc_name, namespace=namespace)
+    except Exception:
+        pvc_obj = None
+
+    vm_cpu = None
+    vm_mem = None
+    if isinstance(vm_obj, dict):
+        domain = (((vm_obj or {}).get('spec') or {}).get('template') or {}).get('spec') or {}
+        d_dom = (domain.get('domain') or {})
+        cpu = (d_dom.get('cpu') or {})
+        mem = (d_dom.get('memory') or {})
+        vm_cpu = cpu.get('cores')
+        vm_mem = mem.get('guest')
+
+    pvc_phase = None
+    pvc_capacity = None
+    if pvc_obj is not None:
+        try:
+            pvc_phase = pvc_obj.status.phase
+            pvc_capacity = (pvc_obj.status.capacity or {}).get('storage')
+        except Exception:
+            pass
+
+    return ResizeStatus(
+        namespace=namespace,
+        vm_name=vm_name,
+        vm_cpu_cores=vm_cpu,
+        vm_memory_guest=vm_mem,
+        pvc_name=pvc_name,
+        pvc_phase=pvc_phase,
+        pvc_capacity=pvc_capacity,
+    )
