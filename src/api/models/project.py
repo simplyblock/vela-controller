@@ -1,7 +1,8 @@
-from typing import Annotated
+from datetime import UTC, datetime
+from typing import Annotated, Literal
 
 from fastapi import Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import AnyHttpUrl, BaseModel
 from sqlalchemy import BigInteger, UniqueConstraint
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
@@ -20,6 +21,7 @@ class Project(AsyncAttrs, SQLModel, table=True):
     organization: Organization | None = Relationship(back_populates='projects')
     database: str
     database_user: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     __table_args__ = (
         UniqueConstraint("organization_id", "name", name="unique_project_name"),
@@ -42,7 +44,26 @@ class ProjectUpdate(BaseModel):
 
 class ProjectPublic(BaseModel):
     name: Slug
-    status: DeploymentStatus
+    status: Literal[
+            'ACTIVE_HEALTHY', 'ACTIVE_UNHEALTHY',
+            'COMING_UP', 'GOING_DOWN',
+            'INACTIVE',
+            'INIT_FAILED',
+            'PAUSING', 'PAUSE_FAILED',
+            'REMOVED',
+            'RESIZING',
+            'RESTARTING',
+            'RESTORING', 'RESTORE_FAILED',
+            'UNKNOWN',
+            'UPGRADING',
+    ]
+    deployment_status: DeploymentStatus
+    created_at: datetime
+
+    rest_url: AnyHttpUrl
+    meta_url: AnyHttpUrl
+    log_url: AnyHttpUrl
+    functions_url: AnyHttpUrl
 
 
 async def _lookup(session: SessionDep, organization: OrganizationDep, project_slug: Slug) -> Project:

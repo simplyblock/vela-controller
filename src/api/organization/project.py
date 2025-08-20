@@ -15,7 +15,12 @@ api = APIRouter()
 def _public(project: Project) -> ProjectPublic:
     return ProjectPublic(
             name=project.name,
-            status=get_deployment_status(project.dbid()),
+            deployment_status=get_deployment_status(project.dbid()),
+            created_at=project.created_at,
+            #rest_url: AnyHttpUrl,
+            #meta_url: AnyHttpUrl,
+            #log_url: AnyHttpUrl,
+            #functions_url: AnyHttpUrl,
     )
 
 
