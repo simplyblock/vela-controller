@@ -9,11 +9,15 @@ from sqlalchemy.exc import IntegrityError
 from ...deployment import create_vela_config, delete_deployment, get_deployment_status
 from .._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ...deployment import get_db_vmi_identity
+from kubernetes.client.exceptions import ApiException
+from sqlalchemy.exc import IntegrityError
+
+from ...deployment import create_vela_config, delete_deployment, get_db_vmi_identity, get_deployment_status
+from .._util import Conflict, Forbidden, NotFound, Unauthenticated
 from ..db import SessionDep
+from ..kubevirt import KubeVirtActionResponse, _call_kubevirt_subresource
 from ..models.organization import OrganizationDep
 from ..models.project import Project, ProjectCreate, ProjectDep, ProjectPublic, ProjectUpdate
-from ..kubevirt import KubeVirtActionResponse, _call_kubevirt_subresource
-from kubernetes.client.exceptions import ApiException
 
 api = APIRouter()
 

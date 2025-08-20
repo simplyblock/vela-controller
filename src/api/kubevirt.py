@@ -1,10 +1,10 @@
 from typing import Literal
 
 from fastapi import HTTPException
-from pydantic import BaseModel
 
 # We load kube config lazily per request to reuse the behavior outside clusters
 from kubernetes import client, config
+from pydantic import BaseModel
 
 
 class KubeVirtActionResponse(BaseModel):
@@ -24,7 +24,10 @@ def _ensure_kubeconfig():
             config.load_kube_config()
             return
         except config.config_exception.ConfigException as e:
-            raise HTTPException(status_code=503, detail="Kubernetes client not configured. Mount kubeconfig or run in-cluster.") from e
+            raise HTTPException(
+                    status_code=503,
+                    detail="Kubernetes client not configured. Mount kubeconfig or run in-cluster.",
+                ) from e
 
 
 def _call_kubevirt_subresource(namespace: str, name: str, action: Literal['pause', 'unpause']):
