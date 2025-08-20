@@ -38,9 +38,8 @@ def _call_kubevirt_subresource(namespace: str, name: str, action: Literal['pause
     return api_client.call_api(
         path,
         'POST',
-        response_type=(object),
+        response_type=None,
         auth_settings=['BearerToken'],
         body={},
-        _check_type=False,
         _preload_content=False,
     )
