@@ -47,7 +47,6 @@ def health():
 
 
 app.include_router(organization_api, prefix='/organizations')
-app.include_router(kubevirt_api, prefix='/kubevirt')
 _use_route_names_as_operation_ids(app)
 
 

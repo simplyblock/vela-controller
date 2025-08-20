@@ -143,3 +143,16 @@ def delete_deployment(id_: int):
     namespace = _deployment_namespace(id_)
     subprocess.check_call(['helm', 'uninstall', _release_name(namespace), '-n', namespace, '--wait'])
     kube_service.delete_namespace(namespace)
+
+
+def get_db_vmi_identity(id_: int) -> tuple[str, str]:
+    """
+    Return the (namespace, vmi_name) for the project's database VirtualMachineInstance.
+
+    The Helm chart defines the DB VM fullname as "{Release.Name}-{ChartName}-db" when no overrides
+    are provided. Our release name is "supabase-{namespace}" and chart name is "supabase".
+    Hence the VMI name resolves to: f"{_release_name(namespace)}-supabase-db".
+    """
+    namespace = _deployment_namespace(id_)
+    vmi_name = f"{_release_name(namespace)}-supabase-db"
+    return namespace, vmi_name

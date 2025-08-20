@@ -8,9 +8,12 @@ from sqlalchemy.exc import IntegrityError
 
 from ...deployment import create_vela_config, delete_deployment, get_deployment_status
 from .._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
+from ...deployment import get_db_vmi_identity
 from ..db import SessionDep
 from ..models.organization import OrganizationDep
 from ..models.project import Project, ProjectCreate, ProjectDep, ProjectPublic, ProjectUpdate
+from ..kubevirt import KubeVirtActionResponse, _call_kubevirt_subresource
+from kubernetes.client.exceptions import ApiException
 
 api = APIRouter()
 
@@ -165,3 +168,34 @@ async def delete(session: SessionDep, _organization: OrganizationDep, project: P
 
 
 api.include_router(instance_api)
+
+
+# KubeVirt project-scoped controls
+@instance_api.post(
+        '/pause', name='organizations:projects:pause',
+        response_model=KubeVirtActionResponse,
+        responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
+)
+async def pause(_organization: OrganizationDep, project: ProjectDep) -> KubeVirtActionResponse:
+    namespace, vmi_name = get_db_vmi_identity(project.dbid())
+    try:
+        _call_kubevirt_subresource(namespace, vmi_name, 'pause')
+        return KubeVirtActionResponse(namespace=namespace, name=vmi_name, action='pause', status='ok')
+    except ApiException as e:
+        status = 404 if e.status == 404 else 400
+        raise HTTPException(status_code=status, detail=e.body or str(e)) from e
+
+
+@instance_api.post(
+        '/unpause', name='organizations:projects:unpause',
+        response_model=KubeVirtActionResponse,
+        responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
+)
+async def unpause(_organization: OrganizationDep, project: ProjectDep) -> KubeVirtActionResponse:
+    namespace, vmi_name = get_db_vmi_identity(project.dbid())
+    try:
+        _call_kubevirt_subresource(namespace, vmi_name, 'unpause')
+        return KubeVirtActionResponse(namespace=namespace, name=vmi_name, action='unpause', status='ok')
+    except ApiException as e:
+        status = 404 if e.status == 404 else 400
+        raise HTTPException(status_code=status, detail=e.body or str(e)) from e
