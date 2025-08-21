@@ -1,6 +1,8 @@
 from collections.abc import Sequence
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
 from ...deployment import delete_deployment
@@ -47,6 +49,7 @@ _links = {
 
 @api.post(
         '/', name='organizations:create', status_code=201,
+        response_model=Organization | None,
         responses={
             201: {
                 'content': None,
@@ -67,7 +70,8 @@ async def create(
         request: Request,
         parameters: OrganizationCreate,
         user: UserDep,
-) -> Response:
+        response: Literal['empty', 'full'] = 'empty',
+) -> JSONResponse:
     entity = Organization(**parameters.model_dump(), users=[user])
     session.add(entity)
     try:
@@ -76,7 +80,11 @@ async def create(
         raise HTTPException(409, f'Organization {parameters.name} already exists') from e
     await session.refresh(entity)
     entity_url = request.app.url_path_for('organizations:detail', organization_slug=entity.name)
-    return Response(status_code=201, headers={'Location': entity_url})
+    return JSONResponse(
+            content=entity.model_dump() if response == 'full' else None,
+            status_code=201,
+            headers={'Location': entity_url},
+    )
 
 
 async def _user_in_organization(user: UserDep, organization: OrganizationDep):
