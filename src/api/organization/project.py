@@ -1,6 +1,8 @@
 from collections.abc import Sequence
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
 from ...deployment import create_vela_config, delete_deployment, get_deployment_status
@@ -46,6 +48,7 @@ _links = {
 
 @api.post(
         '/', name='organizations:projects:create', status_code=201,
+        response_model=ProjectPublic | None,
         responses={
             201: {
                 'content': None,
@@ -66,7 +69,8 @@ _links = {
 async def create(
         session: SessionDep, request: Request,
         organization: OrganizationDep, parameters: ProjectCreate,
-) -> Response:
+        response: Literal['empty', 'full'] = 'empty',
+) -> JSONResponse:
     entity = Project(
             organization=organization,
             name=parameters.name,
@@ -85,7 +89,11 @@ async def create(
             'organizations:projects:detail',
             organization_slug=organization.id, project_slug=entity.name,
     )
-    return Response(status_code=201, headers={'Location': entity_url})
+    return JSONResponse(
+            content=_public(entity).model_dump() if response == 'full' else None,
+            status_code=201,
+            headers={'Location': entity_url},
+    )
 
 
 instance_api = APIRouter(prefix='/{project_slug}')
