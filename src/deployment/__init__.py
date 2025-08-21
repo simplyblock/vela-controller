@@ -48,7 +48,7 @@ class DeleteDeploymentResponse(BaseModel):
 
 def create_vela_config(id_: int, parameters: DeploymentParameters):
     logging.info(f'Creating Vela configuration for namespace: {_deployment_namespace(id_)}'
-        ' (database {parameters.database}, user {parameters.database_user})')
+        f' (database {parameters.database}, user {parameters.database_user})')
 
     chart = resources.files(__package__) / 'charts' / 'supabase'
     values_content = yaml.safe_load((chart / 'values.example.yaml').read_text())
