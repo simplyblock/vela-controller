@@ -7,4 +7,4 @@ include-name = [
     "PUT /organizations/{organization_slug}/",
     "PUT /organizations/{organization_slug}/projects/{project_slug}",
 ]
-checks.stateful.enabled = false
+checks.enabled = false
