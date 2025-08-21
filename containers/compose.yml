@@ -43,9 +43,6 @@ services:
       GOTRUE_DB_DRIVER: postgres
       GOTRUE_DB_DATABASE_URL: 'postgresql://supabase_auth_admin:root@database:5432/vela'
 
-      GOTRUE_JWT_ADMIN_ROLES: service_role
-      GOTRUE_JWT_AUD: authenticated
-      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
       GOTRUE_JWT_SECRET: 'secret'
     depends_on:
       database:
