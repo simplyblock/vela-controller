@@ -1,2 +1,10 @@
 [checks]
 positive_data_acceptance.expected-statuses = [200, 201, 204, 404, 409]
+
+# Disable until upstream fix for renamed resources is deployed
+[[operations]]
+include-name = [
+    "PUT /organizations/{organization_slug}/",
+    "PUT /organizations/{organization_slug}/projects/{project_slug}",
+]
+checks.enabled = false
