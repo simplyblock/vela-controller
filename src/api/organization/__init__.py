@@ -87,14 +87,17 @@ async def create(
     )
 
 
-async def _user_in_organization(user: UserDep, organization: OrganizationDep):
+async def _check_user_access(user: UserDep, organization: OrganizationDep):
+    if organization.require_mfa and not user.token.mfa():
+        raise HTTPException(401, detail='This operation requires multi-factor authentication')
+
     if user not in await organization.awaitable_attrs.users:
         raise HTTPException(403, detail='Unauthorized access')
 
 
 instance_api = APIRouter(
         prefix='/{organization_slug}',
-        dependencies=[Depends(_user_in_organization)],
+        dependencies=[Depends(_check_user_access)],
 )
 
 
