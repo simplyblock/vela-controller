@@ -27,16 +27,19 @@ class Organization(AsyncAttrs, SQLModel, table=True):
     locked: bool = False
     projects: list['Project'] = Relationship(back_populates='organization', cascade_delete=True)
     users: list['User'] = Relationship(back_populates='organizations', link_model=OrganizationUserLink)
+    require_mfa: bool = False
 
 
 class OrganizationCreate(BaseModel):
     name: Slug
     locked: StrictBool = False
+    require_mfa: StrictBool = False
 
 
 class OrganizationUpdate(BaseModel):
     name: Slug | None = None
     locked: StrictBool | None = None
+    require_mfa: StrictBool | None = None
 
 
 async def _lookup(session: SessionDep, organization_slug: Slug) -> Organization:

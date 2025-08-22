@@ -17,7 +17,10 @@ def serve_app(port, postgres_url, jwt_secret):
 
 async def run_schemathesis_tests(base_url, jwt_secret):
     """Run schemathesis tests asynchronously"""
-    token = jwt.encode({'sub': str(uuid4())}, jwt_secret, algorithm='HS256')
+    token = jwt.encode({
+        'sub': str(uuid4()),
+        'aal': 'aal2',  # TODO: Dynamically test, see require_mfa
+    }, jwt_secret, algorithm='HS256')
     process = await asyncio.create_subprocess_exec(
         'schemathesis', 'run', f'{base_url}/openapi.json',
         '--checks', 'all',
