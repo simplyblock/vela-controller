@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Sequence
 from typing import Literal
 
@@ -83,7 +84,7 @@ async def create(
     except IntegrityError as e:
         raise HTTPException(409, f'Organization already has project named {parameters.name}') from e
     await session.refresh(entity)
-    create_vela_config(entity.dbid(), parameters.deployment)
+    asyncio.create_task(create_vela_config(entity.dbid(), parameters.deployment))
     await session.refresh(organization)
     entity_url = request.app.url_path_for(
             'organizations:projects:detail',
