@@ -2,7 +2,7 @@ from functools import wraps
 from typing import Annotated, Any
 
 from asyncpg import UniqueViolationError
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from pydantic import BaseModel, StringConstraints
 
 Slug = Annotated[str, StringConstraints(
@@ -30,3 +30,7 @@ def handle_unique_violation(f):
             raise HTTPException(409, 'Non-unique entity') from e
 
     return wrapper
+
+
+def url_path_for(request: Request, name: str, **kwargs) -> str:
+    return request.scope.get('root_path') + request.app.url_path_for(name, **kwargs)

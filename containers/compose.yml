@@ -20,8 +20,9 @@ services:
     volumes:
       - ~/.kube/config:/root/.kube/config:ro
     environment:
-      VELA_POSTGRES_URL: 'postgresql+asyncpg://postgres:vela@database:5432/vela'
+      VELA_ROOT_PATH: '/vela'
       VELA_JWT_SECRET: 'secret'
+      VELA_POSTGRES_URL: 'postgresql+asyncpg://postgres:vela@database:5432/vela'
     depends_on:
       database:
         condition: service_healthy

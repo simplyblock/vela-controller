@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
 from ...deployment import create_vela_config, delete_deployment, get_deployment_status
-from .._util import Conflict, Forbidden, NotFound, Unauthenticated
+from .._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ..db import SessionDep
 from ..models.organization import OrganizationDep
 from ..models.project import Project, ProjectCreate, ProjectDep, ProjectPublic, ProjectUpdate
@@ -85,8 +85,8 @@ async def create(
     await session.refresh(entity)
     create_vela_config(entity.dbid(), parameters.deployment)
     await session.refresh(organization)
-    entity_url = request.app.url_path_for(
-            'organizations:projects:detail',
+    entity_url = url_path_for(
+            request, 'organizations:projects:detail',
             organization_slug=organization.id, project_slug=entity.name,
     )
     return JSONResponse(
@@ -139,8 +139,8 @@ async def update(
 
     # Refer to potentially updated location
     return Response(status_code=204, headers={
-            'Location': request.app.url_path_for(
-                'organizations:projects:detail',
+            'Location': url_path_for(
+                request, 'organizations:projects:detail',
                 organization_slug=await organization.awaitable_attrs.id,
                 project_slug=await project.awaitable_attrs.name,
             ),
