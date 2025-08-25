@@ -71,16 +71,23 @@ def create_vela_config(id_: int, parameters: DeploymentParameters):
         yaml.dump(values_content, temp_values, default_flow_style=False)
 
         try:
-            subprocess.check_call([
-                'helm', 'install', _release_name(namespace), str(chart),
-                '--namespace', namespace,
-                '--create-namespace',
-                '-f', temp_values.name,
-            ])
-        except subprocess.CalledProcessError:
-            subprocess.check_call([
-                'helm', 'uninstall', f'supabase-{namespace}', '-n', namespace,
-            ])
+            subprocess.check_output(
+                [
+                    'helm', 'install', _release_name(namespace), str(chart),
+                    '--namespace', namespace,
+                    '--create-namespace',
+                    '-f', temp_values.name,
+                ],
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        except subprocess.CalledProcessError as e:
+            logger.exception(f'Failed to create deployment: {e.stderr}')
+            subprocess.check_output(
+                    ['helm', 'uninstall', f'supabase-{namespace}', '-n', namespace],
+                    stderr=subprocess.PIPE,
+                    text=True,
+            )
             raise
 
 
