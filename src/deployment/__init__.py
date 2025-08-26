@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 import yaml
 from pydantic import BaseModel, Field
 
-from .._util import dbstr
+from .._util import check_output, dbstr
 from .kubernetes import KubernetesService
 
 logger = logging.getLogger(__name__)
@@ -46,7 +46,7 @@ class DeleteDeploymentResponse(BaseModel):
     helm_output: str
 
 
-def create_vela_config(id_: int, parameters: DeploymentParameters):
+async def create_vela_config(id_: int, parameters: DeploymentParameters):
     logging.info(f'Creating Vela configuration for namespace: {_deployment_namespace(id_)}'
         f' (database {parameters.database}, user {parameters.database_user})')
 
@@ -71,16 +71,23 @@ def create_vela_config(id_: int, parameters: DeploymentParameters):
         yaml.dump(values_content, temp_values, default_flow_style=False)
 
         try:
-            subprocess.check_call([
-                'helm', 'install', _release_name(namespace), str(chart),
-                '--namespace', namespace,
-                '--create-namespace',
-                '-f', temp_values.name,
-            ])
-        except subprocess.CalledProcessError:
-            subprocess.check_call([
-                'helm', 'uninstall', f'supabase-{namespace}', '-n', namespace,
-            ])
+            await check_output(
+                [
+                    'helm', 'install', _release_name(namespace), str(chart),
+                    '--namespace', namespace,
+                    '--create-namespace',
+                    '-f', temp_values.name,
+                ],
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        except subprocess.CalledProcessError as e:
+            logger.exception(f'Failed to create deployment: {e.stderr}')
+            await check_output(
+                    ['helm', 'uninstall', f'supabase-{namespace}', '-n', namespace],
+                    stderr=subprocess.PIPE,
+                    text=True,
+            )
             raise
 
 
