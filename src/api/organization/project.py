@@ -4,7 +4,7 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
-from pydantic import AnyHttpUrl
+from pydantic import AnyHttpUrl, PostgresDsn
 from sqlalchemy.exc import IntegrityError
 
 from ...deployment import create_vela_config, delete_deployment, get_deployment_status
@@ -27,6 +27,7 @@ def _public(project: Project) -> ProjectPublic:
             meta_url=AnyHttpUrl('http://localhost/meta'),
             log_url=AnyHttpUrl('http://localhost/log'),
             functions_url=AnyHttpUrl('http://localhost/functions'),
+            database_url=PostgresDsn(f'postgres://{project.database_user}@host:5432/{project.database}'),
     )
 
 

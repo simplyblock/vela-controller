@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import Depends, HTTPException
-from pydantic import AnyHttpUrl, BaseModel
+from pydantic import AnyHttpUrl, BaseModel, PostgresDsn
 from sqlalchemy import BigInteger, Column, DateTime, UniqueConstraint, func
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
@@ -66,6 +66,7 @@ class ProjectPublic(BaseModel):
     meta_url: AnyHttpUrl
     log_url: AnyHttpUrl
     functions_url: AnyHttpUrl
+    database_url: PostgresDsn
 
 
 async def _lookup(session: SessionDep, organization: OrganizationDep, project_slug: Slug) -> Project:
