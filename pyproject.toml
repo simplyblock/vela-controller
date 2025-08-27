@@ -16,6 +16,7 @@ dependencies = [
     'kubernetes',
     'pyyaml',
     'email-validator',  # pydantic.EmailStr
+    'python-slugify',
 ]
 
 [tool.setuptools]
