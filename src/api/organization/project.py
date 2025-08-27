@@ -4,6 +4,7 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
+from pydantic import AnyHttpUrl
 from sqlalchemy.exc import IntegrityError
 
 from ...deployment import create_vela_config, delete_deployment, get_deployment_status
@@ -22,6 +23,10 @@ def _public(project: Project) -> ProjectPublic:
             name=project.name,
             status=get_deployment_status(project.dbid()),
             created_at=project.created(),
+            rest_url=AnyHttpUrl('http://localhost/rest'),
+            meta_url=AnyHttpUrl('http://localhost/meta'),
+            log_url=AnyHttpUrl('http://localhost/log'),
+            functions_url=AnyHttpUrl('http://localhost/functions'),
     )
 
 
