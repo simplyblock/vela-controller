@@ -30,6 +30,11 @@ class Project(AsyncAttrs, SQLModel, table=True):
             raise ValueError('Model not tracked in database')
         return self.id
 
+    def db_org_id(self) -> int:
+        if self.organization_id is None:
+            raise ValueError('Model not tracked in database')
+        return self.organization_id
+
 
 class ProjectCreate(BaseModel):
     name: Slug
@@ -41,6 +46,8 @@ class ProjectUpdate(BaseModel):
 
 
 class ProjectPublic(BaseModel):
+    organization_id: int
+    id: int
     name: Slug
     status: DeploymentStatus
 
