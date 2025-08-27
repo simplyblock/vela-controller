@@ -81,7 +81,7 @@ async def create(
     except IntegrityError as e:
         raise HTTPException(409, f'Organization {parameters.name} already exists') from e
     await session.refresh(entity)
-    entity_url = url_path_for(request, 'organizations:detail', organization_slug=entity.name)
+    entity_url = url_path_for(request, 'organizations:detail', organization_slug=entity.slug)
     return JSONResponse(
             content=entity.model_dump() if response == 'full' else None,
             status_code=201,
@@ -141,7 +141,7 @@ async def update(request: Request, session: SessionDep, organization: Organizati
     return Response(status_code=204, headers={
             'Location': url_path_for(
                 request, 'organizations:detail',
-                organization_slug=await organization.awaitable_attrs.name,
+                organization_slug=await organization.awaitable_attrs.slug,
             ),
     })
 

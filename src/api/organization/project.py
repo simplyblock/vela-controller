@@ -90,7 +90,7 @@ async def create(
     await session.refresh(organization)
     entity_url = url_path_for(
             request, 'organizations:projects:detail',
-            organization_slug=organization.id, project_slug=entity.name,
+            organization_slug=organization.id, project_slug=entity.slug,
     )
     return JSONResponse(
             content=_public(entity).model_dump() if response == 'full' else None,
@@ -145,7 +145,7 @@ async def update(
             'Location': url_path_for(
                 request, 'organizations:projects:detail',
                 organization_slug=await organization.awaitable_attrs.id,
-                project_slug=await project.awaitable_attrs.name,
+                project_slug=await project.awaitable_attrs.slug,
             ),
     })
 

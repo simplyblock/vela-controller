@@ -1,14 +1,9 @@
 from functools import wraps
-from typing import Annotated, Any
+from typing import Any
 
 from asyncpg import UniqueViolationError
 from fastapi import HTTPException, Request
-from pydantic import BaseModel, StringConstraints
-
-Slug = Annotated[str, StringConstraints(
-        pattern=r'^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$',
-        max_length=50,
-)]
+from pydantic import BaseModel
 
 
 class HTTPError(BaseModel):

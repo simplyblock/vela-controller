@@ -8,3 +8,11 @@ include-name = [
     "PUT /organizations/{organization_slug}/projects/{project_slug}",
 ]
 checks.enabled = false
+
+# schemathesis can't cope with the sluggable constraint
+[[operations]]
+include-name = [
+    "POST /organizations/",
+    "POST /organizations/{organization_slug}/projects/",
+]
+checks.positive_data_acceptance.expected-statuses = [201, 404, 409, 422]
