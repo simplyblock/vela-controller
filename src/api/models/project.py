@@ -1,8 +1,9 @@
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import BigInteger, UniqueConstraint
+from sqlalchemy import BigInteger, Column, DateTime, UniqueConstraint, func
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship, SQLModel, select
@@ -20,6 +21,11 @@ class Project(AsyncAttrs, SQLModel, table=True):
     organization: Organization | None = Relationship(back_populates='projects')
     database: str
     database_user: str
+    created_at: datetime | None = Field(sa_column=Column(
+        DateTime(timezone=False),
+        nullable=False,
+        server_default=func.now(),
+    ))
 
     __table_args__ = (
         UniqueConstraint("organization_id", "name", name="unique_project_name"),
@@ -34,6 +40,11 @@ class Project(AsyncAttrs, SQLModel, table=True):
         if self.organization_id is None:
             raise ValueError('Model not tracked in database')
         return self.organization_id
+
+    def created(self) -> datetime:
+        if self.created_at is None:
+            raise ValueError('Model not tracked in database')
+        return self.created_at
 
 
 class ProjectCreate(BaseModel):
@@ -50,6 +61,7 @@ class ProjectPublic(BaseModel):
     id: int
     name: Slug
     status: DeploymentStatus
+    created_at: datetime
 
 
 async def _lookup(session: SessionDep, organization: OrganizationDep, project_slug: Slug) -> Project:

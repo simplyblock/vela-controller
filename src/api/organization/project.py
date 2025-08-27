@@ -21,6 +21,7 @@ def _public(project: Project) -> ProjectPublic:
             id=project.dbid(),
             name=project.name,
             status=get_deployment_status(project.dbid()),
+            created_at=project.created(),
     )
 
 
