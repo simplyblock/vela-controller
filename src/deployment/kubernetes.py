@@ -21,6 +21,7 @@ class KubernetesService:
                 raise
 
         self.core_v1 = client.CoreV1Api()
+        self.core_v1.get_api_resources()  # Ensure connection can be established
 
     def delete_namespace(self, namespace: str):
         self.core_v1.delete_namespace(namespace)
