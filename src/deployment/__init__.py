@@ -63,6 +63,8 @@ async def create_vela_config(id_: int, parameters: DeploymentParameters):
     db_spec.setdefault('persistence', {})['size'] = f'{parameters.database_size // (2 ** 30)}Gi'
     db_spec.setdefault('image', {})['tag'] = parameters.database_image_tag
 
+    values_content['kong']['ingress']['hosts'][0]['paths'][0]['path'] = f'/{id_}'
+
     namespace = _deployment_namespace(id_)
 
     # todo: create an storage class with the given IOPS
