@@ -1,0 +1,76 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: vela-controller
+  namespace: vela-services
+  labels:
+    app.kubernetes.io/name: vela-controller
+spec:
+  containers:
+    - name: vela-controller
+      image: simplyblock/vela-controller:latest
+      imagePullPolicy: IfNotPresent
+      ports:
+        - name: vela-controller-http
+          containerPort: 5000
+          protocol: TCP
+      envFrom:
+        - configMapRef:
+            name: vela-controller-config
+      livenessProbe:
+        httpGet:
+          path: /health
+          port: vela-controller-http
+        periodSeconds: 5
+        timeoutSeconds: 5
+        failureThreshold: 3
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: vela-controller-http
+        initialDelaySeconds: 10
+  restartPolicy: Always
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vela-controller-config
+  namespace: vela-services
+data:
+  VELA_POSTGRES_URL: 'postgresql+asyncpg://postgres:vela@database:5432/vela'
+  VELA_JWT_SECRET: 'secret'
+  VELA_ROOT_PATH: '/vela'
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vela-controller-service
+  namespace: vela-services
+spec:
+  selector:
+    app.kubernetes.io/name: vela-controller
+  ports:
+    - name: vela-controller-http
+      port: 5000
+      targetPort: 5000
+      protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: vela-controller-ingress
+  namespace: vela-services
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$1
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /vela/(.*)
+            pathType: Prefix
+            backend:
+              service:
+                name: vela-controller-service
+                port:
+                  number: 5000
