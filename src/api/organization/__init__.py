@@ -12,6 +12,7 @@ from ..auth import UserDep, authenticated_user
 from ..db import SessionDep
 from ..models.audit import OrganizationAuditLog
 from ..models.organization import Organization, OrganizationCreate, OrganizationDep, OrganizationUpdate
+from ..models.user import UserPublic
 from .project import api as project_api
 
 api = APIRouter(dependencies=[Depends(authenticated_user)])
@@ -171,6 +172,14 @@ def list_audits(
         _to: Annotated[datetime, Query(alias='to')],
 ) -> OrganizationAuditLog:
     return OrganizationAuditLog(result=[], retention_period=0)
+
+
+@instance_api.get(
+        '/members', name='organizations:members:list', status_code=200,
+        responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
+)
+async def list_users(organization: OrganizationDep) -> Sequence[UserPublic]:
+    return await organization.awaitable_attrs.users
 
 
 instance_api.include_router(project_api, prefix='/projects')

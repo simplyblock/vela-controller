@@ -48,3 +48,7 @@ class User(AsyncAttrs, SQLModel, table=True):
     @token.setter
     def token(self, token: JWT):
         self._token = token
+
+
+class UserPublic(BaseModel):
+    id: UUID
