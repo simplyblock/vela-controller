@@ -67,7 +67,7 @@ spec:
   rules:
     - http:
         paths:
-          - path: /vela/(.*)
+          - path: /vela/
             pathType: Prefix
             backend:
               service:
