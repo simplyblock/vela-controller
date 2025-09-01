@@ -1,7 +1,8 @@
 from collections.abc import Sequence
-from typing import Literal
+from datetime import datetime
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
@@ -9,6 +10,7 @@ from ...deployment import delete_deployment
 from .._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ..auth import UserDep, authenticated_user
 from ..db import SessionDep
+from ..models.audit import OrganizationAuditLog
 from ..models.organization import Organization, OrganizationCreate, OrganizationDep, OrganizationUpdate
 from .project import api as project_api
 
@@ -155,6 +157,17 @@ async def delete(session: SessionDep, organization: OrganizationDep):
     await session.delete(organization)
     await session.commit()
     return Response(status_code=204)
+
+
+@instance_api.get(
+        '/audit', status_code=200,
+        responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
+)
+def list_audits(
+        _from: Annotated[datetime, Query(alias='from')],
+        _to: Annotated[datetime, Query(alias='to')],
+) -> OrganizationAuditLog:
+    return OrganizationAuditLog(result=[], retention_period=0)
 
 
 instance_api.include_router(project_api, prefix='/projects')

@@ -15,6 +15,7 @@ dependencies = [
     'pydantic-settings',
     'kubernetes',
     'pyyaml',
+    'email-validator',  # pydantic.EmailStr
 ]
 
 [tool.setuptools]
