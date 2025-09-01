@@ -11,7 +11,7 @@ spec:
       image: simplyblock/vela-studio:latest
       imagePullPolicy: IfNotPresent
       ports:
-        - name: vela-studio-http
+        - name: http
           containerPort: 3000
           protocol: TCP
       envFrom:
@@ -20,14 +20,14 @@ spec:
       livenessProbe:
         httpGet:
           path: /
-          port: vela-studio-http
+          port: http
         periodSeconds: 5
         timeoutSeconds: 5
         failureThreshold: 3
       readinessProbe:
         httpGet:
           path: /
-          port: vela-studio-http
+          port: http
         initialDelaySeconds: 20
   restartPolicy: Always
 ---

@@ -11,7 +11,7 @@ spec:
       image: simplyblock/vela-controller:latest
       imagePullPolicy: IfNotPresent
       ports:
-        - name: vela-controller-http
+        - name: http
           containerPort: 5000
           protocol: TCP
       envFrom:
@@ -20,14 +20,14 @@ spec:
       livenessProbe:
         httpGet:
           path: /health
-          port: vela-controller-http
+          port: http
         periodSeconds: 5
         timeoutSeconds: 5
         failureThreshold: 3
       readinessProbe:
         httpGet:
           path: /health
-          port: vela-controller-http
+          port: http
         initialDelaySeconds: 10
   restartPolicy: Always
 ---
@@ -50,7 +50,7 @@ spec:
   selector:
     app.kubernetes.io/name: vela-controller
   ports:
-    - name: vela-controller-http
+    - name: http
       port: 5000
       targetPort: 5000
       protocol: TCP
