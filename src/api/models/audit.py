@@ -1,0 +1,44 @@
+from datetime import datetime
+from typing import Literal
+
+from pydantic import BaseModel, EmailStr
+
+from .._util import Slug
+
+
+class ActionMetadata(BaseModel):
+    method: str | None
+    status: str | None
+
+
+class Action(BaseModel):
+    metadata: list[ActionMetadata]
+    name: str
+
+
+class Actor(BaseModel):
+    id: str
+    type: Literal['user'] | str
+    metadata: list[EmailStr | None]
+
+
+class TargetMetadata(BaseModel):
+    organization: Slug | None
+    project: Slug | None
+
+
+class Target(BaseModel):
+    description: str
+    metadata: list[TargetMetadata]
+
+
+class AuditLog(BaseModel):
+  action: Action
+  actor: Actor
+  target: Target
+  occurred_at: datetime
+
+
+class OrganizationAuditLog(BaseModel):
+    result: list[AuditLog]
+    retention_period: int
