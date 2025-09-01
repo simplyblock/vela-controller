@@ -45,6 +45,8 @@ services:
       GOTRUE_DB_DATABASE_URL: 'postgresql://supabase_auth_admin:root@database:5432/vela'
 
       GOTRUE_JWT_SECRET: 'secret'
+
+      GOTRUE_MAILER_AUTOCONFIRM: true
     depends_on:
       database:
         condition: service_healthy
