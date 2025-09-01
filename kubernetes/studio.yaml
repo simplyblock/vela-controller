@@ -35,7 +35,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: vela-studio-config
-  namespace: vela-
+  namespace: vela-services
 data:
   NEXT_PUBLIC_API_URL: 'http://localhost:8080/api'
   NEXT_PUBLIC_GOTRUE_URL: 'http://localhost:8000/auth'
