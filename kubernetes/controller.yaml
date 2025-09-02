@@ -8,7 +8,7 @@ metadata:
 spec:
   containers:
     - name: vela-controller
-      image: simplyblock/vela:latest
+      image: simplyblock/vela-controller:latest
       imagePullPolicy: IfNotPresent
       ports:
         - name: http
