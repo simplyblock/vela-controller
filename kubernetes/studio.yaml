@@ -37,16 +37,16 @@ metadata:
   name: vela-studio-config
   namespace: vela-services
 data:
-  NEXT_PUBLIC_API_URL: 'http://localhost:8080/api'
-  NEXT_PUBLIC_GOTRUE_URL: 'http://localhost:8000/auth'
+  NEXT_PUBLIC_API_URL: 'http://localhost:80/api'
+  NEXT_PUBLIC_GOTRUE_URL: 'http://localhost:80/auth'
   NEXT_PUBLIC_IS_PLATFORM: 'true'
   PUBLIC_PLATFORM: 'vela'
-  VELA_PLATFORM_GOTRUE_URL: 'http://localhost:8000/auth'
-  VELA_PLATFORM_URL: 'http://localhost:8000/vela'
+  VELA_PLATFORM_GOTRUE_URL: 'http://vela-auth.vela-services:8081/auth'
+  VELA_PLATFORM_URL: 'http://vela-controller.vela-services:5000/vela'
   PLATFORM_PG_META_URL: 'http://localhost:8080/meta'
   AUTH_JWT_SECRET: 'secret'
   SUPABASE_ANON_KEY: 'UpNVntn3cDxHJpq99YMc1T1AQgQpc8kfYTuRgBiYa15BLrx8etQoXz3gZv1/u2oq'
-  SUPABASE_PUBLIC_URL: 'http://localhost:8000'
+  SUPABASE_PUBLIC_URL: 'http://localhost:80'
   LOGFLARE_PRIVATE_ACCESS_TOKEN: 'your-super-secret-and-long-logflare-key-private'
   IS_THROTTLED: 'false'
 ---
