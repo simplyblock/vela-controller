@@ -12,7 +12,7 @@ spec:
       imagePullPolicy: IfNotPresent
       ports:
         - name: http
-          containerPort: 5000
+          containerPort: 8000
           protocol: TCP
       envFrom:
         - configMapRef:
@@ -37,8 +37,8 @@ metadata:
   name: vela-controller-config
   namespace: vela-services
 data:
-  VELA_POSTGRES_URL: 'postgresql+asyncpg://postgres:vela@database:5432/vela'
-  VELA_JWT_SECRET: 'secret'
+  VELA_POSTGRES_URL: 'postgresql+asyncpg://postgres:6c65-a169-493a-afb@database.stackgres:5432/postgres'
+  VELA_JWT_SECRET: 'secret'  # TODO
   VELA_ROOT_PATH: '/vela'
 ---
 apiVersion: v1
@@ -51,8 +51,8 @@ spec:
     app.kubernetes.io/name: vela-controller
   ports:
     - name: http
-      port: 5000
-      targetPort: 5000
+      port: 8000
+      targetPort: 8000
       protocol: TCP
 ---
 apiVersion: networking.k8s.io/v1
@@ -61,16 +61,17 @@ metadata:
   name: vela-controller-ingress
   namespace: vela-services
   annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
     nginx.ingress.kubernetes.io/rewrite-target: /$1
 spec:
   ingressClassName: nginx
   rules:
     - http:
         paths:
-          - path: /vela/
-            pathType: Prefix
+          - path: /vela/(.*)
+            pathType: ImplementationSpecific
             backend:
               service:
                 name: vela-controller-service
                 port:
-                  number: 5000
+                  number: 8000
