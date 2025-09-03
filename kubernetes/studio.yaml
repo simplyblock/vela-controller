@@ -37,7 +37,7 @@ metadata:
   name: vela-studio-config
   namespace: vela-services
 data:
-  NEXT_PUBLIC_API_URL: 'http://localhost:80/api'
+  NEXT_PUBLIC_API_URL: 'http://localhost:80/studio/api'
   NEXT_PUBLIC_GOTRUE_URL: 'http://localhost:80/auth'
   NEXT_PUBLIC_IS_PLATFORM: 'true'
   PUBLIC_PLATFORM: 'vela'
@@ -46,7 +46,7 @@ data:
   PLATFORM_PG_META_URL: 'http://localhost:8080/meta'
   AUTH_JWT_SECRET: 'secret'
   SUPABASE_ANON_KEY: 'UpNVntn3cDxHJpq99YMc1T1AQgQpc8kfYTuRgBiYa15BLrx8etQoXz3gZv1/u2oq'
-  SUPABASE_PUBLIC_URL: 'http://localhost:80'
+  SUPABASE_PUBLIC_URL: 'http://localhost:80/studio'
   LOGFLARE_PRIVATE_ACCESS_TOKEN: 'your-super-secret-and-long-logflare-key-private'
   IS_THROTTLED: 'false'
 ---
@@ -70,14 +70,15 @@ metadata:
   name: vela-controller-ingress
   namespace: vela-services
   annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
     nginx.ingress.kubernetes.io/rewrite-target: /$1
 spec:
   ingressClassName: nginx
   rules:
     - http:
         paths:
-          - path: /
-            pathType: Prefix
+          - path: /studio/(.*)
+            pathType: ImplementationSpecific
             backend:
               service:
                 name: vela-studio-service
