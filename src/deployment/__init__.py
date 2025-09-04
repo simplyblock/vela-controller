@@ -5,7 +5,9 @@ from importlib import resources
 from typing import Annotated, Literal
 
 import yaml
+from kubernetes.client.rest import ApiException
 from pydantic import BaseModel, Field
+from urllib3.exceptions import HTTPError
 
 from .._util import check_output, dbstr
 from .kubernetes import KubernetesService
@@ -34,16 +36,13 @@ class DeploymentParameters(BaseModel):
     database_image_tag: Literal['15.1.0.147']
 
 
+StatusType = Literal['ACTIVE_HEALTHY', 'ACTIVE_UNHEALTHY', 'COMING_UP', 'INACTIVE', 'UNKNOWN']
+
+
 class DeploymentStatus(BaseModel):
-    status: str
-    pods: list
+    status: StatusType
+    pods: dict[str, str]
     message: str
-
-
-class DeleteDeploymentResponse(BaseModel):
-    status: str
-    deployment_id: str
-    helm_output: str
 
 
 async def create_vela_config(id_: int, parameters: DeploymentParameters):
@@ -93,12 +92,50 @@ async def create_vela_config(id_: int, parameters: DeploymentParameters):
             raise
 
 
+def _pods_with_status(statuses: dict[str, str], target_status: str) -> set[str]:
+    return {
+            name
+            for name, status
+            in statuses.items()
+            if status == target_status
+    }
+
+
 def get_deployment_status(id_: int) -> DeploymentStatus:
-    k8s_status = kube_service.check_namespace_status(_deployment_namespace(id_))
+    status: StatusType
+
+    try:
+        k8s_statuses = kube_service.check_namespace_status(_deployment_namespace(id_))
+
+        if (failed := _pods_with_status(k8s_statuses, 'Failed')):
+            status = 'ACTIVE_UNHEALTHY'
+            message = 'Deployment has failed pods: ' + ', '.join(failed)
+        elif (pending := _pods_with_status(k8s_statuses, 'Pending')):
+            status = 'COMING_UP'
+            message = 'Deployment has pending pods: ' + ', '.join(pending)
+        elif (succeeded := _pods_with_status(k8s_statuses, 'Succeeded')):
+            # succeeded implies a container is stopped, they should be running
+            status = 'INACTIVE'
+            message = 'Deployment has stopped pods: ' + ', '.join(succeeded)
+        elif all(status == 'Running' for status in k8s_statuses.values()):
+            status = 'ACTIVE_HEALTHY'
+            message = 'All good :)'
+        else:
+            raise RuntimeError('Unexpected status reported by kubernetes: ' + '\n'.join(
+                f'{key}: {value}'
+                for key, value
+                in k8s_statuses.items()
+            ))
+
+    except (ApiException, HTTPError, KeyError) as e:
+        k8s_statuses = {}
+        status = 'UNKNOWN'
+        message = str(e)
+
     return DeploymentStatus(
-        status=k8s_status['status'],
-        pods=k8s_status['pods'],
-        message=k8s_status['message'],
+        status=status,
+        pods=k8s_statuses,
+        message=message,
     )
 
 

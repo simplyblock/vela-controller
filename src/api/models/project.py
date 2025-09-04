@@ -7,7 +7,7 @@ from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship, SQLModel, select
 
-from ...deployment import DeploymentParameters, DeploymentStatus
+from ...deployment import DeploymentParameters
 from ..db import SessionDep
 from ._util import Name, Slug, update_slug
 from .organization import Organization, OrganizationDep
@@ -54,7 +54,8 @@ class ProjectPublic(BaseModel):
     organization_id: int
     id: int
     name: Name
-    status: DeploymentStatus
+    status: str
+    deployment_status: tuple[str, dict[str, str]]
 
 
 async def _lookup(session: SessionDep, organization: OrganizationDep, project_slug: Slug) -> Project:
