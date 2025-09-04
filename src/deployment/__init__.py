@@ -94,12 +94,19 @@ async def create_vela_config(id_: int, parameters: DeploymentParameters):
 
 
 def get_deployment_status(id_: int) -> DeploymentStatus:
-    k8s_status = kube_service.check_namespace_status(_deployment_namespace(id_))
-    return DeploymentStatus(
-        status=k8s_status['status'],
-        pods=k8s_status['pods'],
-        message=k8s_status['message'],
-    )
+    try:
+        k8s_status = kube_service.check_namespace_status(_deployment_namespace(id_))
+        return DeploymentStatus(
+            status=k8s_status['status'],
+            pods=k8s_status['pods'],
+            message=k8s_status['message'],
+        )
+    except:
+        return DeploymentStatus(
+            status='unreachable',
+            pods=[],
+            message='',
+        )
 
 
 def delete_deployment(id_: int):
