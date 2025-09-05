@@ -1,0 +1,119 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: vela-auth
+  namespace: vela-services
+  labels:
+    app.kubernetes.io/name: vela-auth
+spec:
+  containers:
+    - name: vela-auth
+      image: supabase/gotrue:v2.177.0
+      imagePullPolicy: IfNotPresent
+      ports:
+        - name: http
+          containerPort: 8081
+          protocol: TCP
+      envFrom:
+        - configMapRef:
+            name: vela-auth-config
+      livenessProbe:
+        httpGet:
+          path: /health
+          port: http
+        periodSeconds: 5
+        timeoutSeconds: 5
+        failureThreshold: 3
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: http
+        initialDelaySeconds: 10
+  initContainers:
+    - name: init-vela-auth
+      image: postgres:17  # TODO db-version
+      command: ['psql']
+      args: ['-f', '/etc/init.sql']
+      volumeMounts:
+        - name: init-sql
+          mountPath: /etc/init.sql
+          subPath: init.sql
+          readOnly: true
+      env:
+        - name: PGHOST
+          value: 'database'
+        - name: PGUSER
+          valueFrom:
+            secretKeyRef:
+              name: database
+              key: superuser-username
+        - name: PGPASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: database
+              key: superuser-password
+  volumes:
+    - name: init-sql
+      configMap:
+        name: vela-auth-config
+  restartPolicy: Always
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vela-auth-config
+  namespace: vela-services
+data:
+  API_EXTERNAL_URL: 'http://localhost:80/auth'
+  GOTRUE_API_HOST: 0.0.0.0
+  GOTRUE_SITE_URL: 'http://localhost:80/auth'
+  GOTRUE_DB_DRIVER: postgres
+  GOTRUE_DB_DATABASE_URL: 'postgresql://supabase_auth_admin:root@database:5432/postgres'
+  GOTRUE_JWT_SECRET: 'secret'  # TODO jwt-secret
+  GOTRUE_MAILER_AUTOCONFIRM: 'true'
+  GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED: 'true'
+  init.sql: |
+    CREATE USER supabase_admin LOGIN CREATEROLE CREATEDB REPLICATION BYPASSRLS;
+
+    -- Supabase super admin
+    CREATE USER supabase_auth_admin NOINHERIT CREATEROLE LOGIN NOREPLICATION PASSWORD 'root'; -- TODO
+    CREATE SCHEMA IF NOT EXISTS auth AUTHORIZATION supabase_auth_admin;
+    GRANT CREATE ON DATABASE postgres TO supabase_auth_admin;
+    ALTER USER supabase_auth_admin SET search_path = 'auth';
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vela-auth-service
+  namespace: vela-services
+spec:
+  selector:
+    app.kubernetes.io/name: vela-auth
+  ports:
+    - name: http
+      port: 8081
+      targetPort: 8081
+      protocol: TCP
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: vela-auth-ingress
+  namespace: vela-services
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$1
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /auth/(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: vela-auth-service
+                port:
+                  number: 8081
