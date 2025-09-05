@@ -17,6 +17,19 @@ spec:
       envFrom:
         - configMapRef:
             name: vela-controller-config
+      env:
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: database
+              key: superuser-username
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: database
+              key: superuser-password
+        - name: VELA_POSTGRES_URL
+          value: 'postgresql+asyncpg://$(DB_USER):$(DB_PASSWORD)@database:5432/postgres'
       livenessProbe:
         httpGet:
           path: /health
@@ -37,8 +50,7 @@ metadata:
   name: vela-controller-config
   namespace: vela-services
 data:
-  VELA_POSTGRES_URL: 'postgresql+asyncpg://postgres:6c65-a169-493a-afb@database.stackgres:5432/postgres'
-  VELA_JWT_SECRET: 'secret'  # TODO
+  VELA_JWT_SECRET: 'secret'  # TODO jwt-secret
   VELA_ROOT_PATH: '/vela'
 ---
 apiVersion: v1
