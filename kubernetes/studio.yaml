@@ -9,7 +9,7 @@ spec:
   containers:
     - name: vela-studio
       image: simplyblock/vela-studio:latest
-      imagePullPolicy: IfNotPresent
+      imagePullPolicy: Always
       ports:
         - name: http
           containerPort: 3000
