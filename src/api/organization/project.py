@@ -4,11 +4,6 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
-from sqlalchemy.exc import IntegrityError
-
-from ...deployment import create_vela_config, delete_deployment, get_deployment_status
-from .._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
-from ...deployment import get_db_vmi_identity
 from kubernetes.client.exceptions import ApiException
 from sqlalchemy.exc import IntegrityError
 
@@ -22,7 +17,7 @@ from ...deployment import (
     get_resize_status,
     resize_deployment,
 )
-from .._util import Conflict, Forbidden, NotFound, Unauthenticated
+from .._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ..db import SessionDep
 from ..kubevirt import KubeVirtActionResponse, _call_kubevirt_subresource
 from ..models.organization import OrganizationDep

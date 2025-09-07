@@ -8,7 +8,6 @@ from sqlmodel import SQLModel
 from .db import engine
 from .organization import api as organization_api
 from .settings import settings
-from .kubevirt import api as kubevirt_api
 
 
 async def _create_db_and_tables():
