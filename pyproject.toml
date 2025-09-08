@@ -55,6 +55,7 @@ commands = [['python3', 'tests/schemathesis.py']]
 target-version = 'py313'
 line-length = 120
 src = ['src']
+exclude = ['kubernetes']
 
 [tool.ruff.lint]
 select = [
