@@ -19,7 +19,7 @@ metadata:
 spec:
   instances: 1
   postgres:
-    version: '17'  # TODO db-version
+    version: {{ .Values.postgres_version }}
   pods:
     persistentVolume:
       size: '5Gi'
