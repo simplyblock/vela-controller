@@ -116,8 +116,8 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-    - http:
-        host: {{ .Values.host }}
+    - host: {{ .Values.host }}
+      http:
         paths:
           - path: /auth/(.*)
             pathType: ImplementationSpecific
