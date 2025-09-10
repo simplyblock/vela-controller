@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     jwt_algorithms: list[str] = ["HS256", "HS512", "RS256"]
     pgmeta_crypto_key: str
     deployment_namespace_prefix: str = "vela"
+    deployment_host: str = "_"
 
 
 settings = Settings()  # type: ignore[call-arg]
