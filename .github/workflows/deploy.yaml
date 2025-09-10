@@ -1,0 +1,28 @@
+name: Test deployment
+
+on:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deployment
+    runs-on: self-hosted
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Install chart
+      run: >
+        helm
+        --install
+        --create-namespace
+        --namespace ${{ github.head_ref }}
+        ${{ github.event.repository.name }}
+        chart
