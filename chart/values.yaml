@@ -1,3 +1,5 @@
+host: _
+
 podSecurityContext: {}
 securityContext:
   allowPrivilegeEscalation: false

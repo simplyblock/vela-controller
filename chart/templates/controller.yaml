@@ -80,6 +80,7 @@ spec:
   ingressClassName: nginx
   rules:
     - http:
+        host: {{ .Values.host }}
         paths:
           - path: /vela
             pathType: Prefix

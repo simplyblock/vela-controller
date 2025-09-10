@@ -117,6 +117,7 @@ spec:
   ingressClassName: nginx
   rules:
     - http:
+        host: {{ .Values.host }}
         paths:
           - path: /auth/(.*)
             pathType: ImplementationSpecific

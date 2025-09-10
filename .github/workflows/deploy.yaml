@@ -21,9 +21,10 @@ jobs:
     - name: Install chart
       run: >
         helm install
-        --namespace ${{ github.head_ref }} --create-namespace
+        --namespace "ci-${{ github.head_ref }}" --create-namespace
         ${{ github.event.repository.name }} chart
+        --set host=${{ github.head_ref }}
 
     - name: Cleanup
       if: success() || failure()
-      run: kubectl delete namespace ${{ github.head_ref }}
+      run: kubectl delete namespace "ci-${{ github.head_ref }}"
