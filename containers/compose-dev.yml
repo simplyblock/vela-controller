@@ -34,3 +34,4 @@ services:
       interval: 5s
       retries: 3
     restart: unless-stopped
+

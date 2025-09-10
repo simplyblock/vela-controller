@@ -40,7 +40,7 @@ class Status(BaseModel):
     service: Literal['vela'] = 'vela'
 
 
-@app.get('/health')
+@app.get('/health', response_model=Status)
 def health():
     return Status()
 
