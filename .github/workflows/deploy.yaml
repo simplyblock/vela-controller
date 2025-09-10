@@ -25,6 +25,9 @@ jobs:
         ${{ github.event.repository.name }} chart
         --set host=${{ github.head_ref }}
 
+    - name: Show namespace status
+      run: kubectl -n "ci-${{ github.head_ref }}" get all
+
     - name: Cleanup
       if: success() || failure()
       run: kubectl delete namespace "ci-${{ github.head_ref }}"
