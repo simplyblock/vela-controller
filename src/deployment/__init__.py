@@ -53,10 +53,12 @@ async def create_vela_config(id_: int, parameters: DeploymentParameters):
     values_content = yaml.safe_load((chart / 'values.example.yaml').read_text())
 
     # Override defaults
+    db_secrets = values_content.setdefault('secret', {}).setdefault('db', {})
+    db_secrets['username'] = parameters.database_user
+    db_secrets['password'] = parameters.database_password
+    db_secrets['database'] = parameters.database
+
     db_spec = values_content.setdefault('db', {})
-    db_spec['username'] = parameters.database_user
-    db_spec['database'] = parameters.database
-    db_spec['password'] = parameters.database_password
     db_spec['vcpu'] = parameters.vcpu
     db_spec['ram'] = parameters.memory // (2 ** 30)
     db_spec.setdefault('persistence', {})['size'] = f'{parameters.database_size // (2 ** 30)}Gi'
