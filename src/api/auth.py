@@ -9,10 +9,10 @@ from jwt.exceptions import PyJWTError
 from pydantic import ValidationError
 from sqlmodel import select
 
+from ..settings import settings
 from .db import SessionDep
 from .models.organization import OrganizationDep
 from .models.user import JWT, User
-from .settings import settings
 
 # HTTPBearer returns 403 instead of 401. Avoid this by raising the error manually
 security = HTTPBearer(auto_error=False)

@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from urllib3.exceptions import HTTPError
 
 from .._util import check_output, dbstr
+from ..settings import settings
 from .kubernetes import KubernetesService
 
 logger = logging.getLogger(__name__)
@@ -18,7 +19,7 @@ kube_service = KubernetesService()
 
 
 def _deployment_namespace(id_: int) -> str:
-    return f"vela-deployment-{id_}"
+    return f'{settings.deployment_namespace_prefix}-deployment-{id_}'
 
 
 def _release_name(namespace: str) -> str:
