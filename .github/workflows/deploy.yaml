@@ -20,9 +20,10 @@ jobs:
 
     - name: Install chart
       run: >
-        helm
-        --install
-        --create-namespace
-        --namespace ${{ github.head_ref }}
-        ${{ github.event.repository.name }}
-        chart
+        helm install
+        --namespace ${{ github.head_ref }} --create-namespace
+        ${{ github.event.repository.name }} chart
+
+    - name: Cleanup
+      if: success() || failure()
+      run: kubectl delete namespace ${{ github.head_ref }}
