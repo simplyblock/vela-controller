@@ -81,6 +81,7 @@ async def create(
             name=parameters.name,
             database=parameters.deployment.database,
             database_user=parameters.deployment.database_user,
+            slug=parameters.name,
     )
     session.add(entity)
     try:

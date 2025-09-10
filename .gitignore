@@ -3,3 +3,4 @@
 /*.egg-info
 /.hypothesis
 __pycache__
+.vscode
