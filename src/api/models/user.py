@@ -8,6 +8,7 @@ from sqlmodel import Field as SQLField
 from sqlmodel import Relationship, SQLModel
 
 from .organization import Organization, OrganizationUserLink
+from .role import Role, RoleUserLink
 
 
 class JWT(BaseModel):
@@ -37,6 +38,7 @@ class _JWTType(TypeDecorator):
 class User(AsyncAttrs, SQLModel, table=True):
     id: UUID = SQLField(primary_key=True)
     organizations: list[Organization] = Relationship(back_populates="users", link_model=OrganizationUserLink)
+    roles: list[Role] = Relationship(back_populates="users", link_model=RoleUserLink)
     _token: JWT | None = PrivateAttr(default=None)
 
     @property
