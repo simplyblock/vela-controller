@@ -13,6 +13,7 @@ from ._util import Name, Slug, update_slug
 
 if TYPE_CHECKING:
     from .project import Project
+    from .role import Role
     from .user import User
 
 
@@ -27,6 +28,7 @@ class Organization(AsyncAttrs, SQLModel, table=True):
     name: Name
     locked: bool = False
     projects: list["Project"] = Relationship(back_populates="organization", cascade_delete=True)
+    roles: list["Role"] = Relationship(back_populates="organization", cascade_delete=True)
     users: list["User"] = Relationship(back_populates="organizations", link_model=OrganizationUserLink)
     require_mfa: bool = False
 
