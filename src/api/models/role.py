@@ -1,11 +1,14 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated
 from uuid import UUID
 
+from fastapi import Depends, HTTPException
 from sqlalchemy import BigInteger
+from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlmodel import Field, Relationship, SQLModel
+from sqlmodel import Field, Relationship, SQLModel, select
 
-from .organization import Organization
+from ..db import SessionDep
+from .organization import Organization, OrganizationDep
 
 if TYPE_CHECKING:
     from .user import User
@@ -26,3 +29,14 @@ class Role(AsyncAttrs, SQLModel, table=True):
         if self.id is None:
             raise ValueError("Model not tracked in database")
         return self.id
+
+
+async def _lookup(session: SessionDep, organization: OrganizationDep, role_id: int) -> Role:
+    try:
+        query = select(Role).where(Role.id == role_id, Role.organization_id == organization.id)
+        return (await session.exec(query)).one()
+    except NoResultFound as e:
+        raise HTTPException(404, f"Role {role_id} not found") from e
+
+
+RoleDep = Annotated[Role, Depends(_lookup)]

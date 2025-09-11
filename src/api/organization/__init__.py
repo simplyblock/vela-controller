@@ -14,6 +14,7 @@ from ..models.audit import OrganizationAuditLog
 from ..models.organization import Organization, OrganizationCreate, OrganizationDep, OrganizationUpdate
 from .member import api as member_api
 from .project import api as project_api
+from .role import api as role_api
 
 api = APIRouter(dependencies=[Depends(authenticated_user)])
 
@@ -193,4 +194,5 @@ def list_audits(
 
 instance_api.include_router(project_api, prefix="/projects")
 instance_api.include_router(member_api, prefix="/members")
+instance_api.include_router(role_api, prefix="/roles")
 api.include_router(instance_api)
