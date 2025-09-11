@@ -30,7 +30,7 @@ spec:
         - name: VELA_POSTGRES_URL
           value: 'postgresql+asyncpg://$(DB_USER):$(DB_PASSWORD)@database:5432/postgres'
         - name: VELA_DEPLOYMENT_NAMESPACE_PREFIX
-          value: {{ Release.Namespace }}
+          value: {{ .Release.Namespace }}
         - name: VELA_DEPLOYMENT_HOST
           value: {{ .Values.host }}
       livenessProbe:
