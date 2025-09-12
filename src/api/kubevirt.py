@@ -17,7 +17,7 @@ def _ensure_kubeconfig():
             ) from e
 
 
-def _call_kubevirt_subresource(namespace: str, name: str, action: Literal['pause', 'resume']):
+def call_kubevirt_subresource(namespace: str, name: str, action: Literal['pause', 'resume']):
     _ensure_kubeconfig()
     api_client = client.ApiClient()
     path = f"/apis/subresources.kubevirt.io/v1/namespaces/{namespace}/virtualmachineinstances/{name}/{action}"
