@@ -17,8 +17,8 @@ if TYPE_CHECKING:
 
 
 class OrganizationUserLink(AsyncAttrs, SQLModel, table=True):
-    organization_id: int | None = Field(default=None, foreign_key='organization.id', primary_key=True)
-    user_id: UUID = Field(foreign_key='user.id', primary_key=True)
+    organization_id: int | None = Field(default=None, foreign_key="organization.id", primary_key=True)
+    user_id: UUID = Field(foreign_key="user.id", primary_key=True)
 
 
 class Organization(AsyncAttrs, SQLModel, table=True):
@@ -26,13 +26,13 @@ class Organization(AsyncAttrs, SQLModel, table=True):
     slug: Slug = Field(unique=True)
     name: Name
     locked: bool = False
-    projects: list['Project'] = Relationship(back_populates='organization', cascade_delete=True)
-    users: list['User'] = Relationship(back_populates='organizations', link_model=OrganizationUserLink)
+    projects: list["Project"] = Relationship(back_populates="organization", cascade_delete=True)
+    users: list["User"] = Relationship(back_populates="organizations", link_model=OrganizationUserLink)
     require_mfa: bool = False
 
 
-event.listen(Organization, 'before_insert', update_slug)
-event.listen(Organization, 'before_update', update_slug)
+event.listen(Organization, "before_insert", update_slug)
+event.listen(Organization, "before_update", update_slug)
 
 
 class OrganizationCreate(BaseModel):
@@ -51,7 +51,7 @@ async def _lookup(session: SessionDep, organization_slug: Slug) -> Organization:
     try:
         return (await session.exec(select(Organization).where(Organization.slug == organization_slug))).one()
     except NoResultFound as e:
-        raise HTTPException(404, f'Organization {organization_slug} not found') from e
+        raise HTTPException(404, f"Organization {organization_slug} not found") from e
 
 
 OrganizationDep = Annotated[Organization, Depends(_lookup)]

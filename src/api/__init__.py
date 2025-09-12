@@ -12,6 +12,7 @@ from .settings import settings
 
 async def _create_db_and_tables():
     from . import models  # Ensure models are registered # noqa
+
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
 
@@ -37,16 +38,16 @@ async def on_startup():
 
 
 class Status(BaseModel):
-    service: Literal['vela'] = 'vela'
+    service: Literal["vela"] = "vela"
 
 
-@app.get('/health', response_model=Status)
+@app.get("/health", response_model=Status)
 def health():
     return Status()
 
 
-app.include_router(organization_api, prefix='/organizations')
+app.include_router(organization_api, prefix="/organizations")
 _use_route_names_as_operation_ids(app)
 
 
-__all__ = ['app']
+__all__ = ["app"]

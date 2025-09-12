@@ -6,6 +6,7 @@ from kubernetes import client, config
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 class KubernetesService:
     def __init__(self):
         try:
@@ -34,14 +35,6 @@ class KubernetesService:
         - urllib3.exceptions.HTTPError on failed access to the kubernetes API
         - kubernetes.client.rest.ApiException on API failure
         """
-        if namespace not in {
-                namespace.metadata.name
-                for namespace
-                in self.core_v1.list_namespace().items
-        }:
-            raise KeyError(f'Namespace {namespace} not found')
-        return {
-            pod.metadata.name: pod.status.phase
-            for pod
-            in self.core_v1.list_namespaced_pod(namespace).items
-        }
+        if namespace not in {namespace.metadata.name for namespace in self.core_v1.list_namespace().items}:
+            raise KeyError(f"Namespace {namespace} not found")
+        return {pod.metadata.name: pod.status.phase for pod in self.core_v1.list_namespaced_pod(namespace).items}

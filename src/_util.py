@@ -16,16 +16,16 @@ def single(xs):
     try:
         x = next(it)
     except StopIteration:
-        raise ValueError('No values present') from None
+        raise ValueError("No values present") from None
 
     try:
         next(it)
-        raise ValueError('Multiple values present')
+        raise ValueError("Multiple values present")
     except StopIteration:
         return x
 
 
-dbstr = Annotated[str, Field(pattern=r'^[^\x00]*$')]
+dbstr = Annotated[str, Field(pattern=r"^[^\x00]*$")]
 
 
 async def check_output(cmd: list[str], *, stderr=None, text: bool = False, timeout: float | None = None):
@@ -39,9 +39,10 @@ async def check_output(cmd: list[str], *, stderr=None, text: bool = False, timeo
 
     if returncode != 0:
         raise subprocess.CalledProcessError(
-                returncode, cmd,
-                output=stdout,
-                stderr=stderr,
+            returncode,
+            cmd,
+            output=stdout,
+            stderr=stderr,
         )
 
     return stdout
