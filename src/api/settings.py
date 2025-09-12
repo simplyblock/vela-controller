@@ -7,7 +7,9 @@ class Settings(BaseSettings):
 
     jwt_secret: str
     postgres_url: PostgresDsn
-    root_path: str = ""
+    root_path: str = ''
+    cors_origins: str = '' # comma-separated list from env
+    
 
 
 settings = Settings()  # type: ignore[call-arg]

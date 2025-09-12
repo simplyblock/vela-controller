@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.routing import APIRoute
 from pydantic import BaseModel
 from sqlmodel import SQLModel
+from fastapi.middleware.cors import CORSMiddleware
 
 from .db import engine
 from .organization import api as organization_api
@@ -30,6 +31,18 @@ def _use_route_names_as_operation_ids(app: FastAPI) -> None:
 
 
 app = FastAPI(root_path=settings.root_path)
+
+# Get origins from settings, fallback to defaults if empty
+origins = [origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+)
 
 
 @app.on_event("startup")
