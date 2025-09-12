@@ -32,7 +32,7 @@ def _use_route_names_as_operation_ids(app: FastAPI) -> None:
 
 app = FastAPI(root_path=settings.root_path)
 
-# Get origins from settings, fallback to defaults if empty
+# Get origins from settings
 origins = [origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()]
 
 app.add_middleware(
