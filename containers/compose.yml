@@ -23,7 +23,7 @@ services:
       VELA_ROOT_PATH: '/vela'
       VELA_JWT_SECRET: 'secret'
       VELA_POSTGRES_URL: 'postgresql+asyncpg://postgres:vela@database:5432/vela'
-      VELA_CORS_ORIGINS: 'http://localhost:3000'
+      VELA_CORS_ORIGINS: '["http://localhost:3000"]'
     depends_on:
       database:
         condition: service_healthy
