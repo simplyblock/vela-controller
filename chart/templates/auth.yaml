@@ -116,8 +116,7 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-    - host: {{ .Values.host }}
-      http:
+    - http:
         paths:
           - path: /auth/(.*)
             pathType: ImplementationSpecific
@@ -126,3 +125,4 @@ spec:
                 name: vela-auth-service
                 port:
                   number: 8081
+      {{ if .Values.host }}host: {{ .Values.host }}{{ end }}
