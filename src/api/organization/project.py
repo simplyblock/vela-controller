@@ -15,7 +15,7 @@ from ...deployment import (
 )
 from .._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ..db import SessionDep
-from ..kubevirt import _call_kubevirt_subresource
+from ..kubevirt import call_kubevirt_subresource
 from ..models.organization import OrganizationDep
 from ..models.project import Project, ProjectCreate, ProjectDep, ProjectPublic, ProjectUpdate
 
@@ -181,7 +181,7 @@ async def delete(session: SessionDep, _organization: OrganizationDep, project: P
 async def pause(_organization: OrganizationDep, project: ProjectDep):
     namespace, vmi_name = get_db_vmi_identity(project.dbid())
     try:
-        _call_kubevirt_subresource(namespace, vmi_name, 'pause')
+        call_kubevirt_subresource(namespace, vmi_name, 'pause')
         return Response(status_code=204)
     except ApiException as e:
         status = 404 if e.status == 404 else 400
@@ -196,7 +196,7 @@ async def pause(_organization: OrganizationDep, project: ProjectDep):
 async def resume(_organization: OrganizationDep, project: ProjectDep):
     namespace, vmi_name = get_db_vmi_identity(project.dbid())
     try:
-        _call_kubevirt_subresource(namespace, vmi_name, 'resume')
+        call_kubevirt_subresource(namespace, vmi_name, 'resume')
         return Response(status_code=204)
     except ApiException as e:
         status = 404 if e.status == 404 else 400
