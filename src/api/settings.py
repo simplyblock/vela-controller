@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     postgres_url: PostgresDsn
     root_path: str = ''
     cors_origins: str = '' # comma-separated list from env
-    
+
 
 
 settings = Settings()  # type: ignore[call-arg]

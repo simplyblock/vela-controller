@@ -1,10 +1,10 @@
 from typing import Literal
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
 from pydantic import BaseModel
 from sqlmodel import SQLModel
-from fastapi.middleware.cors import CORSMiddleware
 
 from .db import engine
 from .organization import api as organization_api
