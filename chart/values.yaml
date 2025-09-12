@@ -1,4 +1,4 @@
-postgres_version: 17
+postgresVersion: 17
 
 podSecurityContext: {}
 securityContext:

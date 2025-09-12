@@ -34,7 +34,7 @@ spec:
       {{- end }}
   initContainers:
     - name: init-vela-auth
-      image: postgres:{{ .Values.postgres_version }}
+      image: postgres:{{ .Values.postgresVersion }}
       command: ['psql']
       args: ['-f', '/etc/init.sql']
       volumeMounts:
