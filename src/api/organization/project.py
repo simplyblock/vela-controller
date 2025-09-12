@@ -32,7 +32,6 @@ def _public(project: Project) -> ProjectPublic:
 
 @api.get(
         '/', name='organizations:projects:list',
-        response_model=Sequence[ProjectPublic],
         responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def list_(session: SessionDep, organization: OrganizationDep) -> Sequence[ProjectPublic]:
@@ -111,7 +110,6 @@ instance_api = APIRouter(prefix='/{project_slug}')
 
 @instance_api.get(
         '/', name='organizations:projects:detail',
-        response_model=ProjectPublic,
         responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def detail(_organization: OrganizationDep, project: ProjectDep) -> ProjectPublic:
