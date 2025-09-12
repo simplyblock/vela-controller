@@ -163,7 +163,7 @@ async def delete(session: SessionDep, organization: OrganizationDep):
 
 
 @instance_api.get(
-        '/audit', status_code=200,
+        '/audit', name='organizations:audits:list', status_code=200,
         response_model=OrganizationAuditLog,
         responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
