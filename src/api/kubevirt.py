@@ -17,16 +17,16 @@ def _ensure_kubeconfig():
             ) from e
 
 
-def call_kubevirt_subresource(namespace: str, name: str, action: Literal['pause', 'resume']):
+def call_kubevirt_subresource(namespace: str, name: str, action: Literal["pause", "resume"]):
     _ensure_kubeconfig()
     api_client = client.ApiClient()
     path = f"/apis/subresources.kubevirt.io/v1/namespaces/{namespace}/virtualmachineinstances/{name}/{action}"
     # KubeVirt subresources accept POST with empty body
     return api_client.call_api(
         path,
-        'POST',
+        "POST",
         response_type=None,
-        auth_settings=['BearerToken'],
+        auth_settings=["BearerToken"],
         body={},
         _preload_content=False,
     )

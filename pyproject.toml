@@ -26,7 +26,7 @@ packages = ['simplyblock.vela']
 
 [tool.tox]
 requires = ['tox']
-env_list = ['lint', 'type-check', 'test']
+env_list = ['lint', 'type-check', 'format-check', 'test']
 
 [tool.tox.env.lint]
 description = 'Run linter'
@@ -38,6 +38,11 @@ description = 'Run type checks'
 deps = ['mypy']
 commands = [['mypy', '--python-executable=python', 'src']]
 
+[tool.tox.env.format-check]
+description = 'Check code format'
+deps = ['ruff']
+commands = [['ruff', 'format', '--check']]
+
 [tool.tox.env.test]
 description = 'Run API tests'
 deps = ['schemathesis', 'httpx', 'testcontainers[postgres]']
@@ -47,6 +52,7 @@ commands = [['python3', 'tests/schemathesis.py']]
 [tool.ruff]
 target-version = 'py313'
 line-length = 120
+src = ['src']
 
 [tool.ruff.lint]
 select = [
@@ -67,7 +73,7 @@ select = [
     'TCH',
     'FBT',
     'A',
-    'COM',
+    'COM818',
     'C90',
     'BLE001',
 ]
