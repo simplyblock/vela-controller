@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     jwt_secret: str
     postgres_url: PostgresDsn
     root_path: str = ""
+    cors_origins: list[str] = []
 
 
 settings = Settings()  # type: ignore[call-arg]
