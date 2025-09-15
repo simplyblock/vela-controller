@@ -26,7 +26,7 @@ async def authenticated_user(
         )
 
     try:
-        raw_token = jwt.decode(credentials.credentials, settings.jwt_secret, algorithms=["HS256"])
+        raw_token = jwt.decode(credentials.credentials, settings.jwt_secret, algorithms=settings.jwt_algorithms)
         token = JWT.model_validate(raw_token)
     except (jwt.exceptions.PyJWTError, ValidationError) as e:
         raise HTTPException(401, str(e)) from e
