@@ -93,7 +93,7 @@ async def create(
     )
 
 
-async def check_user_access(user: AuthUserDep, organization: OrganizationDep):
+async def _check_user_access(user: AuthUserDep, organization: OrganizationDep):
     if organization.require_mfa and not user.token.mfa():
         raise HTTPException(401, detail="This operation requires multi-factor authentication")
 
@@ -103,7 +103,7 @@ async def check_user_access(user: AuthUserDep, organization: OrganizationDep):
 
 instance_api = APIRouter(
     prefix="/{organization_slug}",
-    dependencies=[Depends(check_user_access)],
+    dependencies=[Depends(_check_user_access)],
 )
 
 
@@ -186,6 +186,7 @@ def list_audits(
     _to: Annotated[datetime, Query(alias="to")],
 ) -> OrganizationAuditLog:
     return OrganizationAuditLog(result=[], retention_period=0)
+
 
 instance_api.include_router(project_api, prefix="/projects")
 instance_api.include_router(member_api, prefix="/members")

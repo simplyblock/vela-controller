@@ -1,17 +1,17 @@
 from collections.abc import Sequence
-from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, Response
 from fastapi.responses import JSONResponse
 from sqlmodel import select
 
 from ..._util import Forbidden, NotFound, Unauthenticated
-from ...auth import authenticated_user, UserDep, MemberDep
+from ...auth import MemberDep, UserDep, authenticated_user
 from ...db import SessionDep
 from ...models.organization import OrganizationDep
 from ...models.user import User, UserPublic, UserRequest
 
 api = APIRouter(dependencies=[Depends(authenticated_user)])
+
 
 @api.get(
     "/",
@@ -23,11 +23,7 @@ async def list_users(organization: OrganizationDep) -> Sequence[UserPublic]:
     return await organization.awaitable_attrs.users
 
 
-@api.post(
-    "/",
-    name="organizations:members:add",
-    status_code=201
-)
+@api.post("/", name="organizations:members:add", status_code=201)
 async def add_member(
     session: SessionDep,
     organization: OrganizationDep,
@@ -52,15 +48,13 @@ async def add_member(
     org_users.append(user_ent)
     await session.commit()
 
-    return JSONResponse(
-        status_code=201,
-        content=None
-    )
+    return JSONResponse(status_code=201, content=None)
 
 
 @api.put(
     "/{user_id}",
-    name="organizations:members:update", status_code=204,
+    name="organizations:members:update",
+    status_code=204,
 )
 async def update_member():
     # no op
@@ -75,12 +69,7 @@ async def update_member():
     name="organizations:members:remove",
     status_code=204,
 )
-async def remove_member(
-    session: SessionDep,
-    organization: OrganizationDep,
-    user: UserDep,
-    _: MemberDep
-):
+async def remove_member(session: SessionDep, organization: OrganizationDep, user: UserDep, _: MemberDep):
     # Remove user from organization
     org_users = await organization.awaitable_attrs.users
     org_users.remove(user)
