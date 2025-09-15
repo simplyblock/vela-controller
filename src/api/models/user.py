@@ -36,7 +36,6 @@ class _JWTType(TypeDecorator):
 
 class User(AsyncAttrs, SQLModel, table=True):
     id: UUID = SQLField(primary_key=True)
-    name: str = SQLField(max_length=100, unique=True)
     organizations: list[Organization] = Relationship(back_populates="users", link_model=OrganizationUserLink)
     _token: JWT | None = PrivateAttr(default=None)
 
@@ -53,8 +52,7 @@ class User(AsyncAttrs, SQLModel, table=True):
 
 class UserPublic(BaseModel):
     id: UUID
-    name: str
 
 
 class UserRequest(BaseModel):
-    name: str
+    id: UUID

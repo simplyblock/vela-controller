@@ -38,4 +38,4 @@ async def authenticated_user(
     return user
 
 
-UserDep = Annotated[User, Depends(authenticated_user)]
+AuthUserDep = Annotated[User, Depends(authenticated_user)]
