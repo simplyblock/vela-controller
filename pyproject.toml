@@ -17,6 +17,7 @@ dependencies = [
     'pyyaml',
     'email-validator',  # pydantic.EmailStr
     'python-slugify',
+    'cryptography',  # JWT algorithms
 ]
 
 [tool.setuptools]
