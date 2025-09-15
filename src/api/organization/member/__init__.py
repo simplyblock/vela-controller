@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from sqlmodel import select
 
 from ..._util import Forbidden, NotFound, Unauthenticated
-from ...auth import authenticated_user
+from ...auth import authenticated_user, UserDep, MemberDep
 from ...db import SessionDep
 from ...models.organization import OrganizationDep
 from ...models.user import User, UserPublic, UserRequest
@@ -58,7 +58,6 @@ async def add_member(
     )
 
 
-
 @api.put(
     "/{user_id}",
     name="organizations:members:update", status_code=204,
@@ -79,21 +78,11 @@ async def update_member():
 async def remove_member(
     session: SessionDep,
     organization: OrganizationDep,
-    user_id: UUID,
+    user: UserDep,
+    _: MemberDep
 ):
-    # Check if target user exists
-    user = await session.get(User, user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    # Check if user is a member
-    org_users = await organization.awaitable_attrs.users
-    if user not in org_users:
-        raise HTTPException(status_code=404, detail="User is not a member of this organization")
-
     # Remove user from organization
+    org_users = await organization.awaitable_attrs.users
     org_users.remove(user)
-
     await session.commit()
-
     return Response(status_code=204)

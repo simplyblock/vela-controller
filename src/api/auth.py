@@ -1,4 +1,5 @@
 from typing import Annotated
+from uuid import UUID
 
 import jwt
 from fastapi import Depends, HTTPException
@@ -8,6 +9,7 @@ from sqlmodel import select
 
 from .db import SessionDep
 from .models.user import JWT, User
+from .models.organization import OrganizationDep
 from .settings import settings
 
 # HTTPBearer returns 403 instead of 401. Avoid this by raising the error manually
@@ -39,3 +41,22 @@ async def authenticated_user(
 
 
 AuthUserDep = Annotated[User, Depends(authenticated_user)]
+
+async def _userdep_lookup(session: SessionDep, user_id: UUID) -> User:
+    query = select(User).where(User.id == user_id)
+    user = (await session.exec(query)).one_or_none()
+    if user is None:
+        raise HTTPException(404, f"User {user_id} not found")
+    return user
+
+
+UserDep = Annotated[User, Depends(_userdep_lookup)]
+
+
+async def _memberdep_lookup(organization: OrganizationDep, user: UserDep) -> User:
+    if user not in await organization.awaitable_attrs.users:
+        raise HTTPException(404, "User is not a member of this organization")
+    return user
+
+
+MemberDep = Annotated[User, Depends(_memberdep_lookup)]
