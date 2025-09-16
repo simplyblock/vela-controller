@@ -23,7 +23,12 @@ async def list_users(organization: OrganizationDep) -> Sequence[UserPublic]:
     return await organization.awaitable_attrs.users
 
 
-@api.post("/", name="organizations:members:add", status_code=201)
+@api.post(
+    "/",
+    name="organizations:members:add",
+    status_code=201,
+    responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
+)
 async def add_member(
     session: SessionDep,
     organization: OrganizationDep,
@@ -55,6 +60,7 @@ async def add_member(
     "/{user_id}",
     name="organizations:members:update",
     status_code=204,
+    responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def update_member():
     # no op
@@ -68,6 +74,7 @@ async def update_member():
     "/{user_id}",
     name="organizations:members:remove",
     status_code=204,
+    responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def remove_member(session: SessionDep, organization: OrganizationDep, user: UserDep, _: MemberDep):
     # Remove user from organization
