@@ -8,11 +8,11 @@ from sqlalchemy.exc import IntegrityError
 
 from ...deployment import delete_deployment
 from .._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
-from ..auth import UserDep, authenticated_user
+from ..auth import AuthUserDep, authenticated_user
 from ..db import SessionDep
 from ..models.audit import OrganizationAuditLog
 from ..models.organization import Organization, OrganizationCreate, OrganizationDep, OrganizationUpdate
-from ..models.user import UserPublic
+from .member import api as member_api
 from .project import api as project_api
 
 api = APIRouter(dependencies=[Depends(authenticated_user)])
@@ -23,7 +23,7 @@ api = APIRouter(dependencies=[Depends(authenticated_user)])
     name="organizations:list",
     responses={401: Unauthenticated},
 )
-async def list_(user: UserDep) -> Sequence[Organization]:
+async def list_(user: AuthUserDep) -> Sequence[Organization]:
     return await user.awaitable_attrs.organizations
 
 
@@ -75,7 +75,7 @@ async def create(
     session: SessionDep,
     request: Request,
     parameters: OrganizationCreate,
-    user: UserDep,
+    user: AuthUserDep,
     response: Literal["empty", "full"] = "empty",
 ) -> JSONResponse:
     entity = Organization(**parameters.model_dump(), users=[user])
@@ -93,7 +93,7 @@ async def create(
     )
 
 
-async def _check_user_access(user: UserDep, organization: OrganizationDep):
+async def _check_user_access(user: AuthUserDep, organization: OrganizationDep):
     if organization.require_mfa and not user.token.mfa():
         raise HTTPException(401, detail="This operation requires multi-factor authentication")
 
@@ -188,17 +188,6 @@ def list_audits(
     return OrganizationAuditLog(result=[], retention_period=0)
 
 
-@instance_api.get(
-    "/members",
-    name="organizations:members:list",
-    status_code=200,
-    responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
-)
-async def list_users(organization: OrganizationDep) -> Sequence[UserPublic]:
-    return await organization.awaitable_attrs.users
-
-
 instance_api.include_router(project_api, prefix="/projects")
-
-
+instance_api.include_router(member_api, prefix="/members")
 api.include_router(instance_api)

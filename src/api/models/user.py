@@ -52,3 +52,7 @@ class User(AsyncAttrs, SQLModel, table=True):
 
 class UserPublic(BaseModel):
     id: UUID
+
+
+class UserRequest(BaseModel):
+    id: UUID
