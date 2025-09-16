@@ -62,7 +62,7 @@ async def add_member(
     status_code=204,
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
-async def update_member():
+async def update_member(user: UserDep):
     # no op
     return JSONResponse(
         status_code=204,
