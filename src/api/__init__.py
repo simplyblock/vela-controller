@@ -30,7 +30,10 @@ def _use_route_names_as_operation_ids(app: FastAPI) -> None:
             route.operation_id = route.name
 
 
-app = FastAPI(root_path=settings.root_path)
+app = FastAPI(
+    title="Vela API",
+    root_path=settings.root_path
+)
 
 app.add_middleware(
     CORSMiddleware,
