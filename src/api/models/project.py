@@ -35,8 +35,8 @@ class Project(AsyncAttrs, SQLModel, table=True):
         return self.organization_id
 
 
-event.listens_for(Project, "before_insert", update_slug)
-event.listens_for(Project, "before_update", update_slug)
+event.listen(Project, "before_insert", update_slug)
+event.listen(Project, "before_update", update_slug)
 
 
 class ProjectCreate(BaseModel):
