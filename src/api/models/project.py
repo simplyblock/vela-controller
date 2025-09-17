@@ -51,6 +51,7 @@ class ProjectUpdate(BaseModel):
 class ProjectPublic(BaseModel):
     organization_id: int
     id: int
+    slug: Slug
     name: Name
     status: str
     deployment_status: tuple[str, dict[str, str]]

@@ -27,6 +27,7 @@ def _public(project: Project) -> ProjectPublic:
     return ProjectPublic(
         organization_id=project.db_org_id(),
         id=project.dbid(),
+        slug=project.slug,
         name=project.name,
         status=status.status,
         deployment_status=(status.message, status.pods),
