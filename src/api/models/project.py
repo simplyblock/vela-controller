@@ -21,6 +21,7 @@ class Project(AsyncAttrs, SQLModel, table=True):
     organization: Organization | None = Relationship(back_populates="projects")
     database: str
     database_user: str
+    database_password: str
 
     __table_args__ = (UniqueConstraint("organization_id", "slug", name="unique_project_slug"),)
 
@@ -54,6 +55,8 @@ class ProjectPublic(BaseModel):
     name: Name
     status: str
     deployment_status: tuple[str, dict[str, str]]
+    database_user: str
+    encrypted_database_connection_string: str
 
 
 async def _lookup(session: SessionDep, organization: OrganizationDep, project_slug: Slug) -> Project:

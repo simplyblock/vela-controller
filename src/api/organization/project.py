@@ -1,7 +1,11 @@
 import asyncio
+import base64
 from collections.abc import Sequence
 from typing import Literal
 
+from Crypto.Cipher import AES
+from Crypto.Hash import MD5
+from Crypto.Random import get_random_bytes
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from kubernetes.client.exceptions import ApiException
@@ -18,18 +22,46 @@ from ..db import SessionDep
 from ..kubevirt import call_kubevirt_subresource
 from ..models.organization import OrganizationDep
 from ..models.project import Project, ProjectCreate, ProjectDep, ProjectPublic, ProjectUpdate
+from ..settings import settings
 
 api = APIRouter()
 
 
+def _evp_bytes_to_key(passphrase, salt) -> tuple[bytes, bytes]:
+    d = d_i = b""
+    while len(d) < 48:  # 32 bytes key + 16 bytes IV
+        d_i = MD5.new(d_i + passphrase.encode("utf-8") + salt).digest()
+        d += d_i
+
+    return d[:32], d[32:48]
+
+
+def _encrypt(plaintext, passphrase) -> str:
+    salt = get_random_bytes(8)
+    key, iv = _evp_bytes_to_key(passphrase, salt)
+    cipher = AES.new(key, AES.MODE_CBC, iv)
+    encoded = plaintext.encode("utf-8")
+    padded = encoded + bytes([16 - len(encoded) % 16]) * (16 - len(encoded) % 16)
+    return base64.b64encode(b"Salted__" + salt + cipher.encrypt(padded)).decode("utf-8")
+
+
 def _public(project: Project) -> ProjectPublic:
     status = get_deployment_status(project.dbid())
+    connection_string = "postgresql://{user}:{password}@{host}:{port}/{database}".format(  # noqa: UP032
+        user=project.database_user,
+        password=project.database_password,
+        host="",  # FIXME Determine based on deployment
+        port=5432,
+        database=project.database,
+    )
     return ProjectPublic(
         organization_id=project.db_org_id(),
         id=project.dbid(),
         name=project.name,
         status=status.status,
         deployment_status=(status.message, status.pods),
+        database_user=project.database_user,
+        encrypted_database_connection_string=_encrypt(connection_string, settings.pgmeta_crypto_key),
     )
 
 
@@ -93,6 +125,7 @@ async def create(
         name=parameters.name,
         database=parameters.deployment.database,
         database_user=parameters.deployment.database_user,
+        database_password=parameters.deployment.database_user,
     )
     session.add(entity)
     try:
