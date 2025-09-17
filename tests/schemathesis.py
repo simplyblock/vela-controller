@@ -64,6 +64,7 @@ async def main():
 
         os.environ["VELA_POSTGRES_URL"] = postgres.get_connection_url()
         os.environ["VELA_JWT_SECRET"] = jwt_secret
+        os.environ["VELA_PGMETA_CRYPTO_KEY"] = "secret"
 
         from simplyblock.vela.api import app
         from simplyblock.vela.deployment import DeploymentStatus

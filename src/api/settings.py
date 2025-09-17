@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     root_path: str = ""
     cors_origins: list[str] = []
     jwt_algorithms: list[str] = ["HS256", "HS512", "RS256"]
+    pgmeta_crypto_key: str
 
 
 settings = Settings()  # type: ignore[call-arg]
