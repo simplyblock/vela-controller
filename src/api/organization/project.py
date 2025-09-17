@@ -98,6 +98,9 @@ async def create(
     try:
         await session.commit()
     except IntegrityError as e:
+        error = str(e)
+        if ("asyncpg.exceptions.UniqueViolationError" not in error) or ("unique_project_slug" not in error):
+            raise
         raise HTTPException(409, f"Organization already has project named {parameters.name}") from e
     await session.refresh(entity)
     asyncio.create_task(create_vela_config(entity.dbid(), parameters.deployment))

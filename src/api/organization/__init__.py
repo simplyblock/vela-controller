@@ -83,6 +83,9 @@ async def create(
     try:
         await session.commit()
     except IntegrityError as e:
+        error = str(e)
+        if ("asyncpg.exceptions.UniqueViolationError" not in error) or ("organization_slug_key" not in error):
+            raise
         raise HTTPException(409, f"Organization {parameters.name} already exists") from e
     await session.refresh(entity)
     entity_url = url_path_for(request, "organizations:detail", organization_slug=entity.slug)
