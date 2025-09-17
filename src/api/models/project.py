@@ -15,14 +15,14 @@ from .organization import Organization, OrganizationDep
 
 class Project(AsyncAttrs, SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True, sa_type=BigInteger)
-    slug: Slug
+    project_slug: Slug
     name: Name
     organization_id: int | None = Field(default=None, foreign_key="organization.id")
     organization: Organization | None = Relationship(back_populates="projects")
     database: str
     database_user: str
 
-    __table_args__ = (UniqueConstraint("organization_id", "slug", name="unique_project_slug"),)
+    __table_args__ = (UniqueConstraint("organization_id", "project_slug", name="unique_project_slug"),)
 
     def dbid(self) -> int:
         if self.id is None:
