@@ -107,7 +107,7 @@ async def create(
         request,
         "organizations:projects:detail",
         organization_slug=organization.id,
-        project_slug=entity.slug,
+        project_slug=entity.project_slug,
     )
     return JSONResponse(
         content=_public(entity).model_dump() if response == "full" else None,

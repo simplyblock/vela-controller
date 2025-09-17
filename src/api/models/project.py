@@ -58,7 +58,7 @@ class ProjectPublic(BaseModel):
 
 async def _lookup(session: SessionDep, organization: OrganizationDep, project_slug: Slug) -> Project:
     try:
-        query = select(Project).where(Project.organization_id == organization.id, Project.slug == project_slug)
+        query = select(Project).where(Project.organization_id == organization.id, Project.project_slug == project_slug)
         return (await session.exec(query)).one()
     except NoResultFound as e:
         raise HTTPException(404, f"Project {project_slug} not found") from e
