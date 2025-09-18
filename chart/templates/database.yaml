@@ -79,7 +79,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: wait-for-sgcluster
-          image: bitnami/kubectl:latest
+          image: registry.suse.com/suse/kubectl:latest
           env:
             - name: NAMESPACE
               valueFrom:

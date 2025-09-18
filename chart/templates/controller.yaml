@@ -62,6 +62,7 @@ metadata:
 data:
   VELA_JWT_SECRET: 'secret'  # TODO jwt-secret
   VELA_ROOT_PATH: '/vela'
+  VELA_PGMETA_CRYPTO_KEY: 'secret'
 ---
 apiVersion: v1
 kind: Service
