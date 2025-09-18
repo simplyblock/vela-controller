@@ -1,9 +1,11 @@
+import re
 from typing import Annotated
 from uuid import UUID
 
-import jwt
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jwt import PyJWK, PyJWKClient, decode
+from jwt.exceptions import PyJWTError
 from pydantic import ValidationError
 from sqlmodel import select
 
@@ -14,6 +16,21 @@ from .settings import settings
 
 # HTTPBearer returns 403 instead of 401. Avoid this by raising the error manually
 security = HTTPBearer(auto_error=False)
+
+
+# This is simplistic but will do for now
+_HTTP_URL_PATTERN = re.compile(r"^https?://")
+
+
+def _decode(token: str):
+    key: PyJWK | str
+    if re.match(_HTTP_URL_PATTERN, settings.jwt_secret):
+        jwks_client = PyJWKClient(settings.jwt_secret)
+        key = jwks_client.get_signing_key_from_jwt(token)
+    else:
+        key = settings.jwt_secret
+
+    return decode(token, key, algorithms=settings.jwt_algorithms)
 
 
 async def authenticated_user(
@@ -28,9 +45,9 @@ async def authenticated_user(
         )
 
     try:
-        raw_token = jwt.decode(credentials.credentials, settings.jwt_secret, algorithms=settings.jwt_algorithms)
+        raw_token = _decode(credentials.credentials)
         token = JWT.model_validate(raw_token)
-    except (jwt.exceptions.PyJWTError, ValidationError) as e:
+    except (PyJWTError, ValidationError) as e:
         raise HTTPException(401, str(e)) from e
 
     query = select(User).where(User.id == token.sub)

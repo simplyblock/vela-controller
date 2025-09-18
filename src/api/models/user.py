@@ -17,7 +17,7 @@ class JWT(BaseModel):
         int,
         Field(ge=1, le=3),
         BeforeValidator(lambda s: int(s.removeprefix("aal"))),
-    ]
+    ] = 1
 
     def mfa(self) -> bool:
         return self.aal >= 2
