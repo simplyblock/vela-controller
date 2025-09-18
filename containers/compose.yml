@@ -24,6 +24,7 @@ services:
       VELA_JWT_SECRET: 'secret'
       VELA_POSTGRES_URL: 'postgresql+asyncpg://postgres:vela@database:5432/vela'
       VELA_CORS_ORIGINS: '["http://localhost:3000"]'
+      VELA_PGMETA_CRYPTO_KEY: 'secret'
     depends_on:
       database:
         condition: service_healthy

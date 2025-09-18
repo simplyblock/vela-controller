@@ -10,6 +10,7 @@ services:
       VELA_POSTGRES_URL: 'postgresql+asyncpg://postgres:vela@database:5432/vela'
       VELA_JWT_SECRET: 'secret'
       VELA_CORS_ORIGINS: '["http://localhost:3000"]'
+      VELA_PGMETA_CRYPTO_KEY: 'secret'
     ports:
       - 8000:8000
     command: 'bash -c "python -m venv /tmp/venv && source /tmp/venv/bin/activate && pip install -e . && uvicorn --host 0.0.0.0 --reload simplyblock.vela.api:app"'
