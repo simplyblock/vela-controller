@@ -21,7 +21,7 @@ services:
       - ~/.kube/config:/root/.kube/config:ro
     environment:
       VELA_ROOT_PATH: '/vela'
-      VELA_JWT_SECRET: 'secret'
+      VELA_JWT_SECRET: 'http://auth:8080/auth/realms/vela/protocol/openid-connect/certs'
       VELA_POSTGRES_URL: 'postgresql+asyncpg://postgres:vela@database:5432/vela'
       VELA_CORS_ORIGINS: '["http://localhost:3000"]'
       VELA_PGMETA_CRYPTO_KEY: 'secret'
@@ -37,28 +37,6 @@ services:
 
 
   auth:
-    image: supabase/gotrue:v2.177.0
-    environment:
-      API_EXTERNAL_URL: 'http://localhost:8081/'
-      GOTRUE_API_HOST: 0.0.0.0
-      GOTRUE_SITE_URL: 'http://localhost:8081/'
-
-      GOTRUE_DB_DRIVER: postgres
-      GOTRUE_DB_DATABASE_URL: 'postgresql://supabase_auth_admin:root@database:5432/vela'
-
-      GOTRUE_JWT_SECRET: 'secret'
-    depends_on:
-      database:
-        condition: service_healthy
-    healthcheck:
-      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost:8081/health']
-      timeout: 5s
-      interval: 5s
-      retries: 3
-    restart: unless-stopped
-
-
-  auth:
     image: quay.io/keycloak/keycloak:latest
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
@@ -67,12 +45,15 @@ services:
       KC_DB_URL: jdbc:postgresql://database:5432/keycloak
       KC_DB_USERNAME: keycloak
       KC_DB_PASSWORD: keycloak
+      KC_PROXY: edge
+      KC_HOSTNAME: http://localhost:8000/auth
+      KC_HTTP_RELATIVE_PATH: /auth
       KC_HEALTH_ENABLED: 'true'
-    ports:
-      - "8080:8080"
-    command: start-dev
+    command: start-dev --import-realm --verbose
+    volumes:
+    - ./realm.json:/opt/keycloak/data/import/vela-realm.json:ro
     healthcheck:
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080 && echo -e 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 && cat <&3 | grep -q '200 OK'"]
+      test: ["CMD-SHELL", "timeout 10 bash -c '</dev/tcp/localhost/8080' || exit 1"]  # This should do a proper request, but the container doesn't ship curl, wget, or telnet and using bash builtins is nasty
       interval: 30s
       timeout: 10s
       retries: 5
