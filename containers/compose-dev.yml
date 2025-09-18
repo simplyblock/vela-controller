@@ -29,8 +29,33 @@ services:
     environment:
       POSTGRES_PASSWORD: vela
       POSTGRES_DB: vela
+    volumes:
+    - ./init.sql:/docker-entrypoint-initdb.d/90-init.sql:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres -d vela']
+      timeout: 5s
+      interval: 5s
+      retries: 3
+    restart: unless-stopped
+
+
+  auth:
+    image: supabase/gotrue:v2.177.0
+    environment:
+      API_EXTERNAL_URL: 'http://localhost:8081/'
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_SITE_URL: 'http://localhost:8081/'
+      GOTRUE_MAILER_AUTOCONFIRM: true
+
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: 'postgresql://supabase_auth_admin:root@database:5432/vela'
+
+      GOTRUE_JWT_SECRET: 'secret'
+    depends_on:
+      database:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost:8081/health']
       timeout: 5s
       interval: 5s
       retries: 3
