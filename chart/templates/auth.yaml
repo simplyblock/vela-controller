@@ -7,27 +7,46 @@ metadata:
 spec:
   containers:
     - name: vela-auth
-      image: supabase/gotrue:v2.177.0
+      image: quay.io/keycloak/keycloak:latest
       imagePullPolicy: IfNotPresent
+      args: ['start-dev', '--import-realm']
       ports:
         - name: http
-          containerPort: 8081
+          containerPort: 8080
           protocol: TCP
       envFrom:
         - configMapRef:
             name: vela-auth-config
-      livenessProbe:
+      volumeMounts:
+        - name: init-realm
+          mountPath: /opt/keycloak/data/import/vela-realm.json
+          subPath: realm.json
+        # Needed for read-only root file system
+        # https://github.com/keycloak/keycloak/issues/11286#issuecomment-1911732639
+        - name: workspace
+          mountPath: /opt
+          subPath: opt
+        - name: workspace
+          mountPath: /tmp
+          subPath: tmp
+      startupProbe:
         httpGet:
-          path: /health
-          port: http
-        periodSeconds: 5
-        timeoutSeconds: 5
-        failureThreshold: 3
+          path: /auth/health/started
+          port: 9000
+        periodSeconds: 1
+        failureThreshold: 600
       readinessProbe:
         httpGet:
-          path: /health
-          port: http
-        initialDelaySeconds: 10
+          path: /auth/health/ready
+          port: 9000
+        periodSeconds: 10
+        failureThreshold: 3
+      livenessProbe:
+        httpGet:
+          path: /auth/health/live
+          port: 9000
+        periodSeconds: 10
+        failureThreshold: 3
       {{- with .Values.securityContext }}
       securityContext:
         {{- toYaml . | nindent 8 }}
@@ -59,10 +78,35 @@ spec:
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+    - name: copy-opt
+      image: quay.io/keycloak/keycloak:latest
+      imagePullPolicy: IfNotPresent
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop:
+          - ALL
+      command: ["sh", "-c"]
+      args:
+        - "mkdir -p /tmp/opt/keycloak && cp -R /opt/keycloak/* /tmp/opt/keycloak/"
+      volumeMounts:
+        - name: workspace
+          mountPath: /tmp/opt
+          subPath: opt
+      {{- with .Values.securityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
   volumes:
     - name: init-sql
       configMap:
         name: vela-auth-config
+    - name: init-realm
+      configMap:
+        name: vela-auth-config
+    - name: workspace
+      emptyDir: {}
   restartPolicy: Always
   {{- with .Values.podSecurityContext }}
   securityContext:
@@ -74,22 +118,63 @@ kind: ConfigMap
 metadata:
   name: vela-auth-config
 data:
-  API_EXTERNAL_URL: 'http://localhost:80/auth'
-  GOTRUE_API_HOST: 0.0.0.0
-  GOTRUE_SITE_URL: 'http://localhost:80/auth'
-  GOTRUE_DB_DRIVER: postgres
-  GOTRUE_DB_DATABASE_URL: 'postgresql://supabase_auth_admin:root@database:5432/postgres'
-  GOTRUE_JWT_SECRET: 'secret'  # TODO jwt-secret
-  GOTRUE_MAILER_AUTOCONFIRM: 'true'
-  GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED: 'true'
+  KC_BOOTSTRAP_ADMIN_USERNAME: admin
+  KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+  KC_DB: postgres
+  KC_DB_URL: jdbc:postgresql://database:5432/keycloak
+  KC_DB_USERNAME: keycloak
+  KC_DB_PASSWORD: keycloak
+  KC_PROXY: edge
+  KC_HOSTNAME: http://localhost:80/auth
+  KC_HTTP_RELATIVE_PATH: /auth
+  KC_HEALTH_ENABLED: 'true'
   init.sql: |
-    CREATE USER supabase_admin LOGIN CREATEROLE CREATEDB REPLICATION BYPASSRLS;
-
-    -- Supabase super admin
-    CREATE USER supabase_auth_admin NOINHERIT CREATEROLE LOGIN NOREPLICATION PASSWORD 'root'; -- TODO
-    CREATE SCHEMA IF NOT EXISTS auth AUTHORIZATION supabase_auth_admin;
-    GRANT CREATE ON DATABASE postgres TO supabase_auth_admin;
-    ALTER USER supabase_auth_admin SET search_path = 'auth';
+    CREATE USER keycloak WITH PASSWORD 'keycloak';
+    CREATE DATABASE keycloak OWNER keycloak;
+    GRANT ALL PRIVILEGES ON DATABASE keycloak TO keycloak;
+    ALTER ROLE keycloak SET search_path TO keycloak,public;
+  realm.json: |
+    {
+      "id": "vela",
+      "realm": "vela",
+      "enabled": true,
+      "users": [
+        {
+          "username": "testuser",
+          "enabled": true,
+          "email": "testuser@example.com",
+          "firstName": "Test",
+          "lastName": "User",
+          "emailVerified": true,
+          "credentials": [
+            {
+              "type": "password",
+              "value": "testpassword",
+              "temporary": false
+            }
+          ]
+        }
+      ],
+      "clients": [
+        {
+          "clientId": "frontend",
+          "name": "Frontend Application",
+          "enabled": true,
+          "redirectUris": [
+            "http://localhost:3000/*",
+            "http://localhost:8080/*"
+          ],
+          "webOrigins": [
+            "http://localhost:3000",
+            "http://localhost:8080"
+          ],
+          "standardFlowEnabled": true,
+          "directAccessGrantsEnabled": true,
+          "publicClient": true,
+          "protocol": "openid-connect"
+        }
+      ]
+    }
 
 ---
 apiVersion: v1
@@ -101,8 +186,8 @@ spec:
     app.kubernetes.io/name: vela-auth
   ports:
     - name: http
-      port: 8081
-      targetPort: 8081
+      port: 8080
+      targetPort: 8080
       protocol: TCP
 
 ---
@@ -124,5 +209,5 @@ spec:
               service:
                 name: vela-auth-service
                 port:
-                  number: 8081
+                  number: 8080
       {{ if .Values.host }}host: {{ .Values.host }}{{ end }}

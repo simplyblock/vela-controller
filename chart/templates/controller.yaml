@@ -60,7 +60,7 @@ kind: ConfigMap
 metadata:
   name: vela-controller-config
 data:
-  VELA_JWT_SECRET: 'secret'  # TODO jwt-secret
+  VELA_JWT_SECRET: 'http://vela-auth-service:8080/auth/realms/vela/protocol/openid-connect/certs'
   VELA_ROOT_PATH: '/vela'
   VELA_PGMETA_CRYPTO_KEY: 'secret'
 ---
