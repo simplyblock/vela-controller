@@ -11,6 +11,7 @@ from urllib3.exceptions import HTTPError
 
 from .._util import check_output, dbstr
 from .kubernetes import KubernetesService
+from .settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,7 @@ kube_service = KubernetesService()
 
 
 def _deployment_namespace(id_: int) -> str:
-    return f"vela-deployment-{id_}"
+    return f"{settings.deployment_namespace_prefix}-deployment-{id_}"
 
 
 def _release_name(namespace: str) -> str:
@@ -66,6 +67,7 @@ async def create_vela_config(id_: int, parameters: DeploymentParameters):
     db_spec.setdefault("persistence", {})["size"] = f"{parameters.database_size // (2**30)}Gi"
     db_spec.setdefault("image", {})["tag"] = parameters.database_image_tag
 
+    values_content["kong"]["ingress"]["hosts"][0]["host"] = settings.deployment_host
     values_content["kong"]["ingress"]["hosts"][0]["paths"][0]["path"] = f"/{id_}"
 
     namespace = _deployment_namespace(id_)

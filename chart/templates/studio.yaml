@@ -1,0 +1,87 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: vela-studio
+  labels:
+    app.kubernetes.io/name: vela-studio
+spec:
+  containers:
+    - name: vela-studio
+      image: simplyblock/vela-studio:latest
+      imagePullPolicy: Always
+      ports:
+        - name: http
+          containerPort: 3000
+          protocol: TCP
+      envFrom:
+        - configMapRef:
+            name: vela-studio-config
+      livenessProbe:
+        httpGet:
+          path: /
+          port: http
+        periodSeconds: 5
+        timeoutSeconds: 5
+        failureThreshold: 3
+      readinessProbe:
+        httpGet:
+          path: /
+          port: http
+        initialDelaySeconds: 20
+      {{- with .Values.securityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  restartPolicy: Always
+  {{- with .Values.podSecurityContext }}
+  securityContext:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vela-studio-config
+data:
+  NEXT_PUBLIC_GOTRUE_URL: 'http://vela-auth-service:8080'
+  NEXT_PUBLIC_IS_PLATFORM: 'true'
+  PUBLIC_PLATFORM: 'vela'
+  VELA_PLATFORM_GOTRUE_URL: 'http://vela-auth-service:8080'
+  VELA_PLATFORM_URL: 'http://vela-controller-service:8000'
+  PLATFORM_PG_META_URL: 'http://localhost:8080/meta'
+  AUTH_JWT_SECRET: 'secret'  # TODO
+  SUPABASE_ANON_KEY: 'UpNVntn3cDxHJpq99YMc1T1AQgQpc8kfYTuRgBiYa15BLrx8etQoXz3gZv1/u2oq'
+  SUPABASE_PUBLIC_URL: 'http://{{ .Values.host }}/'
+  LOGFLARE_PRIVATE_ACCESS_TOKEN: 'your-super-secret-and-long-logflare-key-private'
+  IS_THROTTLED: 'false'
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vela-studio-service
+spec:
+  selector:
+    app.kubernetes.io/name: vela-studio
+  ports:
+    - name: vela-studio-http
+      port: 3000
+      targetPort: 3000
+      protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: vela-studio-ingress
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: vela-studio-service
+                port:
+                  number: 3000
+#      {{ if .Values.host }}host: {{ .Values.host }}{{ end }}
