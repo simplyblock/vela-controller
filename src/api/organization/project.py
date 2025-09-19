@@ -17,12 +17,12 @@ from ...deployment import (
     get_db_vmi_identity,
     get_deployment_status,
 )
-from ...settings import settings
 from .._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ..db import SessionDep
 from ..kubevirt import call_kubevirt_subresource
 from ..models.organization import OrganizationDep
 from ..models.project import Project, ProjectCreate, ProjectDep, ProjectPublic, ProjectUpdate
+from ..settings import settings
 
 api = APIRouter()
 

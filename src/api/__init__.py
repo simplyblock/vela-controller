@@ -6,9 +6,9 @@ from fastapi.routing import APIRoute
 from pydantic import BaseModel
 from sqlmodel import SQLModel
 
-from ..settings import settings
 from .db import engine
 from .organization import api as organization_api
+from .settings import settings
 
 
 async def _create_db_and_tables():

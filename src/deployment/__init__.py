@@ -10,8 +10,8 @@ from pydantic import BaseModel, Field
 from urllib3.exceptions import HTTPError
 
 from .._util import check_output, dbstr
-from ..settings import settings
 from .kubernetes import KubernetesService
+from .settings import settings
 
 logger = logging.getLogger(__name__)
 
