@@ -19,7 +19,7 @@ kube_service = KubernetesService()
 
 
 def _deployment_namespace(id_: int) -> str:
-    return f'{settings.deployment_namespace_prefix}-deployment-{id_}'
+    return f"{settings.deployment_namespace_prefix}-deployment-{id_}"
 
 
 def _release_name(namespace: str) -> str:
