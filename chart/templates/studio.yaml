@@ -43,15 +43,15 @@ kind: ConfigMap
 metadata:
   name: vela-studio-config
 data:
-  NEXT_PUBLIC_GOTRUE_URL: 'http://vela-auth-service.vela-services:8081'
+  NEXT_PUBLIC_GOTRUE_URL: 'http://vela-auth-service:8080'
   NEXT_PUBLIC_IS_PLATFORM: 'true'
   PUBLIC_PLATFORM: 'vela'
-  VELA_PLATFORM_GOTRUE_URL: 'http://vela-auth-service.vela-services:8081'
-  VELA_PLATFORM_URL: 'http://vela-controller-service.vela-services:8000'
+  VELA_PLATFORM_GOTRUE_URL: 'http://vela-auth-service:8080'
+  VELA_PLATFORM_URL: 'http://vela-controller-service:8000'
   PLATFORM_PG_META_URL: 'http://localhost:8080/meta'
   AUTH_JWT_SECRET: 'secret'  # TODO
   SUPABASE_ANON_KEY: 'UpNVntn3cDxHJpq99YMc1T1AQgQpc8kfYTuRgBiYa15BLrx8etQoXz3gZv1/u2oq'
-  SUPABASE_PUBLIC_URL: 'http://localhost/'
+  SUPABASE_PUBLIC_URL: 'http://{{ .Values.host }}/'
   LOGFLARE_PRIVATE_ACCESS_TOKEN: 'your-super-secret-and-long-logflare-key-private'
   IS_THROTTLED: 'false'
 ---
@@ -84,4 +84,4 @@ spec:
                 name: vela-studio-service
                 port:
                   number: 3000
-      {{ if .Values.host }}host: {{ .Values.host }}{{ end }}
+#      {{ if .Values.host }}host: {{ .Values.host }}{{ end }}

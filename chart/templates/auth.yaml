@@ -125,7 +125,7 @@ data:
   KC_DB_USERNAME: keycloak
   KC_DB_PASSWORD: keycloak
   KC_PROXY: edge
-  KC_HOSTNAME: http://localhost:80/auth
+  KC_HOSTNAME: http://{{ .Values.host }}/auth
   KC_HTTP_RELATIVE_PATH: /auth
   KC_HEALTH_ENABLED: 'true'
   init.sql: |
@@ -161,12 +161,10 @@ data:
           "name": "Frontend Application",
           "enabled": true,
           "redirectUris": [
-            "http://localhost:3000/*",
-            "http://localhost:8080/*"
+            "http://{{ .Values.host }}/*"
           ],
           "webOrigins": [
-            "http://localhost:3000",
-            "http://localhost:8080"
+            "http://{{ .Values.host }}"
           ],
           "standardFlowEnabled": true,
           "directAccessGrantsEnabled": true,
@@ -195,19 +193,16 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: vela-auth-ingress
-  annotations:
-    nginx.ingress.kubernetes.io/use-regex: "true"
-    nginx.ingress.kubernetes.io/rewrite-target: /$1
 spec:
   ingressClassName: nginx
   rules:
     - http:
         paths:
-          - path: /auth/(.*)
-            pathType: ImplementationSpecific
+          - path: /auth
+            pathType: Prefix
             backend:
               service:
                 name: vela-auth-service
                 port:
                   number: 8080
-      {{ if .Values.host }}host: {{ .Values.host }}{{ end }}
+#      {{ if .Values.host }}host: {{ .Values.host }}{{ end }}

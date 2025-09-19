@@ -93,4 +93,4 @@ spec:
                 name: vela-controller-service
                 port:
                   number: 8000
-      {{ if .Values.host }}host: {{ .Values.host }}{{ end }}
+#      {{ if .Values.host }}host: {{ .Values.host }}{{ end }}
