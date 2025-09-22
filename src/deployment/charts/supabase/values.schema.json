@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "db": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "credentials": {
+          "type": "object",
+          "properties": {
+            "adminusername": { "type": "string", "minLength": 1 },
+            "adminpassword": { "type": "string", "minLength": 1 },
+            "admindb": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "db": {
+            "type": "object",
+            "properties": { "enabled": { "const": true } }
+          }
+        },
+        "required": ["db"]
+      },
+      "then": {
+        "properties": {
+          "db": {
+            "type": "object",
+            "required": ["credentials"],
+            "properties": {
+              "credentials": {
+                "type": "object",
+                "required": ["adminusername", "adminpassword", "admindb"]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
+
