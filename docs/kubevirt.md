@@ -29,3 +29,20 @@ After Krew is installed,  the virt plugin can be installed:
 ```
 kubectl krew install virt
 ```
+
+### Debugging tips
+
+To list of existing VMs in a namespace
+
+```
+$ kubectl -n vela-deployment-4 get virtualmachineinstances 
+NAME                                     AGE    PHASE     IP           NODENAME                        READY
+supabase-vela-deployment-4-supabase-db   3h9m   Running   10.42.1.50   vm07.simplyblock5.localdomain   True
+```
+
+To connect to the VM console. Note: At any point of time, only one instance of console can be kept runing
+```
+kubectl virt -n vela-deployment-4 console supabase-vela-deployment-4-supabase-db
+```
+
+

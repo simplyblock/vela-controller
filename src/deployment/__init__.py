@@ -56,10 +56,10 @@ async def create_vela_config(id_: int, parameters: DeploymentParameters):
     values_content = yaml.safe_load((chart / "values.example.yaml").read_text())
 
     # Override defaults
-    db_secrets = values_content.setdefault("secret", {}).setdefault("db", {})
-    db_secrets["username"] = parameters.database_user
-    db_secrets["password"] = parameters.database_password
-    db_secrets["database"] = parameters.database
+    db_secrets = values_content.setdefault("db", {}).setdefault("credentials", {})
+    db_secrets["adminusername"] = parameters.database_user
+    db_secrets["adminpassword"] = parameters.database_password
+    db_secrets["admindb"] = parameters.database
 
     db_spec = values_content.setdefault("db", {})
     db_spec["vcpu"] = parameters.vcpu
@@ -70,9 +70,12 @@ async def create_vela_config(id_: int, parameters: DeploymentParameters):
     values_content["kong"]["ingress"]["hosts"][0]["host"] = settings.deployment_host
     values_content["kong"]["ingress"]["hosts"][0]["paths"][0]["path"] = f"/{id_}"
 
+    # todo: setup IOPS in an VolumeAttributesClass and pass that in volumeAttributesClassName below of the pvc
+    # todo: setup SSL (ssl = on on postgresql.conf and client_tls_sslmode=verify-full)
+    # and org specific domains and expose the database to public internet
+
     namespace = _deployment_namespace(id_)
 
-    # todo: create an storage class with the given IOPS
     values_content["provisioning"] = {"iops": parameters.iops}
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as temp_values:
         yaml.dump(values_content, temp_values, default_flow_style=False)
@@ -161,3 +164,6 @@ def get_db_vmi_identity(id_: int) -> tuple[str, str]:
     namespace = _deployment_namespace(id_)
     vmi_name = f"{_release_name(namespace)}-supabase-db"
     return namespace, vmi_name
+
+
+# a single PG Bouncer for all the branches of an organization
