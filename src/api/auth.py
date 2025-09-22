@@ -60,7 +60,7 @@ async def authenticated_user(
 AuthUserDep = Annotated[User, Depends(authenticated_user)]
 
 
-async def _userdep_lookup(session: SessionDep, user_id: UUID) -> User:
+async def user_lookup(session: SessionDep, user_id: UUID) -> User:
     query = select(User).where(User.id == user_id)
     user = (await session.exec(query)).one_or_none()
     if user is None:
@@ -68,7 +68,7 @@ async def _userdep_lookup(session: SessionDep, user_id: UUID) -> User:
     return user
 
 
-UserDep = Annotated[User, Depends(_userdep_lookup)]
+UserDep = Annotated[User, Depends(user_lookup)]
 
 
 async def _memberdep_lookup(organization: OrganizationDep, user: UserDep) -> User:
