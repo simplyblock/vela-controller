@@ -73,6 +73,11 @@ auth:
 rest:
   image:
     tag: v12.0.1
+  livenessProbe:
+    httpGet:
+      path: /
+      port: 3000
+    initialDelaySeconds: 3
 
 realtime:
   image:
@@ -86,6 +91,11 @@ realtime:
 meta:
   image:
     tag: v0.80.0
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 8080
+    initialDelaySeconds: 3
 
 storage:
   image:
