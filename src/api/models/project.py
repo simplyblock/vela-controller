@@ -22,6 +22,13 @@ class Project(AsyncAttrs, SQLModel, table=True):
     database: str
     database_user: str
     database_password: str
+    # Deployment parameters persisted at project level
+    database_size: int
+    vcpu: int
+    memory: int
+    iops: int
+    database_image_tag: str
+    branches: list["Branch"] = Relationship(back_populates="project", cascade_delete=True)
 
     __table_args__ = (UniqueConstraint("organization_id", "slug", name="unique_project_slug"),)
 

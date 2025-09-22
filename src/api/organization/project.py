@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from kubernetes.client.exceptions import ApiException
 from sqlalchemy.exc import IntegrityError
+from sqlmodel import select
 
 from ...deployment import (
     create_vela_config,
@@ -18,10 +19,12 @@ from ...deployment import (
     get_deployment_status,
 )
 from ...deployment.kubevirt import call_kubevirt_subresource
+from ...deployment import DeploymentParameters, create_branch_deployment
 from .._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ..db import SessionDep
 from ..models.organization import OrganizationDep
 from ..models.project import Project, ProjectCreate, ProjectDep, ProjectPublic, ProjectUpdate
+from ..models.branch import Branch, BranchCreate, BranchPublic, BranchUpdate, BranchDep
 from ..settings import settings
 
 api = APIRouter()
@@ -127,6 +130,11 @@ async def create(
         database=parameters.deployment.database,
         database_user=parameters.deployment.database_user,
         database_password=parameters.deployment.database_user,
+        database_size=parameters.deployment.database_size,
+        vcpu=parameters.deployment.vcpu,
+        memory=parameters.deployment.memory,
+        iops=parameters.deployment.iops,
+        database_image_tag=parameters.deployment.database_image_tag,
     )
     session.add(entity)
     try:
@@ -137,6 +145,11 @@ async def create(
             raise
         raise HTTPException(409, f"Organization already has project named {parameters.name}") from e
     await session.refresh(entity)
+    # Ensure default branch `main` exists
+    main_branch = Branch(name="main", project=entity, parent=None)
+    session.add(main_branch)
+    await session.commit()
+    await session.refresh(main_branch)
     asyncio.create_task(create_vela_config(entity.dbid(), parameters.deployment))
     await session.refresh(organization)
     entity_url = url_path_for(
@@ -260,3 +273,183 @@ async def resume(_organization: OrganizationDep, project: ProjectDep):
 
 
 api.include_router(instance_api)
+
+
+# Branches API under a project
+branches_api = APIRouter(prefix="/{project_slug}/branches")
+
+
+def _branch_public(b, parent_slug: str | None) -> BranchPublic:
+    return BranchPublic(id=b.id, slug=b.slug, name=b.name, parent_slug=parent_slug)
+
+
+@branches_api.get(
+    "/",
+    name="organizations:projects:branches:list",
+    responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
+)
+async def branches_list(session: SessionDep, _organization: OrganizationDep, project: ProjectDep) -> list[BranchPublic]:
+    await session.refresh(project, ["branches"])
+    items = await project.awaitable_attrs.branches
+    id_to_slug = {b.id: b.slug for b in items}
+    return [
+        _branch_public(b, id_to_slug.get(b.parent_id) if b.parent_id else None)
+        for b in items
+    ]
+
+
+@branches_api.get(
+    "/tree",
+    name="organizations:projects:branches:tree",
+    responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
+)
+async def branches_tree(session: SessionDep, _organization: OrganizationDep, project: ProjectDep) -> list[dict]:
+    await session.refresh(project, ["branches"])
+    items = await project.awaitable_attrs.branches
+    children: dict[int | None, list[int]] = {}
+    by_id: dict[int, Branch] = {}
+    for b in items:
+        by_id[b.id] = b
+        children.setdefault(b.parent_id, []).append(b.id)
+
+    def build(node_id: int) -> dict:
+        node = by_id[node_id]
+        return {
+            "id": node.id,
+            "slug": node.slug,
+            "name": node.name,
+            "children": [build(cid) for cid in children.get(node_id, [])],
+        }
+
+    return [build(root_id) for root_id in children.get(None, [])]
+
+
+@branches_api.get(
+    "/{branch_slug}",
+    name="organizations:projects:branches:detail",
+    responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
+)
+async def branches_detail(_organization: OrganizationDep, project: ProjectDep, branch: BranchDep) -> BranchPublic:
+    parent_slug = None
+    if branch.parent_id:
+        for b in await project.awaitable_attrs.branches:
+            if b.id == branch.parent_id:
+                parent_slug = b.slug
+                break
+    return _branch_public(branch, parent_slug)
+
+
+@branches_api.put(
+    "/{branch_slug}",
+    name="organizations:projects:branches:update",
+    status_code=204,
+    responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
+)
+async def branches_update(
+    request: Request,
+    session: SessionDep,
+    organization: OrganizationDep,
+    project: ProjectDep,
+    branch: BranchDep,
+    parameters: BranchUpdate,
+):
+    for key, value in parameters.model_dump(exclude_unset=True, exclude_none=True).items():
+        assert hasattr(branch, key)
+        setattr(branch, key, value)
+    await session.commit()
+
+    return Response(
+        status_code=204,
+        headers={
+            "Location": url_path_for(
+                request,
+                "organizations:projects:branches:detail",
+                organization_slug=await organization.awaitable_attrs.id,
+                project_slug=await project.awaitable_attrs.slug,
+                branch_slug=await branch.awaitable_attrs.slug,
+            ),
+        },
+    )
+
+
+@branches_api.post(
+    "/",
+    name="organizations:projects:branches:create",
+    status_code=201,
+    response_model=BranchPublic | None,
+    responses={
+        201: {
+            "content": None,
+            "headers": {"Location": {"description": "URL of the created branch", "schema": {"type": "string"}}},
+        },
+        401: Unauthenticated,
+        403: Forbidden,
+        404: NotFound,
+        409: Conflict,
+    },
+)
+async def branches_create(
+    session: SessionDep,
+    request: Request,
+    organization: OrganizationDep,
+    project: ProjectDep,
+    parameters: BranchCreate,
+    response: Literal["empty", "full"] = "empty",
+):
+    # Resolve parent/source if provided
+    parent_branch: Branch | None = None
+    parent_id: int | None = None
+    if parameters.source is not None:
+        try:
+            query = select(Branch).where(Branch.project_id == project.id, Branch.slug == parameters.source)
+            parent_branch = (await session.exec(query)).one()
+            parent_id = parent_branch.id
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(404, f"Source branch {parameters.source} not found") from e
+
+    entity = Branch(name=parameters.name, project=project, parent_id=parent_id)
+    session.add(entity)
+    try:
+        await session.commit()
+    except IntegrityError as e:  # noqa: F841
+        raise HTTPException(409, f"Project already has branch named {parameters.name}") from e
+    await session.refresh(entity)
+
+    # Build deployment parameters from project
+    dep_params = DeploymentParameters(
+        database=project.database,
+        database_user=project.database_user,
+        database_password=project.database_password,
+        database_size=project.database_size,
+        vcpu=project.vcpu,
+        memory=project.memory,
+        iops=project.iops,
+        database_image_tag=project.database_image_tag,  # type: ignore[arg-type]
+    )
+    asyncio.create_task(
+        create_branch_deployment(
+            project_id=project.dbid(),
+            parameters=dep_params,
+            branch_id=entity.id,  # type: ignore[arg-type]
+            clone_from_branch_id=parent_branch.id if (parameters.data_copy and parent_branch) else None,  # type: ignore[arg-type]
+            data_copy=parameters.data_copy,
+        )
+    )
+
+    entity_url = url_path_for(
+        request,
+        "organizations:projects:branches:detail",
+        organization_slug=organization.id,
+        project_slug=project.slug,
+        branch_slug=entity.slug,
+    )
+    return JSONResponse(
+        content=_branch_public(entity, parent_branch.slug if parent_branch else None).model_dump()
+        if response == "full"
+        else None,
+        status_code=201,
+        headers={"Location": entity_url},
+    )
+
+
+api.include_router(branches_api)
