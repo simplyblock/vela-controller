@@ -51,7 +51,7 @@ spec:
                   key: username
                   {{- end }}
             - name: DB_PORT
-              value: {{ .Values.analytics.environment.DB_PORT | quote }}
+              value: "5432"
           command: ["/bin/sh", "-c"]
           args:
             - |
@@ -166,10 +166,6 @@ spec:
                   name: {{ include "supabase.secret.jwt" . }}
                   key: serviceKey
                   {{- end }}
-            {{- if .Values.imgproxy.enabled }}
-            - name: IMGPROXY_URL
-              value: http://{{ include "supabase.imgproxy.fullname" . }}:{{ .Values.imgproxy.service.port | int }}
-            {{- end }}
             {{- if eq (include "supabase.secret.s3.isValid" .) "true" }}
             - name: AWS_ACCESS_KEY_ID
               valueFrom:

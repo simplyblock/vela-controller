@@ -36,7 +36,7 @@ spec:
                   key: username
                   {{- end }}
             - name: DB_PORT
-              value: {{ .Values.auth.environment.DB_PORT | quote }}
+              value: "5432"
           image: postgres:15-alpine
           imagePullPolicy: IfNotPresent
           name: test-db

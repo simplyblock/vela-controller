@@ -50,7 +50,7 @@ spec:
                   key: username
                   {{- end }}
             - name: DB_PORT
-              value: {{ .Values.analytics.environment.DB_PORT | quote }}
+              value: "5432"
           command: ["/bin/sh", "-c"]
           args:
             - |
