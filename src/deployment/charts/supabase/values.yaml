@@ -171,7 +171,14 @@ rest:
   imagePullSecrets: []
   nameOverride: ""
   fullnameOverride: ""
-  livenessProbe: {}
+  livenessProbe:
+    httpGet:
+      path: /
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 2
+    failureThreshold: 3
   readinessProbe: {}
   serviceAccount:
     # Specifies whether a service account should be created
@@ -330,7 +337,14 @@ meta:
   replicaCount: 1
   nameOverride: ""
   fullnameOverride: ""
-  livenessProbe: {}
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 2
+    failureThreshold: 3
   readinessProbe: {}
   serviceAccount:
     # Specifies whether a service account should be created
