@@ -1,17 +1,10 @@
 # File structure of values.yaml:
 # |-- 1.  Database
-# |-- 2.  Studio
-# |-- 3.  Auth
-# |-- 4.  Rest
-# |-- 5.  Realtime
-# |-- 6.  Meta
-# |-- 7.  Storage
-# |-- 8.  Image Proxy
-# |-- 9.  Kong
-# |-- 10. Analytics
-# |-- 11. Vector
-# |-- 12. Functions
-# |-- 13. Minio
+# |-- 2.  Rest
+# |-- 3.  Realtime
+# |-- 4.  Meta
+# |-- 5.  Storage API
+# |-- 5.  Minio S3 
 
 secret:
   # jwt will be used to reference secret in multiple services:
@@ -81,10 +74,7 @@ secret:
       keyId: keyId
       accessKey: accessKey
 
-# Optional: Postgres Database
 # A standalone Postgres database configured to work with Supabase services.
-# You can spin up any other Postgres database container if required.
-# If so, make sure to adjust DB_HOST accordingly to point to the right database service.
 db:
   # Enable database provisioning
   enabled: true
@@ -169,7 +159,6 @@ db:
   affinity: {}
   # Additional migration scripts can be defined here
   config: {}
-
 
 # Rest Service
 rest:
@@ -489,178 +478,6 @@ storage:
     accessModes:
       - ReadWriteOnce
     class: ""
-  autoscaling:
-    enabled: true
-    minReplicas: 1
-    maxReplicas: 100
-    targetCPUUtilizationPercentage: 80
-    # targetMemoryUtilizationPercentage: 80
-  nodeSelector: {}
-  tolerations: []
-  affinity: {}
-
-
-# Kong
-kong:
-  # Enable kong provisioning
-  enabled: false
-  image:
-    repository: kong
-    pullPolicy: IfNotPresent
-    tag: "latest"
-  imagePullSecrets: []
-  replicaCount: 1
-  nameOverride: ""
-  fullnameOverride: ""
-  livenessProbe: {}
-  readinessProbe: {}
-  serviceAccount:
-    # Specifies whether a service account should be created
-    create: true
-    # Annotations to add to the service account
-    annotations: {}
-    # The name of the service account to use.
-    # If not set and create is true, a name is generated using the fullname template
-    name: ""
-  podAnnotations: {}
-  podSecurityContext: {}
-    # fsGroup: 2000
-  securityContext: {}
-    # capabilities:
-    #   drop:
-    #   - ALL
-    # readOnlyRootFilesystem: true
-    # runAsNonRoot: true
-    # runAsUser: 1000
-  service:
-    type: ClusterIP
-    port: 8000
-  environment:
-    KONG_DATABASE: "off"
-    KONG_DECLARATIVE_CONFIG: /usr/local/kong/kong.yml
-    # https://github.com/supabase/cli/issues/14
-    KONG_DNS_ORDER: LAST,A,CNAME
-    KONG_PLUGINS: request-transformer,cors,key-auth,acl,basic-auth
-    KONG_NGINX_PROXY_PROXY_BUFFER_SIZE: 160k
-    KONG_NGINX_PROXY_PROXY_BUFFERS: 64 160k
-    KONG_LOG_LEVEL: warn
-  ingress:
-    enabled: true
-    className: "nginx"
-    annotations:
-      nginx.ingress.kubernetes.io/rewrite-target: /
-      # cert-manager.io/cluster-issuer: "letsencrypt-staging"
-      # kubernetes.io/tls-acme: "true"
-    tls: []
-      # Define TLS secret for SSL termination.
-      # This section can be left blank if using cluster certificate manager.
-      # Otherwise, setting this in tandem with certificate manager will overwrite the secret name.
-      # - secretName: example-com-tls
-      #   hosts:
-      #     - example.com
-    hosts:
-      - host: example.com
-        paths:
-          - path: /
-            pathType: Prefix
-  # volumeMounts:
-  #   - name: volume_name
-  #     mountPath: /path/to/my/secret
-  # volumes:
-  #   - name: volume_name
-  #     secret:
-  #       defaultMode: 733
-  #       secretName: my_secret
-  #       items:
-  #       - key: my_secret.txt
-  #         path: name_of_file_in_container.txt
-  resources: {}
-    # We usually recommend not to specify default resources and to leave this as a conscious
-    # choice for the user. This also increases chances charts run on environments with little
-    # resources, such as Minikube. If you do want to specify resources, uncomment the following
-    # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
-    # limits:
-    #   cpu: 100m
-    #   memory: 128Mi
-    # requests:
-    #   cpu: 100m
-    #   memory: 128Mi
-  autoscaling:
-    enabled: true
-    minReplicas: 1
-    maxReplicas: 100
-    targetCPUUtilizationPercentage: 80
-    # targetMemoryUtilizationPercentage: 80
-  nodeSelector: {}
-  tolerations: []
-  affinity: {}
-
-
-# Functions
-functions:
-  # Enable functions provisioning
-  enabled: false
-  image:
-    repository: supabase/edge-runtime
-    pullPolicy: IfNotPresent
-    tag: "latest"
-  imagePullSecrets: []
-  replicaCount: 1
-  nameOverride: ""
-  fullnameOverride: ""
-  livenessProbe: {}
-  readinessProbe: {}
-  serviceAccount:
-    # Specifies whether a service account should be created
-    create: true
-    # Annotations to add to the service account
-    annotations: {}
-    # The name of the service account to use.
-    # If not set and create is true, a name is generated using the fullname template
-    name: ""
-  podAnnotations: {}
-  podSecurityContext: {}
-    # fsGroup: 2000
-  securityContext: {}
-    # capabilities:
-    #   drop:
-    #   - ALL
-    # readOnlyRootFilesystem: true
-    # runAsNonRoot: true
-    # runAsUser: 1000
-  service:
-    type: ClusterIP
-    port: 9000
-  environment:
-    # Override the database hostname if using external database
-    # DB_HOST: DATABASE.NAMESPACE.svc.cluster.local
-    DB_USERNAME: supabase_functions_admin
-    DB_PORT: 5432
-    DB_DRIVER: postgresql
-    DB_SSL: disable  # disable, allow, prefer, require, verify-ca, verify-full
-  # Mount user functions
-  # volumeMounts:
-  #   - name: my_functions
-  #     mountPath: /home/deno/functions/main/main
-  # volumes:
-  #   - name: my_functions
-  #     secret:
-  #       defaultMode: 733
-  #       secretName: my_secret
-  #       items:
-  #       - key: my_secret.ts
-  #         path: name_of_file_in_container.ts
-  resources: {}
-    # We usually recommend not to specify default resources and to leave this as a conscious
-    # choice for the user. This also increases chances charts run on environments with little
-    # resources, such as Minikube. If you do want to specify resources, uncomment the following
-    # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
-    # limits:
-    #   cpu: 100m
-    #   memory: 128Mi
-    # requests:
-    #   cpu: 100m
-    #   memory: 128Mi
   autoscaling:
     enabled: true
     minReplicas: 1
