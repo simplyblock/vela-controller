@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 
 class RoleUserLink(AsyncAttrs, SQLModel, table=True):
-    role_id: int | None = Field(default=None, foreign_key="role.id", primary_key=True)
+    role_id: int | None = Field(default=None, foreign_key="role.id", primary_key=True, sa_type=BigInteger)
     user_id: UUID = Field(foreign_key="user.id", primary_key=True)
 
 
