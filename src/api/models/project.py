@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel
@@ -12,6 +12,9 @@ from ..db import SessionDep
 from ._util import Name, Slug, update_slug
 from .organization import Organization, OrganizationDep
 
+if TYPE_CHECKING:
+    from .branch import Branch
+
 
 class Project(AsyncAttrs, SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True, sa_type=BigInteger)
@@ -22,6 +25,7 @@ class Project(AsyncAttrs, SQLModel, table=True):
     database: str
     database_user: str
     database_password: str
+    branches: list["Branch"] = Relationship(back_populates="project", cascade_delete=True)
 
     __table_args__ = (UniqueConstraint("organization_id", "slug", name="unique_project_slug"),)
 

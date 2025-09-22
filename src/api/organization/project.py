@@ -20,6 +20,7 @@ from ...deployment import (
 from ...deployment.kubevirt import call_kubevirt_subresource
 from .._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ..db import SessionDep
+from ..models.branch import Branch
 from ..models.organization import OrganizationDep
 from ..models.project import Project, ProjectCreate, ProjectDep, ProjectPublic, ProjectUpdate
 from ..settings import settings
@@ -137,7 +138,23 @@ async def create(
             raise
         raise HTTPException(409, f"Organization already has project named {parameters.name}") from e
     await session.refresh(entity)
-    asyncio.create_task(create_vela_config(entity.dbid(), parameters.deployment))
+    project_dbid = entity.dbid()
+    # Ensure default branch `main` exists
+    main_branch = Branch(
+        name="main",
+        project=entity,
+        parent=None,
+        database_size=parameters.deployment.database_size,
+        vcpu=parameters.deployment.vcpu,
+        memory=parameters.deployment.memory,
+        iops=parameters.deployment.iops,
+        database_image_tag=parameters.deployment.database_image_tag,
+    )
+    session.add(main_branch)
+    await session.commit()
+    await session.refresh(main_branch)
+    await session.refresh(entity)
+    asyncio.create_task(create_vela_config(project_dbid, parameters.deployment, main_branch.slug))
     await session.refresh(organization)
     entity_url = url_path_for(
         request,
@@ -153,6 +170,11 @@ async def create(
 
 
 instance_api = APIRouter(prefix="/{project_slug}")
+
+
+from . import branch as branch_module  # noqa: E402  # Import after router declaration to avoid cycles
+
+instance_api.include_router(branch_module.api, prefix="/branches")
 
 
 @instance_api.get(
