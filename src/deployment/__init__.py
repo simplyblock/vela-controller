@@ -18,8 +18,9 @@ logger = logging.getLogger(__name__)
 kube_service = KubernetesService()
 
 
-def _deployment_namespace(id_: int) -> str:
-    return f"{settings.deployment_namespace_prefix}-deployment-{id_}"
+def _deployment_namespace(id_: int, branch_slug: str | None = None) -> str:
+    branch = branch_slug or "main"
+    return f"{settings.deployment_namespace_prefix}-deployment-{id_}-{branch}"
 
 
 def _release_name(namespace: str) -> str:
@@ -46,10 +47,10 @@ class DeploymentStatus(BaseModel):
     message: str
 
 
-async def create_vela_config(id_: int, parameters: DeploymentParameters):
+async def create_vela_config(id_: int, parameters: DeploymentParameters, branch_slug: str | None = None):
     logging.info(
-        f"Creating Vela configuration for namespace: {_deployment_namespace(id_)}"
-        f" (database {parameters.database}, user {parameters.database_user})"
+        f"Creating Vela configuration for namespace: {_deployment_namespace(id_, branch_slug)}"
+        f" (database {parameters.database}, user {parameters.database_user}, branch {branch_slug or 'main'})"
     )
 
     chart = resources.files(__package__) / "charts" / "supabase"
@@ -66,7 +67,7 @@ async def create_vela_config(id_: int, parameters: DeploymentParameters):
     db_spec["ram"] = parameters.memory // (2**30)
     db_spec.setdefault("persistence", {})["size"] = f"{parameters.database_size // (2**30)}Gi"
     db_spec.setdefault("image", {})["tag"] = parameters.database_image_tag
-    namespace = _deployment_namespace(id_)
+    namespace = _deployment_namespace(id_, branch_slug)
 
     # todo: create an storage class with the given IOPS
     values_content["provisioning"] = {"iops": parameters.iops}
@@ -103,11 +104,11 @@ def _pods_with_status(statuses: dict[str, str], target_status: str) -> set[str]:
     return {name for name, status in statuses.items() if status == target_status}
 
 
-def get_deployment_status(id_: int) -> DeploymentStatus:
+def get_deployment_status(id_: int, branch_slug: str | None = None) -> DeploymentStatus:
     status: StatusType
 
     try:
-        k8s_statuses = kube_service.check_namespace_status(_deployment_namespace(id_))
+        k8s_statuses = kube_service.check_namespace_status(_deployment_namespace(id_, branch_slug))
 
         if failed := _pods_with_status(k8s_statuses, "Failed"):
             status = "ACTIVE_UNHEALTHY"
@@ -140,13 +141,13 @@ def get_deployment_status(id_: int) -> DeploymentStatus:
     )
 
 
-def delete_deployment(id_: int):
-    namespace = _deployment_namespace(id_)
+def delete_deployment(id_: int, branch_slug: str | None = None):
+    namespace = _deployment_namespace(id_, branch_slug)
     subprocess.check_call(["helm", "uninstall", _release_name(namespace), "-n", namespace, "--wait"])
     kube_service.delete_namespace(namespace)
 
 
-def get_db_vmi_identity(id_: int) -> tuple[str, str]:
+def get_db_vmi_identity(id_: int, branch_slug: str | None = None) -> tuple[str, str]:
     """
     Return the (namespace, vmi_name) for the project's database VirtualMachineInstance.
 
@@ -154,6 +155,6 @@ def get_db_vmi_identity(id_: int) -> tuple[str, str]:
     are provided. Our release name is "supabase-{namespace}" and chart name is "supabase".
     Hence the VMI name resolves to: f"{_release_name(namespace)}-supabase-db".
     """
-    namespace = _deployment_namespace(id_)
+    namespace = _deployment_namespace(id_, branch_slug)
     vmi_name = f"{_release_name(namespace)}-supabase-db"
     return namespace, vmi_name
