@@ -17,6 +17,10 @@ secret:
     apiKey: your-super-secret-and-long-logflare-key
 
 db:
+  credentials:
+    adminusername: ''
+    adminpassword: ''
+    admindb: ''
   enabled: true
   image:
     tag: 15.1.0.147
