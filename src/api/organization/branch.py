@@ -1,12 +1,13 @@
 from collections.abc import Sequence
 from typing import Literal
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from slugify import slugify
 
 from ...deployment import delete_deployment
 from .._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
+from ..constants import DEFAULT_BRANCH_SLUG
 from ..db import SessionDep
 from ..models.branch import Branch, BranchCreate, BranchDep, BranchPublic, BranchUpdate
 from ..models.organization import OrganizationDep
@@ -189,6 +190,8 @@ async def delete(
     _project: ProjectDep,
     branch: BranchDep,
 ):
+    if branch.slug == DEFAULT_BRANCH_SLUG:
+        raise HTTPException(400, "Default branch cannot be deleted")
     delete_deployment(branch.project_id or branch.dbid(), branch.slug)
     await session.delete(branch)
     await session.commit()

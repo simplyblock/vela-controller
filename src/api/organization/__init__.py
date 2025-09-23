@@ -12,6 +12,7 @@ from ..auth import AuthUserDep, authenticated_user
 from ..db import SessionDep
 from ..models.audit import OrganizationAuditLog
 from ..models.organization import Organization, OrganizationCreate, OrganizationDep, OrganizationUpdate
+from .branch import api as branch_api
 from .member import api as member_api
 from .project import api as project_api
 from .role import api as role_api
@@ -195,4 +196,5 @@ def list_audits(
 instance_api.include_router(project_api, prefix="/projects")
 instance_api.include_router(member_api, prefix="/members")
 instance_api.include_router(role_api, prefix="/roles")
+instance_api.include_router(branch_api, prefix="/branches")
 api.include_router(instance_api)

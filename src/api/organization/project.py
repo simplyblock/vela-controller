@@ -19,6 +19,7 @@ from ...deployment import (
 )
 from ...deployment.kubevirt import call_kubevirt_subresource
 from .._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
+from ..constants import DEFAULT_BRANCH_SLUG
 from ..db import SessionDep
 from ..models.branch import Branch
 from ..models.organization import OrganizationDep
@@ -139,9 +140,9 @@ async def create(
         raise HTTPException(409, f"Organization already has project named {parameters.name}") from e
     await session.refresh(entity)
     project_dbid = entity.dbid()
-    # Ensure default branch `main` exists
+    # Ensure default branch exists
     main_branch = Branch(
-        name="main",
+        name=DEFAULT_BRANCH_SLUG,
         project=entity,
         parent=None,
         database_size=parameters.deployment.database_size,
