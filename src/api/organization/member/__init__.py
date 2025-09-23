@@ -1,7 +1,8 @@
 from collections.abc import Sequence
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
 from ..._util import Forbidden, NotFound, Unauthenticated
@@ -41,17 +42,15 @@ async def add_member(
         user_ent = User(id=parameters.id)
         session.add(user_ent)
 
-    # check if user already in org
-    org_users = await organization.awaitable_attrs.users
-    if any(u.id == user_ent.id for u in org_users):
-        return JSONResponse(
-            status_code=400,
-            content={"message": "User is already a member of this organization"},
-        )
-
     # add user to organization
-    org_users.append(user_ent)
-    await session.commit()
+    (await organization.awaitable_attrs.users).append(user_ent)
+    try:
+        await session.commit()
+    except IntegrityError as e:
+        error = str(e)
+        if ("asyncpg.exceptions.UniqueViolationError" not in error) or ("unique_membership" not in error):
+            raise
+        raise HTTPException(400, f"User {parameters.id} is already member of organization {organization.id}") from e
 
     return JSONResponse(status_code=201, content=None)
 
