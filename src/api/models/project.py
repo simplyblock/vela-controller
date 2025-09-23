@@ -36,7 +36,7 @@ class Project(AsyncAttrs, SQLModel, table=True):
 
     def db_org_id(self) -> int:
         if self.organization_id is None:
-            raise ValueError("Model not tracked in database")
+            raise ValueError("Organization model not tracked in database")
         return self.organization_id
 
 
