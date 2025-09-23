@@ -1,0 +1,76 @@
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: kong-class
+spec:
+  controllerName: konghq.com/gateway-operator
+  parametersRef:
+    group: gateway-operator.konghq.com
+    kind: GatewayConfiguration
+    name: kong-gw-config
+    namespace: kong-system
+
+---
+apiVersion: gateway-operator.konghq.com/v1beta1
+kind: GatewayConfiguration
+metadata:
+  name: kong-gw-config
+  namespace: kong-system
+spec:
+  dataPlaneOptions:
+    network:
+      services:
+        ingress:
+          type: NodePort
+  controlPlaneOptions:
+    deployment:
+      podTemplateSpec:
+        spec:
+          containers:
+            - name: controller
+              image: kong/kubernetes-ingress-controller:3.5
+
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: public-gateway
+  namespace: kong-system
+spec:
+  gatewayClassName: kong-class
+  listeners:
+    - name: https
+      port: 443
+      protocol: HTTPS
+      hostname: "*.{{ .Values.domain }}"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: {{ .Values.domaincertsecret }}
+      allowedRoutes:
+        namespaces:
+          from: All
+
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: vela-controller
+  namespace: default
+spec:
+  parentRefs:
+    - name: public-gateway
+      namespace: kong-system
+  hostnames:
+    - "vela.{{ .Values.domain }}"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /vela
+      backendRefs:
+        - name: vela-controller-service
+          namespace: default
+          port: 8000
