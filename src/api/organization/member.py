@@ -3,13 +3,12 @@ from collections.abc import Sequence
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import select
 
 from .._util import Forbidden, NotFound, Unauthenticated
-from ..auth import MemberDep, UserDep, authenticated_user
+from ..auth import MemberDep, UserDep, authenticated_user, user_by_id
 from ..db import SessionDep
 from ..models.organization import OrganizationDep
-from ..models.user import User, UserPublic, UserRequest
+from ..models.user import UserPublic, UserRequest
 
 api = APIRouter(dependencies=[Depends(authenticated_user)])
 
@@ -35,15 +34,10 @@ async def add(
     organization: OrganizationDep,
     parameters: UserRequest,
 ):
-    # check if user exists
-    user_ent = (await session.exec(select(User).where(User.id == parameters.id))).one_or_none()
-
-    if not user_ent:
-        user_ent = User(id=parameters.id)
-        session.add(user_ent)
+    user = await user_by_id(session, parameters.id)
 
     # add user to organization
-    (await organization.awaitable_attrs.users).append(user_ent)
+    (await organization.awaitable_attrs.users).append(user)
     try:
         await session.commit()
     except IntegrityError as e:
