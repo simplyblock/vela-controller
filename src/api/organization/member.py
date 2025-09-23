@@ -5,11 +5,11 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
-from ..._util import Forbidden, NotFound, Unauthenticated
-from ...auth import MemberDep, UserDep, authenticated_user
-from ...db import SessionDep
-from ...models.organization import OrganizationDep
-from ...models.user import User, UserPublic, UserRequest
+from .._util import Forbidden, NotFound, Unauthenticated
+from ..auth import MemberDep, UserDep, authenticated_user
+from ..db import SessionDep
+from ..models.organization import OrganizationDep
+from ..models.user import User, UserPublic, UserRequest
 
 api = APIRouter(dependencies=[Depends(authenticated_user)])
 
