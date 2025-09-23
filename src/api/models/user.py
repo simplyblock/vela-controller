@@ -7,7 +7,8 @@ from sqlalchemy.types import Text, TypeDecorator
 from sqlmodel import Field as SQLField
 from sqlmodel import Relationship, SQLModel
 
-from .organization import Organization, OrganizationUserLink
+from .membership import Membership
+from .organization import Organization
 from .role import Role, RoleUserLink
 
 
@@ -37,7 +38,7 @@ class _JWTType(TypeDecorator):
 
 class User(AsyncAttrs, SQLModel, table=True):
     id: UUID = SQLField(primary_key=True)
-    organizations: list[Organization] = Relationship(back_populates="users", link_model=OrganizationUserLink)
+    organizations: list[Organization] = Relationship(back_populates="users", link_model=Membership)
     roles: list[Role] = Relationship(back_populates="users", link_model=RoleUserLink)
     _token: JWT | None = PrivateAttr(default=None)
 
