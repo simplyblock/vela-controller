@@ -1,3 +1,3 @@
-from . import organization, project
+from . import membership, organization, project
 
-__all__ = dir(organization) + dir(project)
+__all__ = dir(membership) + dir(organization) + dir(project)
