@@ -30,7 +30,7 @@ async def list_users(organization: OrganizationDep) -> Sequence[UserPublic]:
     status_code=201,
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
-async def add_member(
+async def add(
     session: SessionDep,
     organization: OrganizationDep,
     parameters: UserRequest,
@@ -61,7 +61,7 @@ async def add_member(
     status_code=204,
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
-async def update_member(_: UserDep):
+async def update(_: UserDep):
     # no op
     return JSONResponse(
         status_code=204,
@@ -75,7 +75,7 @@ async def update_member(_: UserDep):
     status_code=204,
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
-async def remove_member(session: SessionDep, organization: OrganizationDep, user: UserDep, _: MemberDep):
+async def remove(session: SessionDep, organization: OrganizationDep, user: UserDep, _: MemberDep):
     # Remove user from organization
     org_users = await organization.awaitable_attrs.users
     org_users.remove(user)
