@@ -35,6 +35,11 @@ class Branch(AsyncAttrs, SQLModel, table=True):
             raise ValueError("Model not tracked in database")
         return self.id
 
+    def db_project_id(self) -> int:
+        if self.project_id is None:
+            raise ValueError("Project model not tracked in database")
+        return self.project_id
+
 
 event.listen(Branch, "before_insert", update_slug)
 event.listen(Branch, "before_update", update_slug)
