@@ -1,4 +1,4 @@
-from typing import Annotated, Optional
+from typing import Annotated, ClassVar, Optional
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel
@@ -14,6 +14,8 @@ from .project import Project, ProjectDep
 
 
 class Branch(AsyncAttrs, SQLModel, table=True):
+    DEFAULT_SLUG: ClassVar[Slug] = "main"
+
     id: int | None = Field(default=None, primary_key=True, sa_type=BigInteger)
     name: Slug
     project_id: int | None = Field(default=None, foreign_key="project.id")
