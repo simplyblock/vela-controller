@@ -61,9 +61,7 @@ spec:
                               {"name": "GF_AUTH_JWT_EMAIL_CLAIM", "value": "email"},
                               {"name": "GF_AUTH_JWT_AUTO_SIGN_UP", "value": "true"},
                               {"name": "GF_USERS_ALLOW_SIGN_UP", "value": "false"},
-                              {"name": "GF_AUTH_JWT_JWK_SET_URL", "value": "https://vela-auth-service.{{ .Release.Namespace }}.svc.cluster.local:8443/auth/realms/vela/protocol/openid-connect/certs"},
-                              {"name": "GF_AUTH_JWT_ALLOW_INSECURE_CERTIFICATE", "value": "true"},
-                              {"name": "GF_AUTH_JWT_TLS_SKIP_VERIFY_INSECURE", "value": "true"}
+                              {"name": "GF_AUTH_JWT_JWK_SET_URL", "value": "https://vela-auth-service.{{ .Release.Namespace }}.svc.cluster.local:8443/auth/realms/vela/protocol/openid-connect/certs"}
                             ]
                           }
                         ]
