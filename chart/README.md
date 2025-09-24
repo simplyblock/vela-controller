@@ -45,3 +45,10 @@ kubectl get svc -n kong-system
 kubectl logs -n kong-system deploy/kong-operator-gateway-operator-controller-manager
 ```
 
+### Metal-LB
+
+For the server to have external traffic
+
+```
+kukubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.13.12/config/manifests/metallb-native.yaml
+```
