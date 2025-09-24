@@ -46,7 +46,7 @@ spec:
             - |
               kubectl patch deployment simplyblock-grafana \
                 -n simplyblock \
-                --type=merge \
+                --type=strategic \
                 -p '{
                   "spec": {
                     "template": {
