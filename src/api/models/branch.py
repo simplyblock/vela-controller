@@ -2,33 +2,33 @@ from typing import Annotated, Optional
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import BigInteger, UniqueConstraint, event
+from sqlalchemy import BigInteger, Column, UniqueConstraint, event
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship, SQLModel, select
 
+from ..._util import Slug
 from ..db import SessionDep
-from ._util import Name, Slug, update_slug
+from ._util import Name, update_slug
 from .project import Project, ProjectDep
 
 
 class Branch(AsyncAttrs, SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True, sa_type=BigInteger)
-    slug: Slug
-    name: Name
+    name: Slug
     project_id: int | None = Field(default=None, foreign_key="project.id")
     project: Project | None = Relationship(back_populates="branches")
     parent_id: int | None = Field(default=None, foreign_key="branch.id")
     parent: Optional["Branch"] = Relationship(sa_relationship_kwargs={"remote_side": "Branch.id"})
 
     # Deployment parameters specific to this branch
-    database_size: int
-    vcpu: int
-    memory: int
-    iops: int
+    database_size: Annotated[int, Field(gt=0, multiple_of=2**30, sa_column=Column(BigInteger))]
+    vcpu: Annotated[int, Field(gt=0, le=2**31 - 1, sa_column=Column(BigInteger))]
+    memory: Annotated[int, Field(gt=0, multiple_of=2**30, sa_column=Column(BigInteger))]
+    iops: Annotated[int, Field(gt=0, le=2**31 - 1, sa_column=Column(BigInteger))]
     database_image_tag: str
 
-    __table_args__ = (UniqueConstraint("project_id", "slug", name="unique_branch_slug_per_project"),)
+    __table_args__ = (UniqueConstraint("project_id", "name", name="unique_branch_name_per_project"),)
 
     def dbid(self) -> int:
         if self.id is None:
@@ -60,17 +60,15 @@ class BranchUpdate(BaseModel):
 
 class BranchPublic(BaseModel):
     id: int
-    slug: Slug
-    name: Name
-    parent_slug: Slug | None = None
+    name: Slug
 
 
-async def _lookup(session: SessionDep, project: ProjectDep, branch_slug: Slug) -> Branch:
+async def _lookup(session: SessionDep, project: ProjectDep, branch: Slug) -> Branch:
     try:
-        query = select(Branch).where(Branch.project_id == project.id, Branch.slug == branch_slug)
+        query = select(Branch).where(Branch.project_id == project.id, Branch.name == branch)
         return (await session.exec(query)).one()
     except NoResultFound as e:
-        raise HTTPException(404, f"Branch {branch_slug} not found") from e
+        raise HTTPException(404, f"Branch {branch} not found") from e
 
 
 BranchDep = Annotated[Branch, Depends(_lookup)]
