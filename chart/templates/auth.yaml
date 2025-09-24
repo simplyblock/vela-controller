@@ -195,7 +195,7 @@ metadata:
   name: vela-auth
 spec:
   parentRefs:
-    - name: public-gateway
+    - name: vela-public-gateway
       namespace: kong-system
   hostnames:
     - "{{ .Values.domain }}"

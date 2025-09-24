@@ -84,7 +84,7 @@ metadata:
   name: vela-controller
 spec:
   parentRefs:
-    - name: public-gateway
+    - name: vela-public-gateway
       namespace: kong-system
   hostnames:
     - "{{ .Values.domain }}"
