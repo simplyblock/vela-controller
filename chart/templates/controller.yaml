@@ -33,6 +33,12 @@ spec:
           value: {{ .Release.Namespace }}
         - name: VELA_DEPLOYMENT_HOST
           value: {{ .Values.host }}
+        - name: VELA_KEYCLOAK_URL
+          value: 'http://auth:8080/auth/'
+        - name: VELA_KEYCLOAK_CLIENT_ID
+          value: 'controller'
+        - name: VELA_KEYCLOAK_CLIENT_SECRET
+          value: 'controller-secret'
       livenessProbe:
         httpGet:
           path: /health

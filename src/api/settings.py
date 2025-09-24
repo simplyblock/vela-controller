@@ -1,4 +1,4 @@
-from pydantic import PostgresDsn
+from pydantic import HttpUrl, PostgresDsn
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     cors_origins: list[str] = []
     jwt_algorithms: list[str] = ["HS256", "HS512", "RS256"]
     pgmeta_crypto_key: str
+    keycloak_url: HttpUrl
+    keycloak_realm: str = "vela"
+    keycloak_client_id: str
+    keycloak_client_secret: str
 
 
 settings = Settings()  # type: ignore[call-arg]

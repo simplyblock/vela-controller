@@ -19,6 +19,7 @@ dependencies = [
     'python-slugify',
     'cryptography',  # JWT algorithms
     'pycryptodome',
+    'python-keycloak',
 ]
 
 [tool.setuptools]
