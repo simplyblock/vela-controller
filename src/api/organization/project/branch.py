@@ -5,24 +5,22 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from slugify import slugify
 
-from ...deployment import delete_deployment
-from .._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
-from ..constants import DEFAULT_BRANCH_SLUG
-from ..db import SessionDep
-from ..models.branch import Branch, BranchCreate, BranchDep, BranchPublic, BranchUpdate
-from ..models.organization import OrganizationDep
-from ..models.project import ProjectDep
+from ....constants import DEFAULT_BRANCH_SLUG
+from ....deployment import delete_deployment
+from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
+from ...db import SessionDep
+from ...models.branch import Branch, BranchCreate, BranchDep, BranchPublic, BranchUpdate
+from ...models.organization import OrganizationDep
+from ...models.project import ProjectDep
 
 api = APIRouter()
 
 
 async def _public(branch: Branch) -> BranchPublic:
-    parent = await branch.awaitable_attrs.parent
+    _ = await branch.awaitable_attrs.parent
     return BranchPublic(
         id=branch.dbid(),
-        slug=branch.slug,
         name=branch.name,
-        parent_slug=parent.slug if parent else None,
     )
 
 
@@ -46,21 +44,21 @@ _links = {
         "operationId": "organizations:projects:branch:detail",
         "parameters": {
             "project_slug": "$response.header.Location#regex:/projects/(.+)/",
-            "branch_slug": "$response.header.Location#regex:/branches/(.+)/",
+            "branch": "$response.header.Location#regex:/branches/(.+)/",
         },
     },
     "update": {
         "operationId": "organizations:projects:branch:update",
         "parameters": {
             "project_slug": "$response.header.Location#regex:/projects/(.+)/",
-            "branch_slug": "$response.header.Location#regex:/branches/(.+)/",
+            "branch": "$response.header.Location#regex:/branches/(.+)/",
         },
     },
     "delete": {
         "operationId": "organizations:projects:branch:delete",
         "parameters": {
             "project_slug": "$response.header.Location#regex:/projects/(.+)/",
-            "branch_slug": "$response.header.Location#regex:/branches/(.+)/",
+            "branch": "$response.header.Location#regex:/branches/(.+)/",
         },
     },
 }
@@ -99,13 +97,13 @@ async def create(
     organization_slug = await organization.awaitable_attrs.slug
     project_slug = await project.awaitable_attrs.slug
     branch_slug = slugify(parameters.name, max_length=50)
-    public_entity = BranchPublic(id=0, slug=branch_slug, name=parameters.name, parent_slug=None)
+    public_entity = BranchPublic(id=0, name=parameters.name)
     entity_url = url_path_for(
         request,
         "organizations:projects:branch:detail",
         organization_slug=organization_slug,
         project_slug=project_slug,
-        branch_slug=branch_slug,
+        branch=branch_slug,
     )
     # TODO: implement branch logic using clones
     return JSONResponse(
@@ -115,7 +113,7 @@ async def create(
     )
 
 
-instance_api = APIRouter(prefix="/{branch_slug}")
+instance_api = APIRouter(prefix="/{branch}")
 
 
 @instance_api.get(
@@ -162,8 +160,8 @@ async def update(
 ):
     organization_slug = await organization.awaitable_attrs.slug
     project_slug = await project.awaitable_attrs.slug
-    branch_slug = await branch.awaitable_attrs.slug
-    # todo implemente update logic
+    branch_slug = await branch.awaitable_attrs.name
+    # TODO implement update logic
     return Response(
         status_code=204,
         headers={
@@ -172,7 +170,7 @@ async def update(
                 "organizations:projects:branch:detail",
                 organization_slug=organization_slug,
                 project_slug=project_slug,
-                branch_slug=branch_slug,
+                branch=branch_slug,
             ),
         },
     )
@@ -190,9 +188,9 @@ async def delete(
     _project: ProjectDep,
     branch: BranchDep,
 ):
-    if branch.slug == DEFAULT_BRANCH_SLUG:
+    if branch.name == DEFAULT_BRANCH_SLUG:
         raise HTTPException(400, "Default branch cannot be deleted")
-    delete_deployment(branch.project_id or branch.dbid(), branch.slug)
+    delete_deployment(branch.project_id or branch.dbid(), branch.name)
     await session.delete(branch)
     await session.commit()
     return Response(status_code=204)

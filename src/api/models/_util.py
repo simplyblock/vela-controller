@@ -5,20 +5,13 @@ from slugify import slugify
 
 from ..._util import dbstr
 
-_MAX_LENGTH = 50
-
-Slug = Annotated[
-    str,
-    StringConstraints(
-        pattern=r"^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$",
-        min_length=1,
-        max_length=_MAX_LENGTH,
-    ),
-]
-
 
 def update_slug(mapper, connection, target):  # noqa
-    target.slug = slugify(target.name, max_length=50)
+    slug = slugify(target.name, max_length=50)
+    if hasattr(target, "slug"):
+        target.slug = slug
+    else:
+        target.name = slug
 
 
 def _validate_sluggable(string: str):
