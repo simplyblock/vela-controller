@@ -10,5 +10,5 @@ securityContext:
   runAsUser: 65534
   seccompProfile:
     type: 'RuntimeDefault'
-domain: kernel-labs.org
-domaincertsecret: wildcard-cert  # TODO: use cert manager 
+domain: vela.run
+domaincertsecret: vela-run-wildcard-cert  # TODO: use cert manager 

@@ -14,7 +14,7 @@ helm upgrade --install kong-operator kong/gateway-operator -n kong-system \
 `public-gateway.yaml` expects `wildcard-cert` to be present in `kong-system`. So creating one. And this certificate needs to renewed manually. In production we should we cert-manager operator. 
 
 ```
-kubectl create secret tls wildcard-cert \
+kubectl create secret tls vela-run-wildcard-cert \
   --cert=letsencrypt/live/kernel-labs.org/fullchain.pem \
   --key=letsencrypt/live/kernel-labs.org/privkey.pem \
   -n kong-system
