@@ -10,7 +10,6 @@ from pydantic import BaseModel, Field
 from urllib3.exceptions import HTTPError
 
 from .._util import Slug, check_output, dbstr
-from ..constants import DEFAULT_BRANCH_SLUG
 from .kubernetes import KubernetesService
 from .settings import settings
 
@@ -19,8 +18,15 @@ logger = logging.getLogger(__name__)
 kube_service = KubernetesService()
 
 
+def _default_branch_slug() -> Slug:
+    # Local import to avoid import cycle with models.project -> deployment
+    from ..api.models.branch import Branch
+
+    return Branch.DEFAULT_SLUG
+
+
 def _deployment_namespace(id_: int, branch: Slug) -> str:
-    branch = branch or DEFAULT_BRANCH_SLUG
+    branch = branch or _default_branch_slug()
     return f"{settings.deployment_namespace_prefix}-deployment-{id_}-{branch}"
 
 
