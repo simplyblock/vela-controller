@@ -240,7 +240,11 @@ async def update(
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def delete(session: SessionDep, _organization: OrganizationDep, project: ProjectDep):
-    delete_deployment(project.dbid(), Branch.DEFAULT_SLUG)
+    await session.refresh(project, ["branches"])
+    project_id = project.dbid()
+    branches = await project.awaitable_attrs.branches
+    for branch in branches:
+        delete_deployment(project_id, branch.name)
     await session.delete(project)
     await session.commit()
     return Response(status_code=204)
