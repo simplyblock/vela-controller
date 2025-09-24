@@ -6,15 +6,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
+from ...constants import DEFAULT_BRANCH_SLUG
 from ...deployment import delete_deployment
 from .._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ..auth import AuthUserDep, authenticated_user
 from ..db import SessionDep
 from ..models.audit import OrganizationAuditLog
 from ..models.organization import Organization, OrganizationCreate, OrganizationDep, OrganizationUpdate
-from .branch import api as branch_api
 from .member import api as member_api
 from .project import api as project_api
+from .project.branch import api as branch_api
 from .role import api as role_api
 
 api = APIRouter(dependencies=[Depends(authenticated_user)])
@@ -173,7 +174,7 @@ async def update(request: Request, session: SessionDep, organization: Organizati
 )
 async def delete(session: SessionDep, organization: OrganizationDep):
     for project in await organization.awaitable_attrs.projects:
-        delete_deployment(project.dbid())
+        delete_deployment(project.dbid(), DEFAULT_BRANCH_SLUG)
 
     await session.delete(organization)
     await session.commit()

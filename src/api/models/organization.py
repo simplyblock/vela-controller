@@ -8,8 +8,9 @@ from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship, SQLModel, select
 
+from ..._util import Slug
 from ..db import SessionDep
-from ._util import Name, Slug, update_slug
+from ._util import Name, update_slug
 
 if TYPE_CHECKING:
     from .project import Project

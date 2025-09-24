@@ -7,9 +7,10 @@ from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship, SQLModel, select
 
+from ..._util import Slug
 from ...deployment import DeploymentParameters
 from ..db import SessionDep
-from ._util import Name, Slug, update_slug
+from ._util import Name, update_slug
 from .organization import Organization, OrganizationDep
 
 if TYPE_CHECKING:
