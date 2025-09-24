@@ -76,21 +76,4 @@ spec:
       port: 8000
       targetPort: 8000
       protocol: TCP
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: vela-controller-ingress
-spec:
-  ingressClassName: nginx
-  rules:
-    - http:
-        paths:
-          - path: /vela
-            pathType: Prefix
-            backend:
-              service:
-                name: vela-controller-service
-                port:
-                  number: 8000
-#      {{ if .Values.host }}host: {{ .Values.host }}{{ end }}
+
