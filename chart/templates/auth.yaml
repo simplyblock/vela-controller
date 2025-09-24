@@ -170,6 +170,22 @@ data:
           "directAccessGrantsEnabled": true,
           "publicClient": true,
           "protocol": "openid-connect"
+        },
+        {
+          "clientId": "controller",
+          "name": "Vela controller",
+          "enabled": true,
+          "redirectUris": [
+            "http://{{ .Values.host }}/*"
+          ],
+          "webOrigins": [
+            "http://{{ .Values.host }}"
+          ],
+          "standardFlowEnabled": true,
+          "directAccessGrantsEnabled": true,
+          "publicClient": false,
+          "secret": "controller-secret",
+          "protocol": "openid-connect"
         }
       ]
     }
