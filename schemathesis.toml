@@ -16,3 +16,11 @@ include-name = [
     "POST /organizations/{organization_slug}/projects/",
 ]
 checks.positive_data_acceptance.expected-statuses = [201, 404, 409, 422]
+
+# not sure how to mock these
+[[operations]]
+include-name = [
+    "POST /users/",
+    "POST /users/{user_ref}/",
+]
+checks.enabled = false

@@ -8,7 +8,7 @@ from .._util import Forbidden, NotFound, Unauthenticated
 from ..auth import MemberDep, UserDep, authenticated_user, user_by_id
 from ..db import SessionDep
 from ..models.organization import OrganizationDep
-from ..models.user import UserPublic, UserRequest
+from ..models.user import UserID
 
 api = APIRouter(dependencies=[Depends(authenticated_user)])
 
@@ -19,7 +19,7 @@ api = APIRouter(dependencies=[Depends(authenticated_user)])
     status_code=200,
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
-async def list_users(organization: OrganizationDep) -> Sequence[UserPublic]:
+async def list_users(organization: OrganizationDep) -> Sequence[UserID]:
     return await organization.awaitable_attrs.users
 
 
@@ -55,7 +55,7 @@ async def list_users(organization: OrganizationDep) -> Sequence[UserPublic]:
 async def add(
     session: SessionDep,
     organization: OrganizationDep,
-    parameters: UserRequest,
+    parameters: UserID,
 ):
     user = await user_by_id(session, parameters.id)
 

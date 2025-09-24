@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, PrivateAttr
+from pydantic import BaseModel, BeforeValidator, ConfigDict, EmailStr, Field, PrivateAttr
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.types import Text, TypeDecorator
 from sqlmodel import Field as SQLField
@@ -53,9 +53,19 @@ class User(AsyncAttrs, SQLModel, table=True):
         self._token = token
 
 
+class UserID(BaseModel):
+    id: UUID
+
+
 class UserPublic(BaseModel):
     id: UUID
+    email: EmailStr
+    email_verified: bool
+    first_name: str
+    last_name: str
 
 
-class UserRequest(BaseModel):
-    id: UUID
+class UserParameters(BaseModel):
+    email: EmailStr
+    first_name: str
+    last_name: str
