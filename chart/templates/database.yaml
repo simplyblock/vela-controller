@@ -1,0 +1,115 @@
+apiVersion: stackgres.io/v1
+kind: SGInstanceProfile
+metadata:
+  name: profile
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-3"
+spec:
+  memory: "1Gi"
+
+---
+apiVersion: stackgres.io/v1
+kind: SGCluster
+metadata:
+  name: database
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-2"
+spec:
+  instances: 1
+  postgres:
+    version: {{ .Values.postgresVersion }}
+  pods:
+    persistentVolume:
+      size: '5Gi'
+  sgInstanceProfile: 'profile'
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: database-waiter
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-2"
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: sgcluster-reader
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-2"
+rules:
+  - apiGroups: ["stackgres.io"]
+    resources: ["sgclusters"]
+    verbs: ["get", "list"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: database-waiter-binding
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-2"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: sgcluster-reader
+subjects:
+  - kind: ServiceAccount
+    name: database-waiter
+
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: database-ready-check
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-1"
+    "helm.sh/hook-delete-policy": hook-succeeded
+spec:
+  template:
+    spec:
+      serviceAccountName: database-waiter
+      restartPolicy: OnFailure
+      containers:
+        - name: wait-for-sgcluster
+          image: registry.suse.com/suse/kubectl:latest
+          env:
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for SGCluster in namespace ${NAMESPACE} to be ready..."
+              echo "kubectl -n ${NAMESPACE} get sgcluster database -o jsonpath='{.status.conditions[?(@.type==\"Bootstrapped\")].status}' 2>/dev/null || echo \"Unknown\""
+              while true; do
+                # Check SGCluster status
+                kubectl -n ${NAMESPACE} get sgcluster database
+                kubectl -n ${NAMESPACE} get sgcluster database -o jsonpath='{.status.conditions}'
+                kubectl -n ${NAMESPACE} get sgcluster database -o jsonpath='{.status.conditions[?(@.type=="Bootstrapped")]}'
+                kubectl -n ${NAMESPACE} get sgcluster database -o jsonpath='{.status.conditions[?(@.type=="Bootstrapped")].status}'
+                STATUS=$(kubectl -n ${NAMESPACE} get sgcluster database -o jsonpath='{.status.conditions[?(@.type=="Bootstrapped")].status}' 2>/dev/null || echo "Unknown")
+                if [ "$STATUS" = "True" ]; then
+                  echo "SGCluster is ready!"
+                  exit 0
+                fi
+                echo "SGCluster boostrap status: $STATUS, waiting..."
+                sleep 5
+              done
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -17,6 +17,10 @@ secret:
     apiKey: your-super-secret-and-long-logflare-key
 
 db:
+  credentials:
+    adminusername: ''
+    adminpassword: ''
+    admindb: ''
   enabled: true
   image:
     tag: 15.1.0.147
@@ -36,39 +40,14 @@ db:
   vcpu: 1
   ram: 2
 
-studio:
-  image:
-    tag: 20240326-5e5586d
-  environment:
-    STUDIO_DEFAULT_ORGANIZATION: "My Organization"
-    STUDIO_DEFAULT_PROJECT: "My Project"
-    SUPABASE_PUBLIC_URL: http://example.com/
-    NEXT_PUBLIC_ENABLE_LOGS: "true"
-    # STUDIO_HOST: "127.0.0.1"
-    # NETWORK: "127.0.0.1"
-    HOSTNAME: "127.0.0.1"
-  # livenessProbe:
-  #   httpGet:
-  #     path: /api/profile
-  #     port: 3000
-    initialDelaySeconds: 3
-
-auth:
-  image:
-    tag: v2.143.0
-  environment:
-    API_EXTERNAL_URL: http://example.com
-    GOTRUE_SITE_URL: http://example.com
-    GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
-    GOTRUE_MAILER_AUTOCONFIRM: "true"
-    GOTRUE_SMTP_ADMIN_EMAIL: "your-mail@example.com"
-    GOTRUE_SMTP_HOST: "smtp.example.com"
-    GOTRUE_SMTP_PORT: "587"
-    GOTRUE_SMTP_SENDER_NAME: "your-mail@example.com"
-
 rest:
   image:
     tag: v12.0.1
+  livenessProbe:
+    httpGet:
+      path: /
+      port: 3000
+    initialDelaySeconds: 3
 
 realtime:
   image:
@@ -82,6 +61,11 @@ realtime:
 meta:
   image:
     tag: v0.80.0
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 8080
+    initialDelaySeconds: 3
 
 storage:
   image:
@@ -93,71 +77,3 @@ storage:
     initialDelaySeconds: 3
   persistence:
     enabled: false
-
-imgproxy:
-  image:
-    tag: v3.8.0
-  environment:
-    IMGPROXY_ENABLE_WEBP_DETECTION: "true"
-  livenessProbe:
-    exec:
-      command:
-        - imgproxy
-        - health
-    initialDelaySeconds: 3
-  persistence:
-    enabled: false
-
-kong:
-  image:
-    repository: kong
-    tag: 2.8.1
-  environment:
-    KONG_DECLARATIVE_CONFIG: /usr/local/kong/kong.yml
-    KONG_LOG_LEVEL: info
-  ingress:
-    enabled: true
-    className: "nginx"
-    annotations:
-      nginx.ingress.kubernetes.io/rewrite-target: /
-    tls: []
-      # - secretName: example-ingress-tls
-      #   hosts:
-      #     - example.com
-    hosts:
-      - host: example.com
-        paths:
-          - path: /
-            pathType: Prefix
-
-analytics:
-  image:
-    tag: 1.4.0
-  livenessProbe:
-    httpGet:
-      path: /health
-      port: 4000
-    initialDelaySeconds: 3
-
-vector:
-  image:
-    tag: 0.34.0-alpine
-  livenessProbe:
-    httpGet:
-      path: /health
-      port: 9001
-    initialDelaySeconds: 3
-  ## Vector requires logs from the control plane to function.
-  ## This is normally stored in /var/log/pods
-  ## Modify these values according to your environment.
-  volumeMounts:
-    - name: pod-logs
-      mountPath: /var/log/pods
-  volumes:
-    - name: pod-logs
-      hostPath:
-        path: /var/log/pods
-
-functions:
-  image:
-    tag: v1.41.2

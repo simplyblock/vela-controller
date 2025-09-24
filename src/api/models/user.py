@@ -8,16 +8,17 @@ from sqlmodel import Field as SQLField
 from sqlmodel import Relationship, SQLModel
 
 from .organization import Organization, OrganizationUserLink
+from .role import Role, RoleUserLink
 
 
 class JWT(BaseModel):
-    model_config = ConfigDict(extra='ignore')
+    model_config = ConfigDict(extra="ignore")
     sub: UUID
     aal: Annotated[
         int,
         Field(ge=1, le=3),
-        BeforeValidator(lambda s: int(s.removeprefix('aal'))),
-    ]
+        BeforeValidator(lambda s: int(s.removeprefix("aal"))),
+    ] = 1
 
     def mfa(self) -> bool:
         return self.aal >= 2
@@ -36,15 +37,24 @@ class _JWTType(TypeDecorator):
 
 class User(AsyncAttrs, SQLModel, table=True):
     id: UUID = SQLField(primary_key=True)
-    organizations: list[Organization] = Relationship(back_populates='users', link_model=OrganizationUserLink)
+    organizations: list[Organization] = Relationship(back_populates="users", link_model=OrganizationUserLink)
+    roles: list[Role] = Relationship(back_populates="users", link_model=RoleUserLink)
     _token: JWT | None = PrivateAttr(default=None)
 
     @property
     def token(self) -> JWT:
         if self._token is None:
-            raise ValueError('User has no token')
+            raise ValueError("User has no token")
         return self._token
 
     @token.setter
     def token(self, token: JWT):
         self._token = token
+
+
+class UserPublic(BaseModel):
+    id: UUID
+
+
+class UserRequest(BaseModel):
+    id: UUID

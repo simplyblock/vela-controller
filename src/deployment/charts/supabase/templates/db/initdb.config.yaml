@@ -6,6 +6,21 @@ metadata:
   labels:
     {{- include "supabase.labels" . | nindent 4 }}
 data:
+  99-create-admin-user.sql: |
+    -- Use psql meta-commands to read environment variables
+    \echo 'Creating admin user...'
+
+    -- psql supports \set from environment
+    \set username `echo "$ADMIN_USER"`
+    \set db `echo "$ADMIN_DB"`
+    \set pgpass `echo "$ADMIN_PASSWORD"`
+
+    -- Create the user with superuser privileges
+    CREATE ROLE :username WITH LOGIN PASSWORD :'pgpass' SUPERUSER CREATEDB CREATEROLE INHERIT;
+
+    -- Create admin database
+    CREATE DATABASE :db OWNER :username;
+
   99-jwt.sql: |
     \set jwt_secret `echo "$JWT_SECRET"`
     \set jwt_exp `echo "$JWT_EXP"`
@@ -33,7 +48,7 @@ data:
     ALTER USER supabase_storage_admin WITH PASSWORD :'pgpass';
   98-webhooks.sql: |
     BEGIN;
-      -- Create pg_net extension
+      -- Create pg_net extension (A PostgreSQL extension that enables asynchronous (non-blocking) HTTP/HTTPS requests with SQL)
       CREATE EXTENSION IF NOT EXISTS pg_net SCHEMA extensions;
       -- Create supabase_functions schema
       CREATE SCHEMA supabase_functions AUTHORIZATION supabase_admin;

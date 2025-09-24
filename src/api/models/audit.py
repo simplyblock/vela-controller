@@ -18,7 +18,7 @@ class Action(BaseModel):
 
 class Actor(BaseModel):
     id: str
-    type: Literal['user'] | str
+    type: Literal["user"] | str
     metadata: list[EmailStr | None]
 
 
@@ -33,10 +33,10 @@ class Target(BaseModel):
 
 
 class AuditLog(BaseModel):
-  action: Action
-  actor: Actor
-  target: Target
-  occurred_at: datetime
+    action: Action
+    actor: Actor
+    target: Target
+    occurred_at: datetime
 
 
 class OrganizationAuditLog(BaseModel):
