@@ -22,7 +22,7 @@ spec:
     network:
       services:
         ingress:
-          type: NodePort
+          type: LoadBalancer
   controlPlaneOptions:
     deployment:
       podTemplateSpec:
@@ -49,13 +49,6 @@ spec:
         certificateRefs:
           - kind: Secret
             name: {{ .Values.domaincertsecret }}
-      allowedRoutes:
-        namespaces:
-          from: All
-    - name: http
-      port: 80
-      protocol: HTTP
-      hostname: "*.{{ .Values.domain }}"
       allowedRoutes:
         namespaces:
           from: All

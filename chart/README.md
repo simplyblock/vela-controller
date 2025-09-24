@@ -15,8 +15,8 @@ helm upgrade --install kong-operator kong/gateway-operator -n kong-system \
 
 ```
 kubectl create secret tls vela-run-staging-wildcard-cert \
-  --cert=letsencrypt/live/kernel-labs.org/fullchain.pem \
-  --key=letsencrypt/live/kernel-labs.org/privkey.pem \
+  --cert=letsencrypt/live/staging.vela.run/fullchain.pem \
+  --key=letsencrypt/live/staging.vela.run/privkey.pem \
   -n kong-system
 ```
 
@@ -31,4 +31,17 @@ dataplane-ingress-public-gateway-qgwn4-h4m4j      NodePort    10.43.168.43   <no
 ```
 
 If the node IP of your k8s cluster is `192.168.10.146`, this is the public IP of Kong. 
+
+### Debugging 
+
+If there are any issues, running these commands could give a better idea on how to whats happening
+```
+kubectl -n kong-system get pods
+kubectl get gatewayconfigurations.gateway-operator.konghq.com -n kong-system
+kubectl get gatewayclass kong-class -o yaml
+kubectl get gateways -A
+kubectl describe gateway public-gateway -n kong-system
+kubectl get svc -n kong-system
+kubectl logs -n kong-system deploy/kong-operator-gateway-operator-controller-manager
+```
 
