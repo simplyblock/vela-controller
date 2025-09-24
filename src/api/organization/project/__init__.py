@@ -11,7 +11,6 @@ from fastapi.responses import JSONResponse
 from kubernetes.client.exceptions import ApiException
 from sqlalchemy.exc import IntegrityError
 
-from ....constants import DEFAULT_BRANCH_SLUG
 from ....deployment import (
     create_vela_config,
     delete_deployment,
@@ -49,7 +48,7 @@ def _encrypt(plaintext, passphrase) -> str:
 
 
 def _public(project: Project) -> ProjectPublic:
-    status = get_deployment_status(project.dbid(), DEFAULT_BRANCH_SLUG)
+    status = get_deployment_status(project.dbid(), Branch.DEFAULT_SLUG)
     connection_string = "postgresql://{user}:{password}@{host}:{port}/{database}".format(  # noqa: UP032
         user=project.database_user,
         password=project.database_password,
@@ -143,7 +142,7 @@ async def create(
     project_dbid = entity.dbid()
     # Ensure default branch exists
     main_branch = Branch(
-        name=DEFAULT_BRANCH_SLUG,
+        name=Branch.DEFAULT_SLUG,
         project=entity,
         parent=None,
         database_size=parameters.deployment.database_size,
@@ -241,7 +240,7 @@ async def update(
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def delete(session: SessionDep, _organization: OrganizationDep, project: ProjectDep):
-    delete_deployment(project.dbid(), DEFAULT_BRANCH_SLUG)
+    delete_deployment(project.dbid(), Branch.DEFAULT_SLUG)
     await session.delete(project)
     await session.commit()
     return Response(status_code=204)
@@ -254,7 +253,7 @@ async def delete(session: SessionDep, _organization: OrganizationDep, project: P
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def pause(_organization: OrganizationDep, project: ProjectDep):
-    namespace, vmi_name = get_db_vmi_identity(project.dbid(), DEFAULT_BRANCH_SLUG)
+    namespace, vmi_name = get_db_vmi_identity(project.dbid(), Branch.DEFAULT_SLUG)
     try:
         call_kubevirt_subresource(namespace, vmi_name, "pause")
         return Response(status_code=204)
@@ -270,7 +269,7 @@ async def pause(_organization: OrganizationDep, project: ProjectDep):
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def resume(_organization: OrganizationDep, project: ProjectDep):
-    namespace, vmi_name = get_db_vmi_identity(project.dbid(), DEFAULT_BRANCH_SLUG)
+    namespace, vmi_name = get_db_vmi_identity(project.dbid(), Branch.DEFAULT_SLUG)
     try:
         call_kubevirt_subresource(namespace, vmi_name, "resume")
         return Response(status_code=204)

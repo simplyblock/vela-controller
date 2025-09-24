@@ -5,7 +5,6 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from slugify import slugify
 
-from ....constants import DEFAULT_BRANCH_SLUG
 from ....deployment import delete_deployment
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ...db import SessionDep
@@ -188,7 +187,7 @@ async def delete(
     _project: ProjectDep,
     branch: BranchDep,
 ):
-    if branch.name == DEFAULT_BRANCH_SLUG:
+    if branch.name == Branch.DEFAULT_SLUG:
         raise HTTPException(400, "Default branch cannot be deleted")
     delete_deployment(branch.project_id or branch.dbid(), branch.name)
     await session.delete(branch)
