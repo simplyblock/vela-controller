@@ -1,4 +1,17 @@
-### installation
+# Kubernetes admin configuration
+
+Ideally everything here needs to be managed using gitops methodoligy using ArgoCD or Flux. But for documenting all the admin configuration in this file. 
+
+## Installation vela helm charts
+```
+helm install vela --namespace vela --create-namespace ./
+```
+and from then on, all the next versions can be upgraded by running 
+```
+helm upgrade vela --namespace vela --create-namespace ./
+```
+
+## Kong installation
 
 Install the kong operator: 
 ```
@@ -11,7 +24,46 @@ helm upgrade --install kong-operator kong/gateway-operator -n kong-system \
   --set global.webhooks.options.certManager.enabled=true
 ```
 
-`public-gateway.yaml` expects `wildcard-cert` to be present in `kong-system`. So creating one. And this certificate needs to renewed manually. In production we should we cert-manager operator. 
+### kong admin configuration
+
+```
+kubectl apply -f - <<'EOF'
+apiVersion: gateway-operator.konghq.com/v1beta1
+kind: GatewayConfiguration
+metadata:
+  name: kong-gw-config
+  namespace: kong-system
+spec:
+  dataPlaneOptions:
+    network:
+      services:
+        ingress:
+          type: LoadBalancer
+  controlPlaneOptions:
+    deployment:
+      podTemplateSpec:
+        spec:
+          containers:
+            - name: controller
+              image: kong/kubernetes-ingress-controller:3.5
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: kong-class
+spec:
+  controllerName: konghq.com/gateway-operator
+  parametersRef:
+    group: gateway-operator.konghq.com
+    kind: GatewayConfiguration
+    name: kong-gw-config
+    namespace: kong-system
+EOF
+```
+
+### Setting up TLS Certificates
+
+`public-gateway.yaml` expects `vela-run-staging-wildcard-cert` to be present in `kong-system`. So creating one. And this certificate needs to renewed manually. In production we should we cert-manager operator. 
 
 ```
 kubectl create secret tls vela-run-staging-wildcard-cert \
@@ -21,18 +73,14 @@ kubectl create secret tls vela-run-staging-wildcard-cert \
 ```
 
 
-Due the conflits for port 443 and 80, I've exposed the public gateway as a `NodePort`. But in production this will be in 
-Loadbalancer. 
+### Debugging 
+
+Once everything is installed, we should finally see this.
 
 ```
 kubectl -n kong-system get svc | grep ingress-public-gateway
-NAME                                              TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)         AGE
-dataplane-ingress-public-gateway-qgwn4-h4m4j      NodePort    10.43.168.43   <none>        443:31871/TCP   21m
+dataplane-ingress-public-gateway-tkzr7-vt2n7      LoadBalancer   10.103.56.9     10.10.11.10   443:31366/TCP   23m
 ```
-
-If the node IP of your k8s cluster is `192.168.10.146`, this is the public IP of Kong. 
-
-### Debugging 
 
 If there are any issues, running these commands could give a better idea on how to whats happening
 ```
@@ -45,10 +93,51 @@ kubectl get svc -n kong-system
 kubectl logs -n kong-system deploy/kong-operator-gateway-operator-controller-manager
 ```
 
-### Metal-LB
+## Metal-LB Installation
 
-For the server to have external traffic
+Since we use Talos, external loadbalancer like Talos needs to be installed.
 
 ```
 kukubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.13.12/config/manifests/metallb-native.yaml
 ```
+
+and then apply the IP Address Pool
+```
+kubectl apply -f - <<'EOF'
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: default-address-pool
+  namespace: metallb-system
+spec:
+  addresses:
+  - 10.10.11.10-10.10.11.10   # exact single IP
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: advert
+  namespace: metallb-system
+spec: {}
+EOF
+```
+
+### Metrics API server installation
+
+kubectl top requires metrics API to be running. To install metrics API the following commands can be used
+
+```
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+```
+all the resources here are applied to `kube-system` 
+
+check memory utilization of all pods across namespaces
+```
+kubectl top pod -A --sort-by=memory
+```
+
+### Kubevirt
+For Kubevirt installation refer (here)[./docs/kubevirt.md]
+
+### StackGres
+TODO
