@@ -51,6 +51,16 @@ spec:
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+    - name: nginx-sidecar
+      image: nginx:stable
+      ports:
+        - name: https
+          containerPort: 8443
+      volumeMounts:
+        - name: nginx-conf
+          mountPath: /etc/nginx/conf.d
+        - name: tls-certs
+          mountPath: /etc/nginx/tls
   initContainers:
     - name: init-vela-auth
       image: postgres:{{ .Values.postgresVersion }}
@@ -99,6 +109,12 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
   volumes:
+    - name: nginx-conf
+      configMap:
+        name: vela-auth-nginx
+    - name: tls-certs
+      secret:
+        secretName: vela-auth-tls
     - name: init-sql
       configMap:
         name: vela-auth-config
@@ -187,7 +203,10 @@ spec:
       port: 8080
       targetPort: 8080
       protocol: TCP
-
+    - name: https
+      port: 8443
+      targetPort: 8443
+      protocol: TCP
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -206,3 +225,39 @@ spec:
                 port:
                   number: 8080
 #      {{ if .Values.host }}host: {{ .Values.host }}{{ end }}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vela-auth-nginx
+data:
+  default.conf: |
+    server {
+      listen 8443 ssl;
+      ssl_certificate /etc/nginx/tls/tls.crt;
+      ssl_certificate_key /etc/nginx/tls/tls.key;
+
+      location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+      }
+    }
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: vela-auth-cert
+  namespace: {{ .Release.Namespace }}
+spec:
+  secretName: vela-auth-tls
+  isCA: false
+  duration: 8760h
+  renewBefore: 360h 
+  issuerRef:
+    name: my-ca-issuer
+    kind: Issuer
+    group: cert-manager.io
+  dnsNames:
+    - vela-auth-service.{{ .Release.Namespace }}.svc.cluster.local

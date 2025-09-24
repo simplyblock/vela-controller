@@ -10,3 +10,7 @@ securityContext:
   runAsUser: 65534
   seccompProfile:
     type: 'RuntimeDefault'
+
+cert-manager:
+  installCRDs: true
+  
