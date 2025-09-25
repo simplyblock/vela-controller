@@ -3,16 +3,32 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
+from ...._util import Slug
 from ....deployment import ResizeParameters, delete_deployment, resize_deployment
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ...db import SessionDep
-from ...models.branch import Branch, BranchCreate, BranchDep, BranchPublic, BranchUpdate
+from ...models.branch import (
+    Branch,
+    BranchCreate,
+    BranchDep,
+    BranchDetailResources,
+    BranchPublic,
+    BranchUpdate,
+)
 from ...models.branch import lookup as lookup_branch
 from ...models.organization import OrganizationDep
 from ...models.project import ProjectDep
 
 api = APIRouter()
+
+
+class BranchResponse(BaseModel):
+    name: Slug
+    id: str
+    rest_endpoint: str | None = None
+    resources: BranchDetailResources
 
 
 async def _public(branch: Branch) -> BranchPublic:
@@ -130,14 +146,30 @@ instance_api = APIRouter(prefix="/{branch_id}")
 @instance_api.get(
     "/",
     name="organizations:projects:branch:detail",
+    response_model=BranchResponse,
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def detail(
     _organization: OrganizationDep,
     _project: ProjectDep,
     branch: BranchDep,
-) -> BranchPublic:
-    return await _public(branch)
+) -> BranchResponse:
+    domain = branch.endpoint_domain
+    resources = BranchDetailResources(
+        vcpu=branch.vcpu,
+        ram_bytes=branch.memory,
+        nvme_bytes=branch.database_size,
+        iops=branch.iops,
+        storage_bytes=branch.database_size,
+    )
+    rest_endpoint = f"https://{domain}/rest" if domain else None
+
+    return BranchResponse(
+        name=branch.name,
+        id=str(branch.id),
+        rest_endpoint=rest_endpoint,
+        resources=resources,
+    )
 
 
 @instance_api.put(
@@ -201,7 +233,7 @@ async def delete(
 )
 async def resize(_organization: OrganizationDep, _project: ProjectDep, parameters: ResizeParameters, branch: BranchDep):
     # Trigger helm upgrade with provided parameters; returns 202 Accepted
-    resize_deployment(branch.dbid(), branch.name, parameters)
+    resize_deployment(branch.id, branch.name, parameters)
     return Response(status_code=202)
 
 
