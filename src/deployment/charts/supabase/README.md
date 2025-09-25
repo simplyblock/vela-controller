@@ -21,8 +21,8 @@ git clone https://github.com/supabase-community/supabase-kubernetes
 # Switch to charts directory
 cd supabase-kubernetes/charts/supabase/
 
-# Install the chart
-helm install demo -f values.example.yaml .
+# Install the chart using the bundled defaults
+helm install demo .
 ```
 
 The first deployment can take some time to complete (especially auth service). You can view the status of the pods using:
