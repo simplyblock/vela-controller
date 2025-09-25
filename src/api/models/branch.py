@@ -2,14 +2,14 @@ from typing import Annotated, ClassVar, Optional
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import BigInteger, Column, UniqueConstraint, event
+from sqlalchemy import BigInteger, Column, UniqueConstraint
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship, SQLModel, select
 
 from ..._util import Slug
 from ..db import SessionDep
-from ._util import Name, update_slug
+from ._util import Name
 from .project import Project, ProjectDep
 
 
@@ -41,10 +41,6 @@ class Branch(AsyncAttrs, SQLModel, table=True):
         if self.project_id is None:
             raise ValueError("Project model not tracked in database")
         return self.project_id
-
-
-event.listen(Branch, "before_insert", update_slug)
-event.listen(Branch, "before_update", update_slug)
 
 
 class BranchCreate(BaseModel):

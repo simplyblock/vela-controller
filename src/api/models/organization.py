@@ -9,9 +9,8 @@ from sqlmodel import Field, Relationship, SQLModel, select
 
 from ..._util import Slug
 from ..db import SessionDep
-from ._util import Name, Slug, update_slug
-from .membership import Membership
 from ._util import Name, update_slug
+from .membership import Membership
 
 if TYPE_CHECKING:
     from .project import Project
