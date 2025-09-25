@@ -7,11 +7,7 @@ from ..._util import dbstr
 
 
 def update_slug(mapper, connection, target):  # noqa
-    slug = slugify(target.name, max_length=50)
-    if hasattr(target, "slug"):
-        target.slug = slug
-    else:
-        target.name = slug
+    target.slug = slugify(target.name, max_length=50)
 
 
 def _validate_sluggable(string: str):
