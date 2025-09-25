@@ -1,14 +1,19 @@
+import asyncio
 import logging
 import subprocess
 import tempfile
 from importlib import resources
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
+import ulid
 import yaml
+from cloudflare import AsyncCloudflare, CloudflareError
 from kubernetes.client.rest import ApiException
 from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 from urllib3.exceptions import HTTPError
 
+from .. import VelaError
 from .._util import Identifier, Slug, check_output, dbstr
 from .kubernetes import KubernetesService
 from .settings import settings
@@ -19,13 +24,12 @@ kube_service = KubernetesService()
 
 
 def _default_branch_slug() -> Slug:
-    # Local import to avoid import cycle with models.project -> deployment
-    from ..api.models.branch import Branch
+    from ..api.models.branch import Branch  # Local import to avoid circular dependency
 
     return Branch.DEFAULT_SLUG
 
 
-def _deployment_namespace(id_: Identifier, branch: Slug) -> str:
+def deployment_namespace(id_: Identifier, branch: Slug) -> str:
     branch = branch or _default_branch_slug()
     return f"{settings.deployment_namespace_prefix}-deployment-{id_}-{branch}"
 
@@ -56,7 +60,7 @@ class DeploymentStatus(BaseModel):
 
 async def create_vela_config(id_: Identifier, parameters: DeploymentParameters, branch: Slug):
     logging.info(
-        f"Creating Vela configuration for namespace: {_deployment_namespace(id_, branch)}"
+        f"Creating Vela configuration for namespace: {deployment_namespace(id_, branch)}"
         f" (database {parameters.database}, user {parameters.database_user}, branch {branch})"
     )
 
@@ -74,7 +78,7 @@ async def create_vela_config(id_: Identifier, parameters: DeploymentParameters, 
     db_spec["ram"] = parameters.memory // (2**30)
     db_spec.setdefault("persistence", {})["size"] = f"{parameters.database_size // (2**30)}Gi"
     db_spec.setdefault("image", {})["tag"] = parameters.database_image_tag
-    namespace = _deployment_namespace(id_, branch)
+    namespace = deployment_namespace(id_, branch)
 
     # todo: create an storage class with the given IOPS
     values_content["provisioning"] = {"iops": parameters.iops}
@@ -115,7 +119,7 @@ def get_deployment_status(id_: Identifier, branch: Slug) -> DeploymentStatus:
     status: StatusType
 
     try:
-        k8s_statuses = kube_service.check_namespace_status(_deployment_namespace(id_, branch))
+        k8s_statuses = kube_service.check_namespace_status(deployment_namespace(id_, branch))
 
         if failed := _pods_with_status(k8s_statuses, "Failed"):
             status = "ACTIVE_UNHEALTHY"
@@ -149,7 +153,7 @@ def get_deployment_status(id_: Identifier, branch: Slug) -> DeploymentStatus:
 
 
 def delete_deployment(id_: Identifier, branch: Slug):
-    namespace = _deployment_namespace(id_, branch)
+    namespace = deployment_namespace(id_, branch)
     subprocess.check_call(["helm", "uninstall", _release_name(namespace), "-n", namespace, "--wait"])
     kube_service.delete_namespace(namespace)
 
@@ -162,7 +166,7 @@ def get_db_vmi_identity(id_: Identifier, branch: Slug) -> tuple[str, str]:
     are provided. Our release name is "supabase-{namespace}" and chart name is "supabase".
     Hence the VMI name resolves to: f"{_release_name(namespace)}-supabase-db".
     """
-    namespace = _deployment_namespace(id_, branch)
+    namespace = deployment_namespace(id_, branch)
     vmi_name = f"{_release_name(namespace)}-supabase-db"
     return namespace, vmi_name
 
@@ -171,7 +175,7 @@ class ResizeParameters(BaseModel):
     database_size: Annotated[int | None, Field(gt=0, multiple_of=2**30)] = None
 
 
-def resize_deployment(id_: int, name: str, parameters: ResizeParameters):
+def resize_deployment(id_: Identifier, name: str, parameters: ResizeParameters):
     """Perform an in-place Helm upgrade to disk. Only parameters provided will be updated.
     others are preserved using --reuse-values.
     """
@@ -182,7 +186,7 @@ def resize_deployment(id_: int, name: str, parameters: ResizeParameters):
     if parameters.database_size is not None:
         db_spec.setdefault("persistence", {})["size"] = f"{parameters.database_size // (2**30)}Gi"
 
-    namespace = _deployment_namespace(id_, name)
+    namespace = deployment_namespace(id_, name)
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as temp_values:
         yaml.dump(values_content, temp_values, default_flow_style=False)
         subprocess.check_call(
@@ -198,3 +202,207 @@ def resize_deployment(id_: int, name: str, parameters: ResizeParameters):
                 temp_values.name,
             ]
         )
+
+
+class BranchEndpointError(VelaError):
+    """Raised when provisioning branch endpoints fails."""
+
+
+class CloudflareConfig(BaseModel):
+    api_token: str
+    zone_id: str
+    dns_target: str
+    domain_suffix: str
+
+
+class KubeGatewayConfig(BaseModel):
+    namespace: str = "vela-deployment-1-main"
+    gateway_name: str = "public-gateway"
+    gateway_namespace: str = "kong-system"
+
+    def for_namespace(self, namespace: str) -> "KubeGatewayConfig":
+        return self.model_copy(update={"namespace": namespace})
+
+
+class HTTPRouteSpec(BaseModel):
+    ref: str
+    domain: str
+    namespace: str
+    service_name: str
+    service_port: int
+    path_prefix: str
+    route_suffix: str
+
+
+class BranchEndpointProvisionSpec(BaseModel):
+    project_id: Identifier
+    branch_slug: str
+
+
+class BranchEndpointResult(BaseModel):
+    ref: str
+    domain: str
+
+
+async def _create_dns_record(cf: CloudflareConfig, domain: str) -> None:
+    try:
+        async with AsyncCloudflare(api_token=cf.api_token) as client:
+            await client.dns.records.create(
+                zone_id=cf.zone_id,
+                name=domain,
+                type="A",
+                content=cf.dns_target,
+                ttl=1,  # Cloudflare API uses 1 to represent automatic TTL
+                proxied=False,
+            )
+    except CloudflareError as exc:
+        raise BranchEndpointError(f"Cloudflare API error: {exc}") from exc
+    except Exception as exc:  # pragma: no cover - surfaced to caller
+        raise BranchEndpointError(f"Cloudflare request failed: {exc}") from exc
+
+    logger.info("Created DNS A record %s -> %s", domain, cf.dns_target)
+
+
+def _build_http_route(cfg: KubeGatewayConfig, spec: HTTPRouteSpec) -> dict[str, Any]:
+    return {
+        "apiVersion": "gateway.networking.k8s.io/v1",
+        "kind": "HTTPRoute",
+        "metadata": {
+            "name": f"{spec.ref}-{spec.route_suffix}",
+            "namespace": spec.namespace,
+            "annotations": {
+                "konghq.com/strip-path": "true",
+            },
+        },
+        "spec": {
+            "parentRefs": [
+                {
+                    "name": cfg.gateway_name,
+                    "namespace": cfg.gateway_namespace,
+                }
+            ],
+            "hostnames": [spec.domain],
+            "rules": [
+                {
+                    "matches": [{"path": {"type": "PathPrefix", "value": spec.path_prefix}}],
+                    "backendRefs": [
+                        {
+                            "name": spec.service_name,
+                            "namespace": spec.namespace,
+                            "port": spec.service_port,
+                        }
+                    ],
+                }
+            ],
+        },
+    }
+
+
+def _postgrest_route_specs(ref: str, domain: str, namespace: str) -> list[HTTPRouteSpec]:
+    """HTTPRoute definitions that expose the PostgREST service for a branch."""
+
+    base_service = f"supabase-{namespace}-supabase"
+    return [
+        HTTPRouteSpec(
+            ref=ref,
+            domain=domain,
+            namespace=namespace,
+            service_name=f"{base_service}-rest",
+            service_port=3000,
+            path_prefix="/rest",
+            route_suffix="postgrest-route",
+        ),
+    ]
+
+
+async def _apply_http_routes(namespace: str, routes: list[dict[str, Any]]) -> None:
+    """Apply HTTPRoute manifests without blocking the event loop."""
+    try:
+        await asyncio.to_thread(kube_service.apply_http_routes, namespace, routes)
+    except Exception as exc:  # pragma: no cover - surfaced to caller
+        raise BranchEndpointError(f"Failed to apply HTTPRoute: {exc}") from exc
+
+
+async def provision_branch_endpoints(
+    spec: BranchEndpointProvisionSpec,
+    *,
+    ref: str,
+) -> BranchEndpointResult:
+    """Provision DNS + HTTPRoute resources (currently PostgREST only) for a branch."""
+
+    cf_cfg = CloudflareConfig(
+        api_token=settings.cloudflare_api_token,
+        zone_id=settings.cloudflare_zone_id,
+        dns_target=settings.cloudflare_dns_target,
+        domain_suffix=settings.cloudflare_domain_suffix,
+    )
+
+    gateway_cfg = KubeGatewayConfig().for_namespace(deployment_namespace(spec.project_id, spec.branch_slug))
+
+    domain = f"{ref}.{cf_cfg.domain_suffix}".lower()
+    logger.info(
+        "Provisioning endpoints for project_id=%s branch=%s domain=%s",
+        spec.project_id,
+        spec.branch_slug,
+        domain,
+    )
+
+    await _create_dns_record(cf_cfg, domain)
+
+    # Right now we expose only the PostgREST service; extend here when other components need routes.
+    route_specs = _postgrest_route_specs(ref, domain, gateway_cfg.namespace)
+    routes = [_build_http_route(gateway_cfg, route_spec) for route_spec in route_specs]
+    await _apply_http_routes(gateway_cfg.namespace, routes)
+
+    return BranchEndpointResult(ref=ref, domain=domain)
+
+
+async def store_branch_endpoints_in_db(
+    *,
+    branch_id: Identifier,
+    project_id: Identifier,
+    result: BranchEndpointResult,
+) -> None:
+    """Store the provisioned endpoint details back on the Branch record."""
+
+    from ..api.db import engine
+    from ..api.models.branch import Branch  # Local import to avoid circular dependency
+
+    async with AsyncSession(engine) as background_session:
+        branch_obj = await background_session.get(Branch, branch_id)
+        if branch_obj is None:
+            logger.warning(
+                "Provisioned branch infrastructure for missing branch id=%s project=%s",
+                branch_id,
+                project_id,
+            )
+            return
+
+        branch_obj.endpoint_domain = result.domain
+        await background_session.commit()
+
+
+async def deploy_branch_environment(
+    *,
+    project_id: Identifier,
+    branch_id: Identifier,
+    branch_slug: Slug,
+    parameters: DeploymentParameters,
+) -> None:
+    """Background task: provision infra for a branch and persist the resulting endpoint."""
+
+    # Create the main deployment (database etc)
+    await create_vela_config(project_id, parameters, branch_slug)
+
+    # Provision DNS + HTTPRoute resources
+    ref = str(ulid.ULID()).lower()
+    result = await provision_branch_endpoints(
+        spec=BranchEndpointProvisionSpec(project_id=project_id, branch_slug=branch_slug), ref=ref
+    )
+
+    # Store the resulting endpoint info back in the database
+    await store_branch_endpoints_in_db(
+        branch_id=branch_id,
+        project_id=project_id,
+        result=result,
+    )

@@ -20,6 +20,8 @@ dependencies = [
     'pycryptodome',
     'python-keycloak',
     'python-ulid',
+    'requests',
+    'cloudflare',
 ]
 
 [tool.setuptools]

@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import logging
 from collections.abc import Sequence
 from typing import Literal
 
@@ -11,9 +12,12 @@ from fastapi.responses import JSONResponse
 from kubernetes.client.exceptions import ApiException
 from sqlalchemy.exc import IntegrityError
 
+from .... import VelaError
+from ...._util import Identifier
 from ....deployment import (
-    create_vela_config,
+    DeploymentParameters,
     delete_deployment,
+    deploy_branch_environment,
     get_db_vmi_identity,
     get_deployment_status,
 )
@@ -26,7 +30,32 @@ from ...models.project import Project, ProjectCreate, ProjectDep, ProjectPublic,
 from ...settings import settings
 from . import branch as branch_module
 
+logger = logging.getLogger(__name__)
+
 api = APIRouter()
+
+
+async def _deploy_branch_environment_task(
+    *,
+    project_id: Identifier,
+    branch_id: Identifier,
+    branch_slug: str,
+    parameters: DeploymentParameters,
+) -> None:
+    try:
+        await deploy_branch_environment(
+            project_id=project_id,
+            branch_id=branch_id,
+            branch_slug=branch_slug,
+            parameters=parameters,
+        )
+    except VelaError:
+        logger.exception(
+            "Branch deployment failed for project_id=%s branch_id=%s branch_slug=%s",
+            project_id,
+            branch_id,
+            branch_slug,
+        )
 
 
 def _evp_bytes_to_key(passphrase, salt) -> tuple[bytes, bytes]:
@@ -153,7 +182,17 @@ async def create(
     await session.commit()
     await session.refresh(main_branch)
     await session.refresh(entity)
-    asyncio.create_task(create_vela_config(entity.id, parameters.deployment, main_branch.name))
+    branch_slug = main_branch.name
+    branch_dbid = main_branch.id
+
+    asyncio.create_task(
+        _deploy_branch_environment_task(
+            project_id=entity.id,
+            branch_id=branch_dbid,
+            branch_slug=branch_slug,
+            parameters=parameters.deployment,
+        )
+    )
     await session.refresh(organization)
     entity_url = url_path_for(
         request,

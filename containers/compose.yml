@@ -28,6 +28,10 @@ services:
       VELA_KEYCLOAK_URL: 'http://auth:8080/auth/'
       VELA_KEYCLOAK_CLIENT_ID: 'controller'
       VELA_KEYCLOAK_CLIENT_SECRET: 'controller-secret'
+      VELA_CLOUDFLARE_API_TOKEN: 'your_cloudflare_api_token'
+      VELA_CLOUDFLARE_ZONE_ID: 'your_cloudflare_zone_id'
+      VELA_CLOUDFLARE_DNS_TARGET: '192.168.10.146'
+      VELA_CLOUDFLARE_DOMAIN_SUFFIX: 'example.com'
     depends_on:
       database:
         condition: service_healthy
