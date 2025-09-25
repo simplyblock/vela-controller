@@ -61,7 +61,7 @@ async def create_vela_config(id_: int, parameters: DeploymentParameters, branch:
     )
 
     chart = resources.files(__package__) / "charts" / "supabase"
-    values_content = yaml.safe_load((chart / "values.example.yaml").read_text())
+    values_content = yaml.safe_load((chart / "values.yaml").read_text())
 
     # Override defaults
     db_secrets = values_content.setdefault("db", {}).setdefault("credentials", {})
