@@ -3,16 +3,32 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from slugify import slugify
 
+from ...._util import Slug
 from ....deployment import delete_deployment
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ...db import SessionDep
-from ...models.branch import Branch, BranchCreate, BranchDep, BranchPublic, BranchUpdate
+from ...models.branch import (
+    Branch,
+    BranchCreate,
+    BranchDep,
+    BranchDetailResources,
+    BranchPublic,
+    BranchUpdate,
+)
 from ...models.organization import OrganizationDep
 from ...models.project import ProjectDep
 
 api = APIRouter()
+
+
+class BranchResponse(BaseModel):
+    name: Slug
+    id: str
+    rest_endpoint: str | None = None
+    resources: BranchDetailResources
 
 
 async def _public(branch: Branch) -> BranchPublic:
@@ -118,14 +134,31 @@ instance_api = APIRouter(prefix="/{branch}")
 @instance_api.get(
     "/",
     name="organizations:projects:branch:detail",
+    response_model=BranchResponse,
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def detail(
     _organization: OrganizationDep,
     _project: ProjectDep,
     branch: BranchDep,
-) -> BranchPublic:
-    return await _public(branch)
+) -> BranchResponse:
+    domain = branch.endpoint_domain
+    storage_gb = branch.database_size // (2**30)
+    resources = BranchDetailResources(
+        vcpu=branch.vcpu,
+        ram_mb=branch.memory // (1024**2),
+        nvme_gb=storage_gb,
+        iops=branch.iops,
+        storage_gb=storage_gb,
+    )
+    rest_endpoint = f"https://{domain}/rest" if domain else None
+
+    return BranchResponse(
+        name=branch.name,
+        id=str(branch.dbid()),
+        rest_endpoint=rest_endpoint,
+        resources=resources,
+    )
 
 
 @instance_api.put(

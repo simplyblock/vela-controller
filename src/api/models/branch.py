@@ -2,7 +2,7 @@ from typing import Annotated, ClassVar, Optional
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import BigInteger, Column, UniqueConstraint
+from sqlalchemy import BigInteger, Column, String, UniqueConstraint
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship, SQLModel, select
@@ -22,6 +22,7 @@ class Branch(AsyncAttrs, SQLModel, table=True):
     project: Project | None = Relationship(back_populates="branches")
     parent_id: int | None = Field(default=None, foreign_key="branch.id")
     parent: Optional["Branch"] = Relationship(sa_relationship_kwargs={"remote_side": "Branch.id"})
+    endpoint_domain: str | None = Field(default=None, sa_column=Column(String(255), nullable=True))
 
     # Deployment parameters specific to this branch
     database_size: Annotated[int, Field(gt=0, multiple_of=2**30, sa_column=Column(BigInteger))]
@@ -59,6 +60,14 @@ class BranchUpdate(BaseModel):
 class BranchPublic(BaseModel):
     id: int
     name: Slug
+
+
+class BranchDetailResources(BaseModel):
+    vcpu: int
+    ram_mb: int
+    nvme_gb: int
+    iops: int
+    storage_gb: int
 
 
 async def _lookup(session: SessionDep, project: ProjectDep, branch: Slug) -> Branch:

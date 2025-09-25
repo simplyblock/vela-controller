@@ -20,6 +20,9 @@ dependencies = [
     'cryptography',  # JWT algorithms
     'pycryptodome',
     'python-keycloak',
+    'requests',
+    'cloudflare',
+    'ulid-py'
 ]
 
 [tool.setuptools]

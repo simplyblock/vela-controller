@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 from kubernetes import client, config
 
@@ -38,3 +39,35 @@ class KubernetesService:
         if namespace not in {namespace.metadata.name for namespace in self.core_v1.list_namespace().items}:
             raise KeyError(f"Namespace {namespace} not found")
         return {pod.metadata.name: pod.status.phase for pod in self.core_v1.list_namespaced_pod(namespace).items}
+
+    def apply_http_routes(self, namespace: str, routes: list[dict[str, Any]]):
+        for route in routes:
+            group, version = route["apiVersion"].split("/")
+            plural = "httproutes"
+
+            try:
+                self.custom.create_namespaced_custom_object(
+                    group=group,
+                    version=version,
+                    namespace=namespace,
+                    plural=plural,
+                    body=route,
+                )
+                logger.info("Created HTTPRoute %s in %s", route["metadata"]["name"], namespace)
+            except client.exceptions.ApiException as exc:
+                if exc.status == 409:
+                    logger.info(
+                        "HTTPRoute %s already exists in %s; replacing",
+                        route["metadata"]["name"],
+                        namespace,
+                    )
+                    self.custom.replace_namespaced_custom_object(
+                        group=group,
+                        version=version,
+                        namespace=namespace,
+                        plural=plural,
+                        name=route["metadata"]["name"],
+                        body=route,
+                    )
+                else:
+                    raise
