@@ -27,7 +27,30 @@ async def list_users(organization: OrganizationDep) -> Sequence[UserPublic]:
     "/",
     name="organizations:members:add",
     status_code=201,
-    responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
+    responses={
+        201: {
+            "content": None,
+            "headers": {
+                "Location": {
+                    "description": "URL of the created item",
+                    "schema": {"type": "string"},
+                },
+            },
+            "links": {
+                "update": {
+                    "operationId": "organizations:members:update",
+                    "parameters": {"user_id": "$request.body#/id"},
+                },
+                "delete": {
+                    "operationId": "organizations:members:remove",
+                    "parameters": {"user_id": "$request.body#/id"},
+                },
+            },
+        },
+        401: Unauthenticated,
+        403: Forbidden,
+        404: NotFound,
+    },
 )
 async def add(
     session: SessionDep,
