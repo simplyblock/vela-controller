@@ -1,8 +1,9 @@
 from typing import TYPE_CHECKING, Annotated
 
+import ulid
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import BigInteger, UniqueConstraint, event
+from sqlalchemy import BigInteger, Column, String, UniqueConstraint, event
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship, SQLModel, select
@@ -27,6 +28,10 @@ class Project(AsyncAttrs, SQLModel, table=True):
     database_user: str
     database_password: str
     branches: list["Branch"] = Relationship(back_populates="project", cascade_delete=True)
+    external_id: str | None = Field(
+        default_factory=lambda: str(ulid.new()).lower(),
+        sa_column=Column(String(26), unique=True, nullable=True, index=True),
+    )
 
     __table_args__ = (UniqueConstraint("organization_id", "slug", name="unique_project_slug"),)
 
