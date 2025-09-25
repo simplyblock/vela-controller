@@ -12,3 +12,8 @@ securityContext:
     type: 'RuntimeDefault'
 domain: staging.vela.run
 domaincertsecret: vela-run-staging-wildcard-cert  # TODO: use cert manager 
+sentry:
+  dsn: null
+  environment: null
+  tracesSampleRate: null
+  profilesSampleRate: null

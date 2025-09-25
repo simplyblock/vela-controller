@@ -9,6 +9,7 @@ dynamic = ['version']
 dependencies = [
     'fastapi',
     'uvicorn',
+    'sentry-sdk[fastapi]',
     'sqlmodel',
     'asyncpg',
     'pyjwt',

@@ -25,6 +25,10 @@ services:
       VELA_POSTGRES_URL: 'postgresql+asyncpg://postgres:vela@database:5432/vela'
       VELA_CORS_ORIGINS: '["http://localhost:3000"]'
       VELA_PGMETA_CRYPTO_KEY: 'secret'
+      # VELA_SENTRY_DSN: 'https://examplePublicKey@o0.ingest.sentry.io/0'
+      # VELA_SENTRY_ENVIRONMENT: 'local'
+      # VELA_SENTRY_TRACES_SAMPLE_RATE: '0.1'
+      # VELA_SENTRY_PROFILES_SAMPLE_RATE: '0.1'
     depends_on:
       database:
         condition: service_healthy

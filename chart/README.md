@@ -11,6 +11,17 @@ and from then on, all the next versions can be upgraded by running
 helm upgrade vela --namespace vela --create-namespace ./
 ```
 
+### Sentry
+
+Configure error reporting via the `sentry` block in `values.yaml`, for example:
+
+```
+sentry:
+  dsn: https://examplePublicKey@o0.ingest.sentry.io/0
+  environment: staging
+  tracesSampleRate: 0.1
+```
+
 ## Kong installation
 
 Install the kong operator: 

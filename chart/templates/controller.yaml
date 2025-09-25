@@ -33,6 +33,24 @@ spec:
           value: {{ .Release.Namespace }}
         - name: VELA_DEPLOYMENT_HOST
           value: {{ .Values.host }}
+      {{- with .Values.sentry }}
+      {{- if .dsn }}
+        - name: VELA_SENTRY_DSN
+          value: {{ .dsn | quote }}
+      {{- end }}
+      {{- if .environment }}
+        - name: VELA_SENTRY_ENVIRONMENT
+          value: {{ .environment | quote }}
+      {{- end }}
+      {{- if .tracesSampleRate }}
+        - name: VELA_SENTRY_TRACES_SAMPLE_RATE
+          value: {{ .tracesSampleRate | quote }}
+      {{- end }}
+      {{- if .profilesSampleRate }}
+        - name: VELA_SENTRY_PROFILES_SAMPLE_RATE
+          value: {{ .profilesSampleRate | quote }}
+      {{- end }}
+      {{- end }}
       livenessProbe:
         httpGet:
           path: /health
@@ -97,4 +115,3 @@ spec:
         - name: vela-controller-service
           namespace: {{ .Release.Namespace }}
           port: 8000
-
