@@ -4,6 +4,8 @@ metadata:
   name: vela-auth
   labels:
     app.kubernetes.io/name: vela-auth
+  annotations:
+    vela-logflare/log-collector-enabled: "true"
 spec:
   containers:
     - name: vela-auth

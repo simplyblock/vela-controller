@@ -59,7 +59,11 @@ data:
   filter.lua: |
     function filter_tagged_pods(tag, timestamp, record)
         annotations = record["kubernetes"]["annotations"]
-        if annotations ~= nil and annotations["vela-logflare/log-collector/enabled"] == "true" then
+        if annotations ~= nil and annotations["vela-logflare/log-collector-enabled"] == "true" then
+
+            record["namespace"] = record["kubernetes"]["namespace_name"]
+            record["pod"] = record["kubernetes"]["pod_name"]
+
             return 1, record
         end
         return -1, record
