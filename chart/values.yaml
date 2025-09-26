@@ -13,4 +13,46 @@ securityContext:
 
 cert-manager:
   installCRDs: true
-  
+
+prometheus:
+  server:
+    fullnameOverride: vela-prometheus
+    enabled: true
+    statefulSet:
+      enabled: true
+    name: vela-prometheus
+    replicaCount: 1
+    podLabels:
+      app: vela-prometheus
+    podAnnotations: {}
+    service:
+      servicePort: 9090
+      type: ClusterIP
+    securityContext:
+      fsGroup: 65534
+    persistentVolume:
+      enabled: true
+      size: 5Gi
+      #storageClass: openebs-jiva
+    extraArgs:
+      storage.tsdb.min-block-duration: 2h
+      storage.tsdb.max-block-duration: 2h
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "512Mi"
+      limits:
+        cpu: "500m"
+        memory: "1Gi"
+#    configMapOverrideName: vela-prometheus-config
+  alertmanager:
+    enabled: false
+
+  prometheus-pushgateway:
+    enabled: false
+
+  prometheus-node-exporter:
+    enabled: false
+
+  kube-state-metrics:
+    enabled: false
