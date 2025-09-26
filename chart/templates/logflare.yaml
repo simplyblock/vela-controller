@@ -102,16 +102,19 @@ spec:
               value: "_analytics"
             - name: LOGFLARE_NODE_HOST
               value: "127.0.0.1"
+            - name: LOGFLARE_MIN_CLUSTER_SIZE
+              value: "1"
             - name: LOGFLARE_SINGLE_TENANT
               value: "true"
             - name: LOGFLARE_SUPABASE_MODE
-              value: "true"
+              value: "false"
             - name: POSTGRES_BACKEND_URL
               value: $(DB_DRIVER)://$(DB_USERNAME):$(DB_PASSWORD)@$(DB_HOSTNAME):$(DB_PORT)/$(DB_DATABASE)
             - name: POSTGRES_BACKEND_SCHEMA
               value: $(DB_SCHEMA)
             - name: FEATURE_FLAG_OVERRIDE
               value: "multibackend=true"
+            
           ports:
             - name: http
               containerPort: 4000
