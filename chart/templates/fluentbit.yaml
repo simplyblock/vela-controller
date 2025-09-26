@@ -1,0 +1,46 @@
+---
+
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: vela-fluent-bit
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: vela-fluent-bit
+spec:
+  selector:
+    matchLabels:
+      app: vela-fluent-bit
+  template:
+    metadata:
+      labels:
+        app: vela-fluent-bit
+    spec:      
+      containers:
+        - name: fluent-bit
+          image: fluent/fluent-bit:1.8.11
+          volumeMounts:
+            - name: varlog
+              mountPath: /var/log
+            - name: varlibdockercontainers
+              mountPath: /var/lib/docker/containers
+              readOnly: true
+            - name: config
+              mountPath: /fluent-bit/etc/
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "400Mi"
+            limits:
+              cpu: "250m"
+              memory: "1Gi"
+      volumes:
+        - name: varlog
+          hostPath:
+            path: /var/log
+        - name: varlibdockercontainers
+          hostPath:
+            path: /var/lib/docker/containers
+        - name: config
+          configMap:
+            name: vela-fluent-bit-config

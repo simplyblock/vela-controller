@@ -1,0 +1,66 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vela-fluent-bit-config
+  namespace: {{ .Release.Namespace }}
+data:
+  fluent-bit.conf: |
+    [SERVICE]
+        Flush        1
+        Daemon       Off
+        Log_Level    info
+        Parsers_File parsers.conf
+
+    [INPUT]
+        Name              tail
+        Path              /var/log/containers/*.log
+        Parser            docker
+        Tag               kube.*
+        Refresh_Interval  5
+        Mem_Buf_Limit     5MB
+        Skip_Long_Lines   On
+        DB                /var/log/flb_kube.db
+
+    [FILTER]
+        Name                kubernetes
+        Match               kube.*
+        Kube_URL            https://kubernetes.default.svc:443
+        Kube_CA_File        /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        Kube_Token_File     /var/run/secrets/kubernetes.io/serviceaccount/token
+        Merge_Log           On
+        Merge_Log_Key       log
+        K8S-Logging.Parser  On
+        K8S-Logging.Exclude Off
+
+    [FILTER]
+        Name      lua
+        Match     kube.*
+        script    filter.lua
+        call      filter_tagged_pods
+
+    [OUTPUT]
+        Name             http
+        Match            *
+        Host             vela-logflare
+        Port             4000
+        URI              /logs/json?api_key=my-super-secret-api-key&source=b0dd69ab-6948-4822-ad28-90872a45f39a
+        Format           json
+        Retry_Limit      5
+        json_date_format iso8601
+        json_date_key    timestamp
+  parsers.conf: |
+    [PARSER]
+        Name        docker
+        Format      json
+        Time_Key    time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L
+        Time_Keep   On
+
+  filter.lua: |
+    function filter_tagged_pods(tag, timestamp, record)
+        annotations = record["kubernetes"]["annotations"]
+        if annotations ~= nil and annotations["vela-logflare/log-collector/enabled"] == "true" then
+            return 1, record
+        end
+        return -1, record
+    end

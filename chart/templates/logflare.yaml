@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Secret
 metadata:
-  name: simplyblock-logflare-secret
+  name: vela-logflare-secret
   namespace: {{ .Release.Namespace }}
 type: Opaque
 stringData:
@@ -11,19 +11,19 @@ stringData:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: simplyblock-logflare
+  name: vela-logflare
   namespace: {{ .Release.Namespace }}
   labels:
-    app: simplyblock-logflare
+    app: vela-logflare
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: simplyblock-logflare
+      app: vela-logflare
   template:
     metadata:
       labels:
-        app: simplyblock-logflare
+        app: vela-logflare
     spec:
       initContainers:
         - name: init-db
@@ -33,7 +33,7 @@ spec:
             - name: LOGFLARE_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: simplyblock-logflare-secret
+                  name: vela-logflare-secret
                   key: LOGFLARE_API_KEY
             - name: DB_HOST
               value: "database"
@@ -78,7 +78,7 @@ spec:
             - name: LOGFLARE_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: simplyblock-logflare-secret
+                  name: vela-logflare-secret
                   key: LOGFLARE_API_KEY
             - name: DB_PASSWORD
               valueFrom:
@@ -119,14 +119,14 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: simplyblock-logflare
+  name: vela-logflare
   namespace: {{ .Release.Namespace }}
   labels:
-    app: simplyblock-logflare
+    app: vela-logflare
 spec:
   type: ClusterIP
   selector:
-    app: simplyblock-logflare
+    app: vela-logflare
   ports:
     - name: http
       port: 4000
