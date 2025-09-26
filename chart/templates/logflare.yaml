@@ -1,0 +1,133 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: simplyblock-logflare-secret
+  namespace: {{ .Release.Namespace }}
+type: Opaque
+stringData:
+  LOGFLARE_API_KEY: "my-super-secret-api-key"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simplyblock-logflare
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: simplyblock-logflare
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: simplyblock-logflare
+  template:
+    metadata:
+      labels:
+        app: simplyblock-logflare
+    spec:
+      initContainers:
+        - name: init-db
+          image: postgres:15-alpine
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: LOGFLARE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: simplyblock-logflare-secret
+                  key: LOGFLARE_API_KEY
+            - name: DB_HOST
+              value: "database"
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: database
+                  key: superuser-username
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: database
+                  key: superuser-password
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_DATABASE
+              value: "logflare"
+            - name: DB_SCHEMA
+              value: "_analytics"
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+                echo "Waiting for database..."
+                until pg_isready -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER"; do
+                sleep 2
+                done
+                echo "Database is ready"
+                
+                # Create the database if it doesn't exist
+                psql -h "$DB_HOST" -U "$DB_USER" -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = '$DB_DATABASE'" | grep -q 1 || \
+                psql -h "$DB_HOST" -U "$DB_USER" -d postgres -c "CREATE DATABASE $DB_DATABASE;"
+
+                # Ensure schema exists
+                psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_DATABASE" -c "CREATE SCHEMA IF NOT EXISTS $DB_SCHEMA;"
+
+                echo "DB Init finished"
+      containers:
+        - name: logflare
+          image: supabase/logflare:1.4.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: LOGFLARE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: simplyblock-logflare-secret
+                  key: LOGFLARE_API_KEY
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: database
+                  key: superuser-password
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: database
+                  key: superuser-username
+            - name: DB_HOSTNAME
+              value: "database"
+            - name: DB_DATABASE
+              value: "logflare"
+            - name: DB_DRIVER
+              value: "postgresql"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_SCHEMA
+              value: "_analytics"
+            - name: LOGFLARE_NODE_HOST
+              value: "127.0.0.1"
+            - name: LOGFLARE_SINGLE_TENANT
+              value: "true"
+            - name: LOGFLARE_SUPABASE_MODE
+              value: "true"
+            - name: POSTGRES_BACKEND_URL
+              value: $(DB_DRIVER)://$(DB_USERNAME):$(DB_PASSWORD)@$(DB_HOSTNAME):$(DB_PORT)/$(DB_DATABASE)
+            - name: POSTGRES_BACKEND_SCHEMA
+              value: $(DB_SCHEMA)
+            - name: FEATURE_FLAG_OVERRIDE
+              value: "multibackend=true"
+          ports:
+            - name: http
+              containerPort: 4000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: simplyblock-logflare
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: simplyblock-logflare
+spec:
+  type: ClusterIP
+  selector:
+    app: simplyblock-logflare
+  ports:
+    - name: http
+      port: 4000
+      targetPort: 4000      
