@@ -5,6 +5,8 @@ metadata:
   name: {{ include "supabase.rest.fullname" . }}
   labels:
     {{- include "supabase.labels" . | nindent 4 }}
+  annotations:
+    {{- include "supabase.annotations" . | nindent 4 }}
 spec:
   {{- if not .Values.rest.autoscaling.enabled }}
   replicas: {{ .Values.rest.replicaCount }}
