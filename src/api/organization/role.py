@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from sqlmodel import and_
 from sqlmodel import delete as dbdelete
 
-from .._util import Forbidden, NotFound, Unauthenticated, url_path_for
+from .._util import Forbidden, NotFound, ULIDType, Unauthenticated, url_path_for
 from ..auth import UserDep, user_lookup
 from ..db import SessionDep
 from ..models.organization import OrganizationDep
@@ -74,8 +74,8 @@ async def create(
     entity_url = url_path_for(
         request,
         "organizations:roles:detail",
-        organization_slug=await organization.awaitable_attrs.slug,
-        role_id=entity.dbid(),
+        organization_id=await organization.awaitable_attrs.id,
+        role_id=entity.id,
     )
     return JSONResponse(
         content=entity.model_dump() if response == "full" else None,
@@ -147,7 +147,7 @@ async def add_user(session: SessionDep, role: RoleDep, user_id: UUID) -> Respons
     status_code=204,
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
-async def remove_user(session: SessionDep, role_id: int, user_id: UUID):
+async def remove_user(session: SessionDep, role_id: ULIDType, user_id: UUID):
     statement = dbdelete(RoleUserLink).where(
         and_(
             RoleUserLink.user_id == user_id,

@@ -48,7 +48,7 @@ def _encrypt(plaintext, passphrase) -> str:
 
 
 def _public(project: Project) -> ProjectPublic:
-    status = get_deployment_status(project.dbid(), Branch.DEFAULT_SLUG)
+    status = get_deployment_status(project.id, Branch.DEFAULT_SLUG)
     connection_string = "postgresql://{user}:{password}@{host}:{port}/{database}".format(  # noqa: UP032
         user=project.database_user,
         password=project.database_password,
@@ -57,9 +57,8 @@ def _public(project: Project) -> ProjectPublic:
         database=project.database,
     )
     return ProjectPublic(
-        organization_id=project.db_org_id(),
-        id=project.dbid(),
-        slug=project.slug,
+        organization_id=project.organization_id,
+        id=project.id,
         name=project.name,
         status=status.status,
         deployment_status=(status.message, status.pods),
@@ -81,15 +80,15 @@ async def list_(session: SessionDep, organization: OrganizationDep) -> Sequence[
 _links = {
     "detail": {
         "operationId": "organizations:projects:detail",
-        "parameters": {"project_slug": "$response.header.Location#regex:/projects/(.+)/"},
+        "parameters": {"project_id": "$response.header.Location#regex:/projects/(.+)/"},
     },
     "update": {
         "operationId": "organizations:projects:update",
-        "parameters": {"project_slug": "$response.header.Location#regex:/projects/(.+)/"},
+        "parameters": {"project_id": "$response.header.Location#regex:/projects/(.+)/"},
     },
     "delete": {
         "operationId": "organizations:projects:delete",
-        "parameters": {"project_slug": "$response.header.Location#regex:/projects/(.+)/"},
+        "parameters": {"project_id": "$response.header.Location#regex:/projects/(.+)/"},
     },
 }
 
@@ -131,15 +130,8 @@ async def create(
         database_password=parameters.deployment.database_user,
     )
     session.add(entity)
-    try:
-        await session.commit()
-    except IntegrityError as e:
-        error = str(e)
-        if ("asyncpg.exceptions.UniqueViolationError" not in error) or ("unique_project_slug" not in error):
-            raise
-        raise HTTPException(409, f"Organization already has project named {parameters.name}") from e
+    await session.commit()
     await session.refresh(entity)
-    project_dbid = entity.dbid()
     # Ensure default branch exists
     main_branch = Branch(
         name=Branch.DEFAULT_SLUG,
@@ -155,13 +147,13 @@ async def create(
     await session.commit()
     await session.refresh(main_branch)
     await session.refresh(entity)
-    asyncio.create_task(create_vela_config(project_dbid, parameters.deployment, main_branch.name))
+    asyncio.create_task(create_vela_config(entity.id, parameters.deployment, main_branch.name))
     await session.refresh(organization)
     entity_url = url_path_for(
         request,
         "organizations:projects:detail",
-        organization_slug=organization.id,
-        project_slug=entity.slug,
+        organization_id=organization.id,
+        project_id=entity.id,
     )
     return JSONResponse(
         content=_public(entity).model_dump() if response == "full" else None,
@@ -170,7 +162,7 @@ async def create(
     )
 
 
-instance_api = APIRouter(prefix="/{project_slug}")
+instance_api = APIRouter(prefix="/{project_id}")
 instance_api.include_router(branch_module.api, prefix="/branches")
 
 
@@ -226,8 +218,8 @@ async def update(
             "Location": url_path_for(
                 request,
                 "organizations:projects:detail",
-                organization_slug=await organization.awaitable_attrs.id,
-                project_slug=await project.awaitable_attrs.slug,
+                organization_id=await organization.awaitable_attrs.id,
+                project_id=await project.awaitable_attrs.id,
             ),
         },
     )
@@ -241,10 +233,9 @@ async def update(
 )
 async def delete(session: SessionDep, _organization: OrganizationDep, project: ProjectDep):
     await session.refresh(project, ["branches"])
-    project_id = project.dbid()
     branches = await project.awaitable_attrs.branches
     for branch in branches:
-        delete_deployment(project_id, branch.name)
+        delete_deployment(project.id, branch.name)
     await session.delete(project)
     await session.commit()
     return Response(status_code=204)
@@ -257,7 +248,7 @@ async def delete(session: SessionDep, _organization: OrganizationDep, project: P
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def pause(_organization: OrganizationDep, project: ProjectDep):
-    namespace, vmi_name = get_db_vmi_identity(project.dbid(), Branch.DEFAULT_SLUG)
+    namespace, vmi_name = get_db_vmi_identity(project.id, Branch.DEFAULT_SLUG)
     try:
         call_kubevirt_subresource(namespace, vmi_name, "pause")
         return Response(status_code=204)
@@ -273,7 +264,7 @@ async def pause(_organization: OrganizationDep, project: ProjectDep):
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def resume(_organization: OrganizationDep, project: ProjectDep):
-    namespace, vmi_name = get_db_vmi_identity(project.dbid(), Branch.DEFAULT_SLUG)
+    namespace, vmi_name = get_db_vmi_identity(project.id, Branch.DEFAULT_SLUG)
     try:
         call_kubevirt_subresource(namespace, vmi_name, "resume")
         return Response(status_code=204)

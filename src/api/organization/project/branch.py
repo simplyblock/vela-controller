@@ -3,7 +3,6 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
-from slugify import slugify
 
 from ....deployment import delete_deployment
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
@@ -18,7 +17,7 @@ api = APIRouter()
 async def _public(branch: Branch) -> BranchPublic:
     _ = await branch.awaitable_attrs.parent
     return BranchPublic(
-        id=branch.dbid(),
+        id=branch.id,
         name=branch.name,
     )
 
@@ -42,21 +41,21 @@ _links = {
     "detail": {
         "operationId": "organizations:projects:branch:detail",
         "parameters": {
-            "project_slug": "$response.header.Location#regex:/projects/(.+)/",
+            "project_id": "$response.header.Location#regex:/projects/(.+)/",
             "branch": "$response.header.Location#regex:/branches/(.+)/",
         },
     },
     "update": {
         "operationId": "organizations:projects:branch:update",
         "parameters": {
-            "project_slug": "$response.header.Location#regex:/projects/(.+)/",
+            "project_id": "$response.header.Location#regex:/projects/(.+)/",
             "branch": "$response.header.Location#regex:/branches/(.+)/",
         },
     },
     "delete": {
         "operationId": "organizations:projects:branch:delete",
         "parameters": {
-            "project_slug": "$response.header.Location#regex:/projects/(.+)/",
+            "project_id": "$response.header.Location#regex:/projects/(.+)/",
             "branch": "$response.header.Location#regex:/branches/(.+)/",
         },
     },
@@ -91,22 +90,18 @@ async def create(
     organization: OrganizationDep,
     project: ProjectDep,
     parameters: BranchCreate,
-    response: Literal["empty", "full"] = "empty",
+    _response: Literal["empty", "full"] = "empty",
 ) -> JSONResponse:
-    organization_slug = await organization.awaitable_attrs.slug
-    project_slug = await project.awaitable_attrs.slug
-    branch_slug = slugify(parameters.name, max_length=50)
-    public_entity = BranchPublic(id=0, name=parameters.name)
     entity_url = url_path_for(
         request,
         "organizations:projects:branch:detail",
-        organization_slug=organization_slug,
-        project_slug=project_slug,
-        branch=branch_slug,
+        organization_id=await organization.awaitable_attrs.id,
+        project_id=await project.awaitable_attrs.id,
+        branch=parameters.name,
     )
     # TODO: implement branch logic using clones
     return JSONResponse(
-        content=public_entity.model_dump() if response == "full" else None,
+        content=None,  # FIXME: return actual content if response == 'full' once we actually create something here
         status_code=201,
         headers={"Location": entity_url},
     )
@@ -157,9 +152,6 @@ async def update(
     branch: BranchDep,
     _parameters: BranchUpdate,
 ):
-    organization_slug = await organization.awaitable_attrs.slug
-    project_slug = await project.awaitable_attrs.slug
-    branch_slug = await branch.awaitable_attrs.name
     # TODO implement update logic
     return Response(
         status_code=204,
@@ -167,9 +159,9 @@ async def update(
             "Location": url_path_for(
                 request,
                 "organizations:projects:branch:detail",
-                organization_slug=organization_slug,
-                project_slug=project_slug,
-                branch=branch_slug,
+                organization_id=await organization.awaitable_attrs.id,
+                project_id=await project.awaitable_attrs.id,
+                branch=await branch.awaitable_attrs.name,
             ),
         },
     )
@@ -189,7 +181,7 @@ async def delete(
 ):
     if branch.name == Branch.DEFAULT_SLUG:
         raise HTTPException(400, "Default branch cannot be deleted")
-    delete_deployment(branch.project_id or branch.dbid(), branch.name)
+    delete_deployment(branch.project_id or branch.id, branch.name)
     await session.delete(branch)
     await session.commit()
     return Response(status_code=204)

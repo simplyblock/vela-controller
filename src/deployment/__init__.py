@@ -7,6 +7,7 @@ from typing import Annotated, Literal
 import yaml
 from kubernetes.client.rest import ApiException
 from pydantic import BaseModel, Field
+from ulid import ULID
 from urllib3.exceptions import HTTPError
 
 from .._util import Slug, check_output, dbstr
@@ -25,7 +26,7 @@ def _default_branch_slug() -> Slug:
     return Branch.DEFAULT_SLUG
 
 
-def _deployment_namespace(id_: int, branch: Slug) -> str:
+def _deployment_namespace(id_: ULID, branch: Slug) -> str:
     branch = branch or _default_branch_slug()
     return f"{settings.deployment_namespace_prefix}-deployment-{id_}-{branch}"
 
@@ -54,7 +55,7 @@ class DeploymentStatus(BaseModel):
     message: str
 
 
-async def create_vela_config(id_: int, parameters: DeploymentParameters, branch: Slug):
+async def create_vela_config(id_: ULID, parameters: DeploymentParameters, branch: Slug):
     logging.info(
         f"Creating Vela configuration for namespace: {_deployment_namespace(id_, branch)}"
         f" (database {parameters.database}, user {parameters.database_user}, branch {branch})"
@@ -111,7 +112,7 @@ def _pods_with_status(statuses: dict[str, str], target_status: str) -> set[str]:
     return {name for name, status in statuses.items() if status == target_status}
 
 
-def get_deployment_status(id_: int, branch: Slug) -> DeploymentStatus:
+def get_deployment_status(id_: ULID, branch: Slug) -> DeploymentStatus:
     status: StatusType
 
     try:
@@ -148,13 +149,13 @@ def get_deployment_status(id_: int, branch: Slug) -> DeploymentStatus:
     )
 
 
-def delete_deployment(id_: int, branch: Slug):
+def delete_deployment(id_: ULID, branch: Slug):
     namespace = _deployment_namespace(id_, branch)
     subprocess.check_call(["helm", "uninstall", _release_name(namespace), "-n", namespace, "--wait"])
     kube_service.delete_namespace(namespace)
 
 
-def get_db_vmi_identity(id_: int, branch: Slug) -> tuple[str, str]:
+def get_db_vmi_identity(id_: ULID, branch: Slug) -> tuple[str, str]:
     """
     Return the (namespace, vmi_name) for the project's database VirtualMachineInstance.
 

@@ -6,9 +6,11 @@ from sqlalchemy import BigInteger, Column, UniqueConstraint
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship, SQLModel, select
+from ulid import ULID
 
 from ..._util import Slug
-from ..db import SessionDep
+from .._util import ULIDType
+from ..db import DBULID, SessionDep
 from ._util import Name
 from .project import Project, ProjectDep
 
@@ -16,11 +18,11 @@ from .project import Project, ProjectDep
 class Branch(AsyncAttrs, SQLModel, table=True):
     DEFAULT_SLUG: ClassVar[Slug] = "main"
 
-    id: int | None = Field(default=None, primary_key=True, sa_type=BigInteger)
+    id: ULID = Field(default_factory=ULID, primary_key=True, sa_type=DBULID)
     name: Slug
-    project_id: int | None = Field(default=None, foreign_key="project.id")
-    project: Project | None = Relationship(back_populates="branches")
-    parent_id: int | None = Field(default=None, foreign_key="branch.id")
+    project_id: ULID = Field(default=None, foreign_key="project.id", sa_type=DBULID)
+    project: Project = Relationship(back_populates="branches")
+    parent_id: ULID | None = Field(default=None, foreign_key="branch.id", sa_type=DBULID)
     parent: Optional["Branch"] = Relationship(sa_relationship_kwargs={"remote_side": "Branch.id"})
 
     # Deployment parameters specific to this branch
@@ -32,19 +34,9 @@ class Branch(AsyncAttrs, SQLModel, table=True):
 
     __table_args__ = (UniqueConstraint("project_id", "name", name="unique_branch_name_per_project"),)
 
-    def dbid(self) -> int:
-        if self.id is None:
-            raise ValueError("Model not tracked in database")
-        return self.id
-
-    def db_project_id(self) -> int:
-        if self.project_id is None:
-            raise ValueError("Project model not tracked in database")
-        return self.project_id
-
 
 class Clone(BaseModel):
-    source: Slug = Field(..., description="Branch to clone from")
+    source: ULIDType = Field(..., description="Branch to clone from")
     mode: Literal["shallow", "deep"]
 
 
@@ -58,7 +50,7 @@ class BranchUpdate(BaseModel):
 
 
 class BranchPublic(BaseModel):
-    id: int
+    id: ULIDType
     name: Slug
 
 
