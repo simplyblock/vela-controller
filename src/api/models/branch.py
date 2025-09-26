@@ -1,4 +1,4 @@
-from typing import Annotated, ClassVar, Optional
+from typing import Annotated, ClassVar, Literal, Optional
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel
@@ -43,13 +43,14 @@ class Branch(AsyncAttrs, SQLModel, table=True):
         return self.project_id
 
 
+class Clone(BaseModel):
+    source: Slug = Field(..., description="Branch to clone from")
+    mode: Literal["shallow", "deep"]
+
+
 class BranchCreate(BaseModel):
     name: Name
-    # If provided, the new branch will be cloned from this branch's slug
-    source: Slug | None = None
-    # Clone options (reserved for future use)
-    config_copy: bool = False
-    data_copy: bool = False
+    clone: Clone | None = Field(description="Reserved for future use")
 
 
 class BranchUpdate(BaseModel):
