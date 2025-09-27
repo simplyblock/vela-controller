@@ -43,7 +43,7 @@ data:
         Match            *
         Host             vela-logflare
         Port             4000
-        URI              /logs/json?api_key=my-super-secret-api-key&source=b0dd69ab-6948-4822-ad28-90872a45f39a
+        URI              /logs/json?api_key=my-super-secret-api-key&source_name=vela
         Format           json
         Retry_Limit      5
         json_date_format iso8601
