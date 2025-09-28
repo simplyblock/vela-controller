@@ -4,12 +4,11 @@ from fastapi import Depends, HTTPException
 from pydantic import BaseModel, StrictBool
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlmodel import Field, Relationship, SQLModel, select
-from ulid import ULID
+from sqlmodel import Relationship, select
 
 from .._util import ULIDType
-from ..db import DBULID, SessionDep
-from ._util import Name
+from ..db import SessionDep
+from ._util import Model, Name
 from .membership import Membership
 
 if TYPE_CHECKING:
@@ -18,8 +17,7 @@ if TYPE_CHECKING:
     from .user import User
 
 
-class Organization(AsyncAttrs, SQLModel, table=True):
-    id: ULIDType = Field(default_factory=ULID, primary_key=True, sa_type=DBULID)
+class Organization(AsyncAttrs, Model, table=True):
     name: Name
     locked: bool = False
     projects: list["Project"] = Relationship(back_populates="organization", cascade_delete=True)

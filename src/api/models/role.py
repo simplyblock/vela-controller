@@ -9,6 +9,7 @@ from ulid import ULID
 
 from .._util import ULIDType
 from ..db import DBULID, SessionDep
+from ._util import Model
 from .organization import Organization, OrganizationDep
 
 if TYPE_CHECKING:
@@ -20,8 +21,7 @@ class RoleUserLink(AsyncAttrs, SQLModel, table=True):
     user_id: UUID = Field(foreign_key="user.id", primary_key=True)
 
 
-class Role(AsyncAttrs, SQLModel, table=True):
-    id: ULID = Field(default_factory=ULID, primary_key=True, sa_type=DBULID)
+class Role(AsyncAttrs, Model, table=True):
     organization_id: ULID = Field(default=None, foreign_key="organization.id", sa_type=DBULID)
     organization: Organization = Relationship(back_populates="roles")
     users: list["User"] = Relationship(back_populates="roles", link_model=RoleUserLink)

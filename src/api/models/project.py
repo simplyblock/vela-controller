@@ -4,21 +4,20 @@ from fastapi import Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlmodel import Field, Relationship, SQLModel, select
+from sqlmodel import Field, Relationship, select
 from ulid import ULID
 
 from ...deployment import DeploymentParameters
 from .._util import ULIDType
 from ..db import DBULID, SessionDep
-from ._util import Name
+from ._util import Model, Name
 from .organization import Organization, OrganizationDep
 
 if TYPE_CHECKING:
     from .branch import Branch
 
 
-class Project(AsyncAttrs, SQLModel, table=True):
-    id: ULID = Field(default_factory=ULID, primary_key=True, sa_type=DBULID)
+class Project(AsyncAttrs, Model, table=True):
     name: Name
     organization_id: ULID = Field(foreign_key="organization.id", sa_type=DBULID)
     organization: Organization = Relationship(back_populates="projects")

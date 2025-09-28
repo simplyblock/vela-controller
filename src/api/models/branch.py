@@ -5,20 +5,19 @@ from pydantic import BaseModel
 from sqlalchemy import BigInteger, Column, UniqueConstraint
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlmodel import Field, Relationship, SQLModel, select
+from sqlmodel import Field, Relationship, select
 from ulid import ULID
 
 from ..._util import Slug
 from .._util import ULIDType
 from ..db import DBULID, SessionDep
-from ._util import Name
+from ._util import Model, Name
 from .project import Project, ProjectDep
 
 
-class Branch(AsyncAttrs, SQLModel, table=True):
+class Branch(AsyncAttrs, Model, table=True):
     DEFAULT_SLUG: ClassVar[Slug] = "main"
 
-    id: ULID = Field(default_factory=ULID, primary_key=True, sa_type=DBULID)
     name: Slug
     project_id: ULID = Field(default=None, foreign_key="project.id", sa_type=DBULID)
     project: Project = Relationship(back_populates="branches")
