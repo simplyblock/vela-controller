@@ -30,7 +30,7 @@ def _decode(token: str):
     else:
         key = settings.jwt_secret
 
-    return decode(token, key, algorithms=settings.jwt_algorithms)
+    return decode(token, key, algorithms=settings.jwt_algorithms, options={"verify_aud": False})
 
 
 async def user_by_id(session: SessionDep, id_: UUID):
