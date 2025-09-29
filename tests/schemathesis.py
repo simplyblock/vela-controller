@@ -59,8 +59,24 @@ async def main():
         unittest.mock.patch("simplyblock.vela.deployment.create_vela_config"),
         unittest.mock.patch("simplyblock.vela.deployment.get_deployment_status") as mock_status,
         unittest.mock.patch("simplyblock.vela.deployment.delete_deployment"),
+        unittest.mock.patch("keycloak.KeycloakAdmin") as mock_keycloak_admin,
     ):
         mock_load_config.return_value = None
+
+        # Mock Keycloak admin methods
+        mock_keycloak_instance = mock_keycloak_admin.return_value
+        mock_keycloak_instance.a_create_user = unittest.mock.AsyncMock(return_value=str(uuid4()))
+        mock_keycloak_instance.a_get_user = unittest.mock.AsyncMock(
+            return_value={
+                "id": str(uuid4()),
+                "email": "testuser@example.com",
+                "firstName": "Test",
+                "lastName": "User",
+                "emailVerified": True,
+            }
+        )
+        mock_keycloak_instance.a_get_user_id = unittest.mock.AsyncMock(return_value=str(uuid4()))
+        mock_keycloak_instance.a_send_verify_email = unittest.mock.AsyncMock(return_value=None)
 
         os.environ["VELA_POSTGRES_URL"] = postgres.get_connection_url()
         os.environ["VELA_JWT_SECRET"] = jwt_secret
