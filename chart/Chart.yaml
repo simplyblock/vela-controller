@@ -4,11 +4,3 @@ description: Vela deployment
 type: application
 version: 0.0.0
 icon: https://avatars.githubusercontent.com/u/82834878?s=200&v=4
-
-dependencies:
-  - name: cert-manager
-    version: v1.11.0
-    repository: https://charts.jetstack.io
-  - name: prometheus
-    version: "25.18.0"
-    repository: "https://prometheus-community.github.io/helm-charts"

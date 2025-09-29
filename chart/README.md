@@ -98,7 +98,7 @@ kubectl logs -n kong-system deploy/kong-operator-gateway-operator-controller-man
 Since we use Talos, external loadbalancer like Talos needs to be installed.
 
 ```
-kukubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.13.12/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.13.12/config/manifests/metallb-native.yaml
 ```
 
 and then apply the IP Address Pool
@@ -138,6 +138,38 @@ kubectl top pod -A --sort-by=memory
 
 ### Kubevirt
 For Kubevirt installation refer (here)[./docs/kubevirt.md]
+
+### Cert Manager installation
+
+Install the cert manager: 
+```
+helm repo add jetstack https://charts.jetstack.io
+helm repo update
+
+helm upgrade --install cert-manager jetstack/cert-manager \
+  --namespace cert-manager \
+  --create-namespace \
+  --version v1.11.0 \
+  --set installCRDs=true
+```
+
+### Prometheus installation
+
+Install the prometheus: 
+```
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+
+helm upgrade --install prometheus prometheus-community/prometheus \
+  --namespace monitoring \
+  --create-namespace \
+  --version 25.18.0 \
+  --set prometheus.server.fullnameOverride=vela-prometheus \
+  --set prometheus.server.replicaCount=1 \
+  --set prometheus.server.statefulSet.enabled=true \
+  --set prometheus.server.persistentVolume.enabled=true \
+  --set prometheus.server.persistentVolume.size=5Gi
+```
 
 ### StackGres
 TODO
