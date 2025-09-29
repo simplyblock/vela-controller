@@ -31,7 +31,7 @@ spec:
                 bus: virtio
             - name: datadisk
               disk:
-                bus: virtio
+                bus: scsi
             - name: initdb-scripts-data
               disk:
                 bus: virtio
@@ -56,7 +56,7 @@ spec:
       volumes:
         - name: rootdisk
           containerDisk:
-            image: manoharbrm/kubevirt:alpine-{{ .Values.db.image.tag }}
+            image: manoharbrm/kubevirt:alpine-{{ .Values.db.image.tag }}-cpu2
         - name: datadisk
           persistentVolumeClaim:
             claimName: {{ include "supabase.db.fullname" . }}-pvc
