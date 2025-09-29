@@ -15,7 +15,6 @@ from urllib3.exceptions import HTTPError
 
 from .. import VelaError
 from .._util import Slug, check_output, dbstr
-from ..api.db import engine
 from .kubernetes import KubernetesService
 from .settings import settings
 
@@ -335,6 +334,7 @@ async def store_branch_endpoints_in_db(
     """Store the provisioned endpoint details back on the Branch record."""
 
     from ..api.models.branch import Branch  # Local import to avoid circular dependency
+    from ..api.db import engine
 
     async with AsyncSession(engine) as background_session:
         branch_obj = await background_session.get(Branch, branch_id)
