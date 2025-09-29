@@ -16,7 +16,6 @@ dependencies = [
     'kubernetes',
     'pyyaml',
     'email-validator',  # pydantic.EmailStr
-    'python-slugify',
     'cryptography',  # JWT algorithms
     'pycryptodome',
     'python-keycloak',
