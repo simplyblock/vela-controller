@@ -7,9 +7,9 @@ from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship, select
 
-from ..._util import Slug
+from ..._util import Identifier, Slug
 from ..db import SessionDep
-from ._util import Identifier, Model, Name
+from ._util import Model, Name
 from .project import Project, ProjectDep
 
 
@@ -30,11 +30,6 @@ class Branch(AsyncAttrs, Model, table=True):
     database_image_tag: str
 
     __table_args__ = (UniqueConstraint("project_id", "name", name="unique_branch_name_per_project"),)
-
-    def db_project_id(self) -> int:
-        if self.project_id is None:
-            raise ValueError("Project model not tracked in database")
-        return self.project_id
 
 
 class BranchCreate(BaseModel):

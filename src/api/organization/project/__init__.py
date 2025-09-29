@@ -48,7 +48,7 @@ def _encrypt(plaintext, passphrase) -> str:
 
 
 def _public(project: Project) -> ProjectPublic:
-    status = get_deployment_status(project.dbid(), Branch.DEFAULT_SLUG)
+    status = get_deployment_status(project.id, Branch.DEFAULT_SLUG)
     connection_string = "postgresql://{user}:{password}@{host}:{port}/{database}".format(  # noqa: UP032
         user=project.database_user,
         password=project.database_password,
@@ -57,8 +57,8 @@ def _public(project: Project) -> ProjectPublic:
         database=project.database,
     )
     return ProjectPublic(
-        organization_id=project.db_org_id(),
-        id=project.dbid(),
+        organization_id=project.organization_id,
+        id=project.id,
         name=project.name,
         status=status.status,
         deployment_status=(status.message, status.pods),
@@ -138,7 +138,6 @@ async def create(
             raise
         raise HTTPException(409, f"Organization already has project named {parameters.name}") from e
     await session.refresh(entity)
-    project_dbid = entity.dbid()
     # Ensure default branch exists
     main_branch = Branch(
         name=Branch.DEFAULT_SLUG,
@@ -154,7 +153,7 @@ async def create(
     await session.commit()
     await session.refresh(main_branch)
     await session.refresh(entity)
-    asyncio.create_task(create_vela_config(project_dbid, parameters.deployment, main_branch.name))
+    asyncio.create_task(create_vela_config(entity.id, parameters.deployment, main_branch.name))
     await session.refresh(organization)
     entity_url = url_path_for(
         request,
@@ -240,10 +239,9 @@ async def update(
 )
 async def delete(session: SessionDep, _organization: OrganizationDep, project: ProjectDep):
     await session.refresh(project, ["branches"])
-    project_id = project.dbid()
     branches = await project.awaitable_attrs.branches
     for branch in branches:
-        delete_deployment(project_id, branch.name)
+        delete_deployment(project.id, branch.name)
     await session.delete(project)
     await session.commit()
     return Response(status_code=204)
@@ -256,7 +254,7 @@ async def delete(session: SessionDep, _organization: OrganizationDep, project: P
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def pause(_organization: OrganizationDep, project: ProjectDep):
-    namespace, vmi_name = get_db_vmi_identity(project.dbid(), Branch.DEFAULT_SLUG)
+    namespace, vmi_name = get_db_vmi_identity(project.id, Branch.DEFAULT_SLUG)
     try:
         call_kubevirt_subresource(namespace, vmi_name, "pause")
         return Response(status_code=204)
@@ -272,7 +270,7 @@ async def pause(_organization: OrganizationDep, project: ProjectDep):
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def resume(_organization: OrganizationDep, project: ProjectDep):
-    namespace, vmi_name = get_db_vmi_identity(project.dbid(), Branch.DEFAULT_SLUG)
+    namespace, vmi_name = get_db_vmi_identity(project.id, Branch.DEFAULT_SLUG)
     try:
         call_kubevirt_subresource(namespace, vmi_name, "resume")
         return Response(status_code=204)

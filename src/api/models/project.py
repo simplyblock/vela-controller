@@ -7,9 +7,10 @@ from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Relationship, select
 
+from ..._util import Identifier
 from ...deployment import DeploymentParameters
 from ..db import SessionDep
-from ._util import Identifier, Model, Name
+from ._util import Model, Name
 from .organization import Organization, OrganizationDep
 
 if TYPE_CHECKING:
@@ -18,19 +19,14 @@ if TYPE_CHECKING:
 
 class Project(AsyncAttrs, Model, table=True):
     name: Name
-    organization_id: Identifier | None = Model.foreign_key_field("organization")
-    organization: Organization | None = Relationship(back_populates="projects")
+    organization_id: Identifier = Model.foreign_key_field("organization")
+    organization: Organization = Relationship(back_populates="projects")
     database: str
     database_user: str
     database_password: str
     branches: list["Branch"] = Relationship(back_populates="project", cascade_delete=True)
 
     __table_args__ = (UniqueConstraint("organization_id", "name", name="unique_project_name"),)
-
-    def db_org_id(self) -> int:
-        if self.organization_id is None:
-            raise ValueError("Organization model not tracked in database")
-        return self.organization_id
 
 
 class ProjectCreate(BaseModel):

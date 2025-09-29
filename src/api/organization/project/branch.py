@@ -18,7 +18,7 @@ api = APIRouter()
 async def _public(branch: Branch) -> BranchPublic:
     _ = await branch.awaitable_attrs.parent
     return BranchPublic(
-        id=branch.dbid(),
+        id=branch.id,
         name=branch.name,
     )
 
@@ -114,7 +114,7 @@ async def create(
         "organizations:projects:branch:detail",
         organization_id=await organization.awaitable_attrs.id,
         project_id=await project.awaitable_attrs.id,
-        branch_id=entity.dbid(),
+        branch_id=entity.id,
     )
     # TODO: implement branch logic using clones
     return JSONResponse(
@@ -186,7 +186,7 @@ async def delete(
 ):
     if branch.name == Branch.DEFAULT_SLUG:
         raise HTTPException(400, "Default branch cannot be deleted")
-    delete_deployment(branch.project_id or branch.dbid(), branch.name)
+    delete_deployment(branch.project_id or branch.id, branch.name)
     await session.delete(branch)
     await session.commit()
     return Response(status_code=204)
