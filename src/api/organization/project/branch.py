@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from slugify import slugify
 
-from ....deployment import delete_deployment
+from ....deployment import ResizeParameters, delete_deployment, resize_deployment
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ...db import SessionDep
 from ...models.branch import Branch, BranchCreate, BranchDep, BranchPublic, BranchUpdate
@@ -193,6 +193,19 @@ async def delete(
     await session.delete(branch)
     await session.commit()
     return Response(status_code=204)
+
+
+# Resize controls
+@instance_api.post(
+    "/resize",
+    name="organizations:projects:branch:resize",
+    status_code=202,
+    responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
+)
+async def resize(_organization: OrganizationDep, _project: ProjectDep, parameters: ResizeParameters, branch: BranchDep):
+    # Trigger helm upgrade with provided parameters; returns 202 Accepted
+    resize_deployment(branch.dbid(), branch.name, parameters)
+    return Response(status_code=202)
 
 
 api.include_router(instance_api)

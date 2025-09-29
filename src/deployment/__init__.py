@@ -165,3 +165,36 @@ def get_db_vmi_identity(id_: int, branch: Slug) -> tuple[str, str]:
     namespace = _deployment_namespace(id_, branch)
     vmi_name = f"{_release_name(namespace)}-supabase-db"
     return namespace, vmi_name
+
+
+class ResizeParameters(BaseModel):
+    database_size: Annotated[int | None, Field(gt=0, multiple_of=2**30)] = None
+
+
+def resize_deployment(id_: int, name: str, parameters: ResizeParameters):
+    """Perform an in-place Helm upgrade to disk. Only parameters provided will be updated.
+    others are preserved using --reuse-values.
+    """
+    chart = resources.files(__package__) / "charts" / "supabase"
+    # Minimal values file with only overrides
+    values_content: dict = {}
+    db_spec = values_content.setdefault("db", {})
+    if parameters.database_size is not None:
+        db_spec.setdefault("persistence", {})["size"] = f"{parameters.database_size // (2**30)}Gi"
+
+    namespace = _deployment_namespace(id_, name)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as temp_values:
+        yaml.dump(values_content, temp_values, default_flow_style=False)
+        subprocess.check_call(
+            [
+                "helm",
+                "upgrade",
+                _release_name(namespace),
+                str(chart),
+                "--namespace",
+                namespace,
+                "--reuse-values",
+                "-f",
+                temp_values.name,
+            ]
+        )
