@@ -18,7 +18,7 @@ dependencies = [
     'email-validator',  # pydantic.EmailStr
     'cryptography',  # JWT algorithms
     'pycryptodome',
-    'python-ulid'
+    'python-ulid',
     'python-keycloak',
 ]
 
