@@ -14,5 +14,5 @@ Name = Annotated[
     dbstr,
     StringConstraints(
         min_length=1,
-    )
+    ),
 ]
