@@ -9,7 +9,7 @@ from sqlmodel import Field, Relationship, select
 
 from ..._util import Slug
 from ..db import SessionDep
-from ._util import Model, Name, update_slug
+from ._util import Identifier, Model, Name, update_slug
 from .membership import Membership
 
 if TYPE_CHECKING:
@@ -44,11 +44,11 @@ class OrganizationUpdate(BaseModel):
     require_mfa: StrictBool | None = None
 
 
-async def _lookup(session: SessionDep, organization_slug: Slug) -> Organization:
+async def _lookup(session: SessionDep, organization_id: Identifier) -> Organization:
     try:
-        return (await session.exec(select(Organization).where(Organization.slug == organization_slug))).one()
+        return (await session.exec(select(Organization).where(Organization.id == organization_id))).one()
     except NoResultFound as e:
-        raise HTTPException(404, f"Organization {organization_slug} not found") from e
+        raise HTTPException(404, f"Organization {organization_id} not found") from e
 
 
 OrganizationDep = Annotated[Organization, Depends(_lookup)]

@@ -9,7 +9,7 @@ from sqlmodel import Field, Relationship, select
 
 from ..._util import Slug
 from ..db import SessionDep
-from ._util import Model, Name
+from ._util import Identifier, Model, Name
 from .project import Project, ProjectDep
 
 
@@ -17,9 +17,9 @@ class Branch(AsyncAttrs, Model, table=True):
     DEFAULT_SLUG: ClassVar[Slug] = "main"
 
     name: Slug
-    project_id: int | None = Field(default=None, foreign_key="project.id")
+    project_id: Identifier = Model.foreign_key_field("project")
     project: Project | None = Relationship(back_populates="branches")
-    parent_id: int | None = Model.foreign_key_field("branch", nullable=True)
+    parent_id: Identifier | None = Model.foreign_key_field("branch", nullable=True)
     parent: Optional["Branch"] = Relationship()
 
     # Deployment parameters specific to this branch
@@ -39,8 +39,7 @@ class Branch(AsyncAttrs, Model, table=True):
 
 class BranchCreate(BaseModel):
     name: Name
-    # If provided, the new branch will be cloned from this branch's slug
-    source: Slug | None = None
+    source: Identifier
     # Clone options (reserved for future use)
     config_copy: bool = False
     data_copy: bool = False
@@ -51,16 +50,16 @@ class BranchUpdate(BaseModel):
 
 
 class BranchPublic(BaseModel):
-    id: int
+    id: Identifier
     name: Slug
 
 
-async def _lookup(session: SessionDep, project: ProjectDep, branch: Slug) -> Branch:
+async def lookup(session: SessionDep, project: ProjectDep, branch_id: Identifier) -> Branch:
     try:
-        query = select(Branch).where(Branch.project_id == project.id, Branch.name == branch)
+        query = select(Branch).where(Branch.project_id == project.id, Branch.id == branch_id)
         return (await session.exec(query)).one()
     except NoResultFound as e:
-        raise HTTPException(404, f"Branch {branch} not found") from e
+        raise HTTPException(404, f"Branch {branch_id} not found") from e
 
 
-BranchDep = Annotated[Branch, Depends(_lookup)]
+BranchDep = Annotated[Branch, Depends(lookup)]

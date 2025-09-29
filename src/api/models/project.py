@@ -10,7 +10,7 @@ from sqlmodel import Relationship, select
 from ..._util import Slug
 from ...deployment import DeploymentParameters
 from ..db import SessionDep
-from ._util import Model, Name, update_slug
+from ._util import Identifier, Model, Name, update_slug
 from .organization import Organization, OrganizationDep
 
 if TYPE_CHECKING:
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 class Project(AsyncAttrs, Model, table=True):
     slug: Slug
     name: Name
-    organization_id: int | None = Model.foreign_key_field("organization", nullable=True)
+    organization_id: Identifier | None = Model.foreign_key_field("organization")
     organization: Organization | None = Relationship(back_populates="projects")
     database: str
     database_user: str
@@ -49,8 +49,8 @@ class ProjectUpdate(BaseModel):
 
 
 class ProjectPublic(BaseModel):
-    organization_id: int
-    id: int
+    organization_id: Identifier
+    id: Identifier
     slug: Slug
     name: Name
     status: str
@@ -59,12 +59,12 @@ class ProjectPublic(BaseModel):
     encrypted_database_connection_string: str
 
 
-async def _lookup(session: SessionDep, organization: OrganizationDep, project_slug: Slug) -> Project:
+async def _lookup(session: SessionDep, organization: OrganizationDep, project_id: Identifier) -> Project:
     try:
-        query = select(Project).where(Project.organization_id == organization.id, Project.slug == project_slug)
+        query = select(Project).where(Project.organization_id == organization.id, Project.id == project_id)
         return (await session.exec(query)).one()
     except NoResultFound as e:
-        raise HTTPException(404, f"Project {project_slug} not found") from e
+        raise HTTPException(404, f"Project {project_id} not found") from e
 
 
 ProjectDep = Annotated[Project, Depends(_lookup)]

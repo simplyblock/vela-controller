@@ -3,12 +3,12 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
-from slugify import slugify
 
 from ....deployment import delete_deployment
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ...db import SessionDep
 from ...models.branch import Branch, BranchCreate, BranchDep, BranchPublic, BranchUpdate
+from ...models.branch import lookup as lookup_branch
 from ...models.organization import OrganizationDep
 from ...models.project import ProjectDep
 
@@ -42,22 +42,22 @@ _links = {
     "detail": {
         "operationId": "organizations:projects:branch:detail",
         "parameters": {
-            "project_slug": "$response.header.Location#regex:/projects/(.+)/",
-            "branch": "$response.header.Location#regex:/branches/(.+)/",
+            "project_id": "$response.header.Location#regex:/projects/(.+)/",
+            "branch_id": "$response.header.Location#regex:/branches/(.+)/",
         },
     },
     "update": {
         "operationId": "organizations:projects:branch:update",
         "parameters": {
-            "project_slug": "$response.header.Location#regex:/projects/(.+)/",
-            "branch": "$response.header.Location#regex:/branches/(.+)/",
+            "project_id": "$response.header.Location#regex:/projects/(.+)/",
+            "branch_id": "$response.header.Location#regex:/branches/(.+)/",
         },
     },
     "delete": {
         "operationId": "organizations:projects:branch:delete",
         "parameters": {
-            "project_slug": "$response.header.Location#regex:/projects/(.+)/",
-            "branch": "$response.header.Location#regex:/branches/(.+)/",
+            "project_id": "$response.header.Location#regex:/projects/(.+)/",
+            "branch_id": "$response.header.Location#regex:/branches/(.+)/",
         },
     },
 }
@@ -86,33 +86,45 @@ _links = {
     },
 )
 async def create(
-    _session: SessionDep,
+    session: SessionDep,
     request: Request,
     organization: OrganizationDep,
     project: ProjectDep,
     parameters: BranchCreate,
     response: Literal["empty", "full"] = "empty",
 ) -> JSONResponse:
-    organization_slug = await organization.awaitable_attrs.slug
-    project_slug = await project.awaitable_attrs.slug
-    branch_slug = slugify(parameters.name, max_length=50)
-    public_entity = BranchPublic(id=0, name=parameters.name)
+    # TODO implement cloning logic
+    source = await lookup_branch(session, project, parameters.source)
+    entity = Branch(
+        name=parameters.name,
+        project_id=project.id,
+        parent_id=source.id,
+        database_size=source.database_size,
+        vcpu=source.vcpu,
+        memory=source.memory,
+        iops=source.iops,
+        database_image_tag=source.database_image_tag,
+    )
+    session.add(entity)
+    await session.commit()
+    await session.refresh(entity)
+
     entity_url = url_path_for(
         request,
         "organizations:projects:branch:detail",
-        organization_slug=organization_slug,
-        project_slug=project_slug,
-        branch=branch_slug,
+        organization_id=await organization.awaitable_attrs.id,
+        project_id=await project.awaitable_attrs.id,
+        branch_id=entity.dbid(),
     )
     # TODO: implement branch logic using clones
     return JSONResponse(
-        content=public_entity.model_dump() if response == "full" else None,
+        content=(await _public(entity)).model_dump() if response == "full" else None,
         status_code=201,
         headers={"Location": entity_url},
     )
 
 
-instance_api = APIRouter(prefix="/{branch}")
+instance_api = APIRouter(prefix="/{branch_id}")
 
 
 @instance_api.get(
@@ -150,29 +162,14 @@ async def detail(
     },
 )
 async def update(
-    request: Request,
     _session: SessionDep,
-    organization: OrganizationDep,
-    project: ProjectDep,
-    branch: BranchDep,
+    _organization: OrganizationDep,
+    _project: ProjectDep,
+    _branch: BranchDep,
     _parameters: BranchUpdate,
 ):
-    organization_slug = await organization.awaitable_attrs.slug
-    project_slug = await project.awaitable_attrs.slug
-    branch_slug = await branch.awaitable_attrs.name
     # TODO implement update logic
-    return Response(
-        status_code=204,
-        headers={
-            "Location": url_path_for(
-                request,
-                "organizations:projects:branch:detail",
-                organization_slug=organization_slug,
-                project_slug=project_slug,
-                branch=branch_slug,
-            ),
-        },
-    )
+    return Response(status_code=204)
 
 
 @instance_api.delete(

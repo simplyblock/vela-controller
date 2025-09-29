@@ -81,15 +81,15 @@ async def list_(session: SessionDep, organization: OrganizationDep) -> Sequence[
 _links = {
     "detail": {
         "operationId": "organizations:projects:detail",
-        "parameters": {"project_slug": "$response.header.Location#regex:/projects/(.+)/"},
+        "parameters": {"project_id": "$response.header.Location#regex:/projects/(.+)/"},
     },
     "update": {
         "operationId": "organizations:projects:update",
-        "parameters": {"project_slug": "$response.header.Location#regex:/projects/(.+)/"},
+        "parameters": {"project_id": "$response.header.Location#regex:/projects/(.+)/"},
     },
     "delete": {
         "operationId": "organizations:projects:delete",
-        "parameters": {"project_slug": "$response.header.Location#regex:/projects/(.+)/"},
+        "parameters": {"project_id": "$response.header.Location#regex:/projects/(.+)/"},
     },
 }
 
@@ -160,8 +160,8 @@ async def create(
     entity_url = url_path_for(
         request,
         "organizations:projects:detail",
-        organization_slug=organization.id,
-        project_slug=entity.slug,
+        organization_id=organization.id,
+        project_id=entity.id,
     )
     return JSONResponse(
         content=_public(entity).model_dump() if response == "full" else None,
@@ -170,7 +170,7 @@ async def create(
     )
 
 
-instance_api = APIRouter(prefix="/{project_slug}")
+instance_api = APIRouter(prefix="/{project_id}")
 instance_api.include_router(branch_module.api, prefix="/branches")
 
 
@@ -226,8 +226,8 @@ async def update(
             "Location": url_path_for(
                 request,
                 "organizations:projects:detail",
-                organization_slug=await organization.awaitable_attrs.id,
-                project_slug=await project.awaitable_attrs.slug,
+                organization_id=await organization.awaitable_attrs.id,
+                project_id=await project.awaitable_attrs.id,
             ),
         },
     )
