@@ -12,7 +12,8 @@ from ..auth import UserDep, user_lookup
 from ..db import SessionDep
 from ..models.organization import OrganizationDep
 from ..models.role import Role, RoleDep, RoleUserLink
-from ..models.user import UserID
+from ..models.user import UserPublic
+from ..user import public_list as public_user_list
 
 api = APIRouter()
 
@@ -124,8 +125,11 @@ async def delete(session: SessionDep, _organization: OrganizationDep, role: Role
     status_code=200,
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
-async def list_users(role: RoleDep) -> Sequence[UserID]:
-    return [UserID(id=user.id) for user in await role.awaitable_attrs.users]
+async def list_users(
+    role: RoleDep,
+    response: Literal["shallow", "deep"] = "shallow",
+) -> Sequence[UUID | UserPublic]:
+    return await public_user_list(await role.awaitable_attrs.users, response)
 
 
 @instance_api.post(

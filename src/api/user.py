@@ -1,4 +1,6 @@
 import secrets
+from collections.abc import Sequence
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
@@ -7,22 +9,13 @@ from pydantic import BaseModel, EmailStr
 from ._util import NotFound, Unauthenticated
 from .auth import authenticated_user
 from .keycloak import admin as keycloak_admin
-from .models.user import UserParameters, UserPublic
+from .models.user import User, UserParameters, UserPublic
 
 api = APIRouter(dependencies=[Depends(authenticated_user)])
 
 
-@api.get(
-    "/{user_ref}/",
-    responses={401: Unauthenticated, 404: NotFound},
-)
-async def get(user_ref: UUID | EmailStr) -> UserPublic:
-    if isinstance(user_ref, EmailStr):
-        user_id = await keycloak_admin.a_get_user_id(str(user_ref))
-    else:
-        user_id = str(user_ref)
-
-    user = await keycloak_admin.a_get_user(user_id)
+async def public(id_: UUID) -> UserPublic:
+    user = await keycloak_admin.a_get_user(str(id_))
     return UserPublic(
         id=user["id"],
         email=user["email"],
@@ -30,6 +23,27 @@ async def get(user_ref: UUID | EmailStr) -> UserPublic:
         last_name=user["lastName"],
         email_verified=user["emailVerified"],
     )
+
+
+async def public_list(
+    users: Sequence[User],
+    response: Literal["shallow", "deep"] = "shallow",
+) -> Sequence[UUID | UserPublic]:
+    if response == "shallow":
+        return [user.id for user in users]
+    elif response == "deep":
+        return [(await public(user.id)) for user in users]
+    else:
+        raise AssertionError("unreachable")
+
+
+@api.get(
+    "/{user_ref}/",
+    responses={401: Unauthenticated, 404: NotFound},
+)
+async def get(user_ref: UUID | EmailStr) -> UserPublic:
+    user_id = UUID(await keycloak_admin.a_get_user_id(str(user_ref))) if isinstance(user_ref, EmailStr) else user_ref
+    return await public(user_id)
 
 
 class UserCreationResult(BaseModel):
