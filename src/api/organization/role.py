@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from sqlmodel import and_
 from sqlmodel import delete as dbdelete
 
+from ..._util import Identifier
 from .._util import Forbidden, NotFound, Unauthenticated, url_path_for
 from ..auth import UserDep, user_lookup
 from ..db import SessionDep
@@ -76,7 +77,7 @@ async def create(
         request,
         "organizations:roles:detail",
         organization_id=await organization.awaitable_attrs.id,
-        role_id=entity.dbid(),
+        role_id=entity.id,
     )
     return JSONResponse(
         content=entity.model_dump() if response == "full" else None,

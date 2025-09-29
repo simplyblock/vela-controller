@@ -1,12 +1,14 @@
-from typing import Annotated
+from typing import Annotated, Any
+from uuid import UUID
 
-from pydantic import Field as PDField
 from pydantic import StringConstraints
-from sqlalchemy import BigInteger
+from sqlalchemy import UUID as SQLAlchemyUUID  # noqa: N811
+from sqlalchemy import TypeDecorator
 from sqlmodel import Field as SQLField
 from sqlmodel import SQLModel
+from ulid import ULID
 
-from ..._util import dbstr
+from ..._util import Identifier, dbstr
 
 Name = Annotated[
     dbstr,
@@ -16,12 +18,31 @@ Name = Annotated[
 ]
 
 
-Identifier = Annotated[int, PDField(ge=-(2**63), lt=2**63)]
-_DatabaseIdentifier = BigInteger
+class _DatabaseIdentifier(TypeDecorator):
+    """SQLAlchemy type that stores ULIDs as UUIDs in the database."""
+
+    impl = SQLAlchemyUUID
+    cache_ok = True
+
+    def process_bind_param(self, value: Any, _dialect) -> UUID | None:
+        """Convert ULID string to UUID for database storage."""
+        if value is None:
+            return value
+        if not isinstance(value, ULID):
+            raise TypeError(type(value), value)
+        return value.to_uuid()
+
+    def process_result_value(self, value: Any, _dialect) -> ULID | None:
+        """Convert UUID from database back to ULID string."""
+        if value is None:
+            return value
+        if not isinstance(value, UUID):
+            raise TypeError(type(value), value)
+        return ULID.from_bytes(value.bytes)
 
 
 class Model(SQLModel):
-    id: Identifier | None = SQLField(primary_key=True, sa_type=_DatabaseIdentifier)
+    id: Identifier = SQLField(default_factory=ULID, primary_key=True, sa_type=_DatabaseIdentifier)
 
     # This would ideally be a classmethod, but initialization order prevents that
     @staticmethod
@@ -32,8 +53,3 @@ class Model(SQLModel):
             sa_type=_DatabaseIdentifier,
             **kwargs,
         )
-
-    def dbid(self) -> Identifier:
-        if self.id is None:
-            raise ValueError("Model not tracked in database")
-        return self.id

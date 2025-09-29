@@ -6,8 +6,9 @@ from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship, SQLModel, select
 
+from ..._util import Identifier
 from ..db import SessionDep
-from ._util import Identifier, Model
+from ._util import Model
 from .organization import Organization, OrganizationDep
 
 if TYPE_CHECKING:
