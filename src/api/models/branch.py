@@ -5,23 +5,22 @@ from pydantic import BaseModel
 from sqlalchemy import BigInteger, Column, UniqueConstraint
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlmodel import Field, Relationship, SQLModel, select
+from sqlmodel import Field, Relationship, select
 
 from ..._util import Slug
 from ..db import SessionDep
-from ._util import Name
+from ._util import Model, Name
 from .project import Project, ProjectDep
 
 
-class Branch(AsyncAttrs, SQLModel, table=True):
+class Branch(AsyncAttrs, Model, table=True):
     DEFAULT_SLUG: ClassVar[Slug] = "main"
 
-    id: int | None = Field(default=None, primary_key=True, sa_type=BigInteger)
     name: Slug
     project_id: int | None = Field(default=None, foreign_key="project.id")
     project: Project | None = Relationship(back_populates="branches")
-    parent_id: int | None = Field(default=None, foreign_key="branch.id")
-    parent: Optional["Branch"] = Relationship(sa_relationship_kwargs={"remote_side": "Branch.id"})
+    parent_id: int | None = Model.foreign_key_field("branch", nullable=True)
+    parent: Optional["Branch"] = Relationship()
 
     # Deployment parameters specific to this branch
     database_size: Annotated[int, Field(gt=0, multiple_of=2**30, sa_column=Column(BigInteger))]
@@ -31,11 +30,6 @@ class Branch(AsyncAttrs, SQLModel, table=True):
     database_image_tag: str
 
     __table_args__ = (UniqueConstraint("project_id", "name", name="unique_branch_name_per_project"),)
-
-    def dbid(self) -> int:
-        if self.id is None:
-            raise ValueError("Model not tracked in database")
-        return self.id
 
     def db_project_id(self) -> int:
         if self.project_id is None:

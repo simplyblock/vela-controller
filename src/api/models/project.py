@@ -2,26 +2,25 @@ from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import BigInteger, UniqueConstraint, event
+from sqlalchemy import UniqueConstraint, event
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlmodel import Field, Relationship, SQLModel, select
+from sqlmodel import Relationship, select
 
 from ..._util import Slug
 from ...deployment import DeploymentParameters
 from ..db import SessionDep
-from ._util import Name, update_slug
+from ._util import Model, Name, update_slug
 from .organization import Organization, OrganizationDep
 
 if TYPE_CHECKING:
     from .branch import Branch
 
 
-class Project(AsyncAttrs, SQLModel, table=True):
-    id: int | None = Field(default=None, primary_key=True, sa_type=BigInteger)
+class Project(AsyncAttrs, Model, table=True):
     slug: Slug
     name: Name
-    organization_id: int | None = Field(default=None, foreign_key="organization.id")
+    organization_id: int | None = Model.foreign_key_field("organization", nullable=True)
     organization: Organization | None = Relationship(back_populates="projects")
     database: str
     database_user: str
@@ -29,11 +28,6 @@ class Project(AsyncAttrs, SQLModel, table=True):
     branches: list["Branch"] = Relationship(back_populates="project", cascade_delete=True)
 
     __table_args__ = (UniqueConstraint("organization_id", "slug", name="unique_project_slug"),)
-
-    def dbid(self) -> int:
-        if self.id is None:
-            raise ValueError("Model not tracked in database")
-        return self.id
 
     def db_org_id(self) -> int:
         if self.organization_id is None:

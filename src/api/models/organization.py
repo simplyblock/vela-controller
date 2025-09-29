@@ -2,14 +2,14 @@ from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel, StrictBool
-from sqlalchemy import BigInteger, event
+from sqlalchemy import event
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlmodel import Field, Relationship, SQLModel, select
+from sqlmodel import Field, Relationship, select
 
 from ..._util import Slug
 from ..db import SessionDep
-from ._util import Name, update_slug
+from ._util import Model, Name, update_slug
 from .membership import Membership
 
 if TYPE_CHECKING:
@@ -18,8 +18,7 @@ if TYPE_CHECKING:
     from .user import User
 
 
-class Organization(AsyncAttrs, SQLModel, table=True):
-    id: int | None = Field(default=None, primary_key=True, sa_type=BigInteger)
+class Organization(AsyncAttrs, Model, table=True):
     slug: Slug = Field(unique=True)
     name: Name
     locked: bool = False
