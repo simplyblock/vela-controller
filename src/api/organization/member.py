@@ -1,4 +1,6 @@
 from collections.abc import Sequence
+from typing import Literal
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import JSONResponse
@@ -8,7 +10,8 @@ from .._util import Forbidden, NotFound, Unauthenticated
 from ..auth import MemberDep, UserDep, authenticated_user, user_by_id
 from ..db import SessionDep
 from ..models.organization import OrganizationDep
-from ..models.user import UserID
+from ..models.user import UserID, UserPublic
+from ..user import public_list as public_user_list
 
 api = APIRouter(dependencies=[Depends(authenticated_user)])
 
@@ -19,8 +22,11 @@ api = APIRouter(dependencies=[Depends(authenticated_user)])
     status_code=200,
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
-async def list_users(organization: OrganizationDep) -> Sequence[UserID]:
-    return await organization.awaitable_attrs.users
+async def list_users(
+    organization: OrganizationDep,
+    response: Literal["shallow", "deep"] = "shallow",
+) -> Sequence[UUID | UserPublic]:
+    return await public_user_list(await organization.awaitable_attrs.users, response)
 
 
 @api.post(
