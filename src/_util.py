@@ -2,7 +2,18 @@ import asyncio
 import subprocess
 from typing import Annotated
 
-from pydantic import Field
+from pydantic import Field, StringConstraints
+
+_MAX_LENGTH = 50
+
+Slug = Annotated[
+    str,
+    StringConstraints(
+        pattern=r"^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$",
+        min_length=1,
+        max_length=_MAX_LENGTH,
+    ),
+]
 
 
 def single(xs):

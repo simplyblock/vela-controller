@@ -11,18 +11,20 @@ from fastapi.responses import JSONResponse
 from kubernetes.client.exceptions import ApiException
 from sqlalchemy.exc import IntegrityError
 
-from ...deployment import (
+from ....deployment import (
     create_vela_config,
     delete_deployment,
     get_db_vmi_identity,
     get_deployment_status,
 )
-from ...deployment.kubevirt import call_kubevirt_subresource
-from .._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
-from ..db import SessionDep
-from ..models.organization import OrganizationDep
-from ..models.project import Project, ProjectCreate, ProjectDep, ProjectPublic, ProjectUpdate
-from ..settings import settings
+from ....deployment.kubevirt import call_kubevirt_subresource
+from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
+from ...db import SessionDep
+from ...models.branch import Branch
+from ...models.organization import OrganizationDep
+from ...models.project import Project, ProjectCreate, ProjectDep, ProjectPublic, ProjectUpdate
+from ...settings import settings
+from . import branch as branch_module
 
 api = APIRouter()
 
@@ -46,7 +48,7 @@ def _encrypt(plaintext, passphrase) -> str:
 
 
 def _public(project: Project) -> ProjectPublic:
-    status = get_deployment_status(project.dbid())
+    status = get_deployment_status(project.dbid(), Branch.DEFAULT_SLUG)
     connection_string = "postgresql://{user}:{password}@{host}:{port}/{database}".format(  # noqa: UP032
         user=project.database_user,
         password=project.database_password,
@@ -137,7 +139,23 @@ async def create(
             raise
         raise HTTPException(409, f"Organization already has project named {parameters.name}") from e
     await session.refresh(entity)
-    asyncio.create_task(create_vela_config(entity.dbid(), parameters.deployment))
+    project_dbid = entity.dbid()
+    # Ensure default branch exists
+    main_branch = Branch(
+        name=Branch.DEFAULT_SLUG,
+        project=entity,
+        parent=None,
+        database_size=parameters.deployment.database_size,
+        vcpu=parameters.deployment.vcpu,
+        memory=parameters.deployment.memory,
+        iops=parameters.deployment.iops,
+        database_image_tag=parameters.deployment.database_image_tag,
+    )
+    session.add(main_branch)
+    await session.commit()
+    await session.refresh(main_branch)
+    await session.refresh(entity)
+    asyncio.create_task(create_vela_config(project_dbid, parameters.deployment, main_branch.name))
     await session.refresh(organization)
     entity_url = url_path_for(
         request,
@@ -153,6 +171,7 @@ async def create(
 
 
 instance_api = APIRouter(prefix="/{project_slug}")
+instance_api.include_router(branch_module.api, prefix="/branches")
 
 
 @instance_api.get(
@@ -221,7 +240,11 @@ async def update(
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def delete(session: SessionDep, _organization: OrganizationDep, project: ProjectDep):
-    delete_deployment(project.dbid())
+    await session.refresh(project, ["branches"])
+    project_id = project.dbid()
+    branches = await project.awaitable_attrs.branches
+    for branch in branches:
+        delete_deployment(project_id, branch.name)
     await session.delete(project)
     await session.commit()
     return Response(status_code=204)
@@ -234,7 +257,7 @@ async def delete(session: SessionDep, _organization: OrganizationDep, project: P
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def pause(_organization: OrganizationDep, project: ProjectDep):
-    namespace, vmi_name = get_db_vmi_identity(project.dbid())
+    namespace, vmi_name = get_db_vmi_identity(project.dbid(), Branch.DEFAULT_SLUG)
     try:
         call_kubevirt_subresource(namespace, vmi_name, "pause")
         return Response(status_code=204)
@@ -250,7 +273,7 @@ async def pause(_organization: OrganizationDep, project: ProjectDep):
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def resume(_organization: OrganizationDep, project: ProjectDep):
-    namespace, vmi_name = get_db_vmi_identity(project.dbid())
+    namespace, vmi_name = get_db_vmi_identity(project.dbid(), Branch.DEFAULT_SLUG)
     try:
         call_kubevirt_subresource(namespace, vmi_name, "resume")
         return Response(status_code=204)

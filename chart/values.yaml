@@ -56,3 +56,5 @@ prometheus:
 
   kube-state-metrics:
     enabled: false
+domain: staging.vela.run
+domaincertsecret: vela-run-staging-wildcard-cert  # TODO: use cert manager 

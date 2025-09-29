@@ -12,7 +12,7 @@ from ..auth import UserDep, user_lookup
 from ..db import SessionDep
 from ..models.organization import OrganizationDep
 from ..models.role import Role, RoleDep, RoleUserLink
-from ..models.user import UserPublic
+from ..models.user import UserID
 
 api = APIRouter()
 
@@ -124,8 +124,8 @@ async def delete(session: SessionDep, _organization: OrganizationDep, role: Role
     status_code=200,
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
-async def list_users(role: RoleDep) -> Sequence[UserPublic]:
-    return [UserPublic(id=user.id) for user in await role.awaitable_attrs.users]
+async def list_users(role: RoleDep) -> Sequence[UserID]:
+    return [UserID(id=user.id) for user in await role.awaitable_attrs.users]
 
 
 @instance_api.post(

@@ -1,5 +1,4 @@
 from typing import TYPE_CHECKING, Annotated
-from uuid import UUID
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel, StrictBool
@@ -8,18 +7,15 @@ from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship, SQLModel, select
 
+from ..._util import Slug
 from ..db import SessionDep
-from ._util import Name, Slug, update_slug
+from ._util import Name, update_slug
+from .membership import Membership
 
 if TYPE_CHECKING:
     from .project import Project
     from .role import Role
     from .user import User
-
-
-class OrganizationUserLink(AsyncAttrs, SQLModel, table=True):
-    organization_id: int | None = Field(default=None, foreign_key="organization.id", primary_key=True)
-    user_id: UUID = Field(foreign_key="user.id", primary_key=True)
 
 
 class Organization(AsyncAttrs, SQLModel, table=True):
@@ -29,7 +25,7 @@ class Organization(AsyncAttrs, SQLModel, table=True):
     locked: bool = False
     projects: list["Project"] = Relationship(back_populates="organization", cascade_delete=True)
     roles: list["Role"] = Relationship(back_populates="organization", cascade_delete=True)
-    users: list["User"] = Relationship(back_populates="organizations", link_model=OrganizationUserLink)
+    users: list["User"] = Relationship(back_populates="organizations", link_model=Membership)
     require_mfa: bool = False
 
 

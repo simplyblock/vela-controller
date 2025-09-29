@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel
@@ -7,10 +7,14 @@ from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship, SQLModel, select
 
+from ..._util import Slug
 from ...deployment import DeploymentParameters
 from ..db import SessionDep
-from ._util import Name, Slug, update_slug
+from ._util import Name, update_slug
 from .organization import Organization, OrganizationDep
+
+if TYPE_CHECKING:
+    from .branch import Branch
 
 
 class Project(AsyncAttrs, SQLModel, table=True):
@@ -22,6 +26,7 @@ class Project(AsyncAttrs, SQLModel, table=True):
     database: str
     database_user: str
     database_password: str
+    branches: list["Branch"] = Relationship(back_populates="project", cascade_delete=True)
 
     __table_args__ = (UniqueConstraint("organization_id", "slug", name="unique_project_slug"),)
 
@@ -32,7 +37,7 @@ class Project(AsyncAttrs, SQLModel, table=True):
 
     def db_org_id(self) -> int:
         if self.organization_id is None:
-            raise ValueError("Model not tracked in database")
+            raise ValueError("Organization model not tracked in database")
         return self.organization_id
 
 

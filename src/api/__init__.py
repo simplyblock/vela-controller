@@ -9,6 +9,7 @@ from sqlmodel import SQLModel
 from .db import engine
 from .organization import api as organization_api
 from .settings import settings
+from .user import api as user_api
 
 
 async def _create_db_and_tables():
@@ -57,6 +58,7 @@ def health():
 
 
 app.include_router(organization_api, prefix="/organizations")
+app.include_router(user_api, prefix="/users")
 _use_route_names_as_operation_ids(app)
 
 

@@ -186,6 +186,22 @@ data:
           "directAccessGrantsEnabled": true,
           "publicClient": true,
           "protocol": "openid-connect"
+        },
+        {
+          "clientId": "controller",
+          "name": "Vela controller",
+          "enabled": true,
+          "redirectUris": [
+            "http://{{ .Values.host }}/*"
+          ],
+          "webOrigins": [
+            "http://{{ .Values.host }}"
+          ],
+          "standardFlowEnabled": true,
+          "directAccessGrantsEnabled": true,
+          "publicClient": false,
+          "secret": "controller-secret",
+          "protocol": "openid-connect"
         }
       ]
     }
@@ -208,23 +224,25 @@ spec:
       targetPort: 8443
       protocol: TCP
 ---
-apiVersion: networking.k8s.io/v1
-kind: Ingress
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
-  name: vela-auth-ingress
+  name: vela-auth
 spec:
-  ingressClassName: nginx
+  parentRefs:
+    - name: vela-public-gateway
+      namespace: kong-system
+  hostnames:
+    - "{{ .Values.domain }}"
   rules:
-    - http:
-        paths:
-          - path: /auth
-            pathType: Prefix
-            backend:
-              service:
-                name: vela-auth-service
-                port:
-                  number: 8080
-#      {{ if .Values.host }}host: {{ .Values.host }}{{ end }}
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /auth
+      backendRefs:
+        - name: vela-auth-service
+          namespace: {{ .Release.Namespace }}
+          port: 8000
 
 ---
 apiVersion: v1
@@ -244,6 +262,7 @@ data:
         proxy_set_header X-Real-IP $remote_addr;
       }
     }
+
 ---
 apiVersion: cert-manager.io/v1
 kind: Certificate
