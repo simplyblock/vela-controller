@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship, SQLModel, select
 
 from ..db import SessionDep
-from ._util import Model
+from ._util import Identifier, Model
 from .organization import Organization, OrganizationDep
 
 if TYPE_CHECKING:
@@ -25,7 +25,7 @@ class Role(AsyncAttrs, Model, table=True):
     users: list["User"] = Relationship(back_populates="roles", link_model=RoleUserLink)
 
 
-async def _lookup(session: SessionDep, organization: OrganizationDep, role_id: int) -> Role:
+async def _lookup(session: SessionDep, organization: OrganizationDep, role_id: Identifier) -> Role:
     try:
         query = select(Role).where(Role.id == role_id, Role.organization_id == organization.id)
         return (await session.exec(query)).one()

@@ -33,23 +33,23 @@ async def list_(user: AuthUserDep) -> Sequence[Organization]:
 _links = {
     "detail": {
         "operationId": "organizations:detail",
-        "parameters": {"organization_slug": "$response.header.Location#regex:/organizations/(.+)/"},
+        "parameters": {"organization_id": "$response.header.Location#regex:/organizations/(.+)/"},
     },
     "update": {
         "operationId": "organizations:update",
-        "parameters": {"organization_slug": "$response.header.Location#regex:/organizations/(.+)/"},
+        "parameters": {"organization_id": "$response.header.Location#regex:/organizations/(.+)/"},
     },
     "delete": {
         "operationId": "organizations:delete",
-        "parameters": {"organization_slug": "$response.header.Location#regex:/organizations/(.+)/"},
+        "parameters": {"organization_id": "$response.header.Location#regex:/organizations/(.+)/"},
     },
     "create_project": {
         "operationId": "organizations:projects:create",
-        "parameters": {"organization_slug": "$response.header.Location#regex:/organizations/(.+)/"},
+        "parameters": {"organization_id": "$response.header.Location#regex:/organizations/(.+)/"},
     },
     "list_projects": {
         "operationId": "organizations:projects:list",
-        "parameters": {"organization_slug": "$response.header.Location#regex:/organizations/(.+)/"},
+        "parameters": {"organization_id": "$response.header.Location#regex:/organizations/(.+)/"},
     },
 }
 
@@ -91,7 +91,7 @@ async def create(
             raise
         raise HTTPException(409, f"Organization {parameters.name} already exists") from e
     await session.refresh(entity)
-    entity_url = url_path_for(request, "organizations:detail", organization_slug=entity.slug)
+    entity_url = url_path_for(request, "organizations:detail", organization_id=entity.id)
     return JSONResponse(
         content=entity.model_dump() if response == "full" else None,
         status_code=201,
@@ -108,7 +108,7 @@ async def _check_user_access(user: AuthUserDep, organization: OrganizationDep):
 
 
 instance_api = APIRouter(
-    prefix="/{organization_slug}",
+    prefix="/{organization_id}",
     dependencies=[Depends(_check_user_access)],
 )
 
@@ -160,7 +160,7 @@ async def update(request: Request, session: SessionDep, organization: Organizati
             "Location": url_path_for(
                 request,
                 "organizations:detail",
-                organization_slug=await organization.awaitable_attrs.slug,
+                organization_id=await organization.awaitable_attrs.id,
             ),
         },
     )
