@@ -76,3 +76,18 @@ spec:
             name: vela-grafana-datasource
         - name: grafana-data
           emptyDir: {}
+
+---
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vela-grafana
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    app: vela-grafana
+  ports:
+    - name: grafana
+      port: 3000
+      targetPort: 3000
