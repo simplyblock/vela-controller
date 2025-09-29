@@ -87,7 +87,7 @@ async def create(
         await session.commit()
     except IntegrityError as e:
         error = str(e)
-        if ("asyncpg.exceptions.UniqueViolationError" not in error) or ("organization_slug_key" not in error):
+        if ("asyncpg.exceptions.UniqueViolationError" not in error) or ("organization_name_key" not in error):
             raise
         raise HTTPException(409, f"Organization {parameters.name} already exists") from e
     await session.refresh(entity)

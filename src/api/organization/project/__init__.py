@@ -59,7 +59,6 @@ def _public(project: Project) -> ProjectPublic:
     return ProjectPublic(
         organization_id=project.db_org_id(),
         id=project.dbid(),
-        slug=project.slug,
         name=project.name,
         status=status.status,
         deployment_status=(status.message, status.pods),
@@ -135,7 +134,7 @@ async def create(
         await session.commit()
     except IntegrityError as e:
         error = str(e)
-        if ("asyncpg.exceptions.UniqueViolationError" not in error) or ("unique_project_slug" not in error):
+        if ("asyncpg.exceptions.UniqueViolationError" not in error) or ("unique_project_name" not in error):
             raise
         raise HTTPException(409, f"Organization already has project named {parameters.name}") from e
     await session.refresh(entity)

@@ -2,14 +2,12 @@ from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel, StrictBool
-from sqlalchemy import event
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship, select
 
-from ..._util import Slug
 from ..db import SessionDep
-from ._util import Identifier, Model, Name, update_slug
+from ._util import Identifier, Model, Name
 from .membership import Membership
 
 if TYPE_CHECKING:
@@ -19,17 +17,12 @@ if TYPE_CHECKING:
 
 
 class Organization(AsyncAttrs, Model, table=True):
-    slug: Slug = Field(unique=True)
-    name: Name
+    name: Name = Field(unique=True)
     locked: bool = False
     projects: list["Project"] = Relationship(back_populates="organization", cascade_delete=True)
     roles: list["Role"] = Relationship(back_populates="organization", cascade_delete=True)
     users: list["User"] = Relationship(back_populates="organizations", link_model=Membership)
     require_mfa: bool = False
-
-
-event.listen(Organization, "before_insert", update_slug)
-event.listen(Organization, "before_update", update_slug)
 
 
 class OrganizationCreate(BaseModel):

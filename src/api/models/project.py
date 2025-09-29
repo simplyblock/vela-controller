@@ -2,15 +2,14 @@ from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import UniqueConstraint, event
+from sqlalchemy import UniqueConstraint
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Relationship, select
 
-from ..._util import Slug
 from ...deployment import DeploymentParameters
 from ..db import SessionDep
-from ._util import Identifier, Model, Name, update_slug
+from ._util import Identifier, Model, Name
 from .organization import Organization, OrganizationDep
 
 if TYPE_CHECKING:
@@ -18,7 +17,6 @@ if TYPE_CHECKING:
 
 
 class Project(AsyncAttrs, Model, table=True):
-    slug: Slug
     name: Name
     organization_id: Identifier | None = Model.foreign_key_field("organization")
     organization: Organization | None = Relationship(back_populates="projects")
@@ -27,16 +25,12 @@ class Project(AsyncAttrs, Model, table=True):
     database_password: str
     branches: list["Branch"] = Relationship(back_populates="project", cascade_delete=True)
 
-    __table_args__ = (UniqueConstraint("organization_id", "slug", name="unique_project_slug"),)
+    __table_args__ = (UniqueConstraint("organization_id", "name", name="unique_project_name"),)
 
     def db_org_id(self) -> int:
         if self.organization_id is None:
             raise ValueError("Organization model not tracked in database")
         return self.organization_id
-
-
-event.listen(Project, "before_insert", update_slug)
-event.listen(Project, "before_update", update_slug)
 
 
 class ProjectCreate(BaseModel):
@@ -51,7 +45,6 @@ class ProjectUpdate(BaseModel):
 class ProjectPublic(BaseModel):
     organization_id: Identifier
     id: Identifier
-    slug: Slug
     name: Name
     status: str
     deployment_status: tuple[str, dict[str, str]]
