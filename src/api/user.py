@@ -4,6 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, EmailStr
 
+from ._util import NotFound, Unauthenticated
 from .auth import authenticated_user
 from .keycloak import admin as keycloak_admin
 from .models.user import UserParameters, UserPublic
@@ -11,7 +12,10 @@ from .models.user import UserParameters, UserPublic
 api = APIRouter(dependencies=[Depends(authenticated_user)])
 
 
-@api.get("/{user_ref}/")
+@api.get(
+    "/{user_ref}/",
+    responses={401: Unauthenticated, 404: NotFound},
+)
 async def get(user_ref: UUID | EmailStr) -> UserPublic:
     if isinstance(user_ref, EmailStr):
         user_id = await keycloak_admin.a_get_user_id(str(user_ref))
@@ -23,7 +27,7 @@ async def get(user_ref: UUID | EmailStr) -> UserPublic:
         id=user["id"],
         email=user["email"],
         first_name=user["firstName"],
-        last_name=user["last_name"],
+        last_name=user["lastName"],
         email_verified=user["emailVerified"],
     )
 
@@ -33,8 +37,12 @@ class UserCreationResult(BaseModel):
     password: str
 
 
-@api.post("/")
-async def add(parameters: UserParameters) -> UserCreationResult:
+@api.post(
+    "/",
+    status_code=201,
+    responses={401: Unauthenticated},
+)
+async def add(parameters: UserParameters) -> tuple[UserCreationResult, int]:
     password = secrets.token_hex(16)
     user_id = await keycloak_admin.a_create_user(
         {
@@ -55,4 +63,4 @@ async def add(parameters: UserParameters) -> UserCreationResult:
     return UserCreationResult(
         id=UUID(user_id),
         password=password,
-    )
+    ), 201
