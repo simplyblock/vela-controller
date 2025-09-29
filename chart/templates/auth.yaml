@@ -138,6 +138,9 @@ data:
       "id": "vela",
       "realm": "vela",
       "enabled": true,
+      "registrationAllowed": true,
+      "registrationEmailAsUsername": true,
+      "verifyEmail": true,
       "users": [
         {
           "username": "testuser",
@@ -153,6 +156,22 @@ data:
               "temporary": false
             }
           ]
+        },
+        {
+          "username": "service-account-controller",
+          "emailVerified": false,
+          "enabled": true,
+          "serviceAccountClientId": "controller",
+          "realmRoles": [
+            "default-roles-vela"
+          ],
+          "clientRoles": {
+            "realm-management": [
+              "manage-users",
+              "query-users",
+              "view-users"
+            ]
+          }
         }
       ],
       "clients": [
@@ -168,7 +187,8 @@ data:
           ],
           "standardFlowEnabled": true,
           "directAccessGrantsEnabled": true,
-          "publicClient": true,
+          "publicClient": false,
+          "secret": "client-secret",
           "protocol": "openid-connect"
         },
         {
@@ -185,7 +205,17 @@ data:
           "directAccessGrantsEnabled": true,
           "publicClient": false,
           "secret": "controller-secret",
-          "protocol": "openid-connect"
+          "protocol": "openid-connect",
+          "serviceAccountsEnabled": true,
+          "defaultClientScopes": [
+            "service_account",
+            "web-origins",
+            "acr",
+            "roles",
+            "profile",
+            "basic",
+            "email"
+          ]
         }
       ]
     }
