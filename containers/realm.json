@@ -34,7 +34,24 @@
       ],
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": true,
-      "publicClient": true,
+      "publicClient": false,
+      "secret": "client-secret",
+      "protocol": "openid-connect"
+    },
+    {
+      "clientId": "controller",
+      "name": "Vela controller",
+      "enabled": true,
+      "redirectUris": [
+        "http://localhost:8000/*"
+      ],
+      "webOrigins": [
+        "http://localhost:8000/*"
+      ],
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "publicClient": false,
+      "secret": "controller-secret",
       "protocol": "openid-connect"
     }
   ]

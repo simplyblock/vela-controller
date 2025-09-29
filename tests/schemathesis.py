@@ -65,6 +65,9 @@ async def main():
         os.environ["VELA_POSTGRES_URL"] = postgres.get_connection_url()
         os.environ["VELA_JWT_SECRET"] = jwt_secret
         os.environ["VELA_PGMETA_CRYPTO_KEY"] = "secret"
+        os.environ["VELA_KEYCLOAK_URL"] = "http://example.com"
+        os.environ["VELA_KEYCLOAK_CLIENT_ID"] = ""
+        os.environ["VELA_KEYCLOAK_CLIENT_SECRET"] = ""
 
         from simplyblock.vela.api import app
         from simplyblock.vela.deployment import DeploymentStatus

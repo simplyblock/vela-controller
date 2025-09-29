@@ -10,3 +10,5 @@ securityContext:
   runAsUser: 65534
   seccompProfile:
     type: 'RuntimeDefault'
+domain: staging.vela.run
+domaincertsecret: vela-run-staging-wildcard-cert  # TODO: use cert manager 
