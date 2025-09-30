@@ -14,6 +14,7 @@ dependencies = [
     'pyjwt',
     'pydantic-settings',
     'kubernetes',
+    'kubernetes-asyncio',
     'pyyaml',
     'email-validator',  # pydantic.EmailStr
     'cryptography',  # JWT algorithms

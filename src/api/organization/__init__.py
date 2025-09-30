@@ -174,7 +174,7 @@ async def update(request: Request, session: SessionDep, organization: Organizati
 )
 async def delete(session: SessionDep, organization: OrganizationDep):
     for project in await organization.awaitable_attrs.projects:
-        delete_deployment(project.id, Branch.DEFAULT_SLUG)
+        await delete_deployment(project.id, Branch.DEFAULT_SLUG)
 
     await session.delete(organization)
     await session.commit()
