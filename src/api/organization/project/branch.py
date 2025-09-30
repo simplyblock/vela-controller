@@ -218,7 +218,7 @@ async def delete(
 ):
     if branch.name == Branch.DEFAULT_SLUG:
         raise HTTPException(400, "Default branch cannot be deleted")
-    delete_deployment(branch.project_id or branch.id, branch.name)
+    await delete_deployment(branch.project_id or branch.id, branch.name)
     await session.delete(branch)
     await session.commit()
     return Response(status_code=204)

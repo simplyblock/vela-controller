@@ -76,8 +76,8 @@ def _encrypt(plaintext, passphrase) -> str:
     return base64.b64encode(b"Salted__" + salt + cipher.encrypt(padded)).decode("utf-8")
 
 
-def _public(project: Project) -> ProjectPublic:
-    status = get_deployment_status(project.id, Branch.DEFAULT_SLUG)
+async def _public(project: Project) -> ProjectPublic:
+    status = await get_deployment_status(project.id, Branch.DEFAULT_SLUG)
     connection_string = "postgresql://{user}:{password}@{host}:{port}/{database}".format(  # noqa: UP032
         user=project.database_user,
         password=project.database_password,
@@ -103,7 +103,8 @@ def _public(project: Project) -> ProjectPublic:
 )
 async def list_(session: SessionDep, organization: OrganizationDep) -> Sequence[ProjectPublic]:
     await session.refresh(organization, ["projects"])
-    return [_public(project) for project in await organization.awaitable_attrs.projects]
+    projects = await organization.awaitable_attrs.projects
+    return [await _public(project) for project in projects]
 
 
 _links = {
@@ -201,7 +202,7 @@ async def create(
         project_id=entity.id,
     )
     return JSONResponse(
-        content=_public(entity).model_dump() if response == "full" else None,
+        content=(await _public(entity)).model_dump() if response == "full" else None,
         status_code=201,
         headers={"Location": entity_url},
     )
@@ -217,7 +218,7 @@ instance_api.include_router(branch_module.api, prefix="/branches")
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def detail(_organization: OrganizationDep, project: ProjectDep) -> ProjectPublic:
-    return _public(project)
+    return await _public(project)
 
 
 @instance_api.put(
@@ -280,7 +281,7 @@ async def delete(session: SessionDep, _organization: OrganizationDep, project: P
     await session.refresh(project, ["branches"])
     branches = await project.awaitable_attrs.branches
     for branch in branches:
-        delete_deployment(project.id, branch.name)
+        await delete_deployment(project.id, branch.name)
     await session.delete(project)
     await session.commit()
     return Response(status_code=204)

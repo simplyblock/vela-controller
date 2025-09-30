@@ -118,11 +118,11 @@ def _pods_with_status(statuses: dict[str, str], target_status: str) -> set[str]:
     return {name for name, status in statuses.items() if status == target_status}
 
 
-def get_deployment_status(id_: Identifier, branch: Slug) -> DeploymentStatus:
+async def get_deployment_status(id_: Identifier, branch: Slug) -> DeploymentStatus:
     status: StatusType
 
     try:
-        k8s_statuses = kube_service.check_namespace_status(deployment_namespace(id_, branch))
+        k8s_statuses = await kube_service.check_namespace_status(deployment_namespace(id_, branch))
 
         if failed := _pods_with_status(k8s_statuses, "Failed"):
             status = "ACTIVE_UNHEALTHY"
@@ -148,17 +148,16 @@ def get_deployment_status(id_: Identifier, branch: Slug) -> DeploymentStatus:
         status = "UNKNOWN"
         message = str(e)
 
-    return DeploymentStatus(
-        status=status,
-        pods=k8s_statuses,
-        message=message,
-    )
+    return DeploymentStatus(status=status, pods=k8s_statuses, message=message)
 
 
-def delete_deployment(id_: Identifier, branch: Slug):
+async def delete_deployment(id_: Identifier, branch: Slug) -> None:
     namespace = deployment_namespace(id_, branch)
-    subprocess.check_call(["helm", "uninstall", _release_name(namespace), "-n", namespace, "--wait"])
-    kube_service.delete_namespace(namespace)
+    await asyncio.to_thread(
+        subprocess.check_call,
+        ["helm", "uninstall", _release_name(namespace), "-n", namespace, "--wait"],
+    )
+    await kube_service.delete_namespace(namespace)
 
 
 def get_db_vmi_identity(id_: Identifier, branch: Slug) -> tuple[str, str]:
@@ -321,7 +320,7 @@ def _postgrest_route_specs(ref: str, domain: str, namespace: str) -> list[HTTPRo
 async def _apply_http_routes(namespace: str, routes: list[dict[str, Any]]) -> None:
     """Apply HTTPRoute manifests without blocking the event loop."""
     try:
-        await asyncio.to_thread(kube_service.apply_http_routes, namespace, routes)
+        await kube_service.apply_http_routes(namespace, routes)
     except Exception as exc:  # pragma: no cover - surfaced to caller
         raise BranchEndpointError(f"Failed to apply HTTPRoute: {exc}") from exc
 
