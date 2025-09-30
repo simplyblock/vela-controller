@@ -22,6 +22,9 @@ logger = logging.getLogger(__name__)
 
 kube_service = KubernetesService()
 
+DEFAULT_GATEWAY_NAME = "public-gateway"
+DEFAULT_GATEWAY_NAMESPACE = "kong-system"
+
 
 def _default_branch_slug() -> Slug:
     from ..api.models.branch import Branch  # Local import to avoid circular dependency
@@ -216,9 +219,9 @@ class CloudflareConfig(BaseModel):
 
 
 class KubeGatewayConfig(BaseModel):
-    namespace: str = "vela-deployment-1-main"
-    gateway_name: str = "public-gateway"
-    gateway_namespace: str = "kong-system"
+    namespace: str = ""
+    gateway_name: str = DEFAULT_GATEWAY_NAME
+    gateway_namespace: str = DEFAULT_GATEWAY_NAMESPACE
 
     def for_namespace(self, namespace: str) -> "KubeGatewayConfig":
         return self.model_copy(update={"namespace": namespace})
