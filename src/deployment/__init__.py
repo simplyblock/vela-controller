@@ -5,12 +5,10 @@ import tempfile
 from importlib import resources
 from typing import Annotated, Any, Literal
 
-import ulid
 import yaml
 from cloudflare import AsyncCloudflare, CloudflareError
 from kubernetes.client.rest import ApiException
 from pydantic import BaseModel, Field
-from sqlalchemy.ext.asyncio import AsyncSession
 from urllib3.exceptions import HTTPError
 
 from .. import VelaError
@@ -35,6 +33,30 @@ def _default_branch_slug() -> Slug:
 def deployment_namespace(id_: Identifier, branch: Slug) -> str:
     branch = branch or _default_branch_slug()
     return f"{settings.deployment_namespace_prefix}-deployment-{id_}-{branch}"
+
+
+def branch_dns_label(branch_id: Identifier) -> str:
+    """Return the deterministic DNS label for a branch based on its ULID."""
+
+    return str(branch_id).lower()
+
+
+def branch_domain(branch_id: Identifier) -> str | None:
+    """Compute the fully-qualified domain name for a branch."""
+
+    suffix = settings.cloudflare_domain_suffix.strip()
+    if not suffix:
+        return None
+    return f"{branch_dns_label(branch_id)}.{suffix}".lower()
+
+
+def branch_rest_endpoint(branch_id: Identifier) -> str | None:
+    """Return the PostgREST endpoint URL for a branch, if domain settings are available."""
+
+    domain = branch_domain(branch_id)
+    if not domain:
+        return None
+    return f"https://{domain}/rest"
 
 
 def _release_name(namespace: str) -> str:
@@ -360,31 +382,6 @@ async def provision_branch_endpoints(
     return BranchEndpointResult(ref=ref, domain=domain)
 
 
-async def store_branch_endpoints_in_db(
-    *,
-    branch_id: Identifier,
-    project_id: Identifier,
-    result: BranchEndpointResult,
-) -> None:
-    """Store the provisioned endpoint details back on the Branch record."""
-
-    from ..api.db import engine
-    from ..api.models.branch import Branch  # Local import to avoid circular dependency
-
-    async with AsyncSession(engine) as background_session:
-        branch_obj = await background_session.get(Branch, branch_id)
-        if branch_obj is None:
-            logger.warning(
-                "Provisioned branch infrastructure for missing branch id=%s project=%s",
-                branch_id,
-                project_id,
-            )
-            return
-
-        branch_obj.endpoint_domain = result.domain
-        await background_session.commit()
-
-
 async def deploy_branch_environment(
     *,
     project_id: Identifier,
@@ -398,14 +395,7 @@ async def deploy_branch_environment(
     await create_vela_config(project_id, parameters, branch_slug)
 
     # Provision DNS + HTTPRoute resources
-    ref = str(ulid.ULID()).lower()
-    result = await provision_branch_endpoints(
+    ref = branch_dns_label(branch_id)
+    await provision_branch_endpoints(
         spec=BranchEndpointProvisionSpec(project_id=project_id, branch_slug=branch_slug), ref=ref
-    )
-
-    # Store the resulting endpoint info back in the database
-    await store_branch_endpoints_in_db(
-        branch_id=branch_id,
-        project_id=project_id,
-        result=result,
     )

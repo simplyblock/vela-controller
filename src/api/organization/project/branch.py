@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from ...._util import Slug
-from ....deployment import ResizeParameters, delete_deployment, resize_deployment
+from ....deployment import ResizeParameters, branch_rest_endpoint, delete_deployment, resize_deployment
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ...db import SessionDep
 from ...models.branch import (
@@ -154,7 +154,6 @@ async def detail(
     _project: ProjectDep,
     branch: BranchDep,
 ) -> BranchResponse:
-    domain = branch.endpoint_domain
     resources = BranchDetailResources(
         vcpu=branch.vcpu,
         ram_bytes=branch.memory,
@@ -162,7 +161,7 @@ async def detail(
         iops=branch.iops,
         storage_bytes=branch.database_size,
     )
-    rest_endpoint = f"https://{domain}/rest" if domain else None
+    rest_endpoint = branch_rest_endpoint(branch.id)
 
     return BranchResponse(
         name=branch.name,
