@@ -1,11 +1,15 @@
 import asyncio
 import subprocess
-from typing import Annotated, Any
+from typing import Annotated, Any, Final
 
 from pydantic import BeforeValidator, Field, PlainSerializer, StringConstraints, WithJsonSchema
 from ulid import ULID
 
 _MAX_LENGTH = 50
+
+KIB: Final[int] = 1024
+MIB: Final[int] = KIB * 1024
+GIB: Final[int] = MIB * 1024
 
 Slug = Annotated[
     str,
@@ -85,3 +89,39 @@ Identifier = Annotated[
         }
     ),
 ]
+
+
+def bytes_to_kib(value: int) -> int:
+    """Convert a byte count to the nearest whole KiB using floor division."""
+
+    return value // KIB
+
+
+def bytes_to_mib(value: int) -> int:
+    """Convert a byte count to the nearest whole MiB using floor division."""
+
+    return value // MIB
+
+
+def bytes_to_gib(value: int) -> int:
+    """Convert a byte count to the nearest whole GiB using floor division."""
+
+    return value // GIB
+
+
+def kib_to_bytes(value: int) -> int:
+    """Convert a KiB count to bytes."""
+
+    return value * KIB
+
+
+def mib_to_bytes(value: int) -> int:
+    """Convert a MiB count to bytes."""
+
+    return value * MIB
+
+
+def gib_to_bytes(value: int) -> int:
+    """Convert a GiB count to bytes."""
+
+    return value * GIB

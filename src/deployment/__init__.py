@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from urllib3.exceptions import HTTPError
 
 from .. import VelaError
-from .._util import Identifier, Slug, check_output, dbstr
+from .._util import GIB, Identifier, Slug, bytes_to_gib, check_output, dbstr
 from .kubernetes import KubernetesService
 from .settings import settings
 
@@ -45,9 +45,9 @@ class DeploymentParameters(BaseModel):
     database: dbstr
     database_user: dbstr
     database_password: dbstr
-    database_size: Annotated[int, Field(gt=0, le=2**63 - 1, multiple_of=2**30)]
+    database_size: Annotated[int, Field(gt=0, le=2**63 - 1, multiple_of=GIB)]
     vcpu: Annotated[int, Field(gt=0, le=2**31 - 1)]
-    memory: Annotated[int, Field(gt=0, le=2**63 - 1, multiple_of=2**30)]
+    memory: Annotated[int, Field(gt=0, le=2**63 - 1, multiple_of=GIB)]
     iops: Annotated[int, Field(gt=0, le=2**31 - 1)]
     database_image_tag: Literal["15.1.0.147"]
 
@@ -78,8 +78,8 @@ async def create_vela_config(id_: Identifier, parameters: DeploymentParameters, 
 
     db_spec = values_content.setdefault("db", {})
     db_spec["vcpu"] = parameters.vcpu
-    db_spec["ram"] = parameters.memory // (2**30)
-    db_spec.setdefault("persistence", {})["size"] = f"{parameters.database_size // (2**30)}Gi"
+    db_spec["ram"] = bytes_to_gib(parameters.memory)
+    db_spec.setdefault("persistence", {})["size"] = f"{bytes_to_gib(parameters.database_size)}Gi"
     db_spec.setdefault("image", {})["tag"] = parameters.database_image_tag
     namespace = deployment_namespace(id_, branch)
 
@@ -175,7 +175,7 @@ def get_db_vmi_identity(id_: Identifier, branch: Slug) -> tuple[str, str]:
 
 
 class ResizeParameters(BaseModel):
-    database_size: Annotated[int | None, Field(gt=0, multiple_of=2**30)] = None
+    database_size: Annotated[int | None, Field(gt=0, multiple_of=GIB)] = None
 
 
 def resize_deployment(id_: Identifier, name: str, parameters: ResizeParameters):
@@ -187,7 +187,7 @@ def resize_deployment(id_: Identifier, name: str, parameters: ResizeParameters):
     values_content: dict = {}
     db_spec = values_content.setdefault("db", {})
     if parameters.database_size is not None:
-        db_spec.setdefault("persistence", {})["size"] = f"{parameters.database_size // (2**30)}Gi"
+        db_spec.setdefault("persistence", {})["size"] = f"{bytes_to_gib(parameters.database_size)}Gi"
 
     namespace = deployment_namespace(id_, name)
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as temp_values:
