@@ -214,7 +214,7 @@ class BranchEndpointError(VelaError):
 class CloudflareConfig(BaseModel):
     api_token: str
     zone_id: str
-    dns_target: str
+    branch_ref_cname: str
     domain_suffix: str
 
 
@@ -253,8 +253,8 @@ async def _create_dns_record(cf: CloudflareConfig, domain: str) -> None:
             await client.dns.records.create(
                 zone_id=cf.zone_id,
                 name=domain,
-                type="A",
-                content=cf.dns_target,
+                type="CNAME",
+                content=cf.branch_ref_cname,
                 ttl=1,  # Cloudflare API uses 1 to represent automatic TTL
                 proxied=False,
             )
@@ -263,7 +263,7 @@ async def _create_dns_record(cf: CloudflareConfig, domain: str) -> None:
     except Exception as exc:  # pragma: no cover - surfaced to caller
         raise BranchEndpointError(f"Cloudflare request failed: {exc}") from exc
 
-    logger.info("Created DNS A record %s -> %s", domain, cf.dns_target)
+    logger.info("Created DNS CNAME record %s -> %s", domain, cf.branch_ref_cname)
 
 
 def _build_http_route(cfg: KubeGatewayConfig, spec: HTTPRouteSpec) -> dict[str, Any]:
@@ -336,7 +336,7 @@ async def provision_branch_endpoints(
     cf_cfg = CloudflareConfig(
         api_token=settings.cloudflare_api_token,
         zone_id=settings.cloudflare_zone_id,
-        dns_target=settings.cloudflare_dns_target,
+        branch_ref_cname=settings.cloudflare_branch_ref_cname,
         domain_suffix=settings.cloudflare_domain_suffix,
     )
 

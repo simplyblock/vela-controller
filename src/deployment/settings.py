@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     deployment_host: str = "localhost"
     cloudflare_api_token: str = ""
     cloudflare_zone_id: str = ""
-    cloudflare_dns_target: str = ""
+    cloudflare_branch_ref_cname: str = ""
     cloudflare_domain_suffix: str = ""
 
 
