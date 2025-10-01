@@ -59,9 +59,47 @@ async def main():
         unittest.mock.patch("simplyblock.vela.deployment.create_vela_config"),
         unittest.mock.patch("simplyblock.vela.deployment.get_deployment_status") as mock_status,
         unittest.mock.patch("simplyblock.vela.deployment.delete_deployment"),
+        unittest.mock.patch("simplyblock.vela.deployment.kube_service.get_kubevirt_config") as mock_get_kubevirt_config,
+        unittest.mock.patch("simplyblock.vela.deployment.kube_service.get_virtual_machine") as mock_get_vm,
+        unittest.mock.patch("simplyblock.vela.deployment.kube_service.get_vmi_memory_status") as mock_get_vmi_memory,
+        unittest.mock.patch(
+            "simplyblock.vela.deployment.kube_service.wait_for_vmi_guest_requested"
+        ) as mock_wait_for_memory,
         unittest.mock.patch("keycloak.KeycloakAdmin") as mock_keycloak_admin,
     ):
         mock_load_config.return_value = None
+        mock_get_kubevirt_config.return_value = {
+            "spec": {
+                "workloadUpdateStrategy": {"workloadUpdateMethods": ["LiveMigrate"]},
+                "configuration": {
+                    "vmRolloutStrategy": "LiveUpdate",
+                    "liveUpdateConfiguration": {"maxGuest": "64Gi"},
+                },
+            }
+        }
+        mock_get_vm.return_value = {
+            "spec": {
+                "template": {
+                    "spec": {
+                        "domain": {
+                            "memory": {
+                                "guest": "4Gi",
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        mock_get_vmi_memory.return_value = {
+            "guestAtBoot": "4Gi",
+            "guestCurrent": "4Gi",
+            "guestRequested": "4Gi",
+        }
+        mock_wait_for_memory.return_value = {
+            "guestAtBoot": "4Gi",
+            "guestCurrent": "8Gi",
+            "guestRequested": "8Gi",
+        }
 
         # Mock Keycloak admin methods
         mock_keycloak_instance = mock_keycloak_admin.return_value

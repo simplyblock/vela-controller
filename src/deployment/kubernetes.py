@@ -1,4 +1,6 @@
 import logging
+import time
+from collections.abc import Mapping
 from typing import Any
 
 from kubernetes import client, config
@@ -71,3 +73,63 @@ class KubernetesService:
                     )
                 else:
                     raise
+
+    def get_kubevirt_config(self, namespace: str = "kubevirt", name: str = "kubevirt") -> dict[str, Any]:
+        return self.custom.get_namespaced_custom_object(
+            group="kubevirt.io",
+            version="v1",
+            namespace=namespace,
+            plural="kubevirts",
+            name=name,
+        )
+
+    def get_virtual_machine(self, namespace: str, name: str) -> dict[str, Any]:
+        return self.custom.get_namespaced_custom_object(
+            group="kubevirt.io",
+            version="v1",
+            namespace=namespace,
+            plural="virtualmachines",
+            name=name,
+        )
+
+    def get_virtual_machine_instance(self, namespace: str, name: str) -> dict[str, Any]:
+        return self.custom.get_namespaced_custom_object(
+            group="kubevirt.io",
+            version="v1",
+            namespace=namespace,
+            plural="virtualmachineinstances",
+            name=name,
+        )
+
+    def get_vmi_memory_status(self, namespace: str, name: str) -> dict[str, str] | None:
+        vmi = self.get_virtual_machine_instance(namespace, name)
+        status = vmi.get("status", {}) if isinstance(vmi, Mapping) else {}
+        memory = status.get("memory") if isinstance(status, Mapping) else None
+        if isinstance(memory, Mapping):
+            # Shallow copy so callers can mutate without affecting cache
+            return {str(k): str(v) for k, v in memory.items()}
+        return None
+
+    def wait_for_vmi_guest_requested(
+        self,
+        namespace: str,
+        name: str,
+        expected_quantity: str,
+        *,
+        timeout_seconds: int = 30,
+        interval_seconds: int = 2,
+    ) -> dict[str, str]:
+        deadline = time.time() + timeout_seconds
+        memory_status: dict[str, str] | None = None
+        while time.time() < deadline:
+            memory_status = self.get_vmi_memory_status(namespace, name)
+            if memory_status and memory_status.get("guestRequested") == expected_quantity:
+                return memory_status
+            time.sleep(interval_seconds)
+
+        if not memory_status:
+            memory_status = self.get_vmi_memory_status(namespace, name) or {}
+        raise RuntimeError(
+            f"Timed out waiting for VMI {name} in {namespace} to report guestRequested={expected_quantity}; "
+            f"last observed status: {memory_status}"
+        )

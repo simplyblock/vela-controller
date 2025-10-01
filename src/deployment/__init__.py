@@ -2,12 +2,14 @@ import asyncio
 import logging
 import subprocess
 import tempfile
+from collections.abc import Mapping
 from importlib import resources
 from typing import Annotated, Any, Literal
 
 import yaml
 from cloudflare import AsyncCloudflare, CloudflareError
 from kubernetes.client.rest import ApiException
+from kubernetes.utils.quantity import parse_quantity
 from pydantic import BaseModel, Field
 from urllib3.exceptions import HTTPError
 
@@ -22,6 +24,7 @@ kube_service = KubernetesService()
 
 DEFAULT_GATEWAY_NAME = "public-gateway"
 DEFAULT_GATEWAY_NAMESPACE = "kong-system"
+MIN_MEMORY_BYTES = GIB
 
 
 def _default_branch_slug() -> Slug:
@@ -198,6 +201,96 @@ def get_db_vmi_identity(id_: Identifier, branch: Slug) -> tuple[str, str]:
 
 class ResizeParameters(BaseModel):
     database_size: Annotated[int | None, Field(gt=0, multiple_of=GIB)] = None
+    memory: Annotated[int | None, Field(gt=0, multiple_of=GIB)] = None
+
+
+def _nested_get(mapping: Any, *keys: str) -> Any:
+    current = mapping
+    for key in keys:
+        if not isinstance(current, Mapping):
+            return None
+        current = current.get(key)
+    return current
+
+
+def _format_gib(quantity_bytes: int) -> str:
+    return f"{bytes_to_gib(quantity_bytes)}Gi"
+
+
+def _validate_cluster_hotplug_settings(requested_bytes: int) -> None:
+    try:
+        kubevirt_cfg = kube_service.get_kubevirt_config()
+    except ApiException as exc:
+        raise VelaError(f"Failed to read KubeVirt configuration: {exc}") from exc
+
+    spec = kubevirt_cfg.get("spec", {}) if isinstance(kubevirt_cfg, Mapping) else {}
+
+    methods = _nested_get(spec, "workloadUpdateStrategy", "workloadUpdateMethods") or []
+    if "LiveMigrate" not in methods:
+        raise VelaError("KubeVirt workloadUpdateStrategy must include LiveMigrate for memory hotplug")
+
+    vm_rollout = _nested_get(spec, "configuration", "vmRolloutStrategy")
+    if vm_rollout != "LiveUpdate":
+        raise VelaError("KubeVirt vmRolloutStrategy must be LiveUpdate for memory hotplug to take effect")
+
+    max_guest = _nested_get(spec, "configuration", "liveUpdateConfiguration", "maxGuest")
+    if max_guest is not None:
+        try:
+            max_guest_bytes = parse_quantity(max_guest)
+        except ValueError as exc:
+            raise VelaError(f"Unable to parse liveUpdateConfiguration.maxGuest value {max_guest!r}") from exc
+        if requested_bytes > max_guest_bytes:
+            raise VelaError(f"Requested memory {_format_gib(requested_bytes)} exceeds cluster maxGuest {max_guest}")
+
+
+def _get_vm_guest_bytes(namespace: str, vm_name: str) -> int:
+    try:
+        vm = kube_service.get_virtual_machine(namespace, vm_name)
+    except ApiException as exc:
+        raise VelaError(f"VirtualMachine {vm_name} not found in namespace {namespace}: {exc}") from exc
+
+    vm_guest_quantity = _nested_get(vm, "spec", "template", "spec", "domain", "memory", "guest")
+    if not vm_guest_quantity:
+        raise VelaError("VirtualMachine is missing spec.template.spec.domain.memory.guest")
+
+    try:
+        current_vm_guest_bytes = parse_quantity(vm_guest_quantity)
+    except ValueError as exc:
+        raise VelaError(f"Unable to parse VM guest memory value {vm_guest_quantity!r}") from exc
+
+    return current_vm_guest_bytes
+
+
+def _get_initial_memory_status(namespace: str, vm_name: str) -> dict[str, str]:
+    try:
+        memory_status = kube_service.get_vmi_memory_status(namespace, vm_name)
+    except ApiException as exc:
+        raise VelaError(f"Failed to fetch VirtualMachineInstance {vm_name}: {exc}") from exc
+
+    if not memory_status:
+        raise VelaError(
+            "VirtualMachineInstance status.memory is unavailable; ensure the workload is running before resizing"
+        )
+
+    return memory_status
+
+
+def _ensure_memory_hotplug_preconditions(
+    namespace: str,
+    vm_name: str,
+    requested_bytes: int,
+) -> dict[str, str]:
+    if requested_bytes < MIN_MEMORY_BYTES:
+        raise VelaError("Memory hotplug requires at least 1Gi of guest memory")
+
+    _validate_cluster_hotplug_settings(requested_bytes)
+
+    current_vm_guest_bytes = _get_vm_guest_bytes(namespace, vm_name)
+
+    if current_vm_guest_bytes < MIN_MEMORY_BYTES:
+        raise VelaError("VirtualMachine must be provisioned with at least 1Gi to allow hotplug")
+
+    return _get_initial_memory_status(namespace, vm_name)
 
 
 def resize_deployment(id_: Identifier, name: str, parameters: ResizeParameters):
@@ -208,10 +301,26 @@ def resize_deployment(id_: Identifier, name: str, parameters: ResizeParameters):
     # Minimal values file with only overrides
     values_content: dict = {}
     db_spec = values_content.setdefault("db", {})
+    memory_status_before: dict[str, str] | None = None
+    target_memory_quantity: str | None = None
+
     if parameters.database_size is not None:
         db_spec.setdefault("persistence", {})["size"] = f"{bytes_to_gib(parameters.database_size)}Gi"
 
     namespace = deployment_namespace(id_, name)
+    vm_namespace, vm_name = get_db_vmi_identity(id_, name)
+
+    if parameters.memory is not None:
+        memory_status_before = _ensure_memory_hotplug_preconditions(vm_namespace, vm_name, parameters.memory)
+        target_memory_quantity = _format_gib(parameters.memory)
+        db_spec["ram"] = bytes_to_gib(parameters.memory)
+        logger.info(
+            "Existing memory status for %s/%s: %s",
+            vm_namespace,
+            vm_name,
+            memory_status_before,
+        )
+
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as temp_values:
         yaml.dump(values_content, temp_values, default_flow_style=False)
         subprocess.check_call(
@@ -226,6 +335,23 @@ def resize_deployment(id_: Identifier, name: str, parameters: ResizeParameters):
                 "-f",
                 temp_values.name,
             ]
+        )
+
+    if target_memory_quantity:
+        try:
+            memory_status_after = kube_service.wait_for_vmi_guest_requested(
+                vm_namespace,
+                vm_name,
+                target_memory_quantity,
+            )
+        except (ApiException, RuntimeError) as exc:
+            raise VelaError(f"Memory hotplug did not complete successfully: {exc}") from exc
+
+        logger.info(
+            "Updated memory status for %s/%s: %s",
+            vm_namespace,
+            vm_name,
+            memory_status_after,
         )
 
 

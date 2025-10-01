@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Sequence
 from typing import Literal
 
@@ -232,7 +233,7 @@ async def delete(
 )
 async def resize(_organization: OrganizationDep, _project: ProjectDep, parameters: ResizeParameters, branch: BranchDep):
     # Trigger helm upgrade with provided parameters; returns 202 Accepted
-    resize_deployment(branch.id, branch.name, parameters)
+    await asyncio.to_thread(resize_deployment, branch.id, branch.name, parameters)
     return Response(status_code=202)
 
 
