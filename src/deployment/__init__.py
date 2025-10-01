@@ -3,6 +3,7 @@ import logging
 import subprocess
 import tempfile
 from importlib import resources
+from pathlib import Path
 from typing import Annotated, Any, Literal
 
 import yaml
@@ -89,6 +90,9 @@ async def create_vela_config(id_: Identifier, parameters: DeploymentParameters, 
     )
 
     chart = resources.files(__package__) / "charts" / "supabase"
+    compose_file = Path(__file__).with_name("compose.yml")
+    if not compose_file.exists():
+        raise FileNotFoundError(f"docker-compose manifest not found at {compose_file}")
     values_content = yaml.safe_load((chart / "values.yaml").read_text())
 
     # Override defaults
@@ -119,6 +123,8 @@ async def create_vela_config(id_: Identifier, parameters: DeploymentParameters, 
                     "--namespace",
                     namespace,
                     "--create-namespace",
+                    "--set-file",
+                    f"composeYaml={compose_file}",
                     "-f",
                     temp_values.name,
                 ],
@@ -328,16 +334,64 @@ def _build_http_route(cfg: KubeGatewayConfig, spec: HTTPRouteSpec) -> dict[str, 
 def _postgrest_route_specs(ref: str, domain: str, namespace: str) -> list[HTTPRouteSpec]:
     """HTTPRoute definitions that expose the PostgREST service for a branch."""
 
-    base_service = f"supabase-{namespace}-supabase"
     return [
         HTTPRouteSpec(
             ref=ref,
             domain=domain,
             namespace=namespace,
-            service_name=f"{base_service}-rest",
+            service_name="supabase-supabase-rest",
             service_port=3000,
             path_prefix="/rest",
             route_suffix="postgrest-route",
+        ),
+    ]
+
+
+def _storage_route_specs(ref: str, domain: str, namespace: str) -> list[HTTPRouteSpec]:
+    """HTTPRoute definitions that expose the Storage API service for a branch."""
+
+    return [
+        HTTPRouteSpec(
+            ref=ref,
+            domain=domain,
+            namespace=namespace,
+            service_name="supabase-supabase-storage",
+            service_port=5000,
+            path_prefix="/storage",
+            route_suffix="storage-route",
+        ),
+    ]
+
+
+def _realtime_route_specs(ref: str, domain: str, namespace: str) -> list[HTTPRouteSpec]:
+    """HTTPRoute definitions that expose the Realtime service for a branch."""
+
+    return [
+        HTTPRouteSpec(
+            ref=ref,
+            domain=domain,
+            namespace=namespace,
+            service_name="supabase-supabase-realtime",
+            service_port=4000,
+            path_prefix="/realtime",
+            route_suffix="realtime-route",
+        ),
+    ]
+
+
+def _pgmeta_route_specs(ref: str, domain: str, namespace: str) -> list[HTTPRouteSpec]:
+    """HTTPRoute definitions that expose the Postgres Meta service for a branch."""
+
+    path_prefix = f"/platform/pg-meta/{ref}"
+    return [
+        HTTPRouteSpec(
+            ref=ref,
+            domain=domain,
+            namespace=namespace,
+            service_name="supabase-supabase-meta",
+            service_port=8080,
+            path_prefix=path_prefix,
+            route_suffix="pgmeta-route",
         ),
     ]
 
@@ -355,7 +409,7 @@ async def provision_branch_endpoints(
     *,
     ref: str,
 ) -> BranchEndpointResult:
-    """Provision DNS + HTTPRoute resources (currently PostgREST only) for a branch."""
+    """Provision DNS + HTTPRoute resources (PostgREST + Storage + Realtime + PGMeta) for a branch."""
 
     cf_cfg = CloudflareConfig(
         api_token=settings.cloudflare_api_token,
@@ -376,8 +430,12 @@ async def provision_branch_endpoints(
 
     await _create_dns_record(cf_cfg, domain)
 
-    # Right now we expose only the PostgREST service; extend here when other components need routes.
-    route_specs = _postgrest_route_specs(ref, domain, gateway_cfg.namespace)
+    route_specs = (
+        _postgrest_route_specs(ref, domain, gateway_cfg.namespace)
+        + _storage_route_specs(ref, domain, gateway_cfg.namespace)
+        + _realtime_route_specs(ref, domain, gateway_cfg.namespace)
+        + _pgmeta_route_specs(ref, domain, gateway_cfg.namespace)
+    )
     routes = [_build_http_route(gateway_cfg, route_spec) for route_spec in route_specs]
     await _apply_http_routes(gateway_cfg.namespace, routes)
 

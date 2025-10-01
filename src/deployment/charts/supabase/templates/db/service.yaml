@@ -11,7 +11,7 @@ spec:
     - port: {{ .Values.db.service.port }}
       targetPort: 5432
       protocol: TCP
-      name: http
+      name: postgres
   selector:
-    {{- include "supabase.db.selectorLabels" . | nindent 4 }}
+    vm.kubevirt.io/name: {{ include "supabase.db.fullname" . }}
 {{- end }}
