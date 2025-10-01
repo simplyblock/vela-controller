@@ -9,7 +9,7 @@ from Crypto.Hash import MD5
 from Crypto.Random import get_random_bytes
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
-from kubernetes.client.exceptions import ApiException
+from kubernetes_asyncio.client.exceptions import ApiException
 from sqlalchemy.exc import IntegrityError
 
 from .... import VelaError
@@ -296,7 +296,7 @@ async def delete(session: SessionDep, _organization: OrganizationDep, project: P
 async def pause(_organization: OrganizationDep, project: ProjectDep):
     namespace, vmi_name = get_db_vmi_identity(project.id, Branch.DEFAULT_SLUG)
     try:
-        call_kubevirt_subresource(namespace, vmi_name, "pause")
+        await call_kubevirt_subresource(namespace, vmi_name, "pause")
         return Response(status_code=204)
     except ApiException as e:
         status = 404 if e.status == 404 else 400
@@ -312,7 +312,7 @@ async def pause(_organization: OrganizationDep, project: ProjectDep):
 async def resume(_organization: OrganizationDep, project: ProjectDep):
     namespace, vmi_name = get_db_vmi_identity(project.id, Branch.DEFAULT_SLUG)
     try:
-        call_kubevirt_subresource(namespace, vmi_name, "resume")
+        await call_kubevirt_subresource(namespace, vmi_name, "resume")
         return Response(status_code=204)
     except ApiException as e:
         status = 404 if e.status == 404 else 400

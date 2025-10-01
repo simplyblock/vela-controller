@@ -7,7 +7,7 @@ from typing import Annotated, Any, Literal
 
 import yaml
 from cloudflare import AsyncCloudflare, CloudflareError
-from kubernetes.client.rest import ApiException
+from kubernetes_asyncio.client.exceptions import ApiException
 from pydantic import BaseModel, Field
 from urllib3.exceptions import HTTPError
 

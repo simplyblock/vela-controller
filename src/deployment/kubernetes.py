@@ -26,7 +26,7 @@ class KubernetesService:
 
             try:
                 # Try to load in-cluster config first (for running in a pod)
-                await config.load_incluster_config()
+                config.load_incluster_config()
             except ConfigException:
                 try:
                     # Fall back to kubeconfig file (for local development)
