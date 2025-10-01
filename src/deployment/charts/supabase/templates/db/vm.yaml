@@ -41,6 +41,12 @@ spec:
             - name: db-secrets
               disk:
                 bus: virtio
+            - name: compose-config
+              disk:
+                bus: virtio
+            - name: jwt-secrets
+              disk:
+                bus: virtio
             - name: cloudinitdisk
               disk:
                 bus: virtio
@@ -56,7 +62,7 @@ spec:
       volumes:
         - name: rootdisk
           containerDisk:
-            image: manoharbrm/kubevirt:alpine-{{ .Values.db.image.tag }}-cpu2
+            image: manoharbrm/kubevirt:alpine-{{ .Values.db.image.tag }}-compose
         - name: datadisk
           persistentVolumeClaim:
             claimName: {{ include "supabase.db.fullname" . }}-pvc
@@ -69,6 +75,12 @@ spec:
         - name: db-secrets
           secret:
             secretName: {{ include "supabase.secret.db" . }}
+        - name: compose-config
+          configMap:
+            name: {{ include "supabase.db.fullname" . }}-compose
+        - name: jwt-secrets
+          secret:
+            secretName: {{ include "supabase.secret.jwt" . }}
         - name: cloudinitdisk
           cloudInitNoCloud:
             secretRef: 

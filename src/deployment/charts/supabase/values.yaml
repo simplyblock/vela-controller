@@ -6,6 +6,9 @@
 # |-- 5.  Storage API
 # |-- 5.  Minio S3 
 
+# docker-compose payload injected via helm --set-file composeYaml
+composeYaml: ""
+
 secret:
   # jwt will be used to reference secret in multiple services:
   # Anon & Service key: Studio, Storage, Kong
@@ -175,7 +178,7 @@ db:
 # Rest Service
 rest:
   # Enable postgrest provisioning
-  enabled: true
+  enabled: false
   image:
     repository: postgrest/postgrest
     pullPolicy: IfNotPresent
@@ -256,7 +259,7 @@ rest:
 # Realtime Service
 realtime:
   # Enable realtime provisioning
-  enabled: true
+  enabled: false
   image:
     repository: supabase/realtime
     pullPolicy: IfNotPresent
@@ -341,7 +344,7 @@ realtime:
 # Meta Service
 meta:
   # Enable meta provisioning
-  enabled: true
+  enabled: false
   image:
     repository: supabase/postgres-meta
     pullPolicy: IfNotPresent
@@ -420,7 +423,7 @@ meta:
 # Storage Service
 storage:
   # Enable storage provisioning
-  enabled: true
+  enabled: false
   image:
     repository: supabase/storage-api
     pullPolicy: IfNotPresent

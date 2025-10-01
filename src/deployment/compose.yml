@@ -1,0 +1,129 @@
+version: "3.9"
+
+services:
+  db:
+    image: docker.io/supabase/postgres:15.1.0.147
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-example123456}
+      JWT_SECRET: ${SUPABASE_JWT_SECRET:-your-super-secret-jwt-token-with-at-least-32-characters-long}
+      JWT_EXP: "3600"
+      ADMIN_USER: ${SUPABASE_ADMIN_USER:-supabase_admin}
+      ADMIN_DB: ${SUPABASE_ADMIN_DB:-postgres}
+      ADMIN_PASSWORD: ${SUPABASE_ADMIN_PASSWORD:-example123456}
+    volumes:
+      - /mnt/postgres_data/pgdata:/var/lib/postgresql/data
+      - /docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
+    networks:
+      - supabase
+    ports:
+      - "5432:5432"
+
+  rest:
+    image: docker.io/postgrest/postgrest:v12.0.1
+    depends_on:
+      - db
+    restart: unless-stopped
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: ${POSTGRES_DB:-postgres}
+      DB_USER: authenticator
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-example123456}
+      DB_PASSWORD_ENC: ${POSTGRES_PASSWORD_ENC:-example123456}
+      DB_DRIVER: postgres
+      DB_SSL: disable
+      PGRST_DB_SCHEMAS: public,storage,graphql_public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_DB_USE_LEGACY_GUCS: "false"
+      PGRST_APP_SETTINGS_JWT_EXP: "3600"
+      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD_ENC:-example123456}@db:5432/${POSTGRES_DB:-postgres}?sslmode=disable
+      PGRST_JWT_SECRET: ${SUPABASE_JWT_SECRET:-your-super-secret-jwt-token-with-at-least-32-characters-long}
+      PGRST_APP_SETTINGS_JWT_SECRET: ${SUPABASE_JWT_SECRET:-your-super-secret-jwt-token-with-at-least-32-characters-long}
+    ports:
+      - "3000:3000"
+    networks:
+      - supabase
+
+  realtime:
+    image: docker.io/supabase/realtime:v2.27.5
+    depends_on:
+      - db
+    restart: unless-stopped
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: ${POSTGRES_DB:-postgres}
+      DB_USER: supabase_admin
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-example123456}
+      DB_SSL: disable
+      DB_AFTER_CONNECT_QUERY: "SET search_path TO _realtime"
+      DB_ENC_KEY: supabaserealtime
+      PORT: "4000"
+      FLY_ALLOC_ID: fly123
+      FLY_APP_NAME: realtime
+      SECRET_KEY_BASE: UpNVntn3cDxHJpq99YMc1T1AQgQpc8kfYTuRgBiYa15BLrx8etQoXz3gZv1/u2oq
+      ERL_AFLAGS: "-proto_dist inet_tcp"
+      ENABLE_TAILSCALE: "false"
+      DNS_NODES: "''"
+      JWT_SECRET: ${SUPABASE_JWT_SECRET:-your-super-secret-jwt-token-with-at-least-32-characters-long}
+      API_JWT_SECRET: ${SUPABASE_JWT_SECRET:-your-super-secret-jwt-token-with-at-least-32-characters-long}
+    ports:
+      - "4000:4000"
+    networks:
+      - supabase
+
+  meta:
+    image: docker.io/supabase/postgres-meta:v0.80.0
+    depends_on:
+      - db
+    restart: unless-stopped
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: ${POSTGRES_DB:-postgres}
+      DB_USER: supabase_admin
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-example123456}
+      DB_DRIVER: postgres
+      DB_SSL: disable
+      PG_META_PORT: "8080"
+    ports:
+      - "8080:8080"
+    networks:
+      - supabase
+
+  storage:
+    image: docker.io/supabase/storage-api:v0.46.4
+    depends_on:
+      - db
+      - rest
+    restart: unless-stopped
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: ${POSTGRES_DB:-postgres}
+      DB_USER: supabase_storage_admin
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-example123456}
+      DB_PASSWORD_ENC: ${POSTGRES_PASSWORD_ENC:-example123456}
+      DB_DRIVER: postgres
+      DB_SSL: disable
+      FILE_SIZE_LIMIT: "52428800"
+      STORAGE_BACKEND: file
+      FILE_STORAGE_BACKEND_PATH: /var/lib/storage
+      TENANT_ID: stub
+      REGION: stub
+      GLOBAL_S3_BUCKET: stub
+      DATABASE_URL: postgres://supabase_storage_admin:${POSTGRES_PASSWORD_ENC:-example123456}@db:5432/${POSTGRES_DB:-postgres}?sslmode=disable
+      PGRST_JWT_SECRET: ${SUPABASE_JWT_SECRET:-your-super-secret-jwt-token-with-at-least-32-characters-long}
+      ANON_KEY: ${SUPABASE_ANON_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE}
+      SERVICE_KEY: ${SUPABASE_SERVICE_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJzZXJ2aWNlX3JvbGUiLAogICAgImlzcyI6ICJzdXBhYmFzZS1kZW1vIiwKICAgICJpYXQiOiAxNjQxNzY5MjAwLAogICAgImV4cCI6IDE3OTk1MzU2MDAKfQ.DaYlNEoUrrEn2Ig7tqibS-PHK5vgusbcbo7X36XVt4Q}
+      POSTGREST_URL: http://rest:3000
+    volumes:
+      - /mnt/postgres_data/storage:/var/lib/storage
+    ports:
+      - "5000:5000"
+    networks:
+      - supabase
+
+networks:
+  supabase:
+    driver: bridge
