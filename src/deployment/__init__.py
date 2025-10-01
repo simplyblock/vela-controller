@@ -31,8 +31,12 @@ def _default_branch_slug() -> Slug:
 
 
 def deployment_namespace(id_: Identifier, branch: Slug) -> str:
-    branch = branch or _default_branch_slug()
-    return f"{settings.deployment_namespace_prefix}-deployment-{id_}-{branch}"
+    branch_value = (branch or _default_branch_slug()).lower()
+    identifier = str(id_).lower()
+    prefix = f"{settings.deployment_namespace_prefix.lower()}-deployment-"
+    max_branch_length = max(1, 63 - len(prefix) - len(identifier) - 1)
+    trimmed_branch = branch_value[:max_branch_length]
+    return f"{prefix}{identifier}-{trimmed_branch}"
 
 
 def branch_dns_label(branch_id: Identifier) -> str:
@@ -60,7 +64,8 @@ def branch_rest_endpoint(branch_id: Identifier) -> str | None:
 
 
 def _release_name(namespace: str) -> str:
-    return f"supabase-{namespace}"
+    _ = namespace  # kept for call-site clarity; release name is namespace-independent
+    return "supabase"
 
 
 class DeploymentParameters(BaseModel):
@@ -128,8 +133,9 @@ async def create_vela_config(id_: Identifier, parameters: DeploymentParameters, 
             )
         except subprocess.CalledProcessError as e:
             logger.exception(f"Failed to create deployment: {e.stderr}")
+            release_name = _release_name(namespace)
             await check_output(
-                ["helm", "uninstall", f"supabase-{namespace}", "-n", namespace],
+                ["helm", "uninstall", release_name, "-n", namespace],
                 stderr=subprocess.PIPE,
                 text=True,
             )
@@ -175,10 +181,15 @@ async def get_deployment_status(id_: Identifier, branch: Slug) -> DeploymentStat
 
 async def delete_deployment(id_: Identifier, branch: Slug) -> None:
     namespace = deployment_namespace(id_, branch)
-    await asyncio.to_thread(
-        subprocess.check_call,
-        ["helm", "uninstall", _release_name(namespace), "-n", namespace, "--wait"],
-    )
+
+    async def _uninstall(release: str) -> None:
+        await asyncio.to_thread(
+            subprocess.check_call,
+            ["helm", "uninstall", release, "-n", namespace, "--wait"],
+        )
+
+    await _uninstall(_release_name(namespace))
+
     await kube_service.delete_namespace(namespace)
 
 
@@ -187,7 +198,7 @@ def get_db_vmi_identity(id_: Identifier, branch: Slug) -> tuple[str, str]:
     Return the (namespace, vmi_name) for the project's database VirtualMachineInstance.
 
     The Helm chart defines the DB VM fullname as "{Release.Name}-{ChartName}-db" when no overrides
-    are provided. Our release name is "supabase-{namespace}" and chart name is "supabase".
+    are provided. Our release name is a constant "supabase" and chart name is "supabase".
     Hence the VMI name resolves to: f"{_release_name(namespace)}-supabase-db".
     """
     namespace = deployment_namespace(id_, branch)
