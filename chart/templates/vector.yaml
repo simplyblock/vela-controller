@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+#kind: Deployment
+kind: DaemonSet
+metadata:
+  name: vela-vector
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: vela
+    app.kubernetes.io/instance: vela
+    vector.dev/exclude: "true"
+spec:
+#  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vela-vector
+      app.kubernetes.io/instance: vela
+  template:
+    metadata:
+      annotations:
+        checksum/config: "sha256-placeholder"
+      labels:
+        app.kubernetes.io/name: vela-vector
+        app.kubernetes.io/instance: vela
+    spec:
+      serviceAccountName: vela-vector
+      securityContext: {}
+      containers:
+        - name: vela-vector
+          args:
+            - --config
+            - /etc/vector/vector.yml
+          securityContext: {}
+          image: "timberio/vector:0.34.0-alpine"
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: VECTOR_SELF_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: LOGFLARE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: vela-logflare-secret
+                  key: LOGFLARE_API_KEY
+          ports:
+            - containerPort: 9001
+              protocol: TCP
+          volumeMounts:
+            - mountPath: /etc/vector/vector.yml
+              name: vector-config
+              subPath: vector.yml
+            - mountPath: /etc/vector/secret.sh
+              name: vector-config
+              subPath: secret.sh
+            - mountPath: /var/log/pods
+              name: pod-logs
+          resources: {}
+      volumes:
+        - name: vector-config
+          configMap:
+            name: vela-vector-config
+            defaultMode: 0777
+        - name: pod-logs
+          hostPath:
+            path: /var/log/pods
+      nodeSelector: {}
+      affinity: {}
+      tolerations: []
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vela-vector
+  labels:
+    app.kubernetes.io/name: vela-vector
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: vela-vector
+  ports:
+    - name: http
+      port: 9001
+      targetPort: 9001
+      protocol: TCP
