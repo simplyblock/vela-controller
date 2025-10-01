@@ -13,7 +13,6 @@ dependencies = [
     'asyncpg',
     'pyjwt',
     'pydantic-settings',
-    'kubernetes',
     'kubernetes-asyncio',
     'pyyaml',
     'email-validator',  # pydantic.EmailStr
