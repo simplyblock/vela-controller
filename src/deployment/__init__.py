@@ -46,7 +46,7 @@ def branch_domain(branch_id: Identifier) -> str | None:
     suffix = settings.cloudflare_domain_suffix.strip()
     if not suffix:
         return None
-    return f"{branch_dns_label(branch_id)}.{suffix}".lower()
+    return f"{branch_dns_label(branch_id)}-db.{suffix}".lower()
 
 
 def branch_rest_endpoint(branch_id: Identifier) -> str | None:
@@ -70,7 +70,7 @@ class DeploymentParameters(BaseModel):
     database_size: Annotated[int, Field(gt=0, le=2**63 - 1, multiple_of=GIB)]
     vcpu: Annotated[int, Field(gt=0, le=2**31 - 1)]
     memory: Annotated[int, Field(gt=0, le=2**63 - 1, multiple_of=GIB)]
-    iops: Annotated[int, Field(gt=0, le=2**31 - 1)]
+    iops: Annotated[int, Field(ge=100, le=2**31 - 1)]
     database_image_tag: Literal["15.1.0.147"]
 
 

@@ -31,7 +31,7 @@ class Branch(AsyncAttrs, Model, table=True):
     database_size: Annotated[int, Field(gt=0, multiple_of=GIB, sa_column=Column(BigInteger))]
     vcpu: Annotated[int, Field(gt=0, le=2**31 - 1, sa_column=Column(BigInteger))]
     memory: Annotated[int, Field(gt=0, multiple_of=GIB, sa_column=Column(BigInteger))]
-    iops: Annotated[int, Field(gt=0, le=2**31 - 1, sa_column=Column(BigInteger))]
+    iops: Annotated[int, Field(ge=100, le=2**31 - 1, sa_column=Column(BigInteger))]
     database_image_tag: str
 
     __table_args__ = (UniqueConstraint("project_id", "name", name="unique_branch_name_per_project"),)
@@ -49,13 +49,69 @@ class BranchUpdate(BaseModel):
     name: Name | None = None
 
 
+class DatabaseInformation(BaseModel):
+    host: str
+    port: int
+    username: str
+    name: str
+    encrypted_connection_string: str
+    service_endpoint_uri: str
+    version: str
+    has_replicas: bool
+
+
+class ResourcesDefinition(BaseModel):
+    vcpu: Annotated[
+        int,
+        PydanticField(
+            ge=1,
+            le=2**31 - 1,
+            description="Number of virtual CPUs provisioned (matches Branch.vcpu constraints).",
+        ),
+    ]
+    ram_bytes: Annotated[
+        int,
+        PydanticField(
+            ge=KIB,
+            multiple_of=KIB,
+            description="Guest memory expressed in bytes (mirrors Branch.memory).",
+        ),
+    ]
+    nvme_bytes: Annotated[
+        int,
+        PydanticField(
+            ge=GIB,
+            description="Provisioned NVMe volume capacity in bytes (derived from Branch.database_size).",
+        ),
+    ]
+    iops: Annotated[
+        int,
+        PydanticField(
+            ge=100,
+            le=2**31 - 1,
+            description="Configured storage IOPS budget (matches Branch.iops constraints).",
+        ),
+    ]
+    storage_bytes: Annotated[
+        int | None,
+        PydanticField(
+            ge=GIB,
+            description="Database storage capacity in bytes (mirrors Branch.database_size).",
+        ),
+    ] = None
+
+
 class BranchPublic(BaseModel):
     id: Identifier
     name: Slug
-    status: str
-    deployment_status: tuple[str, dict[str, str]]
-    database_user: str
-    encrypted_database_connection_string: str
+    project_id: Identifier
+    organization_id: Identifier
+    database: DatabaseInformation
+    max_resources: ResourcesDefinition
+    created_at: str
+    created_by: str
+    updated_at: str | None = None
+    updated_by: str | None = None
 
 
 class BranchDetailResources(BaseModel):
@@ -85,7 +141,7 @@ class BranchDetailResources(BaseModel):
     iops: Annotated[
         int,
         PydanticField(
-            ge=1,
+            ge=100,
             le=2**31 - 1,
             description="Configured storage IOPS budget (matches Branch.iops constraints).",
         ),
