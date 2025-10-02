@@ -6,10 +6,10 @@ from importlib import resources
 from typing import Annotated, Any, Literal
 
 import yaml
+from aiohttp.client_exceptions import ClientError
 from cloudflare import AsyncCloudflare, CloudflareError
 from kubernetes_asyncio.client.exceptions import ApiException
 from pydantic import BaseModel, Field
-from urllib3.exceptions import HTTPError
 
 from .. import VelaError
 from .._util import GIB, Identifier, Slug, bytes_to_gib, check_output, dbstr
@@ -165,7 +165,7 @@ async def get_deployment_status(id_: Identifier, branch: Slug) -> DeploymentStat
                 + "\n".join(f"{key}: {value}" for key, value in k8s_statuses.items())
             )
 
-    except (ApiException, HTTPError, KeyError) as e:
+    except (ApiException, KeyError, ClientError) as e:
         k8s_statuses = {}
         status = "UNKNOWN"
         message = str(e)
