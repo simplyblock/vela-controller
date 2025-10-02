@@ -155,7 +155,7 @@ helm upgrade --install cert-manager jetstack/cert-manager \
 
 ### Prometheus installation
 
-Install the prometheus: 
+Install prometheus: 
 ```
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo update
