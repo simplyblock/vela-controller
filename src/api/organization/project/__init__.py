@@ -280,7 +280,7 @@ async def pause(_organization: OrganizationDep, project: ProjectDep):
 async def resume(_organization: OrganizationDep, project: ProjectDep):
     namespace, vmi_name = get_db_vmi_identity(project.id, Branch.DEFAULT_SLUG)
     try:
-        await call_kubevirt_subresource(namespace, vmi_name, "resume")
+        await call_kubevirt_subresource(namespace, vmi_name, "unpause")
         return Response(status_code=204)
     except ApiException as e:
         status = 404 if e.status == 404 else 400

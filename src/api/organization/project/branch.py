@@ -19,7 +19,7 @@ from ....deployment import (
     get_db_vmi_identity,
     resize_deployment,
 )
-from ....deployment.kubevirt import call_kubevirt_subresource
+from ....deployment.kubevirt import KubevirtSubresourceAction, call_kubevirt_subresource
 from ....deployment.settings import settings as deployment_settings
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ...db import SessionDep
@@ -310,12 +310,17 @@ async def resize(_organization: OrganizationDep, _project: ProjectDep, parameter
     return Response(status_code=202)
 
 
-ControlAction = Literal["pause", "resume", "start", "stop"]
-
 _control_responses: dict[int | str, dict[str, Any]] = {
     401: Unauthenticated,
     403: Forbidden,
     404: NotFound,
+}
+
+_CONTROL_TO_KUBEVIRT: dict[str, KubevirtSubresourceAction] = {
+    "pause": "pause",
+    "resume": "unpause",
+    "start": "start",
+    "stop": "stop",
 }
 
 
@@ -349,9 +354,14 @@ async def control_branch(
     _project: ProjectDep,
     branch: BranchDep,
 ):
+    action = request.url.path.rsplit("/", 1)[-1]
+    try:
+        kubevirt_action = _CONTROL_TO_KUBEVIRT[action]
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"Unsupported branch control action '{action}'") from exc
     namespace, vmi_name = get_db_vmi_identity(branch.project_id, branch.name)
     try:
-        await call_kubevirt_subresource(namespace, vmi_name, request.path.split("/")[-1])
+        await call_kubevirt_subresource(namespace, vmi_name, kubevirt_action)
         return Response(status_code=204)
     except ApiException as e:
         status = 404 if e.status == 404 else 400
