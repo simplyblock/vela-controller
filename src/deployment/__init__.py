@@ -24,14 +24,8 @@ DEFAULT_GATEWAY_NAME = "public-gateway"
 DEFAULT_GATEWAY_NAMESPACE = "kong-system"
 
 
-def _default_branch_slug() -> Slug:
-    from ..api.models.branch import Branch  # Local import to avoid circular dependency
-
-    return Branch.DEFAULT_SLUG
-
-
 def deployment_namespace(id_: Identifier, branch: Slug) -> str:
-    branch_value = (branch or _default_branch_slug()).lower()
+    branch_value = branch.lower()
     identifier = str(id_).lower()
     prefix = f"{settings.deployment_namespace_prefix.lower()}-deployment-"
     max_branch_length = max(1, 63 - len(prefix) - len(identifier) - 1)
@@ -65,7 +59,7 @@ def branch_rest_endpoint(branch_id: Identifier) -> str | None:
 
 def _release_name(namespace: str) -> str:
     _ = namespace  # kept for call-site clarity; release name is namespace-independent
-    return "supabase"
+    return settings.deployment_release_name
 
 
 class DeploymentParameters(BaseModel):
@@ -195,8 +189,9 @@ def get_db_vmi_identity(id_: Identifier, branch: Slug) -> tuple[str, str]:
     Return the (namespace, vmi_name) for the project's database VirtualMachineInstance.
 
     The Helm chart defines the DB VM fullname as "{Release.Name}-{ChartName}-db" when no overrides
-    are provided. Our release name is a constant "supabase" and chart name is "supabase".
-    Hence the VMI name resolves to: f"{_release_name(namespace)}-supabase-db".
+    are provided. With the configurable release name (`settings.deployment_release_name`, default
+    "supabase") and chart name "supabase", the VMI resolves to
+    f"{_release_name(namespace)}-supabase-db".
     """
     namespace = deployment_namespace(id_, branch)
     vmi_name = f"{_release_name(namespace)}-supabase-db"
