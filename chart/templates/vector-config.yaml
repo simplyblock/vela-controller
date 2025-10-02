@@ -7,16 +7,6 @@ metadata:
     app.kubernetes.io/instance: vela
     vector.dev/exclude: "true"
 data:
-  secret.sh: |
-    #!/bin/sh
-    cat << EOF
-    {
-      "logflare_api_key": {
-        "value": "$LOGFLARE_API_KEY",
-        "error": null
-      }
-    }
-    EOF
   vector.yml: |
     secret:
       credentials:
@@ -187,7 +177,9 @@ data:
         method: 'post'
         request:
           retry_max_duration_secs: 10
-        uri: 'http://vela-logflare:4000/api/logs?source_name=gotrue.logs.prod&api_key=SECRET[credentials.logflare_api_key]'
+          headers:
+            x-api-key: ${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
+        uri: 'http://vela-logflare:4000/api/logs?source_name=gotrue.logs.prod'
       logflare_realtime:
         type: 'http'
         inputs:
@@ -197,7 +189,9 @@ data:
         method: 'post'
         request:
           retry_max_duration_secs: 10
-        uri: 'http://vela-logflare:4000/api/logs?source_name=realtime.logs.prod&api_key=SECRET[credentials.logflare_api_key]'
+          headers:
+            x-api-key: ${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
+        uri: 'http://vela-logflare:4000/api/logs?source_name=realtime.logs.prod'
       logflare_rest:
         type: 'http'
         inputs:
@@ -207,7 +201,9 @@ data:
         method: 'post'
         request:
           retry_max_duration_secs: 10
-        uri: 'http://vela-logflare:4000/api/logs?source_name=postgREST.logs.prod&api_key=SECRET[credentials.logflare_api_key]'
+          headers:
+            x-api-key: ${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
+        uri: 'http://vela-logflare:4000/api/logs?source_name=postgREST.logs.prod'
       logflare_db:
         type: 'http'
         inputs:
@@ -217,10 +213,12 @@ data:
         method: 'post'
         request:
           retry_max_duration_secs: 10
+          headers:
+            x-api-key: ${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
         # We must route the sink through kong because ingesting logs before logflare is fully initialised will
         # lead to broken queries from studio. This works by the assumption that containers are started in the
         # following order: vector > db > logflare > kong
-        uri: 'http://vela-logflare:4000/api/logs?source_name=postgres.logs&api_key=SECRET[credentials.logflare_api_key]'
+        uri: 'http://vela-logflare:4000/api/logs?source_name=postgres.logs'
       logflare_functions:
         type: 'http'
         inputs:
@@ -230,7 +228,9 @@ data:
         method: 'post'
         request:
           retry_max_duration_secs: 10
-        uri: 'http://vela-logflare:4000/api/logs?source_name=deno-relay-logs&api_key=SECRET[credentials.logflare_api_key]'
+          headers:
+            x-api-key: ${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
+        uri: 'http://vela-logflare:4000/api/logs?source_name=deno-relay-logs'
       logflare_storage:
         type: 'http'
         inputs:
@@ -240,7 +240,9 @@ data:
         method: 'post'
         request:
           retry_max_duration_secs: 10
-        uri: 'http://vela-logflare:4000/api/logs?source_name=storage.logs.prod.2&api_key=SECRET[credentials.logflare_api_key]'
+          headers:
+            x-api-key: ${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
+        uri: 'http://vela-logflare:4000/api/logs?source_name=storage.logs.prod.2'
       logflare_kong:
         type: 'http'
         inputs:
@@ -251,4 +253,6 @@ data:
         method: 'post'
         request:
           retry_max_duration_secs: 10
-        uri: 'http://vela-logflare:4000/api/logs?source_name=cloudflare.logs.prod&api_key=SECRET[credentials.logflare_api_key]'
+          headers:
+            x-api-key: ${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
+        uri: 'http://vela-logflare:4000/api/logs?source_name=cloudflare.logs.prod'

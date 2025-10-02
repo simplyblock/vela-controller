@@ -37,11 +37,11 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
-            - name: LOGFLARE_API_KEY
+            - name: LOGFLARE_PUBLIC_ACCESS_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: vela-logflare-secret
-                  key: LOGFLARE_API_KEY
+                  key: LOGFLARE_PUBLIC_ACCESS_TOKEN
           ports:
             - containerPort: 9001
               protocol: TCP
@@ -49,9 +49,6 @@ spec:
             - mountPath: /etc/vector/vector.yml
               name: vector-config
               subPath: vector.yml
-            - mountPath: /etc/vector/secret.sh
-              name: vector-config
-              subPath: secret.sh
             - mountPath: /var/log/pods
               name: pod-logs
           resources: {}

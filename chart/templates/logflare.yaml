@@ -5,7 +5,8 @@ metadata:
   namespace: {{ .Release.Namespace }}
 type: Opaque
 stringData:
-  LOGFLARE_API_KEY: "my-super-secret-api-key"
+  LOGFLARE_PUBLIC_ACCESS_TOKEN: "my-super-secret-api-key"
+  LOGFLARE_PRIVATE_ACCESS_TOKEN: "your-super-secret-and-long-logflare-key-private"
 
 ---
 apiVersion: apps/v1
@@ -30,11 +31,6 @@ spec:
           image: postgres:15-alpine
           imagePullPolicy: IfNotPresent
           env:
-            - name: LOGFLARE_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: vela-logflare-secret
-                  key: LOGFLARE_API_KEY
             - name: DB_HOST
               value: "database"
             - name: DB_USER
@@ -72,14 +68,19 @@ spec:
                 echo "DB Init finished"
       containers:
         - name: logflare
-          image: supabase/logflare:1.4.0
+          image: supabase/logflare:1.14.2
           imagePullPolicy: IfNotPresent
           env:
-            - name: LOGFLARE_API_KEY
+            - name: LOGFLARE_PUBLIC_ACCESS_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: vela-logflare-secret
-                  key: LOGFLARE_API_KEY
+                  key: LOGFLARE_PUBLIC_ACCESS_TOKEN
+            - name: LOGFLARE_PRIVATE_ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: vela-logflare-secret
+                  key: LOGFLARE_PRIVATE_ACCESS_TOKEN
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
