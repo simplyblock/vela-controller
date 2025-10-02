@@ -86,7 +86,6 @@ _links = {
     response_model=BranchPublic | None,
     responses={
         201: {
-            "content": None,
             "headers": {
                 "Location": {
                     "description": "URL of the created item",
