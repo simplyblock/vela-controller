@@ -23,12 +23,15 @@ from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_fo
 from ...db import SessionDep
 from ...models.branch import (
     Branch,
+    BranchApiKeys,
     BranchCreate,
     BranchDep,
     BranchPublic,
+    BranchStatus,
     BranchUpdate,
     DatabaseInformation,
     ResourcesDefinition,
+    ResourceUsageDefinition,
 )
 from ...models.branch import lookup as lookup_branch
 from ...models.organization import OrganizationDep
@@ -90,6 +93,21 @@ async def _public(branch: Branch) -> BranchPublic:
         has_replicas=False,
     )
 
+    # FIXME: Replace placeholder telemetry data once usage metrics and labels are wired in.
+    used_resources = ResourceUsageDefinition(
+        vcpu=0,
+        ram_bytes=0,
+        nvme_bytes=0,
+        iops=0,
+        storage_bytes=None,
+    )
+    status = BranchStatus(
+        database="ACTIVE_HEALTHY",
+        realtime="STOPPED",
+        storage="STOPPED",
+    )
+    api_keys = BranchApiKeys(anon="", service_role="")
+
     return BranchPublic(
         id=branch.id,
         name=branch.name,
@@ -97,6 +115,11 @@ async def _public(branch: Branch) -> BranchPublic:
         organization_id=project.organization_id,
         database=database_info,
         max_resources=max_resources,
+        assigned_labels=[],
+        used_resources=used_resources,
+        api_keys=api_keys,
+        status=status,
+        ptir_enabled=False,
         created_at=_ulid_datetime_iso(branch.id),
         created_by="system",  # TODO: update it when user management is in place
         updated_at=None,
@@ -207,8 +230,10 @@ async def create(
         branch_id=entity.id,
     )
     # TODO: implement branch logic using clones
+    payload = (await _public(entity)).model_dump() if response == "full" else None
+
     return JSONResponse(
-        content=(await _public(entity)).model_dump() if response == "full" else None,
+        content=payload,
         status_code=201,
         headers={"Location": entity_url},
     )

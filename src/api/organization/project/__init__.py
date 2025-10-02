@@ -167,8 +167,10 @@ async def create(
         organization_id=organization.id,
         project_id=entity.id,
     )
+    payload = (await _public(entity)).model_dump() if response == "full" else None
+
     return JSONResponse(
-        content=(await _public(entity)).model_dump() if response == "full" else None,
+        content=payload,
         status_code=201,
         headers={"Location": entity_url},
     )
