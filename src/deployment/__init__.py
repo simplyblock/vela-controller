@@ -181,14 +181,11 @@ async def get_deployment_status(id_: Identifier, branch: Slug) -> DeploymentStat
 
 async def delete_deployment(id_: Identifier, branch: Slug) -> None:
     namespace = deployment_namespace(id_, branch)
-
-    async def _uninstall(release: str) -> None:
-        await asyncio.to_thread(
-            subprocess.check_call,
-            ["helm", "uninstall", release, "-n", namespace, "--wait"],
-        )
-
-    await _uninstall(_release_name(namespace))
+    release = _release_name(namespace)
+    await asyncio.to_thread(
+        subprocess.check_call,
+        ["helm", "uninstall", release, "-n", namespace, "--wait"],
+    )
 
     await kube_service.delete_namespace(namespace)
 
