@@ -243,25 +243,6 @@ spec:
           port: 8000
 
 ---
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: vela-auth-nginx
-data:
-  default.conf: |
-    server {
-      listen 8443 ssl;
-      ssl_certificate /etc/nginx/tls/tls.crt;
-      ssl_certificate_key /etc/nginx/tls/tls.key;
-
-      location / {
-        proxy_pass http://127.0.0.1:8080;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-      }
-    }
-
----
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
