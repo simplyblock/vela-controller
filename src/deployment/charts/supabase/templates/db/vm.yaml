@@ -19,11 +19,15 @@ spec:
     spec:
       domain:
         cpu:
-          cores: {{ .Values.db.vcpu }}
-          sockets: 1
-          threads: 1
+          sockets: {{ .Values.db.cpu.topology.sockets }}
+          cores: {{ .Values.db.cpu.topology.cores }}
+          threads: {{ .Values.db.cpu.topology.threads }}
+          maxSockets: {{ .Values.db.cpu.topology.maxSockets }}
+          maxCores: {{ .Values.db.cpu.topology.maxCores }}
+          maxThreads: {{ .Values.db.cpu.topology.maxThreads }}
         memory:
-          guest: {{ .Values.db.ram }}Gi
+          guest: {{ .Values.db.memory.guest }}
+          maxGuest: {{ .Values.db.memory.maxGuest }}
         devices:
           disks:
             - name: rootdisk
@@ -49,7 +53,11 @@ spec:
             masquerade: {}
         resources:
           requests:
-            memory: {{ .Values.db.ram }}Gi
+            cpu: {{ .Values.db.cpu.request }}
+            memory: {{ .Values.db.memory.request }}
+          limits:
+            cpu: {{ .Values.db.cpu.limit }}
+            memory: {{ .Values.db.memory.limit }}
       networks:
       - name: default
         pod: {}

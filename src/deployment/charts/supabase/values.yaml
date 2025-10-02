@@ -158,8 +158,21 @@ db:
     accessModes:
       - ReadWriteMany
     class: ""
-  vcpu: 1
-  ram: 2
+  cpu:
+    limit: "1"
+    request: "250m"
+    topology:
+      sockets: 1
+      cores: 1
+      threads: 1
+      maxSockets: 2
+      maxCores: 32
+      maxThreads: 1
+  memory:
+    limit: "2Gi"
+    request: "1.8Gi"
+    guest: "2Gi"
+    maxGuest: "256Gi"
   autoscaling:
     enabled: true
     minReplicas: 1

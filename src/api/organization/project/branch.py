@@ -6,7 +6,13 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from ...._util import Slug
-from ....deployment import ResizeParameters, branch_rest_endpoint, delete_deployment, resize_deployment
+from ....deployment import (
+    ResizeParameters,
+    apply_vm_runtime_resources,
+    branch_rest_endpoint,
+    delete_deployment,
+    resize_deployment,
+)
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ...db import SessionDep
 from ...models.branch import (
@@ -16,6 +22,7 @@ from ...models.branch import (
     BranchDetailResources,
     BranchPublic,
     BranchUpdate,
+    gib_decimal_to_bytes,
 )
 from ...models.branch import lookup as lookup_branch
 from ...models.organization import OrganizationDep
@@ -156,7 +163,8 @@ async def detail(
 ) -> BranchResponse:
     resources = BranchDetailResources(
         vcpu=branch.vcpu,
-        ram_bytes=branch.memory,
+        ram_gib=branch.memory,
+        ram_bytes=gib_decimal_to_bytes(branch.memory),
         nvme_bytes=branch.database_size,
         iops=branch.iops,
         storage_bytes=branch.database_size,
@@ -230,9 +238,32 @@ async def delete(
     status_code=202,
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
-async def resize(_organization: OrganizationDep, _project: ProjectDep, parameters: ResizeParameters, branch: BranchDep):
-    # Trigger helm upgrade with provided parameters; returns 202 Accepted
-    resize_deployment(branch.id, branch.name, parameters)
+async def resize(
+    session: SessionDep,
+    _organization: OrganizationDep,
+    _project: ProjectDep,
+    parameters: ResizeParameters,
+    branch: BranchDep,
+):
+    updates = parameters.model_dump(exclude_unset=True, exclude_none=True)
+
+    if (database_size := updates.get("database_size")) is not None:
+        resize_deployment(branch.id, branch.name, parameters)
+        branch.database_size = database_size
+
+    cpu_target = updates.get("vcpu")
+    memory_target = updates.get("memory")
+
+    if cpu_target is not None:
+        branch.vcpu = cpu_target
+    if memory_target is not None:
+        branch.memory = memory_target
+
+    if (cpu_target is not None) or (memory_target is not None):
+        await apply_vm_runtime_resources(branch.project_id, branch.name, cpu=cpu_target, memory=memory_target)
+
+    if updates:
+        await session.commit()
     return Response(status_code=202)
 
 

@@ -2,18 +2,21 @@ import asyncio
 import logging
 import subprocess
 import tempfile
+from decimal import Decimal, ROUND_CEILING, ROUND_HALF_UP
 from importlib import resources
 from typing import Annotated, Any, Literal
 
 import yaml
 from cloudflare import AsyncCloudflare, CloudflareError
 from kubernetes_asyncio.client.exceptions import ApiException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from urllib3.exceptions import HTTPError
 
 from .. import VelaError
 from .._util import GIB, Identifier, Slug, bytes_to_gib, check_output, dbstr
 from .kubernetes import KubernetesService
+from .kubevirt import patch_virtual_machine
+from .rebalance import rebalance_virtual_machines
 from .settings import settings
 
 logger = logging.getLogger(__name__)
@@ -22,6 +25,63 @@ kube_service = KubernetesService()
 
 DEFAULT_GATEWAY_NAME = "public-gateway"
 DEFAULT_GATEWAY_NAMESPACE = "kong-system"
+
+CPU_INCREMENT = Decimal("0.1")
+CPU_MIN = Decimal("0.1")
+CPU_MAX = Decimal("64")
+CPU_REQUEST_FACTOR = Decimal("0.25")
+
+MEMORY_INCREMENT = Decimal("0.1")
+MEMORY_MIN = Decimal("0.1")
+MEMORY_MAX = Decimal("256")
+MEMORY_REQUEST_FACTOR = Decimal("0.9")
+
+
+def _format_decimal(value: Decimal) -> str:
+    text = format(value, "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text or "0"
+
+
+def _ensure_step(value: Decimal, *, increment: Decimal, field_name: str) -> Decimal:
+    scaled = value / increment
+    if scaled != scaled.to_integral_value():
+        raise ValueError(f"{field_name} must be a multiple of {increment}")
+    return value
+
+
+def _ceil_decimal(value: Decimal) -> int:
+    return int(value.to_integral_value(rounding=ROUND_CEILING))
+
+
+def _cpu_quantity(cpu: Decimal) -> str:
+    if cpu <= 0:
+        raise ValueError("CPU quantity must be positive")
+    if cpu == cpu.to_integral_value():
+        return _format_decimal(cpu)
+    millicpu = int((cpu * Decimal("1000")).to_integral_value(rounding=ROUND_HALF_UP))
+    return f"{millicpu}m"
+
+
+def _memory_quantity(memory_gib: Decimal) -> str:
+    if memory_gib <= 0:
+        raise ValueError("Memory quantity must be positive")
+    return f"{_format_decimal(memory_gib)}Gi"
+
+
+def _cpu_topology(cpu: Decimal) -> dict[str, int]:
+    total_vcpus = max(1, min(_ceil_decimal(cpu), int(CPU_MAX)))
+    sockets = 1 if total_vcpus <= 32 else 2
+    cores_per_socket = max(1, min(32, (total_vcpus + sockets - 1) // sockets))
+    return {
+        "sockets": sockets,
+        "cores": cores_per_socket,
+        "threads": 1,
+        "maxSockets": 2,
+        "maxCores": 32,
+        "maxThreads": 1,
+    }
 
 
 def _default_branch_slug() -> Slug:
@@ -68,10 +128,33 @@ class DeploymentParameters(BaseModel):
     database_user: dbstr
     database_password: dbstr
     database_size: Annotated[int, Field(gt=0, le=2**63 - 1, multiple_of=GIB)]
-    vcpu: Annotated[int, Field(gt=0, le=2**31 - 1)]
-    memory: Annotated[int, Field(gt=0, le=2**63 - 1, multiple_of=GIB)]
+    vcpu: Annotated[Decimal, Field(ge=CPU_MIN, le=CPU_MAX)]
+    memory: Annotated[Decimal, Field(ge=MEMORY_MIN, le=MEMORY_MAX)]  # Expressed in GiB
     iops: Annotated[int, Field(gt=0, le=2**31 - 1)]
     database_image_tag: Literal["15.1.0.147"]
+
+    @field_validator("vcpu", "memory", mode="before")
+    @classmethod
+    def _coerce_decimal(cls, value):
+        if isinstance(value, float):
+            return Decimal(str(value))
+        return value
+
+    @field_validator("vcpu", mode="after")
+    @classmethod
+    def _validate_vcpu(cls, value: Decimal) -> Decimal:
+        value = _ensure_step(value, increment=CPU_INCREMENT, field_name="vcpu").quantize(CPU_INCREMENT)
+        if value < CPU_MIN:
+            raise ValueError(f"vcpu must be at least {CPU_MIN}")
+        return value
+
+    @field_validator("memory", mode="after")
+    @classmethod
+    def _validate_memory(cls, value: Decimal) -> Decimal:
+        value = _ensure_step(value, increment=MEMORY_INCREMENT, field_name="memory").quantize(MEMORY_INCREMENT)
+        if value < MEMORY_MIN:
+            raise ValueError(f"memory must be at least {MEMORY_MIN} GiB")
+        return value
 
 
 StatusType = Literal["ACTIVE_HEALTHY", "ACTIVE_UNHEALTHY", "COMING_UP", "INACTIVE", "UNKNOWN"]
@@ -81,6 +164,47 @@ class DeploymentStatus(BaseModel):
     status: StatusType
     pods: dict[str, str]
     message: str
+
+
+def _build_vm_resource_patch(cpu: Decimal | None, memory: Decimal | None) -> dict[str, Any]:
+    spec: dict[str, Any] = {}
+    template: dict[str, Any] = {}
+    template_spec: dict[str, Any] = {}
+    domain: dict[str, Any] = {}
+    resources: dict[str, Any] = {}
+    requests: dict[str, Any] = {}
+    limits: dict[str, Any] = {}
+
+    if cpu is not None:
+        cpu_request_value = (cpu * CPU_REQUEST_FACTOR).quantize(Decimal("0.001"), rounding=ROUND_HALF_UP)
+        domain["cpu"] = _cpu_topology(cpu)
+        requests["cpu"] = _cpu_quantity(cpu_request_value)
+        limits["cpu"] = _cpu_quantity(cpu)
+
+    if memory is not None:
+        memory_request_value = (memory * MEMORY_REQUEST_FACTOR).quantize(Decimal("0.001"), rounding=ROUND_HALF_UP)
+        domain["memory"] = {
+            "guest": _memory_quantity(memory),
+            "maxGuest": _memory_quantity(MEMORY_MAX),
+        }
+        requests["memory"] = _memory_quantity(memory_request_value)
+        limits["memory"] = _memory_quantity(memory)
+
+    if requests:
+        resources["requests"] = requests
+    if limits:
+        resources["limits"] = limits
+    if resources:
+        domain["resources"] = resources
+    if domain:
+        template_spec["domain"] = domain
+    if template_spec:
+        template["spec"] = template_spec
+    if template:
+        spec["template"] = template
+    if spec:
+        return {"spec": spec}
+    return {}
 
 
 async def create_vela_config(id_: Identifier, parameters: DeploymentParameters, branch: Slug):
@@ -99,8 +223,20 @@ async def create_vela_config(id_: Identifier, parameters: DeploymentParameters, 
     db_secrets["admindb"] = parameters.database
 
     db_spec = values_content.setdefault("db", {})
-    db_spec["vcpu"] = parameters.vcpu
-    db_spec["ram"] = bytes_to_gib(parameters.memory)
+    cpu_spec = db_spec.setdefault("cpu", {})
+    cpu_request_value = (parameters.vcpu * CPU_REQUEST_FACTOR).quantize(Decimal("0.001"), rounding=ROUND_HALF_UP)
+    cpu_spec["limit"] = _cpu_quantity(parameters.vcpu)
+    cpu_spec["request"] = _cpu_quantity(cpu_request_value)
+    cpu_spec["topology"] = _cpu_topology(parameters.vcpu)
+
+    memory_spec = db_spec.setdefault("memory", {})
+    memory_limit_value = parameters.memory
+    memory_request_value = (parameters.memory * MEMORY_REQUEST_FACTOR).quantize(Decimal("0.001"), rounding=ROUND_HALF_UP)
+    memory_spec["limit"] = _memory_quantity(memory_limit_value)
+    memory_spec["request"] = _memory_quantity(memory_request_value)
+    memory_spec["guest"] = _memory_quantity(memory_limit_value)
+    memory_spec["maxGuest"] = _memory_quantity(MEMORY_MAX)
+
     db_spec.setdefault("persistence", {})["size"] = f"{bytes_to_gib(parameters.database_size)}Gi"
     db_spec.setdefault("image", {})["tag"] = parameters.database_image_tag
     namespace = deployment_namespace(id_, branch)
@@ -195,8 +331,56 @@ def get_db_vmi_identity(id_: Identifier, branch: Slug) -> tuple[str, str]:
     return namespace, vmi_name
 
 
+async def apply_vm_runtime_resources(
+    id_: Identifier,
+    branch: Slug,
+    *,
+    cpu: Decimal | None,
+    memory: Decimal | None,
+) -> None:
+    patch = _build_vm_resource_patch(cpu, memory)
+    if not patch:
+        return
+
+    namespace, vm_name = get_db_vmi_identity(id_, branch)
+    logger.info(
+        "Applying VM resource patch for %s/%s (cpu=%s, memory=%s)",
+        namespace,
+        vm_name,
+        cpu,
+        memory,
+    )
+    await patch_virtual_machine(namespace, vm_name, patch)
+    await rebalance_virtual_machines()
+
+
 class ResizeParameters(BaseModel):
     database_size: Annotated[int | None, Field(gt=0, multiple_of=GIB)] = None
+    vcpu: Annotated[Decimal | None, Field(ge=CPU_MIN, le=CPU_MAX)] = None
+    memory: Annotated[Decimal | None, Field(ge=MEMORY_MIN, le=MEMORY_MAX)] = None  # GiB
+
+    @field_validator("vcpu", "memory", mode="before")
+    @classmethod
+    def _coerce_decimal(cls, value):
+        if value is None:
+            return value
+        if isinstance(value, float):
+            return Decimal(str(value))
+        return value
+
+    @field_validator("vcpu", mode="after")
+    @classmethod
+    def _validate_resize_vcpu(cls, value: Decimal | None) -> Decimal | None:
+        if value is None:
+            return value
+        return _ensure_step(value, increment=CPU_INCREMENT, field_name="vcpu").quantize(CPU_INCREMENT)
+
+    @field_validator("memory", mode="after")
+    @classmethod
+    def _validate_resize_memory(cls, value: Decimal | None) -> Decimal | None:
+        if value is None:
+            return value
+        return _ensure_step(value, increment=MEMORY_INCREMENT, field_name="memory").quantize(MEMORY_INCREMENT)
 
 
 def resize_deployment(id_: Identifier, name: str, parameters: ResizeParameters):
@@ -398,3 +582,5 @@ async def deploy_branch_environment(
     await provision_branch_endpoints(
         spec=BranchEndpointProvisionSpec(project_id=project_id, branch_slug=branch_slug), ref=ref
     )
+
+    await rebalance_virtual_machines()

@@ -1,15 +1,18 @@
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Annotated, ClassVar, Optional
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel
 from pydantic import Field as PydanticField
-from sqlalchemy import BigInteger, Column, String, UniqueConstraint
+from sqlalchemy import BigInteger, Column, Numeric, String, UniqueConstraint
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship, select
 
 from ..._util import GIB, KIB, Identifier, Slug
 from ..db import SessionDep
+
+GIB_DECIMAL = Decimal(GIB)
 from ._util import Model, Name
 from .project import Project, ProjectDep
 
@@ -26,8 +29,22 @@ class Branch(AsyncAttrs, Model, table=True):
 
     # Deployment parameters specific to this branch
     database_size: Annotated[int, Field(gt=0, multiple_of=GIB, sa_column=Column(BigInteger))]
-    vcpu: Annotated[int, Field(gt=0, le=2**31 - 1, sa_column=Column(BigInteger))]
-    memory: Annotated[int, Field(gt=0, multiple_of=GIB, sa_column=Column(BigInteger))]
+    vcpu: Annotated[
+        Decimal,
+        Field(
+            ge=Decimal("0.1"),
+            le=Decimal("64"),
+            sa_column=Column(Numeric(precision=5, scale=1)),
+        ),
+    ]
+    memory: Annotated[
+        Decimal,
+        Field(
+            ge=Decimal("0.1"),
+            le=Decimal("256"),
+            sa_column=Column(Numeric(precision=6, scale=1)),
+        ),
+    ]
     iops: Annotated[int, Field(gt=0, le=2**31 - 1, sa_column=Column(BigInteger))]
     database_image_tag: str
 
@@ -53,19 +70,26 @@ class BranchPublic(BaseModel):
 
 class BranchDetailResources(BaseModel):
     vcpu: Annotated[
-        int,
+        Decimal,
         PydanticField(
-            ge=1,
-            le=2**31 - 1,
-            description="Number of virtual CPUs provisioned (matches Branch.vcpu constraints).",
+            ge=Decimal("0.1"),
+            le=Decimal("64"),
+            description="Number of virtual CPUs provisioned in increments of 0.1 vCPU.",
+        ),
+    ]
+    ram_gib: Annotated[
+        Decimal,
+        PydanticField(
+            ge=Decimal("0.1"),
+            le=Decimal("256"),
+            description="Guest memory expressed in GiB.",
         ),
     ]
     ram_bytes: Annotated[
         int,
         PydanticField(
             ge=KIB,
-            multiple_of=KIB,
-            description="Guest memory expressed in bytes (mirrors Branch.memory).",
+            description="Guest memory expressed in bytes (derived from ram_gib).",
         ),
     ]
     nvme_bytes: Annotated[
@@ -90,6 +114,10 @@ class BranchDetailResources(BaseModel):
             description="Database storage capacity in bytes (mirrors Branch.database_size).",
         ),
     ]
+
+
+def gib_decimal_to_bytes(value: Decimal) -> int:
+    return int((value * GIB_DECIMAL).to_integral_value(rounding=ROUND_HALF_UP))
 
 
 async def lookup(session: SessionDep, project: ProjectDep, branch_id: Identifier) -> Branch:
