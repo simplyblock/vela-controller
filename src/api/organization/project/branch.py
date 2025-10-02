@@ -1,12 +1,13 @@
 import base64
 from collections.abc import Sequence
-from typing import Literal
+from typing import Any, Literal
 
 from Crypto.Cipher import AES
 from Crypto.Hash import MD5
 from Crypto.Random import get_random_bytes
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
+from kubernetes_asyncio.client.exceptions import ApiException
 from sqlalchemy.exc import IntegrityError
 
 from ....deployment import (
@@ -15,8 +16,10 @@ from ....deployment import (
     branch_domain,
     branch_rest_endpoint,
     delete_deployment,
+    get_db_vmi_identity,
     resize_deployment,
 )
+from ....deployment.kubevirt import call_kubevirt_subresource
 from ....deployment.settings import settings as deployment_settings
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ...db import SessionDep
@@ -305,6 +308,54 @@ async def resize(_organization: OrganizationDep, _project: ProjectDep, parameter
     # Trigger helm upgrade with provided parameters; returns 202 Accepted
     resize_deployment(branch.id, branch.name, parameters)
     return Response(status_code=202)
+
+
+ControlAction = Literal["pause", "resume", "start", "stop"]
+
+_control_responses: dict[int | str, dict[str, Any]] = {
+    401: Unauthenticated,
+    403: Forbidden,
+    404: NotFound,
+}
+
+
+def _add_branch_control_endpoint(
+    path: str,
+    *,
+    name: str,
+    action: ControlAction,
+):
+    @instance_api.post(
+        path,
+        name=name,
+        status_code=204,
+        responses=_control_responses,
+    )
+    async def control_branch(
+        _organization: OrganizationDep,
+        _project: ProjectDep,
+        branch: BranchDep,
+        _action: ControlAction = action,
+    ):
+        namespace, vmi_name = get_db_vmi_identity(branch.project_id, branch.name)
+        try:
+            await call_kubevirt_subresource(namespace, vmi_name, _action)
+            return Response(status_code=204)
+        except ApiException as e:
+            status = 404 if e.status == 404 else 400
+            raise HTTPException(status_code=status, detail=e.body or str(e)) from e
+
+
+_control_endpoints: Sequence[tuple[str, str, ControlAction]] = (
+    ("/pause", "organizations:projects:branch:pause", "pause"),
+    ("/resume", "organizations:projects:branch:resume", "resume"),
+    ("/start", "organizations:projects:branch:start", "start"),
+    ("/stop", "organizations:projects:branch:stop", "stop"),
+)
+
+
+for path, name, action in _control_endpoints:
+    _add_branch_control_endpoint(path, name=name, action=action)
 
 
 api.include_router(instance_api)
