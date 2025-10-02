@@ -319,43 +319,43 @@ _control_responses: dict[int | str, dict[str, Any]] = {
 }
 
 
-def _add_branch_control_endpoint(
-    path: str,
-    *,
-    name: str,
-    action: ControlAction,
-):
-    @instance_api.post(
-        path,
-        name=name,
-        status_code=204,
-        responses=_control_responses,
-    )
-    async def control_branch(
-        _organization: OrganizationDep,
-        _project: ProjectDep,
-        branch: BranchDep,
-        _action: ControlAction = action,
-    ):
-        namespace, vmi_name = get_db_vmi_identity(branch.project_id, branch.name)
-        try:
-            await call_kubevirt_subresource(namespace, vmi_name, _action)
-            return Response(status_code=204)
-        except ApiException as e:
-            status = 404 if e.status == 404 else 400
-            raise HTTPException(status_code=status, detail=e.body or str(e)) from e
-
-
-_control_endpoints: Sequence[tuple[str, str, ControlAction]] = (
-    ("/pause", "organizations:projects:branch:pause", "pause"),
-    ("/resume", "organizations:projects:branch:resume", "resume"),
-    ("/start", "organizations:projects:branch:start", "start"),
-    ("/stop", "organizations:projects:branch:stop", "stop"),
+@instance_api.post(
+    "/pause",
+    name="organizations:projects:branch:pause",
+    status_code=204,
+    responses=_control_responses,
 )
-
-
-for path, name, action in _control_endpoints:
-    _add_branch_control_endpoint(path, name=name, action=action)
+@instance_api.post(
+    "/resume",
+    name="organizations:projects:branch:resume",
+    status_code=204,
+    responses=_control_responses,
+)
+@instance_api.post(
+    "/start",
+    name="organizations:projects:branch:start",
+    status_code=204,
+    responses=_control_responses,
+)
+@instance_api.post(
+    "/stop",
+    name="organizations:projects:branch:stop",
+    status_code=204,
+    responses=_control_responses,
+)
+async def control_branch(
+    request: Request,
+    _organization: OrganizationDep,
+    _project: ProjectDep,
+    branch: BranchDep,
+):
+    namespace, vmi_name = get_db_vmi_identity(branch.project_id, branch.name)
+    try:
+        await call_kubevirt_subresource(namespace, vmi_name, request.path.split("/")[-1])
+        return Response(status_code=204)
+    except ApiException as e:
+        status = 404 if e.status == 404 else 400
+        raise HTTPException(status_code=status, detail=e.body or str(e)) from e
 
 
 api.include_router(instance_api)
