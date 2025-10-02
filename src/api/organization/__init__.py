@@ -15,7 +15,6 @@ from ..models.branch import Branch
 from ..models.organization import Organization, OrganizationCreate, OrganizationDep, OrganizationUpdate
 from .member import api as member_api
 from .project import api as project_api
-from .project.branch import api as branch_api
 from .role import api as role_api
 
 api = APIRouter(dependencies=[Depends(authenticated_user)])
@@ -197,5 +196,4 @@ def list_audits(
 instance_api.include_router(project_api, prefix="/projects")
 instance_api.include_router(member_api, prefix="/members")
 instance_api.include_router(role_api, prefix="/roles")
-instance_api.include_router(branch_api, prefix="/branches")
 api.include_router(instance_api)
