@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -53,3 +54,16 @@ class Model(SQLModel):
             sa_type=_DatabaseIdentifier,
             **kwargs,
         )
+
+    @property
+    def created_datetime(self) -> datetime:
+        """Return the timestamp encoded in this model's ULID identifier.
+
+        ULIDs carry millisecond precision timestamps; we treat them as UTC-aware datetimes.
+        """
+
+        ulid: ULID = self.id
+        dt = ulid.datetime
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        return dt

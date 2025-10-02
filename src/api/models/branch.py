@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Annotated, ClassVar, Literal, Optional
 
 from fastapi import Depends, HTTPException
@@ -35,6 +36,17 @@ class Branch(AsyncAttrs, Model, table=True):
     database_image_tag: str
 
     __table_args__ = (UniqueConstraint("project_id", "name", name="unique_branch_name_per_project"),)
+
+    def provisioned_resources(self) -> "ResourcesDefinition":
+        """Return the resource definition for the branch provisioning envelope."""
+
+        return ResourcesDefinition(
+            vcpu=self.vcpu,
+            ram_bytes=self.memory,
+            nvme_bytes=self.database_size,
+            iops=self.iops,
+            storage_bytes=self.database_size,
+        )
 
 
 class BranchCreate(BaseModel):
@@ -178,9 +190,9 @@ class BranchPublic(BaseModel):
     api_keys: BranchApiKeys
     status: BranchStatus
     ptir_enabled: bool
-    created_at: str
+    created_at: datetime
     created_by: str
-    updated_at: str | None = None
+    updated_at: datetime | None = None
     updated_by: str | None = None
 
 

@@ -1,6 +1,5 @@
 import base64
 from collections.abc import Sequence
-from datetime import UTC, datetime
 from typing import Literal
 
 from Crypto.Cipher import AES
@@ -10,9 +9,9 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
-from ...._util import Identifier
 from ....deployment import (
     ResizeParameters,
+    branch_api_domain,
     branch_domain,
     branch_rest_endpoint,
     delete_deployment,
@@ -30,7 +29,6 @@ from ...models.branch import (
     BranchStatus,
     BranchUpdate,
     DatabaseInformation,
-    ResourcesDefinition,
     ResourceUsageDefinition,
 )
 from ...models.branch import lookup as lookup_branch
@@ -41,49 +39,37 @@ from ...settings import settings
 api = APIRouter()
 
 
-def _ulid_datetime_iso(value: Identifier) -> str:
-    timestamp = getattr(value, "datetime", None)
-    if timestamp is None:
-        return datetime.now(UTC).isoformat()
-    if timestamp.tzinfo is None:
-        timestamp = timestamp.replace(tzinfo=UTC)
-    return timestamp.isoformat()
-
-
 async def _public(branch: Branch) -> BranchPublic:
     project = await branch.awaitable_attrs.project
 
-    host = branch.endpoint_domain or branch_domain(branch.id) or deployment_settings.deployment_host
+    db_host = branch.endpoint_domain or branch_domain(branch.id)
+    if not db_host:
+        db_host = deployment_settings.deployment_host
     port = 5432
 
     connection_string = "postgresql://{user}:{password}@{host}:{port}/{database}".format(  # noqa: UP032
         user=branch.database_user,
         password=branch.database_password,
-        host=host,
+        host=db_host,
         port=port,
         database=branch.database,
     )
 
     rest_endpoint = branch_rest_endpoint(branch.id)
-    service_host = host.replace("-db.", ".", 1)
+    api_domain = branch_api_domain(branch.id)
+
     if rest_endpoint:
         service_endpoint = rest_endpoint.removesuffix("/rest")
-        service_endpoint = service_endpoint.replace("-db.", ".", 1)
+    elif api_domain:
+        service_endpoint = f"https://{api_domain}"
     else:
-        service_endpoint = f"https://{service_host}"
+        # Fall back to using the same host as the database when dedicated domains are unavailable.
+        service_endpoint = f"https://{db_host}"
 
-    iops = max(branch.iops or 0, 100)
-
-    max_resources = ResourcesDefinition(
-        vcpu=branch.vcpu,
-        ram_bytes=branch.memory,
-        nvme_bytes=branch.database_size,
-        iops=iops,
-        storage_bytes=branch.database_size,
-    )
+    max_resources = branch.provisioned_resources()
 
     database_info = DatabaseInformation(
-        host=host,
+        host=db_host,
         port=port,
         username=branch.database_user,
         name=branch.database,
@@ -120,7 +106,7 @@ async def _public(branch: Branch) -> BranchPublic:
         api_keys=api_keys,
         status=status,
         ptir_enabled=False,
-        created_at=_ulid_datetime_iso(branch.id),
+        created_at=branch.created_datetime,
         created_by="system",  # TODO: update it when user management is in place
         updated_at=None,
         updated_by=None,
@@ -208,7 +194,7 @@ async def create(
         database_size=source.database_size,
         vcpu=source.vcpu,
         memory=source.memory,
-        iops=max(source.iops or 0, 100),
+        iops=source.iops,
         database_image_tag=source.database_image_tag,
     )
     session.add(entity)

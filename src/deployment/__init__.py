@@ -41,18 +41,27 @@ def branch_dns_label(branch_id: Identifier) -> str:
 
 
 def branch_domain(branch_id: Identifier) -> str | None:
-    """Compute the fully-qualified domain name for a branch."""
+    """Return the database host domain for a branch."""
 
     suffix = settings.cloudflare_domain_suffix.strip()
     if not suffix:
         return None
-    return f"{branch_dns_label(branch_id)}-db.{suffix}".lower()
+    return f"db.{branch_dns_label(branch_id)}.{suffix}".lower()
+
+
+def branch_api_domain(branch_id: Identifier) -> str | None:
+    """Return the API host domain for a branch."""
+
+    suffix = settings.cloudflare_domain_suffix.strip()
+    if not suffix:
+        return None
+    return f"{branch_dns_label(branch_id)}.{suffix}".lower()
 
 
 def branch_rest_endpoint(branch_id: Identifier) -> str | None:
     """Return the PostgREST endpoint URL for a branch, if domain settings are available."""
 
-    domain = branch_domain(branch_id)
+    domain = branch_api_domain(branch_id)
     if not domain:
         return None
     return f"https://{domain}/rest"
