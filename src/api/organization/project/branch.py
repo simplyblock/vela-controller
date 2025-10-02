@@ -3,6 +3,7 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
 from pydantic import BaseModel
 
 from ...._util import Slug
@@ -121,7 +122,17 @@ async def create(
         database_image_tag=source.database_image_tag,
     )
     session.add(entity)
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        error = str(exc)
+        if (
+            "asyncpg.exceptions.UniqueViolationError" in error
+            and "unique_branch_name_per_project" in error
+        ):
+            raise HTTPException(409, f"Project already has branch named {parameters.name}") from exc
+        raise
     await session.refresh(entity)
 
     entity_url = url_path_for(
