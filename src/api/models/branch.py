@@ -1,4 +1,4 @@
-from typing import Annotated, ClassVar, Optional
+from typing import Annotated, ClassVar, Literal, Optional
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel
@@ -47,6 +47,20 @@ class BranchCreate(BaseModel):
 
 class BranchUpdate(BaseModel):
     name: Name | None = None
+
+
+BranchServiceStatus = Literal[
+    "ACTIVE_HEALTHY",
+    "STOPPED",
+    "STARTING",
+    "ACTIVE_UNHEALTHY",
+    "CREATING",
+    "DELETING",
+    "UPDATING",
+    "RESTARTING",
+    "STOPPING",
+    "UNKNOWN",
+]
 
 
 class DatabaseInformation(BaseModel):
@@ -101,6 +115,57 @@ class ResourcesDefinition(BaseModel):
     ] = None
 
 
+class ResourceUsageDefinition(BaseModel):
+    vcpu: Annotated[
+        int,
+        PydanticField(
+            ge=0,
+            le=2**31 - 1,
+            description="Measured vCPU consumption for the branch.",
+        ),
+    ]
+    ram_bytes: Annotated[
+        int,
+        PydanticField(
+            ge=0,
+            description="Measured RAM usage in bytes.",
+        ),
+    ]
+    nvme_bytes: Annotated[
+        int,
+        PydanticField(
+            ge=0,
+            description="Measured NVMe usage in bytes.",
+        ),
+    ]
+    iops: Annotated[
+        int,
+        PydanticField(
+            ge=0,
+            le=2**31 - 1,
+            description="Measured IOPS consumption.",
+        ),
+    ]
+    storage_bytes: Annotated[
+        int | None,
+        PydanticField(
+            ge=0,
+            description="Measured storage usage in bytes, if available.",
+        ),
+    ] = None
+
+
+class BranchApiKeys(BaseModel):
+    anon: str
+    service_role: str
+
+
+class BranchStatus(BaseModel):
+    database: BranchServiceStatus
+    storage: BranchServiceStatus
+    realtime: BranchServiceStatus
+
+
 class BranchPublic(BaseModel):
     id: Identifier
     name: Slug
@@ -108,6 +173,11 @@ class BranchPublic(BaseModel):
     organization_id: Identifier
     database: DatabaseInformation
     max_resources: ResourcesDefinition
+    assigned_labels: list[str]
+    used_resources: ResourceUsageDefinition
+    api_keys: BranchApiKeys
+    status: BranchStatus
+    ptir_enabled: bool
     created_at: str
     created_by: str
     updated_at: str | None = None
