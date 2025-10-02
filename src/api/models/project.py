@@ -21,9 +21,6 @@ class Project(AsyncAttrs, Model, table=True):
     name: Name
     organization_id: Identifier = Model.foreign_key_field("organization")
     organization: Organization = Relationship(back_populates="projects")
-    database: str
-    database_user: str
-    database_password: str
     branches: list["Branch"] = Relationship(back_populates="project", cascade_delete=True)
 
     __table_args__ = (UniqueConstraint("organization_id", "name", name="unique_project_name"),)
@@ -43,9 +40,6 @@ class ProjectPublic(BaseModel):
     id: Identifier
     name: Name
     status: str
-    deployment_status: tuple[str, dict[str, str]]
-    database_user: str
-    encrypted_database_connection_string: str
 
 
 async def _lookup(session: SessionDep, organization: OrganizationDep, project_id: Identifier) -> Project:

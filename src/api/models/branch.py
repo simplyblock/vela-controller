@@ -25,6 +25,9 @@ class Branch(AsyncAttrs, Model, table=True):
     endpoint_domain: str | None = Field(default=None, sa_column=Column(String(255), nullable=True))
 
     # Deployment parameters specific to this branch
+    database: Annotated[str, Field(sa_column=Column(String(255)))]
+    database_user: Annotated[str, Field(sa_column=Column(String(255)))]
+    database_password: Annotated[str, Field(sa_column=Column(String(255)))]
     database_size: Annotated[int, Field(gt=0, multiple_of=GIB, sa_column=Column(BigInteger))]
     vcpu: Annotated[int, Field(gt=0, le=2**31 - 1, sa_column=Column(BigInteger))]
     memory: Annotated[int, Field(gt=0, multiple_of=GIB, sa_column=Column(BigInteger))]
@@ -49,6 +52,10 @@ class BranchUpdate(BaseModel):
 class BranchPublic(BaseModel):
     id: Identifier
     name: Slug
+    status: str
+    deployment_status: tuple[str, dict[str, str]]
+    database_user: str
+    encrypted_database_connection_string: str
 
 
 class BranchDetailResources(BaseModel):

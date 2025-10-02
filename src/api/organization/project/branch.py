@@ -1,13 +1,23 @@
+import base64
 from collections.abc import Sequence
 from typing import Literal
 
+from Crypto.Cipher import AES
+from Crypto.Hash import MD5
+from Crypto.Random import get_random_bytes
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 
 from ...._util import Slug
-from ....deployment import ResizeParameters, branch_rest_endpoint, delete_deployment, resize_deployment
+from ....deployment import (
+    ResizeParameters,
+    branch_rest_endpoint,
+    delete_deployment,
+    get_deployment_status,
+    resize_deployment,
+)
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ...db import SessionDep
 from ...models.branch import (
@@ -21,6 +31,7 @@ from ...models.branch import (
 from ...models.branch import lookup as lookup_branch
 from ...models.organization import OrganizationDep
 from ...models.project import ProjectDep
+from ...settings import settings
 
 api = APIRouter()
 
@@ -34,9 +45,21 @@ class BranchResponse(BaseModel):
 
 async def _public(branch: Branch) -> BranchPublic:
     _ = await branch.awaitable_attrs.parent
+    status = await get_deployment_status(branch.project_id, branch.name)
+    connection_string = "postgresql://{user}:{password}@{host}:{port}/{database}".format(  # noqa: UP032
+        user=branch.database_user,
+        password=branch.database_password,
+        host="",  # TODO Determine based on deployment routing
+        port=5432,
+        database=branch.database,
+    )
     return BranchPublic(
         id=branch.id,
         name=branch.name,
+        status=status.status,
+        deployment_status=(status.message, status.pods),
+        database_user=branch.database_user,
+        encrypted_database_connection_string=_encrypt(connection_string, settings.pgmeta_crypto_key),
     )
 
 
@@ -115,6 +138,9 @@ async def create(
         name=parameters.name,
         project_id=project.id,
         parent_id=source.id,
+        database=source.database,
+        database_user=source.database_user,
+        database_password=source.database_password,
         database_size=source.database_size,
         vcpu=source.vcpu,
         memory=source.memory,
@@ -244,3 +270,23 @@ async def resize(_organization: OrganizationDep, _project: ProjectDep, parameter
 
 
 api.include_router(instance_api)
+
+
+def _evp_bytes_to_key(passphrase: str, salt: bytes) -> tuple[bytes, bytes]:
+    d = d_i = b""
+    while len(d) < 48:  # 32 bytes key + 16 bytes IV
+        d_i = MD5.new(d_i + passphrase.encode("utf-8") + salt).digest()
+        d += d_i
+
+    return d[:32], d[32:48]
+
+
+def _encrypt(plaintext: str, passphrase: str) -> str:
+    salt = get_random_bytes(8)
+    key, iv = _evp_bytes_to_key(passphrase, salt)
+    cipher = AES.new(key, AES.MODE_CBC, iv)
+    encoded = plaintext.encode("utf-8")
+    padding = 16 - (len(encoded) % 16)
+    padded = encoded + bytes([padding]) * padding
+    payload = cipher.encrypt(padded)
+    return base64.b64encode(b"Salted__" + salt + payload).decode("utf-8")
