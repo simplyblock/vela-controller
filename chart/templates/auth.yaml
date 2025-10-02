@@ -9,10 +9,15 @@ spec:
     - name: vela-auth
       image: quay.io/keycloak/keycloak:latest
       imagePullPolicy: IfNotPresent
-      args: ['start-dev', '--import-realm']
+      args:
+        - "start-dev"
+        - "--import-realm"
+        - "--https-port=8443"
+        - "--https-certificate-file=/etc/x509/https/tls.crt"
+        - "--https-certificate-key-file=/etc/x509/https/tls.key"
       ports:
-        - name: http
-          containerPort: 8080
+        - name: https
+          containerPort: 8443
           protocol: TCP
       envFrom:
         - configMapRef:
@@ -29,6 +34,9 @@ spec:
         - name: workspace
           mountPath: /tmp
           subPath: tmp
+        - name: tls-certs
+          mountPath: /etc/x509/https
+          readOnly: true
       startupProbe:
         httpGet:
           path: /auth/health/started
@@ -51,16 +59,6 @@ spec:
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-    - name: nginx-sidecar
-      image: nginx:stable
-      ports:
-        - name: https
-          containerPort: 8443
-      volumeMounts:
-        - name: nginx-conf
-          mountPath: /etc/nginx/conf.d
-        - name: tls-certs
-          mountPath: /etc/nginx/tls
   initContainers:
     - name: init-vela-auth
       image: postgres:{{ .Values.postgresVersion }}
