@@ -3,8 +3,8 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
-from sqlalchemy.exc import IntegrityError
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 
 from ...._util import Slug
 from ....deployment import ResizeParameters, branch_rest_endpoint, delete_deployment, resize_deployment
@@ -127,10 +127,7 @@ async def create(
     except IntegrityError as exc:
         await session.rollback()
         error = str(exc)
-        if (
-            "asyncpg.exceptions.UniqueViolationError" in error
-            and "unique_branch_name_per_project" in error
-        ):
+        if "asyncpg.exceptions.UniqueViolationError" in error and "unique_branch_name_per_project" in error:
             raise HTTPException(409, f"Project already has branch named {parameters.name}") from exc
         raise
     await session.refresh(entity)
