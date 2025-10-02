@@ -1,5 +1,6 @@
 import base64
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from typing import Literal
 
 from Crypto.Cipher import AES
@@ -7,26 +8,27 @@ from Crypto.Hash import MD5
 from Crypto.Random import get_random_bytes
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 
-from ...._util import Slug
+from ...._util import Identifier
 from ....deployment import (
     ResizeParameters,
+    branch_domain,
     branch_rest_endpoint,
     delete_deployment,
-    get_deployment_status,
     resize_deployment,
 )
+from ....deployment.settings import settings as deployment_settings
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ...db import SessionDep
 from ...models.branch import (
     Branch,
     BranchCreate,
     BranchDep,
-    BranchDetailResources,
     BranchPublic,
     BranchUpdate,
+    DatabaseInformation,
+    ResourcesDefinition,
 )
 from ...models.branch import lookup as lookup_branch
 from ...models.organization import OrganizationDep
@@ -36,30 +38,69 @@ from ...settings import settings
 api = APIRouter()
 
 
-class BranchResponse(BaseModel):
-    name: Slug
-    id: str
-    rest_endpoint: str | None = None
-    resources: BranchDetailResources
+def _ulid_datetime_iso(value: Identifier) -> str:
+    timestamp = getattr(value, "datetime", None)
+    if timestamp is None:
+        return datetime.now(UTC).isoformat()
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=UTC)
+    return timestamp.isoformat()
 
 
 async def _public(branch: Branch) -> BranchPublic:
-    _ = await branch.awaitable_attrs.parent
-    status = await get_deployment_status(branch.project_id, branch.name)
+    project = await branch.awaitable_attrs.project
+
+    host = branch.endpoint_domain or branch_domain(branch.id) or deployment_settings.deployment_host
+    port = 5432
+
     connection_string = "postgresql://{user}:{password}@{host}:{port}/{database}".format(  # noqa: UP032
         user=branch.database_user,
         password=branch.database_password,
-        host="",  # TODO Determine based on deployment routing
-        port=5432,
+        host=host,
+        port=port,
         database=branch.database,
     )
+
+    rest_endpoint = branch_rest_endpoint(branch.id)
+    service_host = host.replace("-db.", ".", 1)
+    if rest_endpoint:
+        service_endpoint = rest_endpoint.removesuffix("/rest")
+        service_endpoint = service_endpoint.replace("-db.", ".", 1)
+    else:
+        service_endpoint = f"https://{service_host}"
+
+    iops = max(branch.iops or 0, 100)
+
+    max_resources = ResourcesDefinition(
+        vcpu=branch.vcpu,
+        ram_bytes=branch.memory,
+        nvme_bytes=branch.database_size,
+        iops=iops,
+        storage_bytes=branch.database_size,
+    )
+
+    database_info = DatabaseInformation(
+        host=host,
+        port=port,
+        username=branch.database_user,
+        name=branch.database,
+        encrypted_connection_string=_encrypt(connection_string, settings.pgmeta_crypto_key),
+        service_endpoint_uri=service_endpoint,
+        version=branch.database_image_tag,
+        has_replicas=False,
+    )
+
     return BranchPublic(
         id=branch.id,
         name=branch.name,
-        status=status.status,
-        deployment_status=(status.message, status.pods),
-        database_user=branch.database_user,
-        encrypted_database_connection_string=_encrypt(connection_string, settings.pgmeta_crypto_key),
+        project_id=branch.project_id,
+        organization_id=project.organization_id,
+        database=database_info,
+        max_resources=max_resources,
+        created_at=_ulid_datetime_iso(branch.id),
+        created_by="system",  # TODO: update it when user management is in place
+        updated_at=None,
+        updated_by=None,
     )
 
 
@@ -144,7 +185,7 @@ async def create(
         database_size=source.database_size,
         vcpu=source.vcpu,
         memory=source.memory,
-        iops=source.iops,
+        iops=max(source.iops or 0, 100),
         database_image_tag=source.database_image_tag,
     )
     session.add(entity)
@@ -179,29 +220,15 @@ instance_api = APIRouter(prefix="/{branch_id}")
 @instance_api.get(
     "/",
     name="organizations:projects:branch:detail",
-    response_model=BranchResponse,
+    response_model=BranchPublic,
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def detail(
     _organization: OrganizationDep,
     _project: ProjectDep,
     branch: BranchDep,
-) -> BranchResponse:
-    resources = BranchDetailResources(
-        vcpu=branch.vcpu,
-        ram_bytes=branch.memory,
-        nvme_bytes=branch.database_size,
-        iops=branch.iops,
-        storage_bytes=branch.database_size,
-    )
-    rest_endpoint = branch_rest_endpoint(branch.id)
-
-    return BranchResponse(
-        name=branch.name,
-        id=str(branch.id),
-        rest_endpoint=rest_endpoint,
-        resources=resources,
-    )
+) -> BranchPublic:
+    return await _public(branch)
 
 
 @instance_api.put(
