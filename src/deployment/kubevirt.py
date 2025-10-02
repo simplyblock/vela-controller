@@ -3,6 +3,15 @@ from typing import Literal
 from fastapi import HTTPException
 from kubernetes_asyncio import client, config
 
+SubresourceAction = Literal["pause", "resume", "start", "stop"]
+
+_SUBRESOURCE_ACTION_MAP: dict[SubresourceAction, str] = {
+    "pause": "pause",
+    "resume": "unpause",
+    "start": "start",
+    "stop": "stop",
+}
+
 
 async def _ensure_kubeconfig() -> None:
     try:
@@ -17,9 +26,10 @@ async def _ensure_kubeconfig() -> None:
             ) from e
 
 
-async def call_kubevirt_subresource(namespace: str, name: str, action: Literal["pause", "resume"]):
+async def call_kubevirt_subresource(namespace: str, name: str, action: SubresourceAction):
     await _ensure_kubeconfig()
-    path = f"/apis/subresources.kubevirt.io/v1/namespaces/{namespace}/virtualmachineinstances/{name}/{action}"
+    kubevirt_action = _SUBRESOURCE_ACTION_MAP[action]
+    path = f"/apis/subresources.kubevirt.io/v1/namespaces/{namespace}/virtualmachineinstances/{name}/{kubevirt_action}"
     async with client.ApiClient() as api_client:
         return await api_client.call_api(
             path,
