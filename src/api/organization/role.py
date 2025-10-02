@@ -35,7 +35,6 @@ async def list_(organization: OrganizationDep) -> Sequence[Role]:
     response_model=Role | None,
     responses={
         201: {
-            "content": None,
             "headers": {
                 "Location": {
                     "description": "URL of the created item",

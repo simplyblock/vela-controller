@@ -61,7 +61,6 @@ _links = {
     response_model=Organization | None,
     responses={
         201: {
-            "content": None,
             "headers": {
                 "Location": {
                     "description": "URL of the created item",
