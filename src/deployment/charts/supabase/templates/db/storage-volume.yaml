@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "supabase.db.fullname" . }}-storage-pvc
+  labels:
+    {{- include "supabase.labels" . | nindent 4 }}
+  {{- with .Values.db.storagePersistence.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.db.storagePersistence.storageClassName }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.db.storagePersistence.volumeMode }}
+  {{- end }}
+  accessModes:
+  {{- range .Values.db.storagePersistence.accessModes }}
+    - {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.db.storagePersistence.size | quote }}

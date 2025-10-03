@@ -70,7 +70,7 @@ export TOKEN=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJzZXJ2aW
 
 * Create a bucket
 ```sh
-ccurl -X POST 'https://01k6mpdwnay4jf91j9pd916ngf.staging.vela.run/storage/bucket' \
+curl -X POST 'https://01k6mpdwnay4jf91j9pd916ngf.staging.vela.run/storage/bucket' \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -88,7 +88,7 @@ curl -X POST "https://01k6mpdwnay4jf91j9pd916ngf.staging.vela.run/storage/object
 
 * list objects
 ```sh
-ccurl -X POST \
+curl -X POST \
   "https://01k6mpdwnay4jf91j9pd916ngf.staging.vela.run/storage/object/list/my_bucket" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \

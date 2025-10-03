@@ -146,6 +146,7 @@ async def create(
         database_user=parameters.deployment.database_user,
         database_password=parameters.deployment.database_password,
         database_size=parameters.deployment.database_size,
+        storage_size=parameters.deployment.storage_size,
         vcpu=parameters.deployment.vcpu,
         memory=parameters.deployment.memory,
         iops=parameters.deployment.iops,
