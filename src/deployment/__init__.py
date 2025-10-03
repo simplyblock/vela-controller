@@ -102,6 +102,9 @@ async def create_vela_config(id_: Identifier, parameters: DeploymentParameters, 
     compose_file = Path(__file__).with_name("compose.yml")
     if not compose_file.exists():
         raise FileNotFoundError(f"docker-compose manifest not found at {compose_file}")
+    vector_file = Path(__file__).with_name("vector.yml")
+    if not vector_file.exists():
+        raise FileNotFoundError(f"vector config file not found at {vector_file}")
     values_content = yaml.safe_load((chart / "values.yaml").read_text())
 
     # Override defaults
@@ -116,7 +119,7 @@ async def create_vela_config(id_: Identifier, parameters: DeploymentParameters, 
     db_spec.setdefault("persistence", {})["size"] = f"{bytes_to_gib(parameters.database_size)}Gi"
     db_spec.setdefault("image", {})["tag"] = parameters.database_image_tag
     namespace = deployment_namespace(id_, branch)
-
+#vectorYaml
     # todo: create an storage class with the given IOPS
     values_content["provisioning"] = {"iops": parameters.iops}
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as temp_values:
@@ -134,6 +137,8 @@ async def create_vela_config(id_: Identifier, parameters: DeploymentParameters, 
                     "--create-namespace",
                     "--set-file",
                     f"composeYaml={compose_file}",
+                    "--set-file",
+                    f"vectorYaml={vector_file}",
                     "-f",
                     temp_values.name,
                 ],

@@ -8,6 +8,7 @@
 
 # docker-compose payload injected via helm --set-file composeYaml
 composeYaml: ""
+vectorYaml: ""
 
 secret:
   # jwt will be used to reference secret in multiple services:
