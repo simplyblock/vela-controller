@@ -396,7 +396,6 @@ def _realtime_route_specs(ref: str, domain: str, namespace: str) -> list[HTTPRou
 def _pgmeta_route_specs(ref: str, domain: str, namespace: str) -> list[HTTPRouteSpec]:
     """HTTPRoute definitions that expose the Postgres Meta service for a branch."""
 
-    path_prefix = f"/platform/pg-meta/{ref}"
     return [
         HTTPRouteSpec(
             ref=ref,
@@ -404,7 +403,7 @@ def _pgmeta_route_specs(ref: str, domain: str, namespace: str) -> list[HTTPRoute
             namespace=namespace,
             service_name="supabase-supabase-meta",
             service_port=8080,
-            path_prefix=path_prefix,
+            path_prefix="/meta",
             route_suffix="pgmeta-route",
         ),
     ]

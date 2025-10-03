@@ -4,6 +4,7 @@ metadata:
   name: vela-auth
   labels:
     app.kubernetes.io/name: vela-auth
+    app.kubernetes.io/instance: {{ .Release.Name }}
 spec:
   containers:
     - name: vela-auth
