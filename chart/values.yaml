@@ -10,3 +10,15 @@ securityContext:
   runAsUser: 65534
   seccompProfile:
     type: 'RuntimeDefault'
+
+analytics:
+  DB_HOST: "database"
+  DB_DATABASE: "logflare"
+  DB_DRIVER: "postgresql"
+  DB_PORT: "5432"
+  DB_SCHEMA: "_analytics"
+  LOGFLARE_NODE_HOST: 127.0.0.1
+  LOGFLARE_SINGLE_TENANT: "true" 
+  LOGFLARE_SUPABASE_MODE: "true"
+  LOGFLARE_MIN_CLUSTER_SIZE: "1"
+  FEATURE_FLAG_OVERRIDE: multibackend=true

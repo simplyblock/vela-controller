@@ -32,7 +32,7 @@ spec:
           imagePullPolicy: IfNotPresent
           env:
             - name: DB_HOST
-              value: "database"
+              value: "{{ .Values.analytics.DB_HOST }}"
             - name: DB_USER
               valueFrom:
                 secretKeyRef:
@@ -44,11 +44,11 @@ spec:
                   name: database
                   key: superuser-password
             - name: DB_PORT
-              value: "5432"
+              value: "{{ .Values.analytics.DB_PORT }}"
             - name: DB_DATABASE
-              value: "logflare"
+              value: "{{ .Values.analytics.DB_DATABASE }}"
             - name: DB_SCHEMA
-              value: "_analytics"
+              value: "{{ .Values.analytics.DB_SCHEMA }}"
           command: ["/bin/sh", "-c"]
           args:
             - |
@@ -92,29 +92,29 @@ spec:
                   name: database
                   key: superuser-username
             - name: DB_HOSTNAME
-              value: "database"
+              value: "{{ .Values.analytics.DB_HOST }}"
             - name: DB_DATABASE
-              value: "logflare"
+              value: "{{ .Values.analytics.DB_DATABASE }}"
             - name: DB_DRIVER
-              value: "postgresql"
+              value: "{{ .Values.analytics.DB_DRIVER }}"
             - name: DB_PORT
-              value: "5432"
+              value: "{{ .Values.analytics.DB_PORT }}"
             - name: DB_SCHEMA
-              value: "_analytics"
+              value: "{{ .Values.analytics.DB_SCHEMA }}"
             - name: LOGFLARE_NODE_HOST
-              value: "127.0.0.1"
+              value: "{{ .Values.analytics.LOGFLARE_NODE_HOST }}"
             - name: LOGFLARE_MIN_CLUSTER_SIZE
-              value: "1"
+              value: "{{ .Values.analytics.LOGFLARE_MIN_CLUSTER_SIZE }}"
             - name: LOGFLARE_SINGLE_TENANT
-              value: "true"
+              value: "{{ .Values.analytics.LOGFLARE_SINGLE_TENANT }}"
             - name: LOGFLARE_SUPABASE_MODE
-              value: "true"
+              value: "{{ .Values.analytics.LOGFLARE_SUPABASE_MODE }}"
             - name: POSTGRES_BACKEND_URL
               value: $(DB_DRIVER)://$(DB_USERNAME):$(DB_PASSWORD)@$(DB_HOSTNAME):$(DB_PORT)/$(DB_DATABASE)
             - name: POSTGRES_BACKEND_SCHEMA
               value: $(DB_SCHEMA)
             - name: FEATURE_FLAG_OVERRIDE
-              value: "multibackend=true"
+              value: "{{ .Values.analytics.FEATURE_FLAG_OVERRIDE }}"
             
           ports:
             - name: http

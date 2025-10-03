@@ -6,8 +6,6 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "supabase.labels" . | nindent 4 }}
-  annotations:
-    {{- include "supabase.annotations" . | nindent 4 }}
 spec:
   runStrategy: Always
   template:

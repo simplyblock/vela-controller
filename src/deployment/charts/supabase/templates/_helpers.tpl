@@ -43,13 +43,6 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
 {{/*
-Common annotation
-*/}}
-{{- define "supabase.annotations" -}}
-vela-logflare/log-collector-enabled: "true"
-{{- end }}
-
-{{/*
 Selector labels
 */}}
 {{- define "supabase.selectorLabels" -}}
