@@ -53,6 +53,11 @@ async def main():
     jwt_secret = "secret"
     port = 5000
 
+    os.environ["VELA_CLOUDFLARE_API_TOKEN"] = ""
+    os.environ["VELA_CLOUDFLARE_ZONE_ID"] = ""
+    os.environ["VELA_CLOUDFLARE_BRANCH_REF_CNAME"] = ""
+    os.environ["VELA_CLOUDFLARE_DOMAIN_SUFFIX"] = ""
+
     with (
         PostgresContainer("postgres:latest", driver="asyncpg") as postgres,
         unittest.mock.patch(
