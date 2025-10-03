@@ -71,6 +71,22 @@ def _release_name(namespace: str) -> str:
     _ = namespace  # kept for call-site clarity; release name is namespace-independent
     return settings.deployment_release_name
 
+def inject_branch_env(compose_file: Path, branch: str):
+    try:
+        with open(compose_file) as f:
+            compose = yaml.safe_load(f)
+
+        if "services" not in compose or "vector" not in compose["services"]:
+            raise KeyError("Missing 'vector' service in compose file")
+
+        vector_env = compose["services"]["vector"].setdefault("environment", {})
+        vector_env["VELA_BRANCH"] = branch
+
+        with open(compose_file, "w") as f:
+            yaml.safe_dump(compose, f, sort_keys=False)
+
+    except Exception as e:
+        raise RuntimeError(f"Failed to inject branch env into compose file: {e}")
 
 class DeploymentParameters(BaseModel):
     database: dbstr
@@ -102,6 +118,9 @@ async def create_vela_config(id_: Identifier, parameters: DeploymentParameters, 
     compose_file = Path(__file__).with_name("compose.yml")
     if not compose_file.exists():
         raise FileNotFoundError(f"docker-compose manifest not found at {compose_file}")
+
+    inject_branch_env(compose_file, branch)
+
     vector_file = Path(__file__).with_name("vector.yml")
     if not vector_file.exists():
         raise FileNotFoundError(f"vector config file not found at {vector_file}")

@@ -150,6 +150,7 @@ services:
       retries: 3
     environment:
       LOGFLARE_PUBLIC_ACCESS_TOKEN: ${LOGFLARE_PUBLIC_ACCESS_TOKEN}
+      VELA_BRANCH: ${VELA_BRANCH:-local}
     command:
       [
         "--config",

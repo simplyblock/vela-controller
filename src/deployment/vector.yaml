@@ -15,7 +15,7 @@ transforms:
     inputs:
       - docker_host
     source: |-
-      .project = "default"
+      .project = ${VELA_BRANCH?VELA_BRANCH is required}
       .event_message = del(.message)
       .appname = del(.container_name)
       del(.container_created_at)
