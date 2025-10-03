@@ -140,7 +140,6 @@ async def create_vela_config(id_: Identifier, parameters: DeploymentParameters, 
     db_spec.setdefault("persistence", {})["size"] = f"{bytes_to_gib(parameters.database_size)}Gi"
     db_spec.setdefault("image", {})["tag"] = parameters.database_image_tag
     namespace = deployment_namespace(id_, branch)
-#vectorYaml
     # todo: create an storage class with the given IOPS
     values_content["provisioning"] = {"iops": parameters.iops}
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as temp_values:
