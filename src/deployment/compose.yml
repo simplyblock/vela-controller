@@ -2,6 +2,7 @@ version: "3.9"
 
 services:
   db:
+    container_name: vela-db
     image: docker.io/supabase/postgres:15.1.0.147
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-example123456}
@@ -19,6 +20,7 @@ services:
       - "5432:5432"
 
   rest:
+    container_name: vela-rest
     image: docker.io/postgrest/postgrest:v12.0.1
     depends_on:
       - db
@@ -45,6 +47,7 @@ services:
       - supabase
 
   realtime:
+    container_name: vela-realtime
     image: docker.io/supabase/realtime:v2.27.5
     depends_on:
       - db
@@ -73,6 +76,7 @@ services:
       - supabase
 
   meta:
+    container_name: vela-meta
     image: docker.io/supabase/postgres-meta:v0.80.0
     depends_on:
       - db
@@ -92,6 +96,7 @@ services:
       - supabase
 
   storage:
+    container_name: vela-storage
     image: docker.io/supabase/storage-api:v0.46.4
     depends_on:
       - db
@@ -125,7 +130,7 @@ services:
       - supabase
 
   vector:
-    container_name: supabase-vector
+    container_name: vela-vector
     image: timberio/vector:0.28.1-alpine
     restart: unless-stopped
     volumes:

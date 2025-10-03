@@ -7,7 +7,7 @@ sources:
   docker_host:
     type: docker_logs
     exclude_containers:
-      - supabase-vector
+      - vela-vector
 
 transforms:
   project_logs:
@@ -31,13 +31,13 @@ transforms:
     inputs:
       - project_logs
     route:
-      kong: '.appname == "supabase-kong"'
-      auth: '.appname == "supabase-auth"'
-      rest: '.appname == "supabase-rest"'
-      realtime: '.appname == "supabase-realtime"'
-      storage: '.appname == "supabase-storage"'
-      functions: '.appname == "supabase-functions"'
-      db: '.appname == "supabase-db"'
+      kong: '.appname == "vela-kong"'
+      auth: '.appname == "vela-auth"'
+      rest: '.appname == "vela-rest"'
+      realtime: '.appname == "vela-realtime"'
+      storage: '.appname == "vela-storage"'
+      functions: '.appname == "vela-functions"'
+      db: '.appname == "vela-db"'
   # Ignores non nginx errors since they are related with kong booting up
   kong_logs:
     type: remap
