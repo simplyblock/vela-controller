@@ -77,6 +77,7 @@ class DeploymentParameters(BaseModel):
     database_user: dbstr
     database_password: dbstr
     database_size: Annotated[int, Field(gt=0, le=2**63 - 1, multiple_of=GIB)]
+    storage_size: Annotated[int, Field(gt=0, le=2**63 - 1, multiple_of=GIB)]
     vcpu: Annotated[int, Field(gt=0, le=2**31 - 1)]
     memory: Annotated[int, Field(gt=0, le=2**63 - 1, multiple_of=GIB)]
     iops: Annotated[int, Field(ge=100, le=2**31 - 1)]
@@ -114,7 +115,13 @@ async def create_vela_config(id_: Identifier, parameters: DeploymentParameters, 
     db_spec["vcpu"] = parameters.vcpu
     db_spec["ram"] = bytes_to_gib(parameters.memory)
     db_spec.setdefault("persistence", {})["size"] = f"{bytes_to_gib(parameters.database_size)}Gi"
+    db_spec.setdefault("storagePersistence", {})["size"] = f"{bytes_to_gib(parameters.storage_size)}Gi"
     db_spec.setdefault("image", {})["tag"] = parameters.database_image_tag
+    storage_spec = values_content.setdefault("storage", {})
+    storage_spec["enabled"] = True
+    storage_persistence = storage_spec.setdefault("persistence", {})
+    storage_persistence["enabled"] = True
+    storage_persistence["size"] = f"{bytes_to_gib(parameters.storage_size)}Gi"
     namespace = deployment_namespace(id_, branch)
 
     # todo: create an storage class with the given IOPS
@@ -215,6 +222,7 @@ def get_db_vmi_identity(id_: Identifier, branch: Slug) -> tuple[str, str]:
 
 class ResizeParameters(BaseModel):
     database_size: Annotated[int | None, Field(gt=0, multiple_of=GIB)] = None
+    storage_size: Annotated[int | None, Field(gt=0, multiple_of=GIB)] = None
 
 
 def resize_deployment(id_: Identifier, name: str, parameters: ResizeParameters):
@@ -227,6 +235,14 @@ def resize_deployment(id_: Identifier, name: str, parameters: ResizeParameters):
     db_spec = values_content.setdefault("db", {})
     if parameters.database_size is not None:
         db_spec.setdefault("persistence", {})["size"] = f"{bytes_to_gib(parameters.database_size)}Gi"
+    if parameters.storage_size is not None:
+        storage_size_gi = f"{bytes_to_gib(parameters.storage_size)}Gi"
+        db_spec.setdefault("storagePersistence", {})["size"] = storage_size_gi
+        storage_spec = values_content.setdefault("storage", {})
+        storage_spec["enabled"] = True
+        storage_persistence = storage_spec.setdefault("persistence", {})
+        storage_persistence["enabled"] = True
+        storage_persistence["size"] = storage_size_gi
 
     namespace = deployment_namespace(id_, name)
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as temp_values:

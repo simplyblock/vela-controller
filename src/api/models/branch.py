@@ -33,6 +33,7 @@ class Branch(AsyncAttrs, Model, table=True):
     vcpu: Annotated[int, Field(gt=0, le=2**31 - 1, sa_column=Column(BigInteger))]
     memory: Annotated[int, Field(gt=0, multiple_of=GIB, sa_column=Column(BigInteger))]
     iops: Annotated[int, Field(ge=100, le=2**31 - 1, sa_column=Column(BigInteger))]
+    storage_size: Annotated[int, Field(gt=0, multiple_of=GIB, sa_column=Column(BigInteger))]
     database_image_tag: str
 
     __table_args__ = (UniqueConstraint("project_id", "name", name="unique_branch_name_per_project"),)
@@ -45,7 +46,7 @@ class Branch(AsyncAttrs, Model, table=True):
             ram_bytes=self.memory,
             nvme_bytes=self.database_size,
             iops=self.iops,
-            storage_bytes=self.database_size,
+            storage_bytes=self.storage_size,
         )
 
 
@@ -122,7 +123,7 @@ class ResourcesDefinition(BaseModel):
         int | None,
         PydanticField(
             ge=GIB,
-            description="Database storage capacity in bytes (mirrors Branch.database_size).",
+            description="Storage capacity in bytes to be used for Storage API (mirrors Branch.storage_size).",
         ),
     ] = None
 

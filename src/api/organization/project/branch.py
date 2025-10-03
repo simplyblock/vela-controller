@@ -195,6 +195,7 @@ async def create(
         database_user=source.database_user,
         database_password=source.database_password,
         database_size=source.database_size,
+        storage_size=source.storage_size,
         vcpu=source.vcpu,
         memory=source.memory,
         iops=source.iops,
