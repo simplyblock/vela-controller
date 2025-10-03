@@ -1,68 +1,65 @@
 import asyncio
-import base64
+import logging
 from collections.abc import Sequence
 from typing import Literal
 
-from Crypto.Cipher import AES
-from Crypto.Hash import MD5
-from Crypto.Random import get_random_bytes
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
-from kubernetes.client.exceptions import ApiException
+from kubernetes_asyncio.client.exceptions import ApiException
 from sqlalchemy.exc import IntegrityError
 
-from ...deployment import (
-    create_vela_config,
+from .... import VelaError
+from ...._util import Identifier
+from ....deployment import (
+    DeploymentParameters,
     delete_deployment,
+    deploy_branch_environment,
     get_db_vmi_identity,
     get_deployment_status,
 )
-from ...deployment.kubevirt import call_kubevirt_subresource
-from .._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
-from ..db import SessionDep
-from ..models.organization import OrganizationDep
-from ..models.project import Project, ProjectCreate, ProjectDep, ProjectPublic, ProjectUpdate
-from ..settings import settings
+from ....deployment.kubevirt import call_kubevirt_subresource
+from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
+from ...db import SessionDep
+from ...models.branch import Branch
+from ...models.organization import OrganizationDep
+from ...models.project import Project, ProjectCreate, ProjectDep, ProjectPublic, ProjectUpdate
+from . import branch as branch_module
+
+logger = logging.getLogger(__name__)
 
 api = APIRouter()
 
 
-def _evp_bytes_to_key(passphrase, salt) -> tuple[bytes, bytes]:
-    d = d_i = b""
-    while len(d) < 48:  # 32 bytes key + 16 bytes IV
-        d_i = MD5.new(d_i + passphrase.encode("utf-8") + salt).digest()
-        d += d_i
+async def _deploy_branch_environment_task(
+    *,
+    project_id: Identifier,
+    branch_id: Identifier,
+    branch_slug: str,
+    parameters: DeploymentParameters,
+) -> None:
+    try:
+        await deploy_branch_environment(
+            project_id=project_id,
+            branch_id=branch_id,
+            branch_slug=branch_slug,
+            parameters=parameters,
+        )
+    except VelaError:
+        logger.exception(
+            "Branch deployment failed for project_id=%s branch_id=%s branch_slug=%s",
+            project_id,
+            branch_id,
+            branch_slug,
+        )
 
-    return d[:32], d[32:48]
 
-
-def _encrypt(plaintext, passphrase) -> str:
-    salt = get_random_bytes(8)
-    key, iv = _evp_bytes_to_key(passphrase, salt)
-    cipher = AES.new(key, AES.MODE_CBC, iv)
-    encoded = plaintext.encode("utf-8")
-    padded = encoded + bytes([16 - len(encoded) % 16]) * (16 - len(encoded) % 16)
-    return base64.b64encode(b"Salted__" + salt + cipher.encrypt(padded)).decode("utf-8")
-
-
-def _public(project: Project) -> ProjectPublic:
-    status = get_deployment_status(project.dbid())
-    connection_string = "postgresql://{user}:{password}@{host}:{port}/{database}".format(  # noqa: UP032
-        user=project.database_user,
-        password=project.database_password,
-        host="",  # FIXME Determine based on deployment
-        port=5432,
-        database=project.database,
-    )
+async def _public(project: Project) -> ProjectPublic:
+    status = await get_deployment_status(project.id, Branch.DEFAULT_SLUG)
     return ProjectPublic(
-        organization_id=project.db_org_id(),
-        id=project.dbid(),
-        slug=project.slug,
+        organization_id=project.organization_id,
+        id=project.id,
         name=project.name,
         status=status.status,
-        deployment_status=(status.message, status.pods),
-        database_user=project.database_user,
-        encrypted_database_connection_string=_encrypt(connection_string, settings.pgmeta_crypto_key),
     )
 
 
@@ -73,21 +70,22 @@ def _public(project: Project) -> ProjectPublic:
 )
 async def list_(session: SessionDep, organization: OrganizationDep) -> Sequence[ProjectPublic]:
     await session.refresh(organization, ["projects"])
-    return [_public(project) for project in await organization.awaitable_attrs.projects]
+    projects = await organization.awaitable_attrs.projects
+    return [await _public(project) for project in projects]
 
 
 _links = {
     "detail": {
         "operationId": "organizations:projects:detail",
-        "parameters": {"project_slug": "$response.header.Location#regex:/projects/(.+)/"},
+        "parameters": {"project_id": "$response.header.Location#regex:/projects/(.+)/"},
     },
     "update": {
         "operationId": "organizations:projects:update",
-        "parameters": {"project_slug": "$response.header.Location#regex:/projects/(.+)/"},
+        "parameters": {"project_id": "$response.header.Location#regex:/projects/(.+)/"},
     },
     "delete": {
         "operationId": "organizations:projects:delete",
-        "parameters": {"project_slug": "$response.header.Location#regex:/projects/(.+)/"},
+        "parameters": {"project_id": "$response.header.Location#regex:/projects/(.+)/"},
     },
 }
 
@@ -99,7 +97,6 @@ _links = {
     response_model=ProjectPublic | None,
     responses={
         201: {
-            "content": None,
             "headers": {
                 "Location": {
                     "description": "URL of the created item",
@@ -124,35 +121,63 @@ async def create(
     entity = Project(
         organization=organization,
         name=parameters.name,
-        database=parameters.deployment.database,
-        database_user=parameters.deployment.database_user,
-        database_password=parameters.deployment.database_user,
     )
     session.add(entity)
     try:
         await session.commit()
     except IntegrityError as e:
         error = str(e)
-        if ("asyncpg.exceptions.UniqueViolationError" not in error) or ("unique_project_slug" not in error):
+        if ("asyncpg.exceptions.UniqueViolationError" not in error) or ("unique_project_name" not in error):
             raise
         raise HTTPException(409, f"Organization already has project named {parameters.name}") from e
     await session.refresh(entity)
-    asyncio.create_task(create_vela_config(entity.dbid(), parameters.deployment))
+    # Ensure default branch exists
+    main_branch = Branch(
+        name=Branch.DEFAULT_SLUG,
+        project=entity,
+        parent=None,
+        database=parameters.deployment.database,
+        database_user=parameters.deployment.database_user,
+        database_password=parameters.deployment.database_password,
+        database_size=parameters.deployment.database_size,
+        vcpu=parameters.deployment.vcpu,
+        memory=parameters.deployment.memory,
+        iops=parameters.deployment.iops,
+        database_image_tag=parameters.deployment.database_image_tag,
+    )
+    session.add(main_branch)
+    await session.commit()
+    await session.refresh(main_branch)
+    await session.refresh(entity)
+    branch_slug = main_branch.name
+    branch_dbid = main_branch.id
+
+    asyncio.create_task(
+        _deploy_branch_environment_task(
+            project_id=entity.id,
+            branch_id=branch_dbid,
+            branch_slug=branch_slug,
+            parameters=parameters.deployment,
+        )
+    )
     await session.refresh(organization)
     entity_url = url_path_for(
         request,
         "organizations:projects:detail",
-        organization_slug=organization.id,
-        project_slug=entity.slug,
+        organization_id=organization.id,
+        project_id=entity.id,
     )
+    payload = (await _public(entity)).model_dump() if response == "full" else None
+
     return JSONResponse(
-        content=_public(entity).model_dump() if response == "full" else None,
+        content=payload,
         status_code=201,
         headers={"Location": entity_url},
     )
 
 
-instance_api = APIRouter(prefix="/{project_slug}")
+instance_api = APIRouter(prefix="/{project_id}")
+instance_api.include_router(branch_module.api, prefix="/branches")
 
 
 @instance_api.get(
@@ -161,7 +186,7 @@ instance_api = APIRouter(prefix="/{project_slug}")
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def detail(_organization: OrganizationDep, project: ProjectDep) -> ProjectPublic:
-    return _public(project)
+    return await _public(project)
 
 
 @instance_api.put(
@@ -207,8 +232,8 @@ async def update(
             "Location": url_path_for(
                 request,
                 "organizations:projects:detail",
-                organization_slug=await organization.awaitable_attrs.id,
-                project_slug=await project.awaitable_attrs.slug,
+                organization_id=await organization.awaitable_attrs.id,
+                project_id=await project.awaitable_attrs.id,
             ),
         },
     )
@@ -221,7 +246,10 @@ async def update(
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def delete(session: SessionDep, _organization: OrganizationDep, project: ProjectDep):
-    delete_deployment(project.dbid())
+    await session.refresh(project, ["branches"])
+    branches = await project.awaitable_attrs.branches
+    for branch in branches:
+        await delete_deployment(project.id, branch.name)
     await session.delete(project)
     await session.commit()
     return Response(status_code=204)
@@ -234,9 +262,9 @@ async def delete(session: SessionDep, _organization: OrganizationDep, project: P
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def pause(_organization: OrganizationDep, project: ProjectDep):
-    namespace, vmi_name = get_db_vmi_identity(project.dbid())
+    namespace, vmi_name = get_db_vmi_identity(project.id, Branch.DEFAULT_SLUG)
     try:
-        call_kubevirt_subresource(namespace, vmi_name, "pause")
+        await call_kubevirt_subresource(namespace, vmi_name, "pause")
         return Response(status_code=204)
     except ApiException as e:
         status = 404 if e.status == 404 else 400
@@ -250,9 +278,9 @@ async def pause(_organization: OrganizationDep, project: ProjectDep):
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def resume(_organization: OrganizationDep, project: ProjectDep):
-    namespace, vmi_name = get_db_vmi_identity(project.dbid())
+    namespace, vmi_name = get_db_vmi_identity(project.id, Branch.DEFAULT_SLUG)
     try:
-        call_kubevirt_subresource(namespace, vmi_name, "resume")
+        await call_kubevirt_subresource(namespace, vmi_name, "unpause")
         return Response(status_code=204)
     except ApiException as e:
         status = 404 if e.status == 404 else 400

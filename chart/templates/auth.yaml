@@ -139,6 +139,9 @@ data:
       "id": "vela",
       "realm": "vela",
       "enabled": true,
+      "registrationAllowed": true,
+      "registrationEmailAsUsername": true,
+      "verifyEmail": true,
       "users": [
         {
           "username": "testuser",
@@ -154,6 +157,22 @@ data:
               "temporary": false
             }
           ]
+        },
+        {
+          "username": "service-account-controller",
+          "emailVerified": false,
+          "enabled": true,
+          "serviceAccountClientId": "controller",
+          "realmRoles": [
+            "default-roles-vela"
+          ],
+          "clientRoles": {
+            "realm-management": [
+              "manage-users",
+              "query-users",
+              "view-users"
+            ]
+          }
         }
       ],
       "clients": [
@@ -169,8 +188,35 @@ data:
           ],
           "standardFlowEnabled": true,
           "directAccessGrantsEnabled": true,
-          "publicClient": true,
+          "publicClient": false,
+          "secret": "client-secret",
           "protocol": "openid-connect"
+        },
+        {
+          "clientId": "controller",
+          "name": "Vela controller",
+          "enabled": true,
+          "redirectUris": [
+            "http://{{ .Values.host }}/*"
+          ],
+          "webOrigins": [
+            "http://{{ .Values.host }}"
+          ],
+          "standardFlowEnabled": true,
+          "directAccessGrantsEnabled": true,
+          "publicClient": false,
+          "secret": "controller-secret",
+          "protocol": "openid-connect",
+          "serviceAccountsEnabled": true,
+          "defaultClientScopes": [
+            "service_account",
+            "web-origins",
+            "acr",
+            "roles",
+            "profile",
+            "basic",
+            "email"
+          ]
         }
       ]
     }
@@ -190,20 +236,22 @@ spec:
       protocol: TCP
 
 ---
-apiVersion: networking.k8s.io/v1
-kind: Ingress
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
-  name: vela-auth-ingress
+  name: vela-auth
 spec:
-  ingressClassName: nginx
+  parentRefs:
+    - name: vela-public-gateway
+      namespace: kong-system
+  hostnames:
+    - "{{ .Values.domain }}"
   rules:
-    - http:
-        paths:
-          - path: /auth
-            pathType: Prefix
-            backend:
-              service:
-                name: vela-auth-service
-                port:
-                  number: 8080
-#      {{ if .Values.host }}host: {{ .Values.host }}{{ end }}
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /auth
+      backendRefs:
+        - name: vela-auth-service
+          namespace: {{ .Release.Namespace }}
+          port: 8000

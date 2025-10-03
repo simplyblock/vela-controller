@@ -11,6 +11,9 @@ securityContext:
   seccompProfile:
     type: 'RuntimeDefault'
 
+domain: staging.vela.run
+domaincertsecret: vela-run-staging-wildcard-cert  # TODO: use cert manager 
+
 analytics:
   DB_HOST: "database"
   DB_DATABASE: "logflare"
@@ -22,3 +25,4 @@ analytics:
   LOGFLARE_SUPABASE_MODE: "true"
   LOGFLARE_MIN_CLUSTER_SIZE: "1"
   FEATURE_FLAG_OVERRIDE: multibackend=true
+  

@@ -55,16 +55,49 @@ async def main():
 
     with (
         PostgresContainer("postgres:latest", driver="asyncpg") as postgres,
-        unittest.mock.patch("kubernetes.config.load_kube_config") as mock_load_config,
+        unittest.mock.patch(
+            "kubernetes_asyncio.config.load_incluster_config",
+            new_callable=unittest.mock.AsyncMock,
+        ) as mock_load_incluster,
+        unittest.mock.patch(
+            "kubernetes_asyncio.config.load_kube_config",
+            new_callable=unittest.mock.AsyncMock,
+        ) as mock_load_config,
         unittest.mock.patch("simplyblock.vela.deployment.create_vela_config"),
-        unittest.mock.patch("simplyblock.vela.deployment.get_deployment_status") as mock_status,
-        unittest.mock.patch("simplyblock.vela.deployment.delete_deployment"),
+        unittest.mock.patch(
+            "simplyblock.vela.deployment.get_deployment_status",
+            new_callable=unittest.mock.AsyncMock,
+        ) as mock_status,
+        unittest.mock.patch(
+            "simplyblock.vela.deployment.delete_deployment",
+            new_callable=unittest.mock.AsyncMock,
+        ),
+        unittest.mock.patch("keycloak.KeycloakAdmin") as mock_keycloak_admin,
     ):
+        mock_load_incluster.return_value = None
         mock_load_config.return_value = None
+
+        # Mock Keycloak admin methods
+        mock_keycloak_instance = mock_keycloak_admin.return_value
+        mock_keycloak_instance.a_create_user = unittest.mock.AsyncMock(return_value=str(uuid4()))
+        mock_keycloak_instance.a_get_user = unittest.mock.AsyncMock(
+            return_value={
+                "id": str(uuid4()),
+                "email": "testuser@example.com",
+                "firstName": "Test",
+                "lastName": "User",
+                "emailVerified": True,
+            }
+        )
+        mock_keycloak_instance.a_get_user_id = unittest.mock.AsyncMock(return_value=str(uuid4()))
+        mock_keycloak_instance.a_send_verify_email = unittest.mock.AsyncMock(return_value=None)
 
         os.environ["VELA_POSTGRES_URL"] = postgres.get_connection_url()
         os.environ["VELA_JWT_SECRET"] = jwt_secret
         os.environ["VELA_PGMETA_CRYPTO_KEY"] = "secret"
+        os.environ["VELA_KEYCLOAK_URL"] = "http://example.com"
+        os.environ["VELA_KEYCLOAK_CLIENT_ID"] = ""
+        os.environ["VELA_KEYCLOAK_CLIENT_SECRET"] = ""
 
         from simplyblock.vela.api import app
         from simplyblock.vela.deployment import DeploymentStatus

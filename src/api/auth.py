@@ -30,7 +30,13 @@ def _decode(token: str):
     else:
         key = settings.jwt_secret
 
-    return decode(token, key, algorithms=settings.jwt_algorithms)
+    return decode(token, key, algorithms=settings.jwt_algorithms, options={"verify_aud": False})
+
+
+async def user_by_id(session: SessionDep, id_: UUID):
+    query = select(User).where(User.id == id_)
+    db_user = (await session.exec(query)).unique().one_or_none()
+    return db_user if db_user is not None else User(id=id_)
 
 
 async def authenticated_user(
@@ -50,9 +56,7 @@ async def authenticated_user(
     except (PyJWTError, ValidationError) as e:
         raise HTTPException(401, str(e)) from e
 
-    query = select(User).where(User.id == token.sub)
-    db_user = (await session.exec(query)).unique().one_or_none()
-    user = db_user if db_user is not None else User(id=token.sub)
+    user = await user_by_id(session, id_=token.sub)
     user.token = token
     return user
 

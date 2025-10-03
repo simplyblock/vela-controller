@@ -1,8 +1,24 @@
 import asyncio
 import subprocess
-from typing import Annotated
+from typing import Annotated, Any, Final
 
-from pydantic import Field
+from pydantic import BeforeValidator, Field, PlainSerializer, StringConstraints, WithJsonSchema
+from ulid import ULID
+
+_MAX_LENGTH = 50
+
+KIB: Final[int] = 1024
+MIB: Final[int] = KIB * 1024
+GIB: Final[int] = MIB * 1024
+
+Slug = Annotated[
+    str,
+    StringConstraints(
+        pattern=r"^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$",
+        min_length=1,
+        max_length=_MAX_LENGTH,
+    ),
+]
 
 
 def single(xs):
@@ -46,3 +62,66 @@ async def check_output(cmd: list[str], *, stderr=None, text: bool = False, timeo
         )
 
     return stdout
+
+
+def validate_ulid(v: Any) -> ULID:
+    if isinstance(v, ULID):
+        return v
+    if isinstance(v, str):
+        return ULID.from_str(v)
+    raise ValueError("Invalid ULID format")
+
+
+Identifier = Annotated[
+    ULID,
+    BeforeValidator(validate_ulid),
+    PlainSerializer(lambda ulid: str(ulid), return_type=str),
+    WithJsonSchema(
+        {
+            "type": "string",
+            "format": "ulid",
+            "pattern": r"^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+            "minLength": 26,
+            "maxLength": 26,
+            "description": "A ULID (Universally Unique Lexicographically Sortable Identifier)",
+            "examples": ["01ARZ3NDEKTSV4RRFFQ69G5FAV", "01H945P9C3K2QJ8F7N6M4R2E8V"],
+            "title": "ULID",
+        }
+    ),
+]
+
+
+def bytes_to_kib(value: int) -> int:
+    """Convert a byte count to the nearest whole KiB using floor division."""
+
+    return value // KIB
+
+
+def bytes_to_mib(value: int) -> int:
+    """Convert a byte count to the nearest whole MiB using floor division."""
+
+    return value // MIB
+
+
+def bytes_to_gib(value: int) -> int:
+    """Convert a byte count to the nearest whole GiB using floor division."""
+
+    return value // GIB
+
+
+def kib_to_bytes(value: int) -> int:
+    """Convert a KiB count to bytes."""
+
+    return value * KIB
+
+
+def mib_to_bytes(value: int) -> int:
+    """Convert a MiB count to bytes."""
+
+    return value * MIB
+
+
+def gib_to_bytes(value: int) -> int:
+    """Convert a GiB count to bytes."""
+
+    return value * GIB

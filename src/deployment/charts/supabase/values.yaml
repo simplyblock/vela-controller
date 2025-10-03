@@ -6,14 +6,17 @@
 # |-- 5.  Storage API
 # |-- 5.  Minio S3 
 
+# docker-compose payload injected via helm --set-file composeYaml
+composeYaml: ""
+
 secret:
   # jwt will be used to reference secret in multiple services:
   # Anon & Service key: Studio, Storage, Kong
   # JWT Secret: Analytics, Auth, Rest, Realtime, Storage
   jwt:
-    anonKey: ""
-    serviceKey: ""
-    secret: ""
+    anonKey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE
+    serviceKey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJzZXJ2aWNlX3JvbGUiLAogICAgImlzcyI6ICJzdXBhYmFzZS1kZW1vIiwKICAgICJpYXQiOiAxNjQxNzY5MjAwLAogICAgImV4cCI6IDE3OTk1MzU2MDAKfQ.DaYlNEoUrrEn2Ig7tqibS-PHK5vgusbcbo7X36XVt4Q
+    secret: your-super-secret-jwt-token-with-at-least-32-characters-long
     # specify existing secret, which takes precedence over variables above
     secretRef: ""
     # override secret keys for existing secret refs
@@ -24,9 +27,9 @@ secret:
   # database credentials
   # these fields must be provided even if using external database
   db:
-    username: ""
-    password: ""
-    database: ""
+    username: postgres
+    password: example123456
+    database: postgres
     # specify existing secret, which takes precedence over variables above
     secretRef: ""
     # override secret keys for existing secret refs
@@ -36,7 +39,7 @@ secret:
       database: database
   # analytics Logflare API key
   analytics:
-    apiKey: ""
+    apiKey: your-super-secret-and-long-logflare-key
     # specify existing secret, which takes precedence over variable above
     secretRef: ""
     # override secret keys for existing secret refs
@@ -44,8 +47,8 @@ secret:
       apiKey: apiKey
   # smtp will be used to reference secret including smtp credentials
   smtp:
-    # username: ""
-    # password: ""
+    username: your-mail@example.com
+    password: example123456
     # specify existing secret, which takes precedence over variables above
     # secretRef: ""
     # override secret keys for existing secret refs
@@ -55,8 +58,8 @@ secret:
   # secret used to access the studio dashboard
   # leave it empty to disable dashboard authentication
   dashboard:
-    # username: ""
-    # password: ""
+    username: supabase
+    password: this_password_is_insecure_and_should_be_updated
     # specify existing secret, which takes precedence over variables above
     # secretRef: ""
     # override secret keys for existing secret refs
@@ -78,15 +81,25 @@ secret:
 db:
   # Enable database provisioning
   enabled: true
+  credentials:
+    adminusername: ''
+    adminpassword: ''
+    admindb: ''
   image:
     repository: supabase/postgres
     pullPolicy: IfNotPresent
-    tag: "latest"
+    tag: "15.1.0.147"
   imagePullSecrets: []
   replicaCount: 1
   nameOverride: ""
   fullnameOverride: ""
-  livenessProbe: {}
+  livenessProbe:
+    exec:
+      command:
+        - pg_isready
+        - -U
+        - postgres
+    initialDelaySeconds: 3
   readinessProbe: {}
   serviceAccount:
     # Specifies whether a service account should be created
@@ -142,12 +155,14 @@ db:
     #   memory: 128Mi
   persistence:
     enabled: true
-    storageClassName: ""
+    storageClassName: "simplyblock-csi-sc"
     annotations: {}
-    size: 8Gi
+    size: 10Gi
     accessModes:
-      - ReadWriteOnce
+      - ReadWriteMany
     class: ""
+  vcpu: 1
+  ram: 2
   autoscaling:
     enabled: true
     minReplicas: 1
@@ -163,22 +178,19 @@ db:
 # Rest Service
 rest:
   # Enable postgrest provisioning
-  enabled: true
+  enabled: false
   image:
     repository: postgrest/postgrest
     pullPolicy: IfNotPresent
-    tag: "latest"
+    tag: v12.0.1
   imagePullSecrets: []
   nameOverride: ""
   fullnameOverride: ""
   livenessProbe:
     httpGet:
       path: /
-      port: http
-    initialDelaySeconds: 10
-    periodSeconds: 10
-    timeoutSeconds: 2
-    failureThreshold: 3
+      port: 3000
+    initialDelaySeconds: 3
   readinessProbe: {}
   serviceAccount:
     # Specifies whether a service account should be created
@@ -247,15 +259,19 @@ rest:
 # Realtime Service
 realtime:
   # Enable realtime provisioning
-  enabled: true
+  enabled: false
   image:
     repository: supabase/realtime
     pullPolicy: IfNotPresent
-    tag: "latest"
+    tag: v2.27.5
   imagePullSecrets: []
   nameOverride: ""
   fullnameOverride: ""
-  livenessProbe: {}
+  livenessProbe:
+    httpGet:
+      path: /
+      port: 4000
+    initialDelaySeconds: 3
   readinessProbe: {}
   serviceAccount:
     # Specifies whether a service account should be created
@@ -328,11 +344,11 @@ realtime:
 # Meta Service
 meta:
   # Enable meta provisioning
-  enabled: true
+  enabled: false
   image:
     repository: supabase/postgres-meta
     pullPolicy: IfNotPresent
-    tag: "latest"
+    tag: v0.80.0
   imagePullSecrets: []
   replicaCount: 1
   nameOverride: ""
@@ -340,11 +356,8 @@ meta:
   livenessProbe:
     httpGet:
       path: /health
-      port: http
-    initialDelaySeconds: 10
-    periodSeconds: 10
-    timeoutSeconds: 2
-    failureThreshold: 3
+      port: 8080
+    initialDelaySeconds: 3
   readinessProbe: {}
   serviceAccount:
     # Specifies whether a service account should be created
@@ -410,16 +423,20 @@ meta:
 # Storage Service
 storage:
   # Enable storage provisioning
-  enabled: true
+  enabled: false
   image:
     repository: supabase/storage-api
     pullPolicy: IfNotPresent
-    tag: "latest"
+    tag: v0.46.4
   imagePullSecrets: []
   replicaCount: 1
   nameOverride: ""
   fullnameOverride: ""
-  livenessProbe: {}
+  livenessProbe:
+    httpGet:
+      path: /status
+      port: 5000
+    initialDelaySeconds: 3
   readinessProbe: {}
   serviceAccount:
     # Specifies whether a service account should be created
@@ -485,7 +502,7 @@ storage:
     #   cpu: 100m
     #   memory: 128Mi
   persistence:
-    enabled: true
+    enabled: false
     storageClassName: ""
     annotations: {}
     size: 10Gi

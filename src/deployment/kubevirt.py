@@ -1,15 +1,17 @@
 from typing import Literal
 
 from fastapi import HTTPException
-from kubernetes import client, config
+from kubernetes_asyncio import client, config
+
+KubevirtSubresourceAction = Literal["pause", "unpause", "start", "stop"]
 
 
-def _ensure_kubeconfig():
+async def _ensure_kubeconfig() -> None:
     try:
         config.load_incluster_config()
     except config.config_exception.ConfigException:
         try:
-            config.load_kube_config()
+            await config.load_kube_config()
         except config.config_exception.ConfigException as e:
             raise HTTPException(
                 status_code=503,
@@ -17,16 +19,15 @@ def _ensure_kubeconfig():
             ) from e
 
 
-def call_kubevirt_subresource(namespace: str, name: str, action: Literal["pause", "resume"]):
-    _ensure_kubeconfig()
-    api_client = client.ApiClient()
+async def call_kubevirt_subresource(namespace: str, name: str, action: KubevirtSubresourceAction):
+    await _ensure_kubeconfig()
     path = f"/apis/subresources.kubevirt.io/v1/namespaces/{namespace}/virtualmachineinstances/{name}/{action}"
-    # KubeVirt subresources accept POST with empty body
-    return api_client.call_api(
-        path,
-        "POST",
-        response_type=None,
-        auth_settings=["BearerToken"],
-        body={},
-        _preload_content=False,
-    )
+    async with client.ApiClient() as api_client:
+        return await api_client.call_api(
+            path,
+            "POST",
+            response_type=None,
+            auth_settings=["BearerToken"],
+            body={},
+            _preload_content=False,
+        )

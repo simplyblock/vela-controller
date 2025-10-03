@@ -25,6 +25,13 @@ services:
       VELA_POSTGRES_URL: 'postgresql+asyncpg://postgres:vela@database:5432/vela'
       VELA_CORS_ORIGINS: '["http://localhost:3000"]'
       VELA_PGMETA_CRYPTO_KEY: 'secret'
+      VELA_KEYCLOAK_URL: 'http://auth:8080/auth/'
+      VELA_KEYCLOAK_CLIENT_ID: 'controller'
+      VELA_KEYCLOAK_CLIENT_SECRET: 'controller-secret'
+      VELA_CLOUDFLARE_API_TOKEN: 'your_cloudflare_api_token'
+      VELA_CLOUDFLARE_ZONE_ID: 'your_cloudflare_zone_id'
+      VELA_CLOUDFLARE_BRANCH_REF_CNAME: 'branch-ref.staging.vela.run'
+      VELA_CLOUDFLARE_DOMAIN_SUFFIX: 'example.com'
     depends_on:
       database:
         condition: service_healthy
