@@ -2,7 +2,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "supabase.rest.fullname" . }}
+  name: supabase-supabase-rest
   labels:
     {{- include "supabase.labels" . | nindent 4 }}
 spec:
@@ -18,7 +18,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "supabase.realtime.fullname" . }}
+  name: supabase-supabase-realtime
   labels:
     {{- include "supabase.labels" . | nindent 4 }}
 spec:
@@ -34,7 +34,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "supabase.storage.fullname" . }}
+  name: supabase-supabase-storage
   labels:
     {{- include "supabase.labels" . | nindent 4 }}
 spec:
@@ -50,7 +50,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "supabase.meta.fullname" . }}
+  name: supabase-supabase-meta
   labels:
     {{- include "supabase.labels" . | nindent 4 }}
 spec:
