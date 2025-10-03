@@ -4,6 +4,7 @@ metadata:
   name: vela-controller
   labels:
     app.kubernetes.io/name: vela-controller
+    app.kubernetes.io/instance: {{ .Release.Name }}
 spec:
   containers:
     - name: vela-controller

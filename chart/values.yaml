@@ -10,5 +10,21 @@ securityContext:
   runAsUser: 65534
   seccompProfile:
     type: 'RuntimeDefault'
+
 domain: staging.vela.run
 domaincertsecret: vela-run-staging-wildcard-cert  # TODO: use cert manager 
+
+analytics:
+  DB_HOST: database
+  DB_DATABASE: logflare
+  DB_DRIVER: postgresql
+  DB_PORT: 5432
+  DB_SCHEMA: _analytics
+  LOGFLARE_NODE_HOST: 127.0.0.1
+  LOGFLARE_SINGLE_TENANT: true
+  LOGFLARE_SUPABASE_MODE: false
+  LOGFLARE_MIN_CLUSTER_SIZE: "1"
+  FEATURE_FLAG_OVERRIDE: multibackend=true
+  LOGFLARE_PUBLIC_ACCESS_TOKEN: my-super-secret-api-key
+  LOGFLARE_PRIVATE_ACCESS_TOKEN: your-super-secret-and-long-logflare-key-private
+ 
