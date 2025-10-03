@@ -29,14 +29,14 @@ spec:
                 name: vela-studio-config
           livenessProbe:
             httpGet:
-              path: /api/healthz
+              path: /
               port: http
             periodSeconds: 5
             timeoutSeconds: 5
             failureThreshold: 3
           readinessProbe:
             httpGet:
-              path: /api/healthz
+              path: /
               port: http
             initialDelaySeconds: 20
           {{- with .Values.securityContext }}
