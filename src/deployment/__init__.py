@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import subprocess
+import os
 import tempfile
 from importlib import resources
 from pathlib import Path
@@ -80,6 +81,7 @@ def inject_branch_env(compose_file: Path, branch: str):
             raise KeyError("Missing 'vector' service in compose file")
 
         vector_env = compose["services"]["vector"].setdefault("environment", {})
+        vector_env["LOGFLARE_PUBLIC_ACCESS_TOKEN"] = os.environ.get("LOGFLARE_PUBLIC_ACCESS_TOKEN", "")
         vector_env["VELA_BRANCH"] = branch
 
         with open(compose_file, "w") as f:
