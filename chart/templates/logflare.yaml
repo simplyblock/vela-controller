@@ -5,8 +5,8 @@ metadata:
   namespace: {{ .Release.Namespace }}
 type: Opaque
 stringData:
-  LOGFLARE_PUBLIC_ACCESS_TOKEN: "my-super-secret-api-key"
-  LOGFLARE_PRIVATE_ACCESS_TOKEN: "your-super-secret-and-long-logflare-key-private"
+  LOGFLARE_PUBLIC_ACCESS_TOKEN: "{{ .Values.analytics.LOGFLARE_PUBLIC_ACCESS_TOKEN }}"
+  LOGFLARE_PRIVATE_ACCESS_TOKEN: "{{ .Values.analytics.LOGFLARE_PRIVATE_ACCESS_TOKEN }}"
 
 ---
 apiVersion: apps/v1
