@@ -263,4 +263,4 @@ spec:
       backendRefs:
         - name: vela-auth-service
           namespace: {{ .Release.Namespace }}
-          port: 8000
+          port: 8080
