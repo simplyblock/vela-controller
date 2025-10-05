@@ -36,6 +36,8 @@ logger = logging.getLogger(__name__)
 kube_service = KubernetesService()
 
 DEFAULT_DATABASE_VM_NAME = "supabase-supabase-db"
+DEFAULT_GATEWAY_NAME = "vela-public-gateway"
+DEFAULT_GATEWAY_NAMESPACE = "kong-system"
 
 
 def deployment_namespace(branch_id: Identifier) -> str:
@@ -504,6 +506,33 @@ async def _apply_kong_plugin(namespace: str, plugin: dict[str, Any]) -> None:
         await kube_service.apply_kong_plugin(namespace, plugin)
     except Exception as exc:  # pragma: no cover - surfaced to caller
         raise VelaKubernetesError(f"Failed to apply KongPlugin: {exc}") from exc
+
+
+def _build_kong_plugin(namespace: str) -> dict[str, Any]:
+    return {
+        "apiVersion": "configuration.konghq.com/v1",
+        "kind": "KongPlugin",
+        "metadata": {
+            "name": "realtime-cors",
+            "namespace": namespace,
+        },
+        "config": {
+            "origins": ["*"],  # todo: restrict this
+            "methods": ["GET", "POST", "OPTIONS", "PUT", "DELETE"],
+            "headers": ["*"],
+            "exposed_headers": ["*"],
+            "credentials": True,
+        },
+        "plugin": "cors",
+    }
+
+
+async def _apply_kong_plugin(namespace: str, plugin: dict[str, Any]) -> None:
+    """Apply KongPlugin manifest without blocking the event loop."""
+    try:
+        await kube_service.apply_kong_plugin(namespace, plugin)
+    except Exception as exc:  # pragma: no cover - surfaced to caller
+        raise BranchEndpointError(f"Failed to apply KongPlugin: {exc}") from exc
 
 
 async def provision_branch_endpoints(
