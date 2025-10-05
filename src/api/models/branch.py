@@ -4,7 +4,7 @@ from typing import Annotated, ClassVar, Literal, Optional
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel, model_validator
 from pydantic import Field as PydanticField
-from sqlalchemy import BigInteger, Column, String, UniqueConstraint
+from sqlalchemy import BigInteger, Column, String, Text, UniqueConstraint
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship, select
@@ -44,6 +44,9 @@ class Branch(AsyncAttrs, Model, table=True):
     iops: Annotated[int, Field(**IOPS_CONSTRAINTS, sa_column=Column(BigInteger))]
     storage_size: Annotated[int, Field(**STORAGE_SIZE_CONSTRAINTS, sa_column=Column(BigInteger))]
     database_image_tag: str
+    jwt_secret: Annotated[str, Field(default=None, sa_column=Column(Text, nullable=True))]
+    anon_key: Annotated[str, Field(default=None, sa_column=Column(Text, nullable=True))]
+    service_key: Annotated[str, Field(default=None, sa_column=Column(Text, nullable=True))]
 
     __table_args__ = (UniqueConstraint("project_id", "name", name="unique_branch_name_per_project"),)
 
@@ -186,8 +189,18 @@ class ResourceUsageDefinition(BaseModel):
 
 
 class BranchApiKeys(BaseModel):
-    anon: str
-    service_role: str
+    anon: str | None
+    service_role: str | None
+
+
+class ApiKeyDetails(BaseModel):
+    name: str
+    api_key: str
+    id: str
+    type: Literal["legacy"]
+    hash: str
+    prefix: str
+    description: str
 
 
 class BranchStatus(BaseModel):
