@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 kube_service = KubernetesService()
 
-DEFAULT_GATEWAY_NAME = "public-gateway"
+DEFAULT_GATEWAY_NAME = "vela-public-gateway"
 DEFAULT_GATEWAY_NAMESPACE = "kong-system"
 
 
@@ -314,6 +314,7 @@ def _build_http_route(cfg: KubeGatewayConfig, spec: HTTPRouteSpec) -> dict[str, 
             "namespace": spec.namespace,
             "annotations": {
                 "konghq.com/strip-path": "true",
+                "konghq.com/plugins": "realtime-cors",
             },
         },
         "spec": {
@@ -412,6 +413,33 @@ async def _apply_http_routes(namespace: str, routes: list[dict[str, Any]]) -> No
         raise BranchEndpointError(f"Failed to apply HTTPRoute: {exc}") from exc
 
 
+def _build_kong_plugin(namespace: str) -> dict[str, Any]:
+    return {
+        "apiVersion": "configuration.konghq.com/v1",
+        "kind": "KongPlugin",
+        "metadata": {
+            "name": "realtime-cors",
+            "namespace": namespace,
+        },
+        "config": {
+            "origins": ["*"],  # todo: restrict this
+            "methods": ["GET", "POST", "OPTIONS", "PUT", "DELETE"],
+            "headers": ["*"],
+            "exposed_headers": ["*"],
+            "credentials": True,
+        },
+        "plugin": "cors",
+    }
+
+
+async def _apply_kong_plugin(namespace: str, plugin: dict[str, Any]) -> None:
+    """Apply KongPlugin manifest without blocking the event loop."""
+    try:
+        await kube_service.apply_kong_plugin(namespace, plugin)
+    except Exception as exc:  # pragma: no cover - surfaced to caller
+        raise BranchEndpointError(f"Failed to apply KongPlugin: {exc}") from exc
+
+
 async def provision_branch_endpoints(
     spec: BranchEndpointProvisionSpec,
     *,
@@ -437,6 +465,10 @@ async def provision_branch_endpoints(
     )
 
     await _create_dns_record(cf_cfg, domain)
+
+    # Apply the KongPlugin for CORS
+    kong_plugin = _build_kong_plugin(gateway_cfg.namespace)
+    await _apply_kong_plugin(gateway_cfg.namespace, kong_plugin)
 
     route_specs = (
         _postgrest_route_specs(ref, domain, gateway_cfg.namespace)

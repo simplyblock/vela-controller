@@ -104,3 +104,35 @@ class KubernetesService:
                     )
                 else:
                     raise
+
+    async def apply_kong_plugin(self, namespace: str, plugin: dict[str, Any]) -> None:
+        await self._ensure_clients()
+        group, version = plugin["apiVersion"].split("/")
+        plural = "kongplugins"
+
+        try:
+            await self.custom.create_namespaced_custom_object(
+                group=group,
+                version=version,
+                namespace=namespace,
+                plural=plural,
+                body=plugin,
+            )
+            logger.info("Created KongPlugin %s in %s", plugin["metadata"]["name"], namespace)
+        except client.exceptions.ApiException as exc:
+            if exc.status == 409:
+                logger.info(
+                    "KongPlugin %s already exists in %s; replacing",
+                    plugin["metadata"]["name"],
+                    namespace,
+                )
+                await self.custom.replace_namespaced_custom_object(
+                    group=group,
+                    version=version,
+                    namespace=namespace,
+                    plural=plural,
+                    name=plugin["metadata"]["name"],
+                    body=plugin,
+                )
+            else:
+                raise
