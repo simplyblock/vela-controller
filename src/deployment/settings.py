@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     cloudflare_zone_id: str
     cloudflare_branch_ref_cname: str
     cloudflare_domain_suffix: str
+    gateway_name: str = "public-gateway"
+    gateway_namespace: str = "kong-system"
 
 
 settings = Settings()  # type: ignore[call-arg]
