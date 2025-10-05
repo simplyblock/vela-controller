@@ -215,8 +215,7 @@ async def create(
         database_user=source.database_user,
         database_password=source.database_password,
         database_size=source.database_size,
-        storage_size=source.storage_size,
-        milli_vcpu=source.milli_vcpu,
+        vcpu=source.vcpu,
         memory=source.memory,
         iops=source.iops,
         database_image_tag=source.database_image_tag,
@@ -327,7 +326,7 @@ async def delete(
 )
 async def resize(_organization: OrganizationDep, _project: ProjectDep, parameters: ResizeParameters, branch: BranchDep):
     # Trigger helm upgrade with provided parameters; returns 202 Accepted
-    resize_deployment(branch.id, parameters)
+    resize_deployment(branch.id, branch.name, parameters)
     return Response(status_code=202)
 
 

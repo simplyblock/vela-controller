@@ -206,11 +206,12 @@ class BranchPublic(BaseModel):
 
 
 class BranchDetailResources(BaseModel):
-    milli_vcpu: Annotated[
+    vcpu: Annotated[
         int,
         PydanticField(
-            **CPU_CONSTRAINTS,
-            description="Number of milli vCPUs provisioned (matches Branch.milli_vcpu constraints).",
+            ge=1,
+            le=2**31 - 1,
+            description="Number of virtual CPUs provisioned (matches Branch.vcpu constraints).",
         ),
     ]
     ram_bytes: Annotated[
