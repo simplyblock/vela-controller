@@ -1,0 +1,5 @@
+simplyblock_endpoint = "http://1.1.1.1/"
+simplyblock_cluster_id = "00000000-0000-0000-0000-000000000000"
+simplyblock_cluster_secret = "00000000000000000000"
+simplyblock_pool_name = "name"
+external_ip = 1.2.3.4
