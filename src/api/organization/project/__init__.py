@@ -5,6 +5,7 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
+from keycloak.exceptions import KeycloakError
 from kubernetes_asyncio.client.exceptions import ApiException
 from sqlalchemy.exc import IntegrityError
 
@@ -20,6 +21,7 @@ from ....deployment.kubevirt import call_kubevirt_subresource
 from ....exceptions import VelaError
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ...db import SessionDep
+from ...keycloak import realm_admin
 from ...models.branch import Branch
 from ...models.organization import OrganizationDep
 from ...models.project import (
@@ -142,15 +144,6 @@ async def create(
         name=parameters.name,
     )
     session.add(entity)
-    try:
-        await session.commit()
-    except IntegrityError as e:
-        error = str(e)
-        if ("asyncpg.exceptions.UniqueViolationError" not in error) or ("unique_project_name" not in error):
-            raise
-        raise HTTPException(409, f"Organization already has project named {parameters.name}") from e
-    await session.refresh(entity)
-    # Ensure default branch exists
     main_branch = Branch(
         name=Branch.DEFAULT_SLUG,
         project=entity,
@@ -166,17 +159,29 @@ async def create(
         database_image_tag=parameters.deployment.database_image_tag,
     )
     session.add(main_branch)
-    await session.commit()
-    await session.refresh(main_branch)
+    try:
+        await realm_admin("master").a_create_realm({"realm": str(main_branch.id)})
+        await realm_admin(str(main_branch.id)).a_create_client({"clientId": "application-client"})
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        error = str(exc)
+        if "asyncpg.exceptions.UniqueViolationError" in error and "unique_branch_name_per_project" in error:
+            raise HTTPException(409, f"Project already has branch named {parameters.name}") from exc
+        raise
+    except KeycloakError:
+        await session.rollback()
+        logging.exception("Failed to connect to keycloak")
+        raise
+
     await session.refresh(entity)
-    branch_slug = main_branch.name
-    branch_dbid = main_branch.id
+    await session.refresh(main_branch)
 
     asyncio.create_task(
         _deploy_branch_environment_task(
             project_id=entity.id,
-            branch_id=branch_dbid,
-            branch_slug=branch_slug,
+            branch_id=main_branch.id,
+            branch_slug=main_branch.name,
             parameters=parameters.deployment,
         )
     )

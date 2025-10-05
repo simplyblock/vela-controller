@@ -2,10 +2,12 @@ from keycloak import KeycloakAdmin
 
 from .settings import settings
 
-admin = KeycloakAdmin(
-    str(settings.keycloak_url),
-    client_id=settings.keycloak_client_id,
-    client_secret_key=settings.keycloak_client_secret,
-    realm_name=settings.keycloak_realm,
-    verify=True,
-)
+
+def realm_admin(realm_name: str) -> KeycloakAdmin:
+    return KeycloakAdmin(
+        server_url=str(settings.keycloak_url),
+        username=settings.keycloak_admin_name,
+        password=settings.keycloak_admin_secret,
+        realm_name=realm_name,
+        user_realm_name="master",
+    )

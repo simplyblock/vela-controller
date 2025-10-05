@@ -9,11 +9,12 @@ from Crypto.Hash import MD5
 from Crypto.Random import get_random_bytes
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
+from keycloak.exceptions import KeycloakError
 from kubernetes_asyncio.client.exceptions import ApiException
 from sqlalchemy.exc import IntegrityError
 
-from ...._util import Identifier
-from ....deployment import (
+from ....._util import Identifier
+from .....deployment import (
     DeploymentParameters,
     ResizeParameters,
     branch_api_domain,
@@ -24,12 +25,13 @@ from ....deployment import (
     get_db_vmi_identity,
     resize_deployment,
 )
-from ....deployment.kubevirt import KubevirtSubresourceAction, call_kubevirt_subresource, get_virtualmachine_status
-from ....deployment.settings import settings as deployment_settings
-from ....exceptions import VelaDeploymentError, VelaError
-from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
-from ...db import SessionDep
-from ...models.branch import (
+from .....deployment.kubevirt import KubevirtSubresourceAction, call_kubevirt_subresource, get_virtualmachine_status
+from .....deployment.settings import settings as deployment_settings
+from .....exceptions import VelaDeploymentError, VelaError
+from ...._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
+from ....db import SessionDep
+from ....keycloak import realm_admin
+from ....models.branch import (
     Branch,
     BranchApiKeys,
     BranchCreate,
@@ -40,12 +42,13 @@ from ...models.branch import (
     DatabaseInformation,
     ResourceUsageDefinition,
 )
-from ...models.branch import (
+from ....models.branch import (
     lookup as lookup_branch,
 )
-from ...models.organization import OrganizationDep
-from ...models.project import ProjectDep
-from ...settings import settings
+from ....models.organization import OrganizationDep
+from ....models.project import ProjectDep
+from ....settings import settings
+from .auth import api as auth_api
 
 api = APIRouter(tags=["branch"])
 
@@ -268,6 +271,8 @@ async def create(
         )
     session.add(entity)
     try:
+        await realm_admin("master").a_create_realm({"realm": str(entity.id)})
+        await realm_admin(str(entity.id)).a_create_client({"clientId": "application-client"})
         await session.commit()
     except IntegrityError as exc:
         await session.rollback()
@@ -275,6 +280,11 @@ async def create(
         if "asyncpg.exceptions.UniqueViolationError" in error and "unique_branch_name_per_project" in error:
             raise HTTPException(409, f"Project already has branch named {parameters.name}") from exc
         raise
+    except KeycloakError:
+        await session.rollback()
+        logging.exception("Failed to connect to keycloak")
+        raise
+
     await session.refresh(entity)
 
     entity_url = url_path_for(
@@ -367,6 +377,7 @@ async def delete(
     if branch.name == Branch.DEFAULT_SLUG:
         raise HTTPException(400, "Default branch cannot be deleted")
     await delete_deployment(branch.id)
+    await realm_admin("master").a_delete_realm(str(branch.id))
     await session.delete(branch)
     await session.commit()
     return Response(status_code=204)
@@ -439,6 +450,8 @@ async def control_branch(
         status = 404 if e.status == 404 else 400
         raise HTTPException(status_code=status, detail=e.body or str(e)) from e
 
+
+instance_api.include_router(auth_api, prefix="/auth")
 
 api.include_router(instance_api)
 

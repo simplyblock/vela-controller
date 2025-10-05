@@ -11,6 +11,8 @@ jobs:
     env:
       VELA_KEYCLOAK_CLIENT_ID: ''
       VELA_KEYCLOAK_CLIENT_SECRET: ''
+      VELA_KEYCLOAK_ADMIN_NAME: ''
+      VELA_KEYCLOAK_ADMIN_SECRET: ''
       VELA_KEYCLOAK_URL: 'http://example.com/'
       VELA_PGMETA_CRYPTO_KEY: ''
       VELA_POSTGRES_URL: 'postgresql+asyncpg://user:password@host:1234/database'
@@ -46,7 +48,7 @@ jobs:
       run: |
         git fetch origin ${{ github.base_ref }}
         git switch ${{ github.base_ref }}
-        pip install .
+        pip install --force-reinstall .
         python3 -c 'import json; from simplyblock.vela.api  import app; print(json.dumps(app.openapi()))' > old-openapi.json
 
     - name: Diff to current specification
