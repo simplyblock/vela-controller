@@ -190,8 +190,8 @@ def get_db_vmi_identity(id_: Identifier, branch: Slug) -> tuple[str, str]:
 
 
 class ResizeParameters(BaseModel):
-    database_size: Annotated[int | None, Field(gt=0, multiple_of=GIB)] = None
-    storage_size: Annotated[int | None, Field(gt=0, multiple_of=GIB)] = None
+    database_size: Annotated[int, Field(gt=0, multiple_of=GIB)] | None
+    storage_size: Annotated[int, Field(gt=0, multiple_of=GIB)] | None
 
 
 def resize_deployment(id_: Identifier, name: str, parameters: ResizeParameters):
