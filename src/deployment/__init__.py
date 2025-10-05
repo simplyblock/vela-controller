@@ -124,7 +124,14 @@ class DeploymentStatus(BaseModel):
     status: StatusType
 
 
-async def create_vela_config(branch_id: Identifier, parameters: DeploymentParameters, branch: Slug):
+async def create_vela_config(
+    branch_id: Identifier,
+    parameters: DeploymentParameters,
+    branch: Slug,
+    jwt_secret: str,
+    anon_key: str,
+    service_key: str,
+):
     namespace = deployment_namespace(branch_id)
     logging.info(
         "Creating Vela configuration for namespace: %s (database %s, user %s, branch %s, branch_id=%s)",
@@ -148,6 +155,11 @@ async def create_vela_config(branch_id: Identifier, parameters: DeploymentParame
     values_content = yaml.safe_load((chart / "values.yaml").read_text())
 
     # Override defaults
+    jwt_creds = values_content.setdefault("secret", {}).setdefault("jwt", {})
+    jwt_creds["secret"] = jwt_secret
+    jwt_creds["anonKey"] = anon_key
+    jwt_creds["serviceKey"] = service_key
+
     db_secrets = values_content.setdefault("db", {}).setdefault("credentials", {})
     db_secrets["adminusername"] = parameters.database_user
     db_secrets["adminpassword"] = parameters.database_password
@@ -177,7 +189,6 @@ async def create_vela_config(branch_id: Identifier, parameters: DeploymentParame
     storage_persistence = storage_spec.setdefault("persistence", {})
     storage_persistence["enabled"] = True
     storage_persistence["size"] = f"{bytes_to_gib(parameters.storage_size)}Gi"
-    namespace = deployment_namespace(branch_id)
 
     # todo: create an storage class with the given IOPS
     values_content["provisioning"] = {"iops": parameters.iops}
@@ -508,33 +519,6 @@ async def _apply_kong_plugin(namespace: str, plugin: dict[str, Any]) -> None:
         raise VelaKubernetesError(f"Failed to apply KongPlugin: {exc}") from exc
 
 
-def _build_kong_plugin(namespace: str) -> dict[str, Any]:
-    return {
-        "apiVersion": "configuration.konghq.com/v1",
-        "kind": "KongPlugin",
-        "metadata": {
-            "name": "realtime-cors",
-            "namespace": namespace,
-        },
-        "config": {
-            "origins": ["*"],  # todo: restrict this
-            "methods": ["GET", "POST", "OPTIONS", "PUT", "DELETE"],
-            "headers": ["*"],
-            "exposed_headers": ["*"],
-            "credentials": True,
-        },
-        "plugin": "cors",
-    }
-
-
-async def _apply_kong_plugin(namespace: str, plugin: dict[str, Any]) -> None:
-    """Apply KongPlugin manifest without blocking the event loop."""
-    try:
-        await kube_service.apply_kong_plugin(namespace, plugin)
-    except Exception as exc:  # pragma: no cover - surfaced to caller
-        raise BranchEndpointError(f"Failed to apply KongPlugin: {exc}") from exc
-
-
 async def provision_branch_endpoints(
     spec: BranchEndpointProvisionSpec,
     *,
@@ -585,11 +569,16 @@ async def deploy_branch_environment(
     branch_id: Identifier,
     branch_slug: Slug,
     parameters: DeploymentParameters,
+    jwt_secret: str,
+    anon_key: str,
+    service_key: str,
 ) -> None:
     """Background task: provision infra for a branch and persist the resulting endpoint."""
 
     # Create the main deployment (database etc)
-    await create_vela_config(branch_id, parameters, branch_slug)
+    await create_vela_config(
+        project_id, parameters, branch_slug, jwt_secret=jwt_secret, anon_key=anon_key, service_key=service_key
+    )
 
     # Provision DNS + HTTPRoute resources
     ref = branch_dns_label(branch_id)
