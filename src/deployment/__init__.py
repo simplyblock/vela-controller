@@ -20,8 +20,6 @@ logger = logging.getLogger(__name__)
 
 kube_service = KubernetesService()
 
-DEFAULT_GATEWAY_NAME = "vela-public-gateway"
-DEFAULT_GATEWAY_NAMESPACE = "kong-system"
 DEFAULT_DATABASE_VM_NAME = "supabase-supabase-db"
 
 
@@ -244,8 +242,8 @@ class CloudflareConfig(BaseModel):
 
 class KubeGatewayConfig(BaseModel):
     namespace: str = ""
-    gateway_name: str = DEFAULT_GATEWAY_NAME
-    gateway_namespace: str = DEFAULT_GATEWAY_NAMESPACE
+    gateway_name: str = settings.gateway_name
+    gateway_namespace: str = settings.gateway_namespace
 
     def for_namespace(self, namespace: str) -> "KubeGatewayConfig":
         return self.model_copy(update={"namespace": namespace})
