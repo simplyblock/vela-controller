@@ -85,8 +85,8 @@ metadata:
   name: vela-studio
 spec:
   parentRefs:
-    - name: vela-public-gateway
-      namespace: kong-system
+    - name: {{ .Values.gateway.name }}
+      namespace: {{ .Values.gateway.namespace }}
   hostnames:
     - "{{ .Values.domain }}"
   rules:
