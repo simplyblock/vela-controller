@@ -307,7 +307,7 @@ async def delete(
 )
 async def resize(_organization: OrganizationDep, _project: ProjectDep, parameters: ResizeParameters, branch: BranchDep):
     # Trigger helm upgrade with provided parameters; returns 202 Accepted
-    resize_deployment(branch.id, branch.name, parameters)
+    resize_deployment(branch.project_id, branch.name, parameters)
     return Response(status_code=202)
 
 
