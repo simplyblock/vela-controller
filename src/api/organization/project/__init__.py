@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from collections.abc import Sequence
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
@@ -9,7 +9,7 @@ from kubernetes_asyncio.client.exceptions import ApiException
 from sqlalchemy.exc import IntegrityError
 
 from .... import VelaError
-from ...._util import Identifier
+from ...._util import Identifier, StatusType
 from ....deployment import (
     DeploymentParameters,
     delete_deployment,
@@ -54,12 +54,18 @@ async def _deploy_branch_environment_task(
 
 
 async def _public(project: Project) -> ProjectPublic:
-    status = await get_deployment_status(project.id, Branch.DEFAULT_SLUG)
+    branch_status: dict[Any, StatusType] = {}
+    branches = await project.awaitable_attrs.branches
+    if not branches:
+        raise HTTPException(500, "Project has no branches")
+    for branch in branches:
+        status = await get_deployment_status(project.id, branch.name)
+        branch_status[branch.name] = status.status
     return ProjectPublic(
         organization_id=project.organization_id,
         id=project.id,
         name=project.name,
-        status=status.status,
+        branch_status=branch_status,
     )
 
 
@@ -256,19 +262,29 @@ async def delete(session: SessionDep, _organization: OrganizationDep, project: P
 
 
 @instance_api.post(
-    "/pause",
-    name="organizations:projects:pause",
+    "/suspend",
+    name="organizations:projects:suspend",
     status_code=204,
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
-async def pause(_organization: OrganizationDep, project: ProjectDep):
-    namespace, vmi_name = get_db_vmi_identity(project.id, Branch.DEFAULT_SLUG)
-    try:
-        await call_kubevirt_subresource(namespace, vmi_name, "pause")
-        return Response(status_code=204)
-    except ApiException as e:
-        status = 404 if e.status == 404 else 400
-        raise HTTPException(status_code=status, detail=e.body or str(e)) from e
+async def suspend(_organization: OrganizationDep, project: ProjectDep):
+    # get all the branches and stop their VM
+    branches = await project.awaitable_attrs.branches
+    errors = []
+
+    for branch in branches:
+        namespace, vmi_name = get_db_vmi_identity(project.id, branch.name)
+        try:
+            # a paused VM will still consume resources, so we stop it instead
+            # https://kubevirt.io/user-guide/user_workloads/lifecycle/#pausing-and-unpausing-a-virtual-machine
+            await call_kubevirt_subresource(namespace, vmi_name, "stop")
+        except ApiException as e:
+            errors.append(f"{vmi_name}: {e.status}")
+
+    if errors:
+        raise HTTPException(status_code=400, detail={"failed": errors})
+
+    return Response(status_code=204)
 
 
 @instance_api.post(
@@ -278,13 +294,21 @@ async def pause(_organization: OrganizationDep, project: ProjectDep):
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def resume(_organization: OrganizationDep, project: ProjectDep):
-    namespace, vmi_name = get_db_vmi_identity(project.id, Branch.DEFAULT_SLUG)
-    try:
-        await call_kubevirt_subresource(namespace, vmi_name, "unpause")
-        return Response(status_code=204)
-    except ApiException as e:
-        status = 404 if e.status == 404 else 400
-        raise HTTPException(status_code=status, detail=e.body or str(e)) from e
+    # get all the branches and start their VM
+    branches = await project.awaitable_attrs.branches
+    errors = []
+
+    for branch in branches:
+        namespace, vmi_name = get_db_vmi_identity(project.id, branch.name)
+        try:
+            await call_kubevirt_subresource(namespace, vmi_name, "start")
+        except ApiException as e:
+            errors.append(f"{vmi_name}: {e.status}")
+
+    if errors:
+        raise HTTPException(status_code=400, detail={"failed": errors})
+
+    return Response(status_code=204)
 
 
 api.include_router(instance_api)

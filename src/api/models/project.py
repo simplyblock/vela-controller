@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel
@@ -7,7 +7,7 @@ from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Relationship, select
 
-from ..._util import Identifier
+from ..._util import Identifier, StatusType
 from ...deployment import DeploymentParameters
 from ..db import SessionDep
 from ._util import Model, Name
@@ -39,7 +39,7 @@ class ProjectPublic(BaseModel):
     organization_id: Identifier
     id: Identifier
     name: Name
-    status: str
+    branch_status: dict[Any, StatusType]
 
 
 async def _lookup(session: SessionDep, organization: OrganizationDep, project_id: Identifier) -> Project:

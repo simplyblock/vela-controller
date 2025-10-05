@@ -102,7 +102,7 @@ async def main():
         from simplyblock.vela.api import app
         from simplyblock.vela.deployment import DeploymentStatus
 
-        mock_status.return_value = DeploymentStatus(status="ACTIVE_HEALTHY", pods={}, message="")
+        mock_status.return_value = DeploymentStatus(status="Running")
 
         config = uvicorn.Config(app, port=port, log_level="info")
         server = uvicorn.Server(config)
