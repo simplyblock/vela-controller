@@ -167,7 +167,7 @@ sinks:
     request:
       retry_max_duration_secs: 30
       headers:
-        x-api-key: ${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
+        x-api-key: "${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}"
     uri: 'http://staging.vela.run/logs/api/logs?source_name=gotrue.logs.prod'
   logflare_realtime:
     type: 'http'
@@ -179,7 +179,7 @@ sinks:
     request:
       retry_max_duration_secs: 30
       headers:
-        x-api-key: ${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
+        x-api-key: "${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}"
     uri: 'http://staging.vela.run/logs/api/logs?source_name=realtime.logs.prod'
   logflare_rest:
     type: 'http'
@@ -191,7 +191,7 @@ sinks:
     request:
       retry_max_duration_secs: 30
       headers:
-        x-api-key: ${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
+        x-api-key: "${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}"
     uri: 'http://staging.vela.run/logs/api/logs?source_name=postgREST.logs.prod'
   logflare_db:
     type: 'http'
@@ -203,7 +203,7 @@ sinks:
     request:
       retry_max_duration_secs: 30
       headers:
-        x-api-key: ${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
+        x-api-key: "${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}"
     uri: 'http://kong:8000/analytics/v1/api/logs?source_name=postgres.logs'
   logflare_functions:
     type: 'http'
@@ -215,7 +215,7 @@ sinks:
     request:
       retry_max_duration_secs: 30
       headers:
-        x-api-key: ${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
+        x-api-key: "${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}"
     uri: 'http://staging.vela.run/logs/api/logs?source_name=deno-relay-logs'
   logflare_storage:
     type: 'http'
@@ -227,7 +227,7 @@ sinks:
     request:
       retry_max_duration_secs: 30
       headers:
-        x-api-key: ${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
+        x-api-key: "${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}"
     uri: 'http://staging.vela.run/logs/api/logs?source_name=storage.logs.prod.2'
   logflare_kong:
     type: 'http'
@@ -240,5 +240,5 @@ sinks:
     request:
       retry_max_duration_secs: 30
       headers:
-        x-api-key: ${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
+        x-api-key: "${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}"
     uri: 'http://staging.vela.run/logs/api/logs?source_name=cloudflare.logs.prod'
