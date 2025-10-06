@@ -25,13 +25,18 @@ DEFAULT_GATEWAY_NAMESPACE = "kong-system"
 DEFAULT_DATABASE_VM_NAME = "supabase-supabase-db"
 
 
-def deployment_namespace(id_: Identifier, branch: Slug) -> str:
-    branch_value = branch.lower()
-    identifier = str(id_).lower()
-    prefix = f"{settings.deployment_namespace_prefix.lower()}-deployment-"
-    max_branch_length = max(1, 63 - len(prefix) - len(identifier) - 1)
-    trimmed_branch = branch_value[:max_branch_length]
-    return f"{prefix}{identifier}-{trimmed_branch}"
+def deployment_namespace(branch_id: Identifier) -> str:
+    """Return the Kubernetes namespace for a branch using `<prefix>-<branch_id>` format."""
+
+    branch_value = str(branch_id).lower()
+    prefix = settings.deployment_namespace_prefix.lower().strip()
+    sanitized_prefix = prefix.strip("-")
+    if sanitized_prefix:
+        truncated_prefix = sanitized_prefix[:61]
+        max_branch_length = 63 - len(truncated_prefix) - 1
+        trimmed_branch = branch_value[: max(1, max_branch_length)]
+        return f"{truncated_prefix}-{trimmed_branch}"
+    return branch_value[:63]
 
 
 def branch_dns_label(branch_id: Identifier) -> str:
@@ -88,10 +93,15 @@ class DeploymentStatus(BaseModel):
     status: StatusType
 
 
-async def create_vela_config(id_: Identifier, parameters: DeploymentParameters, branch: Slug):
+async def create_vela_config(branch_id: Identifier, parameters: DeploymentParameters, branch: Slug):
+    namespace = deployment_namespace(branch_id)
     logging.info(
-        f"Creating Vela configuration for namespace: {deployment_namespace(id_, branch)}"
-        f" (database {parameters.database}, user {parameters.database_user}, branch {branch})"
+        "Creating Vela configuration for namespace: %s (database %s, user %s, branch %s, branch_id=%s)",
+        namespace,
+        parameters.database,
+        parameters.database_user,
+        branch,
+        branch_id,
     )
 
     chart = resources.files(__package__) / "charts" / "supabase"
@@ -117,7 +127,7 @@ async def create_vela_config(id_: Identifier, parameters: DeploymentParameters, 
     storage_persistence = storage_spec.setdefault("persistence", {})
     storage_persistence["enabled"] = True
     storage_persistence["size"] = f"{bytes_to_gib(parameters.storage_size)}Gi"
-    namespace = deployment_namespace(id_, branch)
+    namespace = deployment_namespace(branch_id)
 
     # todo: create an storage class with the given IOPS
     values_content["provisioning"] = {"iops": parameters.iops}
@@ -153,10 +163,10 @@ async def create_vela_config(id_: Identifier, parameters: DeploymentParameters, 
             raise
 
 
-async def get_deployment_status(project_id: Identifier, branch_name: Slug) -> DeploymentStatus:
+async def get_deployment_status(branch_id: Identifier) -> DeploymentStatus:
     status: StatusType
     try:
-        namespace, vmi_name = get_db_vmi_identity(project_id, branch_name)
+        namespace, vmi_name = get_db_vmi_identity(branch_id)
         status = await get_virtualmachine_status(namespace, vmi_name)
     except Exception as e:  # noqa: BLE001
         logger.warning(f"Failed to get deployment status (returning UNKNOWN): {e}")
@@ -164,8 +174,8 @@ async def get_deployment_status(project_id: Identifier, branch_name: Slug) -> De
     return DeploymentStatus(status=status)
 
 
-async def delete_deployment(project_id: Identifier, branch_name: Slug) -> None:
-    namespace, _ = get_db_vmi_identity(project_id, branch_name)
+async def delete_deployment(branch_id: Identifier) -> None:
+    namespace, _ = get_db_vmi_identity(branch_id)
     release = _release_name(namespace)
     await asyncio.to_thread(
         subprocess.check_call,
@@ -175,7 +185,7 @@ async def delete_deployment(project_id: Identifier, branch_name: Slug) -> None:
     await kube_service.delete_namespace(namespace)
 
 
-def get_db_vmi_identity(id_: Identifier, branch: Slug) -> tuple[str, str]:
+def get_db_vmi_identity(branch_id: Identifier) -> tuple[str, str]:
     """
     Return the (namespace, vmi_name) for the project's database VirtualMachineInstance.
 
@@ -184,7 +194,7 @@ def get_db_vmi_identity(id_: Identifier, branch: Slug) -> tuple[str, str]:
     "supabase") and chart name "supabase", the VMI resolves to
     f"{_release_name(namespace)}-supabase-db".
     """
-    namespace = deployment_namespace(id_, branch)
+    namespace = deployment_namespace(branch_id)
     vmi_name = f"{_release_name(namespace)}-supabase-db"
     return namespace, vmi_name
 
@@ -194,7 +204,7 @@ class ResizeParameters(BaseModel):
     storage_size: Annotated[int, Field(gt=0, multiple_of=GIB)] | None
 
 
-def resize_deployment(id_: Identifier, name: str, parameters: ResizeParameters):
+def resize_deployment(branch_id: Identifier, parameters: ResizeParameters):
     """Perform an in-place Helm upgrade to disk. Only parameters provided will be updated.
     others are preserved using --reuse-values.
     """
@@ -213,7 +223,7 @@ def resize_deployment(id_: Identifier, name: str, parameters: ResizeParameters):
         storage_persistence["enabled"] = True
         storage_persistence["size"] = storage_size_gi
 
-    namespace = deployment_namespace(id_, name)
+    namespace = deployment_namespace(branch_id)
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as temp_values:
         yaml.dump(values_content, temp_values, default_flow_style=False)
         subprocess.check_call(
@@ -263,6 +273,7 @@ class HTTPRouteSpec(BaseModel):
 
 class BranchEndpointProvisionSpec(BaseModel):
     project_id: Identifier
+    branch_id: Identifier
     branch_slug: str
 
 
@@ -439,12 +450,13 @@ async def provision_branch_endpoints(
         domain_suffix=settings.cloudflare_domain_suffix,
     )
 
-    gateway_cfg = KubeGatewayConfig().for_namespace(deployment_namespace(spec.project_id, spec.branch_slug))
+    gateway_cfg = KubeGatewayConfig().for_namespace(deployment_namespace(spec.branch_id))
 
     domain = f"{ref}.{cf_cfg.domain_suffix}".lower()
     logger.info(
-        "Provisioning endpoints for project_id=%s branch=%s domain=%s",
+        "Provisioning endpoints for project_id=%s branch_id=%s branch_slug=%s domain=%s",
         spec.project_id,
+        spec.branch_id,
         spec.branch_slug,
         domain,
     )
@@ -477,10 +489,15 @@ async def deploy_branch_environment(
     """Background task: provision infra for a branch and persist the resulting endpoint."""
 
     # Create the main deployment (database etc)
-    await create_vela_config(project_id, parameters, branch_slug)
+    await create_vela_config(branch_id, parameters, branch_slug)
 
     # Provision DNS + HTTPRoute resources
     ref = branch_dns_label(branch_id)
     await provision_branch_endpoints(
-        spec=BranchEndpointProvisionSpec(project_id=project_id, branch_slug=branch_slug), ref=ref
+        spec=BranchEndpointProvisionSpec(
+            project_id=project_id,
+            branch_id=branch_id,
+            branch_slug=branch_slug,
+        ),
+        ref=ref,
     )
