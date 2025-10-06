@@ -264,12 +264,4 @@ spec:
         - name: vela-auth-service
           namespace: {{ .Release.Namespace }}
           port: 8080
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /logs
-      backendRefs:
-        - name: vela-logflare
-          namespace: {{ .Release.Namespace }}
-          port: 4000
           

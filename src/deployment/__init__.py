@@ -82,6 +82,7 @@ def inject_branch_env(compose_file: Path, branch: str):
 
         vector_env = compose["services"]["vector"].setdefault("environment", {})
         vector_env["LOGFLARE_PUBLIC_ACCESS_TOKEN"] = os.environ.get("LOGFLARE_PUBLIC_ACCESS_TOKEN", "")
+        vector_env["DOMAIN"] = os.environ.get("DOMAIN", "")
         vector_env["VELA_BRANCH"] = branch
 
         with open(compose_file, "w") as f:

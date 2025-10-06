@@ -142,8 +142,9 @@ services:
       interval: 5s
       retries: 3
     environment:
-      LOGFLARE_PUBLIC_ACCESS_TOKEN: ''
-      VELA_BRANCH: main
+      LOGFLARE_PUBLIC_ACCESS_TOKEN: ${LOGFLARE_PUBLIC_ACCESS_TOKEN}
+      VELA_BRANCH: ${VELA_BRANCH:-local}
+      DOMAIN: ${DOMAIN}
     command:
     - --config
     - /etc/vector/vector.yml
