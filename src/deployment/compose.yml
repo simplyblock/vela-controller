@@ -129,6 +129,7 @@ services:
     restart: unless-stopped
     volumes:
     - ./vector.yml:/etc/vector/vector.yml:ro,z
+    - /var/run/podman/podman.sock:/var/run/docker.sock:ro,z
     healthcheck:
       test:
       - CMD
