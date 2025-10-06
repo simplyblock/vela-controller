@@ -19,7 +19,7 @@ from ....deployment import (
     get_db_vmi_identity,
     resize_deployment,
 )
-from ....deployment.kubevirt import KubevirtSubresourceAction, call_kubevirt_subresource
+from ....deployment.kubevirt import KubevirtSubresourceAction, call_kubevirt_subresource, get_virtualmachine_status
 from ....deployment.settings import settings as deployment_settings
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ...db import SessionDep
@@ -90,10 +90,15 @@ async def _public(branch: Branch) -> BranchPublic:
         iops=0,
         storage_bytes=None,
     )
-    status = BranchStatus(
-        database="ACTIVE_HEALTHY",
-        realtime="STOPPED",
-        storage="STOPPED",
+    namespace, vmi_name = get_db_vmi_identity(branch.project_id, branch.name)
+    status = await get_virtualmachine_status(namespace, vmi_name)
+    # TODO: replace with real service health status once available
+    _service_health = BranchStatus(
+        database="ACTIVE_HEALTHY" if status == "Running" else "STOPPED",
+        realtime="ACTIVE_HEALTHY" if status == "Running" else "STOPPED",
+        storage="ACTIVE_HEALTHY" if status == "Running" else "STOPPED",
+        meta="ACTIVE_HEALTHY" if status == "Running" else "STOPPED",
+        rest="ACTIVE_HEALTHY" if status == "Running" else "STOPPED",
     )
     api_keys = BranchApiKeys(anon="", service_role="")
 
@@ -108,6 +113,7 @@ async def _public(branch: Branch) -> BranchPublic:
         used_resources=used_resources,
         api_keys=api_keys,
         status=status,
+        service_health=_service_health,
         ptir_enabled=False,
         created_at=branch.created_datetime,
         created_by="system",  # TODO: update it when user management is in place
@@ -294,6 +300,7 @@ async def delete(
     await delete_deployment(branch.project_id or branch.id, branch.name)
     await session.delete(branch)
     await session.commit()
+    # TODO: implement deletion of branch resources
     return Response(status_code=204)
 
 
@@ -354,14 +361,11 @@ async def control_branch(
     _project: ProjectDep,
     branch: BranchDep,
 ):
-    action = request.url.path.rsplit("/", 1)[-1]
-    try:
-        kubevirt_action = _CONTROL_TO_KUBEVIRT[action]
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=f"Unsupported branch control action '{action}'") from exc
+    action = request.scope["route"].name.split(":")[-1]
+    assert action in _CONTROL_TO_KUBEVIRT
     namespace, vmi_name = get_db_vmi_identity(branch.project_id, branch.name)
     try:
-        await call_kubevirt_subresource(namespace, vmi_name, kubevirt_action)
+        await call_kubevirt_subresource(namespace, vmi_name, _CONTROL_TO_KUBEVIRT[action])
         return Response(status_code=204)
     except ApiException as e:
         status = 404 if e.status == 404 else 400

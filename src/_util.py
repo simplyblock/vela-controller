@@ -1,6 +1,6 @@
 import asyncio
 import subprocess
-from typing import Annotated, Any, Final
+from typing import Annotated, Any, Final, Literal
 
 from pydantic import BeforeValidator, Field, PlainSerializer, StringConstraints, WithJsonSchema
 from ulid import ULID
@@ -18,6 +18,29 @@ Slug = Annotated[
         min_length=1,
         max_length=_MAX_LENGTH,
     ),
+]
+
+# Represents the state of Kubevirt VM
+# https://github.com/kubevirt/kubevirt/blob/main/staging/src/kubevirt.io/api/core/v1/types.go#L1897-L1942
+StatusType = Literal[
+    "Stopped",
+    "Provisioning",
+    "Starting",
+    "Running",
+    "Paused",
+    "Stopping",
+    "Terminating",
+    "CrashLoopBackOff",
+    "Migrating",
+    "Unknown",
+    "ErrorUnschedulable",
+    "ErrImagePull",
+    "ImagePullBackOff",
+    "ErrorPvcNotFound",
+    "DataVolumeError",
+    "WaitingForVolumeBinding",
+    "WaitingForReceiver",
+    "UNKNOWN",
 ]
 
 
