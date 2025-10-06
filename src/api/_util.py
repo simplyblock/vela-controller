@@ -26,6 +26,5 @@ def handle_unique_violation(f):
 
     return wrapper
 
-
 def url_path_for(request: Request, name: str, **kwargs) -> str:
     return request.scope.get("root_path") + request.app.url_path_for(name, **kwargs)
