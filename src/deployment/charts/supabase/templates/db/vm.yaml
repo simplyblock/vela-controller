@@ -19,11 +19,11 @@ spec:
     spec:
       domain:
         cpu:
-          cores: {{ .Values.db.vcpu }}
-          sockets: 1
+          cores: 32 # we do resource limiting using Requests and Limits
+          sockets: 2
           threads: 1
         memory:
-          guest: {{ .Values.db.ram }}Gi
+          guest: 256Gi
         devices:
           disks:
             - name: rootdisk
@@ -57,8 +57,12 @@ spec:
           - name: default
             masquerade: {}
         resources:
+          limits:
+            cpu: {{ .Values.db.resources.limits.cpu }}
+            memory: {{ .Values.db.resources.limits.memory }}
           requests:
-            memory: {{ .Values.db.ram }}Gi
+            memory: {{ .Values.db.resources.requests.memory }}
+            cpu: {{ .Values.db.resources.requests.cpu }}
       networks:
       - name: default
         pod: {}
