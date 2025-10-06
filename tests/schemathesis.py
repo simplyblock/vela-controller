@@ -53,6 +53,11 @@ async def main():
     jwt_secret = "secret"
     port = 5000
 
+    os.environ["VELA_CLOUDFLARE_API_TOKEN"] = ""
+    os.environ["VELA_CLOUDFLARE_ZONE_ID"] = ""
+    os.environ["VELA_CLOUDFLARE_BRANCH_REF_CNAME"] = ""
+    os.environ["VELA_CLOUDFLARE_DOMAIN_SUFFIX"] = ""
+
     with (
         PostgresContainer("postgres:latest", driver="asyncpg") as postgres,
         unittest.mock.patch(
@@ -102,7 +107,7 @@ async def main():
         from simplyblock.vela.api import app
         from simplyblock.vela.deployment import DeploymentStatus
 
-        mock_status.return_value = DeploymentStatus(status="ACTIVE_HEALTHY", pods={}, message="")
+        mock_status.return_value = DeploymentStatus(status="Running")
 
         config = uvicorn.Config(app, port=port, log_level="info")
         server = uvicorn.Server(config)

@@ -8,22 +8,22 @@ from pathlib import Path
 from typing import Annotated, Any, Literal
 
 import yaml
-from aiohttp.client_exceptions import ClientError
 from cloudflare import AsyncCloudflare, CloudflareError
-from kubernetes_asyncio.client.exceptions import ApiException
 from pydantic import BaseModel, Field
 
 from .. import VelaError
-from .._util import GIB, Identifier, Slug, bytes_to_gib, check_output, dbstr
+from .._util import GIB, Identifier, Slug, StatusType, bytes_to_gib, check_output, dbstr
 from .kubernetes import KubernetesService
+from .kubevirt import get_virtualmachine_status
 from .settings import settings
 
 logger = logging.getLogger(__name__)
 
 kube_service = KubernetesService()
 
-DEFAULT_GATEWAY_NAME = "public-gateway"
+DEFAULT_GATEWAY_NAME = "vela-public-gateway"
 DEFAULT_GATEWAY_NAMESPACE = "kong-system"
+DEFAULT_DATABASE_VM_NAME = "supabase-supabase-db"
 
 
 def deployment_namespace(id_: Identifier, branch: Slug) -> str:
@@ -96,19 +96,15 @@ class DeploymentParameters(BaseModel):
     database_user: dbstr
     database_password: dbstr
     database_size: Annotated[int, Field(gt=0, le=2**63 - 1, multiple_of=GIB)]
+    storage_size: Annotated[int, Field(gt=0, le=2**63 - 1, multiple_of=GIB)]
     vcpu: Annotated[int, Field(gt=0, le=2**31 - 1)]
     memory: Annotated[int, Field(gt=0, le=2**63 - 1, multiple_of=GIB)]
     iops: Annotated[int, Field(ge=100, le=2**31 - 1)]
     database_image_tag: Literal["15.1.0.147"]
 
 
-StatusType = Literal["ACTIVE_HEALTHY", "ACTIVE_UNHEALTHY", "COMING_UP", "INACTIVE", "UNKNOWN"]
-
-
 class DeploymentStatus(BaseModel):
     status: StatusType
-    pods: dict[str, str]
-    message: str
 
 
 async def create_vela_config(id_: Identifier, parameters: DeploymentParameters, branch: Slug):
@@ -139,7 +135,13 @@ async def create_vela_config(id_: Identifier, parameters: DeploymentParameters, 
     db_spec["vcpu"] = parameters.vcpu
     db_spec["ram"] = bytes_to_gib(parameters.memory)
     db_spec.setdefault("persistence", {})["size"] = f"{bytes_to_gib(parameters.database_size)}Gi"
+    db_spec.setdefault("storagePersistence", {})["size"] = f"{bytes_to_gib(parameters.storage_size)}Gi"
     db_spec.setdefault("image", {})["tag"] = parameters.database_image_tag
+    storage_spec = values_content.setdefault("storage", {})
+    storage_spec["enabled"] = True
+    storage_persistence = storage_spec.setdefault("persistence", {})
+    storage_persistence["enabled"] = True
+    storage_persistence["size"] = f"{bytes_to_gib(parameters.storage_size)}Gi"
     namespace = deployment_namespace(id_, branch)
     # todo: create an storage class with the given IOPS
     values_content["provisioning"] = {"iops": parameters.iops}
@@ -177,45 +179,19 @@ async def create_vela_config(id_: Identifier, parameters: DeploymentParameters, 
             raise
 
 
-def _pods_with_status(statuses: dict[str, str], target_status: str) -> set[str]:
-    return {name for name, status in statuses.items() if status == target_status}
-
-
-async def get_deployment_status(id_: Identifier, branch: Slug) -> DeploymentStatus:
+async def get_deployment_status(project_id: Identifier, branch_name: Slug) -> DeploymentStatus:
     status: StatusType
-
     try:
-        k8s_statuses = await kube_service.check_namespace_status(deployment_namespace(id_, branch))
-
-        if failed := _pods_with_status(k8s_statuses, "Failed"):
-            status = "ACTIVE_UNHEALTHY"
-            message = "Deployment has failed pods: " + ", ".join(failed)
-        elif pending := _pods_with_status(k8s_statuses, "Pending"):
-            status = "COMING_UP"
-            message = "Deployment has pending pods: " + ", ".join(pending)
-        elif succeeded := _pods_with_status(k8s_statuses, "Succeeded"):
-            # succeeded implies a container is stopped, they should be running
-            status = "INACTIVE"
-            message = "Deployment has stopped pods: " + ", ".join(succeeded)
-        elif all(status == "Running" for status in k8s_statuses.values()):
-            status = "ACTIVE_HEALTHY"
-            message = "All good :)"
-        else:
-            raise RuntimeError(
-                "Unexpected status reported by kubernetes: "
-                + "\n".join(f"{key}: {value}" for key, value in k8s_statuses.items())
-            )
-
-    except (ApiException, KeyError, ClientError) as e:
-        k8s_statuses = {}
-        status = "UNKNOWN"
-        message = str(e)
-
-    return DeploymentStatus(status=status, pods=k8s_statuses, message=message)
+        namespace, vmi_name = get_db_vmi_identity(project_id, branch_name)
+        status = await get_virtualmachine_status(namespace, vmi_name)
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Failed to get deployment status (returning UNKNOWN): {e}")
+        status = "Unknown"
+    return DeploymentStatus(status=status)
 
 
-async def delete_deployment(id_: Identifier, branch: Slug) -> None:
-    namespace = deployment_namespace(id_, branch)
+async def delete_deployment(project_id: Identifier, branch_name: Slug) -> None:
+    namespace, _ = get_db_vmi_identity(project_id, branch_name)
     release = _release_name(namespace)
     await asyncio.to_thread(
         subprocess.check_call,
@@ -240,7 +216,8 @@ def get_db_vmi_identity(id_: Identifier, branch: Slug) -> tuple[str, str]:
 
 
 class ResizeParameters(BaseModel):
-    database_size: Annotated[int | None, Field(gt=0, multiple_of=GIB)] = None
+    database_size: Annotated[int, Field(gt=0, multiple_of=GIB)] | None
+    storage_size: Annotated[int, Field(gt=0, multiple_of=GIB)] | None
 
 
 def resize_deployment(id_: Identifier, name: str, parameters: ResizeParameters):
@@ -253,6 +230,14 @@ def resize_deployment(id_: Identifier, name: str, parameters: ResizeParameters):
     db_spec = values_content.setdefault("db", {})
     if parameters.database_size is not None:
         db_spec.setdefault("persistence", {})["size"] = f"{bytes_to_gib(parameters.database_size)}Gi"
+    if parameters.storage_size is not None:
+        storage_size_gi = f"{bytes_to_gib(parameters.storage_size)}Gi"
+        db_spec.setdefault("storagePersistence", {})["size"] = storage_size_gi
+        storage_spec = values_content.setdefault("storage", {})
+        storage_spec["enabled"] = True
+        storage_persistence = storage_spec.setdefault("persistence", {})
+        storage_persistence["enabled"] = True
+        storage_persistence["size"] = storage_size_gi
 
     namespace = deployment_namespace(id_, name)
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as temp_values:
@@ -340,6 +325,7 @@ def _build_http_route(cfg: KubeGatewayConfig, spec: HTTPRouteSpec) -> dict[str, 
             "namespace": spec.namespace,
             "annotations": {
                 "konghq.com/strip-path": "true",
+                "konghq.com/plugins": "realtime-cors",
             },
         },
         "spec": {
@@ -438,6 +424,33 @@ async def _apply_http_routes(namespace: str, routes: list[dict[str, Any]]) -> No
         raise BranchEndpointError(f"Failed to apply HTTPRoute: {exc}") from exc
 
 
+def _build_kong_plugin(namespace: str) -> dict[str, Any]:
+    return {
+        "apiVersion": "configuration.konghq.com/v1",
+        "kind": "KongPlugin",
+        "metadata": {
+            "name": "realtime-cors",
+            "namespace": namespace,
+        },
+        "config": {
+            "origins": ["*"],  # todo: restrict this
+            "methods": ["GET", "POST", "OPTIONS", "PUT", "DELETE"],
+            "headers": ["*"],
+            "exposed_headers": ["*"],
+            "credentials": True,
+        },
+        "plugin": "cors",
+    }
+
+
+async def _apply_kong_plugin(namespace: str, plugin: dict[str, Any]) -> None:
+    """Apply KongPlugin manifest without blocking the event loop."""
+    try:
+        await kube_service.apply_kong_plugin(namespace, plugin)
+    except Exception as exc:  # pragma: no cover - surfaced to caller
+        raise BranchEndpointError(f"Failed to apply KongPlugin: {exc}") from exc
+
+
 async def provision_branch_endpoints(
     spec: BranchEndpointProvisionSpec,
     *,
@@ -463,6 +476,10 @@ async def provision_branch_endpoints(
     )
 
     await _create_dns_record(cf_cfg, domain)
+
+    # Apply the KongPlugin for CORS
+    kong_plugin = _build_kong_plugin(gateway_cfg.namespace)
+    await _apply_kong_plugin(gateway_cfg.namespace, kong_plugin)
 
     route_specs = (
         _postgrest_route_specs(ref, domain, gateway_cfg.namespace)

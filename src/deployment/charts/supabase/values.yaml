@@ -162,6 +162,13 @@ db:
     accessModes:
       - ReadWriteMany
     class: ""
+  storagePersistence:
+    enabled: false
+    storageClassName: "simplyblock-csi-sc"
+    annotations: {}
+    size: 50Gi
+    accessModes:
+      - ReadWriteMany
   vcpu: 1
   ram: 2
   autoscaling:
@@ -503,12 +510,12 @@ storage:
     #   cpu: 100m
     #   memory: 128Mi
   persistence:
-    enabled: false
-    storageClassName: ""
+    enabled: true
+    storageClassName: "simplyblock-csi-sc"
     annotations: {}
     size: 10Gi
     accessModes:
-      - ReadWriteOnce
+      - ReadWriteMany
     class: ""
   autoscaling:
     enabled: true
