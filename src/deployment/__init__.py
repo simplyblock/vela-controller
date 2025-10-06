@@ -29,14 +29,10 @@ def deployment_namespace(branch_id: Identifier) -> str:
     """Return the Kubernetes namespace for a branch using `<prefix>-<branch_id>` format."""
 
     branch_value = str(branch_id).lower()
-    prefix = settings.deployment_namespace_prefix.lower().strip()
-    sanitized_prefix = prefix.strip("-")
-    if sanitized_prefix:
-        truncated_prefix = sanitized_prefix[:61]
-        max_branch_length = 63 - len(truncated_prefix) - 1
-        trimmed_branch = branch_value[: max(1, max_branch_length)]
-        return f"{truncated_prefix}-{trimmed_branch}"
-    return branch_value[:63]
+    prefix = settings.deployment_namespace_prefix
+    if prefix:
+        return f"{prefix}-{branch_value}"
+    return branch_value
 
 
 def branch_dns_label(branch_id: Identifier) -> str:
