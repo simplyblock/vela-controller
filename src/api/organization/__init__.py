@@ -11,7 +11,6 @@ from .._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ..auth import AuthUserDep, authenticated_user
 from ..db import SessionDep
 from ..models.audit import OrganizationAuditLog
-from ..models.branch import Branch
 from ..models.organization import Organization, OrganizationCreate, OrganizationDep, OrganizationUpdate
 from .member import api as member_api
 from .project import api as project_api
@@ -171,8 +170,12 @@ async def update(request: Request, session: SessionDep, organization: Organizati
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def delete(session: SessionDep, organization: OrganizationDep):
-    for project in await organization.awaitable_attrs.projects:
-        await delete_deployment(project.id, Branch.DEFAULT_SLUG)
+    projects = await organization.awaitable_attrs.projects
+    for project in projects:
+        await session.refresh(project, ["branches"])
+        branches = await project.awaitable_attrs.branches
+        for branch in branches:
+            await delete_deployment(branch.id)
 
     await session.delete(organization)
     await session.commit()

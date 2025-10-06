@@ -59,7 +59,7 @@ async def _public(project: Project) -> ProjectPublic:
     if not branches:
         raise HTTPException(500, "Project has no branches")
     for branch in branches:
-        status = await get_deployment_status(project.id, branch.name)
+        status = await get_deployment_status(branch.id)
         branch_status[branch.name] = status.status
     return ProjectPublic(
         organization_id=project.organization_id,
@@ -256,7 +256,7 @@ async def delete(session: SessionDep, _organization: OrganizationDep, project: P
     await session.refresh(project, ["branches"])
     branches = await project.awaitable_attrs.branches
     for branch in branches:
-        await delete_deployment(project.id, branch.name)
+        await delete_deployment(branch.id)
     await session.delete(project)
     await session.commit()
     return Response(status_code=204)
@@ -274,7 +274,7 @@ async def suspend(_organization: OrganizationDep, project: ProjectDep):
     errors = []
 
     for branch in branches:
-        namespace, vmi_name = get_db_vmi_identity(project.id, branch.name)
+        namespace, vmi_name = get_db_vmi_identity(branch.id)
         try:
             # a paused VM will still consume resources, so we stop it instead
             # https://kubevirt.io/user-guide/user_workloads/lifecycle/#pausing-and-unpausing-a-virtual-machine
@@ -300,7 +300,7 @@ async def resume(_organization: OrganizationDep, project: ProjectDep):
     errors = []
 
     for branch in branches:
-        namespace, vmi_name = get_db_vmi_identity(project.id, branch.name)
+        namespace, vmi_name = get_db_vmi_identity(branch.id)
         try:
             await call_kubevirt_subresource(namespace, vmi_name, "start")
         except ApiException as e:

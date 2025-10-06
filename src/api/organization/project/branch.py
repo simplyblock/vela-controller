@@ -90,7 +90,7 @@ async def _public(branch: Branch) -> BranchPublic:
         iops=0,
         storage_bytes=None,
     )
-    namespace, vmi_name = get_db_vmi_identity(branch.project_id, branch.name)
+    namespace, vmi_name = get_db_vmi_identity(branch.id)
     status = await get_virtualmachine_status(namespace, vmi_name)
     # TODO: replace with real service health status once available
     _service_health = BranchStatus(
@@ -298,7 +298,7 @@ async def delete(
 ):
     if branch.name == Branch.DEFAULT_SLUG:
         raise HTTPException(400, "Default branch cannot be deleted")
-    await delete_deployment(branch.project_id or branch.id, branch.name)
+    await delete_deployment(branch.id)
     await session.delete(branch)
     await session.commit()
     # TODO: implement deletion of branch resources
@@ -314,7 +314,7 @@ async def delete(
 )
 async def resize(_organization: OrganizationDep, _project: ProjectDep, parameters: ResizeParameters, branch: BranchDep):
     # Trigger helm upgrade with provided parameters; returns 202 Accepted
-    resize_deployment(branch.project_id, branch.name, parameters)
+    resize_deployment(branch.id, parameters)
     return Response(status_code=202)
 
 
@@ -364,7 +364,7 @@ async def control_branch(
 ):
     action = request.scope["route"].name.split(":")[-1]
     assert action in _CONTROL_TO_KUBEVIRT
-    namespace, vmi_name = get_db_vmi_identity(branch.project_id, branch.name)
+    namespace, vmi_name = get_db_vmi_identity(branch.id)
     try:
         await call_kubevirt_subresource(namespace, vmi_name, _CONTROL_TO_KUBEVIRT[action])
         return Response(status_code=204)
