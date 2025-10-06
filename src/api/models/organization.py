@@ -1,14 +1,7 @@
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING
 
-from fastapi import Depends, HTTPException
+from fastapi import HTTPException
 from pydantic import BaseModel, StrictBool
-from sqlalchemy.exc import NoResultFound
-from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlmodel import Field, Relationship, select
-
-from ..._util import Identifier
-from ..db import SessionDep
-from ._util import Model, Name
 from .membership import Membership
 
 if TYPE_CHECKING:
@@ -16,6 +9,7 @@ if TYPE_CHECKING:
     from .role import Role
     from .user import User
 
+from .backups import *
 
 class Organization(AsyncAttrs, Model, table=True):
     name: Name = Field(unique=True)
@@ -23,8 +17,11 @@ class Organization(AsyncAttrs, Model, table=True):
     projects: list["Project"] = Relationship(back_populates="organization", cascade_delete=True)
     roles: list["Role"] = Relationship(back_populates="organization", cascade_delete=True)
     users: list["User"] = Relationship(back_populates="organizations", link_model=Membership)
-    require_mfa: bool = False
+    schedules: list["BackupSchedule"] = Relationship(back_populates="organization")
 
+    max_backups: int
+
+    require_mfa: bool = False
 
 class OrganizationCreate(BaseModel):
     name: Name

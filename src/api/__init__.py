@@ -5,15 +5,19 @@ from typing import Any, Literal
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.routing import APIRoute
+from fastapi.routing import APIRoute, APIRouter
 from pydantic import BaseModel
 from sqlmodel import SQLModel
-
 from .db import engine
 from .organization import api as organization_api
 from .settings import settings
 from .user import api as user_api
-
+from .backup import router as backup_router
+from .ressources import router as ressources_router
+from .backupmonitor import *
+import logging
+import signal
+from threading import Thread, Event
 
 class _FastAPI(FastAPI):
     def openapi(self) -> dict[str, Any]:
@@ -114,7 +118,6 @@ async def _create_db_and_tables():
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
 
-
 def _use_route_names_as_operation_ids(app: FastAPI) -> None:
     """
     Simplify operation IDs so that generated API clients have simpler function
@@ -126,6 +129,7 @@ def _use_route_names_as_operation_ids(app: FastAPI) -> None:
         if isinstance(route, APIRoute):
             route.operation_id = route.name
 
+app = FastAPI(root_path=settings.root_path)
 
 _tags = [
     {"name": "user"},
@@ -138,6 +142,8 @@ _tags = [
 
 app = FastAPI(openapi_tags=_tags, root_path=settings.root_path)
 
+router = APIRouter()
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -147,24 +153,35 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
+@app.get("/health", response_model=Status)
+def health():
+    return Status()
+
+app.include_router(organization_api, prefix="/organizations")
+app.include_router(user_api, prefix="/users")
+app.include_router(backup_router)
+app.include_router(ressources_router)
+_use_route_names_as_operation_ids(app)
 
 @app.on_event("startup")
 async def on_startup():
     await _create_db_and_tables()
 
-
 class Status(BaseModel):
     service: Literal["vela"] = "vela"
 
-
-@app.get("/health", response_model=Status)
-def health():
-    return Status()
-
-
-app.include_router(organization_api, prefix="/organizations")
-app.include_router(user_api, prefix="/users")
-_use_route_names_as_operation_ids(app)
-
-
 __all__ = ["app"]
+
+# Setup logging
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+
+import asyncio
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(run_monitor())
+
+@router.get("/healthz")
+async def healthz():
+    return {"status": "ok"}
