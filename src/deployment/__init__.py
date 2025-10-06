@@ -28,7 +28,7 @@ DEFAULT_DATABASE_VM_NAME = "supabase-supabase-db"
 def deployment_namespace(branch_id: Identifier) -> str:
     """Return the Kubernetes namespace for a branch using `<prefix>-<branch_id>` format."""
 
-    branch_value = str(branch_id).lower()
+    branch_value = str(branch_id)
     prefix = settings.deployment_namespace_prefix
     if prefix:
         return f"{prefix}-{branch_value}"
