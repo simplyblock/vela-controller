@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import math
 import subprocess
 import tempfile
 from importlib import resources
@@ -11,7 +12,17 @@ from cloudflare import AsyncCloudflare, CloudflareError
 from pydantic import BaseModel, Field
 
 from .. import VelaError
-from .._util import GIB, Identifier, Slug, StatusType, bytes_to_gib, check_output, dbstr
+from .._util import (
+    GIB,
+    MIB,
+    Identifier,
+    Slug,
+    StatusType,
+    bytes_to_gib,
+    bytes_to_mib,
+    check_output,
+    dbstr,
+)
 from .kubernetes import KubernetesService
 from .kubevirt import get_virtualmachine_status
 from .settings import settings
@@ -77,14 +88,19 @@ class DeploymentParameters(BaseModel):
     database_password: dbstr
     database_size: Annotated[int, Field(gt=0, le=2**63 - 1, multiple_of=GIB)]
     storage_size: Annotated[int, Field(gt=0, le=2**63 - 1, multiple_of=GIB)]
-    vcpu: Annotated[int, Field(gt=0, le=2**31 - 1)]
-    memory: Annotated[int, Field(gt=0, le=2**63 - 1, multiple_of=GIB)]
+    vcpu: Annotated[float, Field(ge=1, le=64.0, multiple_of=0.1)]
+    memory_bytes: Annotated[int, Field(ge=500 * MIB, le=256 * GIB, multiple_of=100 * MIB)]
     iops: Annotated[int, Field(ge=100, le=2**31 - 1)]
     database_image_tag: Literal["15.1.0.147"]
 
 
 class DeploymentStatus(BaseModel):
     status: StatusType
+
+
+def _format_cpu(vcpu: float, factor: float) -> str:
+    """Converts vCPU units into millicores with scaling."""
+    return f"{int(vcpu * 1000 * factor)}m"
 
 
 async def create_vela_config(branch_id: Identifier, parameters: DeploymentParameters, branch: Slug):
@@ -111,8 +127,20 @@ async def create_vela_config(branch_id: Identifier, parameters: DeploymentParame
     db_secrets["admindb"] = parameters.database
 
     db_spec = values_content.setdefault("db", {})
-    db_spec["vcpu"] = parameters.vcpu
-    db_spec["ram"] = bytes_to_gib(parameters.memory)
+    resource_cfg = db_spec.setdefault("resources", {})
+
+    cpu_provisioning_factor = 0.25  # request = 25% of limit
+    memory_request_fraction = 0.90  # request = 90% of limit
+
+    resource_cfg["limits"] = {
+        "cpu": _format_cpu(parameters.vcpu, 1.0),
+        "memory": f"{bytes_to_mib(parameters.memory_bytes)}Mi",
+    }
+    resource_cfg["requests"] = {
+        "cpu": _format_cpu(parameters.vcpu, cpu_provisioning_factor),
+        "memory": f"{bytes_to_mib(math.floor(parameters.memory_bytes * memory_request_fraction))}Mi",
+    }
+
     db_spec.setdefault("persistence", {})["size"] = f"{bytes_to_gib(parameters.database_size)}Gi"
     db_spec.setdefault("storagePersistence", {})["size"] = f"{bytes_to_gib(parameters.storage_size)}Gi"
     db_spec.setdefault("image", {})["tag"] = parameters.database_image_tag
