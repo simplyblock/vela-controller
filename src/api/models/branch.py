@@ -4,12 +4,12 @@ from typing import Annotated, ClassVar, Literal, Optional
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel
 from pydantic import Field as PydanticField
-from sqlalchemy import BigInteger, Column, String, UniqueConstraint
+from sqlalchemy import BigInteger, Column, Float, String, UniqueConstraint
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship, select
 
-from ..._util import GIB, KIB, Identifier, Slug
+from ..._util import GIB, KIB, MIB, Identifier, Slug
 from ..db import SessionDep
 from ._util import Model, Name
 from .project import Project, ProjectDep
@@ -30,8 +30,8 @@ class Branch(AsyncAttrs, Model, table=True):
     database_user: Annotated[str, Field(sa_column=Column(String(255)))]
     database_password: Annotated[str, Field(sa_column=Column(String(255)))]
     database_size: Annotated[int, Field(gt=0, multiple_of=GIB, sa_column=Column(BigInteger))]
-    vcpu: Annotated[int, Field(gt=0, le=2**31 - 1, sa_column=Column(BigInteger))]
-    memory: Annotated[int, Field(gt=0, multiple_of=GIB, sa_column=Column(BigInteger))]
+    vcpu: Annotated[float, Field(ge=1, multiple_of=0.1, le=64.0, sa_column=Column(Float))]  # units of vCPU
+    memory: Annotated[int, Field(ge=500 * MIB, multiple_of=100 * MIB, sa_column=Column(BigInteger))]
     iops: Annotated[int, Field(ge=100, le=2**31 - 1, sa_column=Column(BigInteger))]
     storage_size: Annotated[int, Field(gt=0, multiple_of=GIB, sa_column=Column(BigInteger))]
     database_image_tag: str
@@ -89,10 +89,10 @@ class DatabaseInformation(BaseModel):
 
 class ResourcesDefinition(BaseModel):
     vcpu: Annotated[
-        int,
+        float,
         PydanticField(
-            ge=1,
-            le=2**31 - 1,
+            ge=0,
+            le=64,
             description="Number of virtual CPUs provisioned (matches Branch.vcpu constraints).",
         ),
     ]
@@ -130,10 +130,10 @@ class ResourcesDefinition(BaseModel):
 
 class ResourceUsageDefinition(BaseModel):
     vcpu: Annotated[
-        int,
+        float,
         PydanticField(
             ge=0,
-            le=2**31 - 1,
+            le=64.0,
             description="Measured vCPU consumption for the branch.",
         ),
     ]
@@ -202,10 +202,10 @@ class BranchPublic(BaseModel):
 
 class BranchDetailResources(BaseModel):
     vcpu: Annotated[
-        int,
+        float,
         PydanticField(
-            ge=1,
-            le=2**31 - 1,
+            ge=0.1,
+            le=64.0,
             description="Number of virtual CPUs provisioned (matches Branch.vcpu constraints).",
         ),
     ]

@@ -1,5 +1,6 @@
 import asyncio
 import subprocess
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Final, Literal
 
 from pydantic import BeforeValidator, Field, PlainSerializer, StringConstraints, WithJsonSchema
@@ -7,9 +8,9 @@ from ulid import ULID
 
 _MAX_LENGTH = 50
 
-KIB: Final[int] = 1024
-MIB: Final[int] = KIB * 1024
-GIB: Final[int] = MIB * 1024
+KIB: Final[int] = 1000
+MIB: Final[int] = KIB * 1000
+GIB: Final[int] = MIB * 1000
 
 Slug = Annotated[
     str,
@@ -144,7 +145,11 @@ def mib_to_bytes(value: int) -> int:
     return value * MIB
 
 
-def gib_to_bytes(value: int) -> int:
-    """Convert a GiB count to bytes."""
+def gib_to_bytes(value: int | float) -> int:
+    """Convert a GiB count to bytes, accepting integer or fractional sizes."""
 
-    return value * GIB
+    decimal_value = Decimal(str(value))
+    bytes_decimal = decimal_value * Decimal(GIB)
+    # Align to the nearest KiB so downstream validations expecting multiples of KiB still pass.
+    kib_units = (bytes_decimal / Decimal(KIB)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    return int(kib_units * Decimal(KIB))
