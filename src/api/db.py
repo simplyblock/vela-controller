@@ -20,5 +20,6 @@ async def _get_session():
     async with AsyncSession(engine) as session:
         yield session
 
+get_db = _get_session
 
 SessionDep = Annotated[AsyncSession, Depends(_get_session)]
