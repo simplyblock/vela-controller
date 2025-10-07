@@ -13,13 +13,15 @@ dependencies = [
     'asyncpg',
     'pyjwt',
     'pydantic-settings',
-    'kubernetes',
+    'kubernetes-asyncio',
     'pyyaml',
     'email-validator',  # pydantic.EmailStr
-    'python-slugify',
     'cryptography',  # JWT algorithms
     'pycryptodome',
     'python-keycloak',
+    'python-ulid',
+    'requests',
+    'cloudflare',
 ]
 
 [tool.setuptools]

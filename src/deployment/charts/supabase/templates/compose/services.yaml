@@ -1,0 +1,65 @@
+{{- if .Values.db.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: supabase-supabase-rest
+  labels:
+    {{- include "supabase.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.rest.service.type | default "ClusterIP" }}
+  ports:
+    - port: {{ .Values.rest.service.port | default 3000 }}
+      targetPort: 3000
+      protocol: TCP
+      name: http
+  selector:
+    vm.kubevirt.io/name: {{ include "supabase.db.fullname" . }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: supabase-supabase-realtime
+  labels:
+    {{- include "supabase.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.realtime.service.type | default "ClusterIP" }}
+  ports:
+    - port: {{ .Values.realtime.service.port | default 4000 }}
+      targetPort: 4000
+      protocol: TCP
+      name: http
+  selector:
+    vm.kubevirt.io/name: {{ include "supabase.db.fullname" . }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: supabase-supabase-storage
+  labels:
+    {{- include "supabase.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.storage.service.type | default "ClusterIP" }}
+  ports:
+    - port: {{ .Values.storage.service.port | default 5000 }}
+      targetPort: 5000
+      protocol: TCP
+      name: http
+  selector:
+    vm.kubevirt.io/name: {{ include "supabase.db.fullname" . }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: supabase-supabase-meta
+  labels:
+    {{- include "supabase.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.meta.service.type | default "ClusterIP" }}
+  ports:
+    - port: {{ .Values.meta.service.port | default 8080 }}
+      targetPort: 8080
+      protocol: TCP
+      name: http
+  selector:
+    vm.kubevirt.io/name: {{ include "supabase.db.fullname" . }}
+{{- end }}

@@ -19,17 +19,20 @@ spec:
     spec:
       domain:
         cpu:
-          cores: {{ .Values.db.vcpu }}
-          sockets: 1
+          cores: 32 # we do resource limiting using Requests and Limits
+          sockets: 2
           threads: 1
         memory:
-          guest: {{ .Values.db.ram }}Gi
+          guest: 256Gi
         devices:
           disks:
             - name: rootdisk
               disk:
                 bus: virtio
             - name: datadisk
+              disk:
+                bus: virtio
+            - name: storage-disk
               disk:
                 bus: virtio
             - name: initdb-scripts-data
@@ -41,6 +44,12 @@ spec:
             - name: db-secrets
               disk:
                 bus: virtio
+            - name: compose-config
+              disk:
+                bus: virtio
+            - name: jwt-secrets
+              disk:
+                bus: virtio
             - name: cloudinitdisk
               disk:
                 bus: virtio
@@ -48,18 +57,25 @@ spec:
           - name: default
             masquerade: {}
         resources:
+          limits:
+            cpu: {{ .Values.db.resources.limits.cpu }}
+            memory: {{ .Values.db.resources.limits.memory }}
           requests:
-            memory: {{ .Values.db.ram }}Gi
+            memory: {{ .Values.db.resources.requests.memory }}
+            cpu: {{ .Values.db.resources.requests.cpu }}
       networks:
       - name: default
         pod: {}
       volumes:
         - name: rootdisk
           containerDisk:
-            image: manoharbrm/kubevirt:alpine-{{ .Values.db.image.tag }}
+            image: manoharbrm/kubevirt:alpine-{{ .Values.db.image.tag }}-compose
         - name: datadisk
           persistentVolumeClaim:
             claimName: {{ include "supabase.db.fullname" . }}-pvc
+        - name: storage-disk
+          persistentVolumeClaim:
+            claimName: {{ include "supabase.db.fullname" . }}-storage-pvc
         - name: initdb-scripts-data
           configMap:
             name: {{ include "supabase.db.fullname" . }}-initdb
@@ -69,6 +85,12 @@ spec:
         - name: db-secrets
           secret:
             secretName: {{ include "supabase.secret.db" . }}
+        - name: compose-config
+          configMap:
+            name: {{ include "supabase.db.fullname" . }}-compose
+        - name: jwt-secrets
+          secret:
+            secretName: {{ include "supabase.secret.jwt" . }}
         - name: cloudinitdisk
           cloudInitNoCloud:
             secretRef: 

@@ -53,14 +53,33 @@ async def main():
     jwt_secret = "secret"
     port = 5000
 
+    os.environ["VELA_CLOUDFLARE_API_TOKEN"] = ""
+    os.environ["VELA_CLOUDFLARE_ZONE_ID"] = ""
+    os.environ["VELA_CLOUDFLARE_BRANCH_REF_CNAME"] = ""
+    os.environ["VELA_CLOUDFLARE_DOMAIN_SUFFIX"] = ""
+
     with (
         PostgresContainer("postgres:latest", driver="asyncpg") as postgres,
-        unittest.mock.patch("kubernetes.config.load_kube_config") as mock_load_config,
+        unittest.mock.patch(
+            "kubernetes_asyncio.config.load_incluster_config",
+            new_callable=unittest.mock.AsyncMock,
+        ) as mock_load_incluster,
+        unittest.mock.patch(
+            "kubernetes_asyncio.config.load_kube_config",
+            new_callable=unittest.mock.AsyncMock,
+        ) as mock_load_config,
         unittest.mock.patch("simplyblock.vela.deployment.create_vela_config"),
-        unittest.mock.patch("simplyblock.vela.deployment.get_deployment_status") as mock_status,
-        unittest.mock.patch("simplyblock.vela.deployment.delete_deployment"),
+        unittest.mock.patch(
+            "simplyblock.vela.deployment.get_deployment_status",
+            new_callable=unittest.mock.AsyncMock,
+        ) as mock_status,
+        unittest.mock.patch(
+            "simplyblock.vela.deployment.delete_deployment",
+            new_callable=unittest.mock.AsyncMock,
+        ),
         unittest.mock.patch("keycloak.KeycloakAdmin") as mock_keycloak_admin,
     ):
+        mock_load_incluster.return_value = None
         mock_load_config.return_value = None
 
         # Mock Keycloak admin methods
@@ -88,7 +107,7 @@ async def main():
         from simplyblock.vela.api import app
         from simplyblock.vela.deployment import DeploymentStatus
 
-        mock_status.return_value = DeploymentStatus(status="ACTIVE_HEALTHY", pods={}, message="")
+        mock_status.return_value = DeploymentStatus(status="Running")
 
         config = uvicorn.Config(app, port=port, log_level="info")
         server = uvicorn.Server(config)

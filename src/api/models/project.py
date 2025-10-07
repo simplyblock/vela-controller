@@ -1,48 +1,29 @@
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import BigInteger, UniqueConstraint, event
+from sqlalchemy import UniqueConstraint
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlmodel import Field, Relationship, SQLModel, select
+from sqlmodel import Relationship, select
 
-from ..._util import Slug
+from ..._util import Identifier, StatusType
 from ...deployment import DeploymentParameters
 from ..db import SessionDep
-from ._util import Name, update_slug
+from ._util import Model, Name
 from .organization import Organization, OrganizationDep
 
 if TYPE_CHECKING:
     from .branch import Branch
 
 
-class Project(AsyncAttrs, SQLModel, table=True):
-    id: int | None = Field(default=None, primary_key=True, sa_type=BigInteger)
-    slug: Slug
+class Project(AsyncAttrs, Model, table=True):
     name: Name
-    organization_id: int | None = Field(default=None, foreign_key="organization.id")
-    organization: Organization | None = Relationship(back_populates="projects")
-    database: str
-    database_user: str
-    database_password: str
+    organization_id: Identifier = Model.foreign_key_field("organization")
+    organization: Organization = Relationship(back_populates="projects")
     branches: list["Branch"] = Relationship(back_populates="project", cascade_delete=True)
 
-    __table_args__ = (UniqueConstraint("organization_id", "slug", name="unique_project_slug"),)
-
-    def dbid(self) -> int:
-        if self.id is None:
-            raise ValueError("Model not tracked in database")
-        return self.id
-
-    def db_org_id(self) -> int:
-        if self.organization_id is None:
-            raise ValueError("Organization model not tracked in database")
-        return self.organization_id
-
-
-event.listen(Project, "before_insert", update_slug)
-event.listen(Project, "before_update", update_slug)
+    __table_args__ = (UniqueConstraint("organization_id", "name", name="unique_project_name"),)
 
 
 class ProjectCreate(BaseModel):
@@ -55,22 +36,18 @@ class ProjectUpdate(BaseModel):
 
 
 class ProjectPublic(BaseModel):
-    organization_id: int
-    id: int
-    slug: Slug
+    organization_id: Identifier
+    id: Identifier
     name: Name
-    status: str
-    deployment_status: tuple[str, dict[str, str]]
-    database_user: str
-    encrypted_database_connection_string: str
+    branch_status: dict[Any, StatusType]
 
 
-async def _lookup(session: SessionDep, organization: OrganizationDep, project_slug: Slug) -> Project:
+async def _lookup(session: SessionDep, organization: OrganizationDep, project_id: Identifier) -> Project:
     try:
-        query = select(Project).where(Project.organization_id == organization.id, Project.slug == project_slug)
+        query = select(Project).where(Project.organization_id == organization.id, Project.id == project_id)
         return (await session.exec(query)).one()
     except NoResultFound as e:
-        raise HTTPException(404, f"Project {project_slug} not found") from e
+        raise HTTPException(404, f"Project {project_id} not found") from e
 
 
 ProjectDep = Annotated[Project, Depends(_lookup)]

@@ -1,65 +1,75 @@
-apiVersion: v1
-kind: Pod
+apiVersion: apps/v1
+kind: Deployment
 metadata:
   name: vela-controller
   labels:
     app.kubernetes.io/name: vela-controller
+    app.kubernetes.io/instance: {{ .Release.Name }}
 spec:
-  containers:
-    - name: vela-controller
-      image: simplyblock/vela-controller:latest
-      imagePullPolicy: Always
-      ports:
-        - name: http
-          containerPort: 8000
-          protocol: TCP
-      envFrom:
-        - configMapRef:
-            name: vela-controller-config
-      env:
-        - name: DB_USER
-          valueFrom:
-            secretKeyRef:
-              name: database
-              key: superuser-username
-        - name: DB_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: database
-              key: superuser-password
-        - name: VELA_POSTGRES_URL
-          value: 'postgresql+asyncpg://$(DB_USER):$(DB_PASSWORD)@database:5432/postgres'
-        - name: VELA_DEPLOYMENT_NAMESPACE_PREFIX
-          value: {{ .Release.Namespace }}
-        - name: VELA_DEPLOYMENT_HOST
-          value: {{ .Values.host }}
-        - name: VELA_KEYCLOAK_URL
-          value: 'http://auth:8080/auth/'
-        - name: VELA_KEYCLOAK_CLIENT_ID
-          value: 'controller'
-        - name: VELA_KEYCLOAK_CLIENT_SECRET
-          value: 'controller-secret'
-      livenessProbe:
-        httpGet:
-          path: /health
-          port: http
-        periodSeconds: 5
-        timeoutSeconds: 5
-        failureThreshold: 3
-      readinessProbe:
-        httpGet:
-          path: /health
-          port: http
-        initialDelaySeconds: 10
-      {{- with .Values.securityContext }}
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vela-controller
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vela-controller
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: vela-controller
+          image: simplyblock/vela-controller:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: vela-controller-config
+          env:
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: database
+                  key: superuser-username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: database
+                  key: superuser-password
+            - name: VELA_POSTGRES_URL
+              value: 'postgresql+asyncpg://$(DB_USER):$(DB_PASSWORD)@database:5432/postgres'
+            - name: VELA_DEPLOYMENT_NAMESPACE_PREFIX
+              value: {{ .Release.Namespace }}
+            - name: VELA_DEPLOYMENT_HOST
+              value: {{ .Values.host }}
+            - name: VELA_KEYCLOAK_URL
+              value: 'http://auth:8080/auth/'
+            - name: VELA_KEYCLOAK_CLIENT_ID
+              value: 'controller'
+            - name: VELA_KEYCLOAK_CLIENT_SECRET
+              value: 'controller-secret'
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.podSecurityContext }}
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-  restartPolicy: Always
-  {{- with .Values.podSecurityContext }}
-  securityContext:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -69,6 +79,8 @@ data:
   VELA_JWT_SECRET: 'http://vela-auth-service:8080/auth/realms/vela/protocol/openid-connect/certs'
   VELA_ROOT_PATH: '/vela'
   VELA_PGMETA_CRYPTO_KEY: 'secret'
+  VELA_GATEWAY_NAME: {{ .Values.gateway.name }}
+  VELA_GATEWAY_NAMESPACE: {{ .Values.gateway.namespace }}
 ---
 apiVersion: v1
 kind: Service
@@ -90,8 +102,8 @@ metadata:
   name: vela-controller
 spec:
   parentRefs:
-    - name: vela-public-gateway
-      namespace: kong-system
+    - name: {{ .Values.gateway.name }}
+      namespace: {{ .Values.gateway.namespace }}
   hostnames:
     - "{{ .Values.domain }}"
   rules:
@@ -103,4 +115,3 @@ spec:
         - name: vela-controller-service
           namespace: {{ .Release.Namespace }}
           port: 8000
-

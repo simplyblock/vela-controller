@@ -11,11 +11,9 @@ from .._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ..auth import AuthUserDep, authenticated_user
 from ..db import SessionDep
 from ..models.audit import OrganizationAuditLog
-from ..models.branch import Branch
 from ..models.organization import Organization, OrganizationCreate, OrganizationDep, OrganizationUpdate
 from .member import api as member_api
 from .project import api as project_api
-from .project.branch import api as branch_api
 from .role import api as role_api
 
 api = APIRouter(dependencies=[Depends(authenticated_user)])
@@ -33,23 +31,23 @@ async def list_(user: AuthUserDep) -> Sequence[Organization]:
 _links = {
     "detail": {
         "operationId": "organizations:detail",
-        "parameters": {"organization_slug": "$response.header.Location#regex:/organizations/(.+)/"},
+        "parameters": {"organization_id": "$response.header.Location#regex:/organizations/(.+)/"},
     },
     "update": {
         "operationId": "organizations:update",
-        "parameters": {"organization_slug": "$response.header.Location#regex:/organizations/(.+)/"},
+        "parameters": {"organization_id": "$response.header.Location#regex:/organizations/(.+)/"},
     },
     "delete": {
         "operationId": "organizations:delete",
-        "parameters": {"organization_slug": "$response.header.Location#regex:/organizations/(.+)/"},
+        "parameters": {"organization_id": "$response.header.Location#regex:/organizations/(.+)/"},
     },
     "create_project": {
         "operationId": "organizations:projects:create",
-        "parameters": {"organization_slug": "$response.header.Location#regex:/organizations/(.+)/"},
+        "parameters": {"organization_id": "$response.header.Location#regex:/organizations/(.+)/"},
     },
     "list_projects": {
         "operationId": "organizations:projects:list",
-        "parameters": {"organization_slug": "$response.header.Location#regex:/organizations/(.+)/"},
+        "parameters": {"organization_id": "$response.header.Location#regex:/organizations/(.+)/"},
     },
 }
 
@@ -61,7 +59,6 @@ _links = {
     response_model=Organization | None,
     responses={
         201: {
-            "content": None,
             "headers": {
                 "Location": {
                     "description": "URL of the created item",
@@ -87,11 +84,11 @@ async def create(
         await session.commit()
     except IntegrityError as e:
         error = str(e)
-        if ("asyncpg.exceptions.UniqueViolationError" not in error) or ("organization_slug_key" not in error):
+        if ("asyncpg.exceptions.UniqueViolationError" not in error) or ("organization_name_key" not in error):
             raise
         raise HTTPException(409, f"Organization {parameters.name} already exists") from e
     await session.refresh(entity)
-    entity_url = url_path_for(request, "organizations:detail", organization_slug=entity.slug)
+    entity_url = url_path_for(request, "organizations:detail", organization_id=entity.id)
     return JSONResponse(
         content=entity.model_dump() if response == "full" else None,
         status_code=201,
@@ -108,7 +105,7 @@ async def _check_user_access(user: AuthUserDep, organization: OrganizationDep):
 
 
 instance_api = APIRouter(
-    prefix="/{organization_slug}",
+    prefix="/{organization_id}",
     dependencies=[Depends(_check_user_access)],
 )
 
@@ -160,7 +157,7 @@ async def update(request: Request, session: SessionDep, organization: Organizati
             "Location": url_path_for(
                 request,
                 "organizations:detail",
-                organization_slug=await organization.awaitable_attrs.slug,
+                organization_id=await organization.awaitable_attrs.id,
             ),
         },
     )
@@ -173,8 +170,12 @@ async def update(request: Request, session: SessionDep, organization: Organizati
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def delete(session: SessionDep, organization: OrganizationDep):
-    for project in await organization.awaitable_attrs.projects:
-        delete_deployment(project.dbid(), Branch.DEFAULT_SLUG)
+    projects = await organization.awaitable_attrs.projects
+    for project in projects:
+        await session.refresh(project, ["branches"])
+        branches = await project.awaitable_attrs.branches
+        for branch in branches:
+            await delete_deployment(branch.id)
 
     await session.delete(organization)
     await session.commit()
@@ -197,5 +198,4 @@ def list_audits(
 instance_api.include_router(project_api, prefix="/projects")
 instance_api.include_router(member_api, prefix="/members")
 instance_api.include_router(role_api, prefix="/roles")
-instance_api.include_router(branch_api, prefix="/branches")
 api.include_router(instance_api)

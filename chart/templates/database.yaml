@@ -17,6 +17,11 @@ metadata:
     "helm.sh/hook": pre-install,pre-upgrade
     "helm.sh/hook-weight": "-2"
 spec:
+  metadata:
+    labels:
+      clusterPods:
+        app.kubernetes.io/name: vela-db
+        app.kubernetes.io/instance: vela
   instances: 1
   postgres:
     version: {{ .Values.postgresVersion }}

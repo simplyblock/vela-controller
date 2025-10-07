@@ -1,0 +1,137 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: vela-logflare-secret
+  namespace: {{ .Release.Namespace }}
+type: Opaque
+stringData:
+  LOGFLARE_PUBLIC_ACCESS_TOKEN: "{{ .Values.analytics.LOGFLARE_PUBLIC_ACCESS_TOKEN }}"
+  LOGFLARE_PRIVATE_ACCESS_TOKEN: "{{ .Values.analytics.LOGFLARE_PRIVATE_ACCESS_TOKEN }}"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vela-logflare
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: vela-logflare
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vela-logflare
+  template:
+    metadata:
+      labels:
+        app: vela-logflare
+    spec:
+      initContainers:
+        - name: init-db
+          image: postgres:15-alpine
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: DB_HOST
+              value: "{{ .Values.analytics.DB_HOST }}"
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: database
+                  key: superuser-username
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: database
+                  key: superuser-password
+            - name: DB_PORT
+              value: "{{ .Values.analytics.DB_PORT }}"
+            - name: DB_DATABASE
+              value: "{{ .Values.analytics.DB_DATABASE }}"
+            - name: DB_SCHEMA
+              value: "{{ .Values.analytics.DB_SCHEMA }}"
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+                echo "Waiting for database..."
+                until pg_isready -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER"; do
+                sleep 2
+                done
+                echo "Database is ready"
+                
+                # Create the database if it doesn't exist
+                psql -h "$DB_HOST" -U "$DB_USER" -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = '$DB_DATABASE'" | grep -q 1 || \
+                psql -h "$DB_HOST" -U "$DB_USER" -d postgres -c "CREATE DATABASE $DB_DATABASE;"
+
+                # Ensure schema exists
+                psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_DATABASE" -c "CREATE SCHEMA IF NOT EXISTS $DB_SCHEMA;"
+
+                echo "DB Init finished"
+      containers:
+        - name: logflare
+          image: supabase/logflare:1.14.2
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: LOGFLARE_PUBLIC_ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: vela-logflare-secret
+                  key: LOGFLARE_PUBLIC_ACCESS_TOKEN
+            - name: LOGFLARE_PRIVATE_ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: vela-logflare-secret
+                  key: LOGFLARE_PRIVATE_ACCESS_TOKEN
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: database
+                  key: superuser-password
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: database
+                  key: superuser-username
+            - name: DB_HOSTNAME
+              value: "{{ .Values.analytics.DB_HOST }}"
+            - name: DB_DATABASE
+              value: "{{ .Values.analytics.DB_DATABASE }}"
+            - name: DB_DRIVER
+              value: "{{ .Values.analytics.DB_DRIVER }}"
+            - name: DB_PORT
+              value: "{{ .Values.analytics.DB_PORT }}"
+            - name: DB_SCHEMA
+              value: "{{ .Values.analytics.DB_SCHEMA }}"
+            - name: LOGFLARE_NODE_HOST
+              value: "{{ .Values.analytics.LOGFLARE_NODE_HOST }}"
+            - name: LOGFLARE_MIN_CLUSTER_SIZE
+              value: "{{ .Values.analytics.LOGFLARE_MIN_CLUSTER_SIZE }}"
+            - name: LOGFLARE_SINGLE_TENANT
+              value: "{{ .Values.analytics.LOGFLARE_SINGLE_TENANT }}"
+            - name: LOGFLARE_SUPABASE_MODE
+              value: "{{ .Values.analytics.LOGFLARE_SUPABASE_MODE }}"
+            - name: POSTGRES_BACKEND_URL
+              value: $(DB_DRIVER)://$(DB_USERNAME):$(DB_PASSWORD)@$(DB_HOSTNAME):$(DB_PORT)/$(DB_DATABASE)
+            - name: POSTGRES_BACKEND_SCHEMA
+              value: $(DB_SCHEMA)
+            - name: FEATURE_FLAG_OVERRIDE
+              value: "{{ .Values.analytics.FEATURE_FLAG_OVERRIDE }}"
+            
+          ports:
+            - name: http
+              containerPort: 4000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vela-logflare
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: vela-logflare
+spec:
+  type: ClusterIP
+  selector:
+    app: vela-logflare
+  ports:
+    - name: http
+      port: 4000
+      targetPort: 4000      
