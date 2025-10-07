@@ -87,6 +87,8 @@ data:
   VELA_JWT_SECRET: 'http://vela-auth-service:8080/auth/realms/vela/protocol/openid-connect/certs'
   VELA_ROOT_PATH: '/vela'
   VELA_PGMETA_CRYPTO_KEY: 'secret'
+  VELA_GATEWAY_NAME: {{ .Values.gateway.name }}
+  VELA_GATEWAY_NAMESPACE: {{ .Values.gateway.namespace }}
 ---
 apiVersion: v1
 kind: Service
@@ -108,8 +110,8 @@ metadata:
   name: vela-controller
 spec:
   parentRefs:
-    - name: vela-public-gateway
-      namespace: kong-system
+    - name: {{ .Values.gateway.name }}
+      namespace: {{ .Values.gateway.namespace }}
   hostnames:
     - "{{ .Values.domain }}"
   rules:

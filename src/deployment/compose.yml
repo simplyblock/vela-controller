@@ -143,10 +143,14 @@ services:
     environment:
       LOGFLARE_PUBLIC_ACCESS_TOKEN: ${LOGFLARE_PUBLIC_ACCESS_TOKEN}
       VELA_BRANCH: ${VELA_BRANCH:-local}
-      DOMAIN: ${DOMAIN}
+      NAMESPACE: ${NAMESPACE}
     command:
     - --config
     - /etc/vector/vector.yml
+    ports:
+    - 9001:9001
+    networks:
+    - supabase
 networks:
   supabase:
     driver: bridge
