@@ -71,7 +71,7 @@ def _release_name(namespace: str) -> str:
     _ = namespace  # kept for call-site clarity; release name is namespace-independent
     return settings.deployment_release_name
 
-def inject_branch_env(compose_file: Path, branch_id: str):
+def inject_branch_env(compose_file: Path, branch_id: Identifier):
     try:
         with open(compose_file) as f:
             compose = yaml.safe_load(f)
@@ -82,7 +82,7 @@ def inject_branch_env(compose_file: Path, branch_id: str):
         vector_env = compose["services"]["vector"].setdefault("environment", {})
         vector_env["LOGFLARE_PUBLIC_ACCESS_TOKEN"] = os.environ.get("LOGFLARE_PUBLIC_ACCESS_TOKEN", "")
         vector_env["NAMESPACE"] = os.environ.get("VELA_DEPLOYMENT_NAMESPACE_PREFIX", "")
-        vector_env["VELA_BRANCH"] = branch_id
+        vector_env["VELA_BRANCH"] = str(branch_id)
 
         with open(compose_file, "w") as f:
             yaml.safe_dump(compose, f, sort_keys=False)
