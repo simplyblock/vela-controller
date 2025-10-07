@@ -71,6 +71,7 @@ def _release_name(namespace: str) -> str:
     _ = namespace  # kept for call-site clarity; release name is namespace-independent
     return settings.deployment_release_name
 
+
 def inject_branch_env(compose_file: Path, branch_id: Identifier):
     try:
         with open(compose_file) as f:
