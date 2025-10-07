@@ -1,3 +1,5 @@
+import os
+from pathlib import Path
 from typing import Literal, cast
 
 from fastapi import HTTPException
@@ -12,6 +14,15 @@ async def _ensure_kubeconfig() -> None:
     try:
         config.load_incluster_config()
     except config.config_exception.ConfigException:
+        kubeconfig_path = os.getenv("KUBECONFIG_PATH")
+        if kubeconfig_path:
+            candidate = Path(kubeconfig_path).expanduser()
+            if candidate.exists():
+                try:
+                    await config.load_kube_config(config_file=str(candidate))
+                    return
+                except (config.config_exception.ConfigException, OSError):
+                    pass
         try:
             await config.load_kube_config()
         except config.config_exception.ConfigException as e:

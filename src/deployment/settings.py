@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     cloudflare_domain_suffix: str
     gateway_name: str = "public-gateway"
     gateway_namespace: str = "kong-system"
+    storage_class_name: str = "simplyblock-csi-sc"
 
 
 settings = Settings()  # type: ignore[call-arg]

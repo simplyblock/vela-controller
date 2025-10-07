@@ -171,14 +171,19 @@ async def create_vela_config(branch_id: Identifier, parameters: DeploymentParame
         "memory": f"{bytes_to_mib(math.floor(parameters.memory_bytes * memory_request_fraction))}Mi",
     }
 
-    db_spec.setdefault("persistence", {})["size"] = f"{bytes_to_gib(parameters.database_size)}Gi"
-    db_spec.setdefault("storagePersistence", {})["size"] = f"{bytes_to_gib(parameters.storage_size)}Gi"
+    db_persistence = db_spec.setdefault("persistence", {})
+    db_persistence["size"] = f"{bytes_to_gib(parameters.database_size)}Gi"
+    db_persistence["storageClassName"] = settings.storage_class_name
+    db_storage_persistence = db_spec.setdefault("storagePersistence", {})
+    db_storage_persistence["size"] = f"{bytes_to_gib(parameters.storage_size)}Gi"
+    db_storage_persistence["storageClassName"] = settings.storage_class_name
     db_spec.setdefault("image", {})["tag"] = parameters.database_image_tag
     storage_spec = values_content.setdefault("storage", {})
     storage_spec["enabled"] = True
     storage_persistence = storage_spec.setdefault("persistence", {})
     storage_persistence["enabled"] = True
     storage_persistence["size"] = f"{bytes_to_gib(parameters.storage_size)}Gi"
+    storage_persistence["storageClassName"] = settings.storage_class_name
     namespace = deployment_namespace(branch_id)
 
     # todo: create an storage class with the given IOPS

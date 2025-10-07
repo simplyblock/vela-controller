@@ -35,8 +35,9 @@ services:
       VELA_CLOUDFLARE_BRANCH_REF_CNAME: 'branch-ref.staging.vela.run'
       VELA_CLOUDFLARE_DOMAIN_SUFFIX: 'example.com'
       VELA_DEPLOYMENT_NAMESPACE_PREFIX: 'vela'
+      VELA_STORAGE_CLASS_NAME: 'standard'
       LOGFLARE_PUBLIC_ACCESS_TOKEN: 'my-super-secret-api-key'
-
+      KUBECONFIG_PATH: '/root/.kube/config'
     depends_on:
       database:
         condition: service_healthy

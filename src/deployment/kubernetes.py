@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import os
+from pathlib import Path
 from typing import Any
 
 from kubernetes_asyncio import client, config
@@ -28,12 +30,34 @@ class KubernetesService:
                 # Try to load in-cluster config first (for running in a pod)
                 config.load_incluster_config()
             except ConfigException:
-                try:
-                    # Fall back to kubeconfig file (for local development)
-                    await config.load_kube_config()
-                except ConfigException:
-                    logger.error("Could not configure kubernetes python client")
-                    raise
+                kubeconfig_loaded = False
+                kubeconfig_path = os.getenv("KUBECONFIG_PATH")
+                if kubeconfig_path:
+                    candidate = Path(kubeconfig_path).expanduser()
+                    if candidate.exists():
+                        try:
+                            await config.load_kube_config(config_file=str(candidate))
+                            kubeconfig_loaded = True
+                        except (ConfigException, OSError) as exc:
+                            logger.warning(
+                                "Failed to load kubeconfig from %s (%s); falling back to defaults",
+                                candidate,
+                                exc,
+                            )
+                    else:
+                        logger.info(
+                            "Kubeconfig path %s not found; falling back to default kubeconfig discovery",
+                            candidate,
+                        )
+
+                if not kubeconfig_loaded:
+                    try:
+                        # Fall back to kubeconfig file (for local development)
+                        await config.load_kube_config()
+                        kubeconfig_loaded = True
+                    except ConfigException:
+                        logger.error("Could not configure kubernetes python client")
+                        raise
 
             self._core_v1 = client.CoreV1Api()
             self._custom_api = client.CustomObjectsApi()
