@@ -19,8 +19,6 @@ services:
       dockerfile: containers/Containerfile
     volumes:
       - ~/.kube/config:/root/.kube/config:ro
-      - ..:/app
-    command: 'bash -c "python -m venv /tmp/venv && source /tmp/venv/bin/activate && pip install -e . && uvicorn --host 0.0.0.0 --reload simplyblock.vela.api:app"'
     environment:
       VELA_ROOT_PATH: '/vela'
       VELA_JWT_SECRET: 'http://auth:8080/auth/realms/vela/protocol/openid-connect/certs'
