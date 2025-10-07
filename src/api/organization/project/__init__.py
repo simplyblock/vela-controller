@@ -8,7 +8,6 @@ from fastapi.responses import JSONResponse
 from kubernetes_asyncio.client.exceptions import ApiException
 from sqlalchemy.exc import IntegrityError
 
-from .... import VelaError
 from ...._util import Identifier, StatusType
 from ....deployment import (
     DeploymentParameters,
@@ -18,6 +17,7 @@ from ....deployment import (
     get_deployment_status,
 )
 from ....deployment.kubevirt import call_kubevirt_subresource
+from ....exceptions import VelaError
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ...db import SessionDep
 from ...models.branch import Branch
