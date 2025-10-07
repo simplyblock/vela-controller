@@ -1,6 +1,6 @@
 import logging
-import os
 import math
+import os
 import subprocess
 import tempfile
 from importlib import resources
