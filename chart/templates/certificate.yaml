@@ -19,7 +19,7 @@ metadata:
   name: vela-auth-cert
   namespace: {{ .Release.Namespace }}
 spec:
-  secretName: {{ .Release.Name }}-tls-secret
+  secretName: {{ .Release.Name }}-tls-auth-secret
   issuerRef:
     name: {{ .Values.issuer }}
     kind: ClusterIssuer
