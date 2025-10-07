@@ -38,7 +38,7 @@ class Branch(AsyncAttrs, Model, table=True):
     database_user: Annotated[str, Field(sa_column=Column(String(255)))]
     database_password: Annotated[str, Field(sa_column=Column(String(255)))]
     database_size: Annotated[int, Field(**DATABASE_SIZE_CONSTRAINTS, sa_column=Column(BigInteger))]
-    vcpu: Annotated[int, Field(**CPU_CONSTRAINTS, sa_column=Column(BigInteger))]  # units of milli vCPU
+    milli_vcpu: Annotated[int, Field(**CPU_CONSTRAINTS, sa_column=Column(BigInteger))]  # units of milli vCPU
     memory: Annotated[int, Field(**MEMORY_CONSTRAINTS, sa_column=Column(BigInteger))]
     iops: Annotated[int, Field(**IOPS_CONSTRAINTS, sa_column=Column(BigInteger))]
     storage_size: Annotated[int, Field(**STORAGE_SIZE_CONSTRAINTS, sa_column=Column(BigInteger))]
@@ -50,7 +50,7 @@ class Branch(AsyncAttrs, Model, table=True):
         """Return the resource definition for the branch provisioning envelope."""
 
         return ResourcesDefinition(
-            vcpu=self.vcpu,
+            milli_vcpu=self.milli_vcpu,
             ram_bytes=self.memory,
             nvme_bytes=self.database_size,
             iops=self.iops,
@@ -96,11 +96,11 @@ class DatabaseInformation(BaseModel):
 
 
 class ResourcesDefinition(BaseModel):
-    vcpu: Annotated[
+    milli_vcpu: Annotated[
         int,
         PydanticField(
             **CPU_CONSTRAINTS,
-            description="Number of virtual CPUs provisioned (matches Branch.vcpu constraints).",
+            description="Number of milli vCPUs provisioned (matches Branch.milli_vcpu constraints).",
         ),
     ]
     ram_bytes: Annotated[
@@ -134,38 +134,40 @@ class ResourcesDefinition(BaseModel):
 
 
 class ResourceUsageDefinition(BaseModel):
-    vcpu: Annotated[
+    milli_vcpu: Annotated[
         int,
         PydanticField(
-            **CPU_CONSTRAINTS,
+            ge=0,
+            le=2**31 - 1,
             description="Measured vCPU consumption for the branch.",
         ),
     ]
     ram_bytes: Annotated[
         int,
         PydanticField(
-            **MEMORY_CONSTRAINTS,
+            ge=0,
             description="Measured RAM usage in bytes.",
         ),
     ]
     nvme_bytes: Annotated[
         int,
         PydanticField(
-            **DATABASE_SIZE_CONSTRAINTS,
+            ge=0,
             description="Measured NVMe usage in bytes.",
         ),
     ]
     iops: Annotated[
         int,
         PydanticField(
-            **IOPS_CONSTRAINTS,
+            ge=0,
+            le=2**31 - 1,
             description="Measured IOPS consumption.",
         ),
     ]
     storage_bytes: Annotated[
         int | None,
         PydanticField(
-            **STORAGE_SIZE_CONSTRAINTS,
+            ge=0,
             description="Measured storage usage in bytes, if available.",
         ),
     ] = None
@@ -204,11 +206,11 @@ class BranchPublic(BaseModel):
 
 
 class BranchDetailResources(BaseModel):
-    vcpu: Annotated[
+    milli_vcpu: Annotated[
         int,
         PydanticField(
             **CPU_CONSTRAINTS,
-            description="Number of virtual CPUs provisioned (matches Branch.vcpu constraints).",
+            description="Number of milli vCPUs provisioned (matches Branch.milli_vcpu constraints).",
         ),
     ]
     ram_bytes: Annotated[
