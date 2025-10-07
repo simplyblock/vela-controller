@@ -1,6 +1,5 @@
 import asyncio
 import subprocess
-from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Final, Literal
 
 from pydantic import BeforeValidator, Field, PlainSerializer, StringConstraints, WithJsonSchema
@@ -8,9 +7,29 @@ from ulid import ULID
 
 _MAX_LENGTH = 50
 
-KIB: Final[int] = 1000
-MIB: Final[int] = KIB * 1000
-GIB: Final[int] = MIB * 1000
+KB: Final[int] = 1000
+MB: Final[int] = KB * 1000
+GB: Final[int] = MB * 1000
+
+
+VCPU_MIN = 1000  # in milli vCPU
+VCPU_MAX = 64000
+VCPU_STEP = 100
+
+MEM_MIN = 500 * MB
+MEM_STEP = 100 * MB
+
+SIZE_STEP = GB
+
+IOPS_MIN = 100
+IOPS_MAX = 2**31 - 1
+
+
+CPU_CONSTRAINTS = {"ge": VCPU_MIN, "le": VCPU_MAX, "multiple_of": VCPU_STEP}
+MEMORY_CONSTRAINTS = {"ge": MEM_MIN, "multiple_of": MEM_STEP}
+STORAGE_SIZE_CONSTRAINTS = {"gt": 0, "multiple_of": SIZE_STEP}
+IOPS_CONSTRAINTS = {"ge": IOPS_MIN, "le": IOPS_MAX}
+DATABASE_SIZE_CONSTRAINTS = {"gt": 0, "multiple_of": SIZE_STEP}
 
 Slug = Annotated[
     str,
@@ -118,38 +137,28 @@ Identifier = Annotated[
 def bytes_to_kib(value: int) -> int:
     """Convert a byte count to the nearest whole KiB using floor division."""
 
-    return value // KIB
+    return value // KB
 
 
 def bytes_to_mib(value: int) -> int:
     """Convert a byte count to the nearest whole MiB using floor division."""
 
-    return value // MIB
+    return value // MB
 
 
 def bytes_to_gib(value: int) -> int:
     """Convert a byte count to the nearest whole GiB using floor division."""
 
-    return value // GIB
+    return value // GB
 
 
 def kib_to_bytes(value: int) -> int:
     """Convert a KiB count to bytes."""
 
-    return value * KIB
+    return value * KB
 
 
 def mib_to_bytes(value: int) -> int:
     """Convert a MiB count to bytes."""
 
-    return value * MIB
-
-
-def gib_to_bytes(value: int | float) -> int:
-    """Convert a GiB count to bytes, accepting integer or fractional sizes."""
-
-    decimal_value = Decimal(str(value))
-    bytes_decimal = decimal_value * Decimal(GIB)
-    # Align to the nearest KiB so downstream validations expecting multiples of KiB still pass.
-    kib_units = (bytes_decimal / Decimal(KIB)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-    return int(kib_units * Decimal(KIB))
+    return value * MB

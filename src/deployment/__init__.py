@@ -13,8 +13,11 @@ from pydantic import BaseModel, Field
 
 from .. import VelaError
 from .._util import (
-    GIB,
-    MIB,
+    CPU_CONSTRAINTS,
+    DATABASE_SIZE_CONSTRAINTS,
+    IOPS_CONSTRAINTS,
+    MEMORY_CONSTRAINTS,
+    STORAGE_SIZE_CONSTRAINTS,
     Identifier,
     Slug,
     StatusType,
@@ -86,11 +89,11 @@ class DeploymentParameters(BaseModel):
     database: dbstr
     database_user: dbstr
     database_password: dbstr
-    database_size: Annotated[int, Field(gt=0, le=2**63 - 1, multiple_of=GIB)]
-    storage_size: Annotated[int, Field(gt=0, le=2**63 - 1, multiple_of=GIB)]
-    vcpu: Annotated[float, Field(ge=1, le=64.0, multiple_of=0.1)]
-    memory_bytes: Annotated[int, Field(ge=500 * MIB, le=256 * GIB, multiple_of=100 * MIB)]
-    iops: Annotated[int, Field(ge=100, le=2**31 - 1)]
+    database_size: Annotated[int, Field(**DATABASE_SIZE_CONSTRAINTS)]
+    storage_size: Annotated[int, Field(**STORAGE_SIZE_CONSTRAINTS)]
+    vcpu: Annotated[int, Field(**CPU_CONSTRAINTS)]  # units of milli vCPU
+    memory_bytes: Annotated[int, Field(**MEMORY_CONSTRAINTS)]
+    iops: Annotated[int, Field(**IOPS_CONSTRAINTS)]
     database_image_tag: Literal["15.1.0.147"]
 
 
@@ -222,8 +225,8 @@ def get_db_vmi_identity(branch_id: Identifier) -> tuple[str, str]:
 
 
 class ResizeParameters(BaseModel):
-    database_size: Annotated[int, Field(gt=0, multiple_of=GIB)] | None
-    storage_size: Annotated[int, Field(gt=0, multiple_of=GIB)] | None
+    database_size: Annotated[int, Field(**DATABASE_SIZE_CONSTRAINTS)] | None
+    storage_size: Annotated[int, Field(**STORAGE_SIZE_CONSTRAINTS)] | None
 
 
 def resize_deployment(branch_id: Identifier, parameters: ResizeParameters):
