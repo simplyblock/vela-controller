@@ -128,32 +128,13 @@ db:
     PGPORT: "5432"
     POSTGRES_PORT: "5432"
     JWT_EXP: 3600
-    # POSTGRES_HOST_AUTH_METHOD: md5
-    # Enable SSL for postgres by specifying paths for mounted certificate key pair
-    # POSTGRES_SSL_CERT: /path/to/ssl/server.crt
-    # POSTGRES_SSL_KEY: /path/to/ssl/server.key
-  # volumeMounts:
-  #   - name: volume_name
-  #     mountPath: /path/to/my/secret
-  # volumes:
-  #   - name: volume_name
-  #     secret:
-  #       defaultMode: 733
-  #       secretName: my_secret
-  #       items:
-  #       - key: my_secret.txt
-  #         path: name_of_file_in_container.txt
-  resources: {}
-    # We usually recommend not to specify default resources and to leave this as a conscious
-    # choice for the user. This also increases chances charts run on environments with little
-    # resources, such as Minikube. If you do want to specify resources, uncomment the following
-    # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
-    # limits:
-    #   cpu: 100m
-    #   memory: 128Mi
-    # requests:
-    #   cpu: 100m
-    #   memory: 128Mi
+  resources: # Place holder values. Actual values are filled by create_vela_config
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
   persistence:
     enabled: true
     storageClassName: "simplyblock-csi-sc"
@@ -169,8 +150,6 @@ db:
     size: 50Gi
     accessModes:
       - ReadWriteMany
-  vcpu: 1
-  ram: 2
   autoscaling:
     enabled: true
     minReplicas: 1
