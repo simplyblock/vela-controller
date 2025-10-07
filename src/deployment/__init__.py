@@ -12,7 +12,6 @@ from cloudflare import AsyncCloudflare, CloudflareError
 from kubernetes_asyncio.client.exceptions import ApiException
 from pydantic import BaseModel, Field
 
-from .. import VelaError
 from .._util import (
     CPU_CONSTRAINTS,
     DATABASE_SIZE_CONSTRAINTS,
@@ -27,6 +26,7 @@ from .._util import (
     check_output,
     dbstr,
 )
+from ..exceptions import VelaCloudflareError, VelaKubernetesError
 from .kubernetes import KubernetesService
 from .kubevirt import get_virtualmachine_status
 from .settings import settings
@@ -295,10 +295,6 @@ def resize_deployment(branch_id: Identifier, parameters: ResizeParameters):
         )
 
 
-class BranchEndpointError(VelaError):
-    """Raised when provisioning branch endpoints fails."""
-
-
 class CloudflareConfig(BaseModel):
     api_token: str
     zone_id: str
@@ -348,9 +344,9 @@ async def _create_dns_record(cf: CloudflareConfig, domain: str) -> None:
                 proxied=False,
             )
     except CloudflareError as exc:
-        raise BranchEndpointError(f"Cloudflare API error: {exc}") from exc
+        raise VelaCloudflareError(f"Cloudflare API error: {exc}") from exc
     except Exception as exc:  # pragma: no cover - surfaced to caller
-        raise BranchEndpointError(f"Cloudflare request failed: {exc}") from exc
+        raise VelaCloudflareError(f"Cloudflare request failed: {exc}") from exc
 
     logger.info("Created DNS CNAME record %s -> %s", domain, cf.branch_ref_cname)
 
@@ -460,7 +456,7 @@ async def _apply_http_routes(namespace: str, routes: list[dict[str, Any]]) -> No
     try:
         await kube_service.apply_http_routes(namespace, routes)
     except Exception as exc:  # pragma: no cover - surfaced to caller
-        raise BranchEndpointError(f"Failed to apply HTTPRoute: {exc}") from exc
+        raise VelaKubernetesError(f"Failed to apply HTTPRoute: {exc}") from exc
 
 
 def _build_kong_plugin(namespace: str) -> dict[str, Any]:
@@ -487,7 +483,7 @@ async def _apply_kong_plugin(namespace: str, plugin: dict[str, Any]) -> None:
     try:
         await kube_service.apply_kong_plugin(namespace, plugin)
     except Exception as exc:  # pragma: no cover - surfaced to caller
-        raise BranchEndpointError(f"Failed to apply KongPlugin: {exc}") from exc
+        raise VelaKubernetesError(f"Failed to apply KongPlugin: {exc}") from exc
 
 
 async def provision_branch_endpoints(
