@@ -6,6 +6,8 @@ metadata:
   labels:
     {{- include "supabase.labels" . | nindent 4 }}
 data:
+  vector.yml: |
+{{- .Values.vectorYaml | nindent 4 }}
   docker-compose.yml: |
 {{- .Values.composeYaml | nindent 4 }}
 {{- end }}
