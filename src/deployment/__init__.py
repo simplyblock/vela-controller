@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import subprocess
 import tempfile
@@ -8,6 +7,7 @@ from typing import Annotated, Any, Literal
 
 import yaml
 from cloudflare import AsyncCloudflare, CloudflareError
+from kubernetes_asyncio.client.exceptions import ApiException
 from pydantic import BaseModel, Field
 
 from .. import VelaError
@@ -170,13 +170,13 @@ async def get_deployment_status(branch_id: Identifier) -> DeploymentStatus:
 
 async def delete_deployment(branch_id: Identifier) -> None:
     namespace, _ = get_db_vmi_identity(branch_id)
-    release = _release_name(namespace)
-    await asyncio.to_thread(
-        subprocess.check_call,
-        ["helm", "uninstall", release, "-n", namespace, "--wait"],
-    )
-
-    await kube_service.delete_namespace(namespace)
+    try:
+        await kube_service.delete_namespace(namespace)
+    except ApiException as exc:
+        if exc.status == 404:
+            logger.info("Namespace %s not found", namespace)
+            return
+        raise
 
 
 def get_db_vmi_identity(branch_id: Identifier) -> tuple[str, str]:

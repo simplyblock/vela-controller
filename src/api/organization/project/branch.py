@@ -301,7 +301,6 @@ async def delete(
     await delete_deployment(branch.id)
     await session.delete(branch)
     await session.commit()
-    # TODO: implement deletion of branch resources
     return Response(status_code=204)
 
 
