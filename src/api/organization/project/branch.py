@@ -86,7 +86,7 @@ async def _public(branch: Branch) -> BranchPublic:
 
     # FIXME: Replace placeholder telemetry data once usage metrics and labels are wired in.
     used_resources = ResourceUsageDefinition(
-        vcpu=0,
+        milli_vcpu=0,
         ram_bytes=0,
         nvme_bytes=0,
         iops=0,
@@ -216,7 +216,7 @@ async def create(
         database_password=source.database_password,
         database_size=source.database_size,
         storage_size=source.storage_size,
-        vcpu=source.vcpu,
+        milli_vcpu=source.milli_vcpu,
         memory=source.memory,
         iops=source.iops,
         database_image_tag=source.database_image_tag,

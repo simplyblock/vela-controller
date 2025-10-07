@@ -112,7 +112,7 @@ class DeploymentParameters(BaseModel):
     database_password: dbstr
     database_size: Annotated[int, Field(**DATABASE_SIZE_CONSTRAINTS)]
     storage_size: Annotated[int, Field(**STORAGE_SIZE_CONSTRAINTS)]
-    vcpu: Annotated[int, Field(**CPU_CONSTRAINTS)]  # units of milli vCPU
+    milli_vcpu: Annotated[int, Field(**CPU_CONSTRAINTS)]  # units of milli vCPU
     memory_bytes: Annotated[int, Field(**MEMORY_CONSTRAINTS)]
     iops: Annotated[int, Field(**IOPS_CONSTRAINTS)]
     database_image_tag: Literal["15.1.0.147"]
@@ -120,11 +120,6 @@ class DeploymentParameters(BaseModel):
 
 class DeploymentStatus(BaseModel):
     status: StatusType
-
-
-def _format_cpu(vcpu: float, factor: float) -> str:
-    """Converts vCPU units into millicores with scaling."""
-    return f"{int(vcpu * 1000 * factor)}m"
 
 
 async def create_vela_config(branch_id: Identifier, parameters: DeploymentParameters, branch: Slug):
@@ -163,11 +158,11 @@ async def create_vela_config(branch_id: Identifier, parameters: DeploymentParame
     memory_request_fraction = 0.90  # request = 90% of limit
 
     resource_cfg["limits"] = {
-        "cpu": _format_cpu(parameters.vcpu, 1.0),
+        "cpu": f"{parameters.milli_vcpu}m",
         "memory": f"{bytes_to_mib(parameters.memory_bytes)}Mi",
     }
     resource_cfg["requests"] = {
-        "cpu": _format_cpu(parameters.vcpu, cpu_provisioning_factor),
+        "cpu": f"{int(parameters.milli_vcpu * cpu_provisioning_factor)}m",
         "memory": f"{bytes_to_mib(math.floor(parameters.memory_bytes * memory_request_fraction))}Mi",
     }
 

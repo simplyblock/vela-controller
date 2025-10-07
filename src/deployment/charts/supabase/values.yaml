@@ -128,7 +128,7 @@ db:
     PGPORT: "5432"
     POSTGRES_PORT: "5432"
     JWT_EXP: 3600
-  resources: # Place holder values. Actual values are filled by create_vela_config
+  resources: # Placeholder values. Actual values are filled by create_vela_config
     limits:
       cpu: 100m
       memory: 128Mi
