@@ -55,8 +55,6 @@ spec:
               value: 'controller'
             - name: VELA_KEYCLOAK_CLIENT_SECRET
               value: 'controller-secret'
-            - name: DOMAIN
-              value: {{ .Values.domain }}
               
           livenessProbe:
             httpGet:
