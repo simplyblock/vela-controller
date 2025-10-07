@@ -1,5 +1,6 @@
 import logging
 import math
+import os
 import subprocess
 import tempfile
 from importlib import resources
@@ -85,6 +86,26 @@ def _release_name(namespace: str) -> str:
     return settings.deployment_release_name
 
 
+def inject_branch_env(compose_file: Path, branch_id: Identifier):
+    try:
+        with open(compose_file) as f:
+            compose = yaml.safe_load(f)
+
+        if "services" not in compose or "vector" not in compose["services"]:
+            raise KeyError("Missing 'vector' service in compose file")
+
+        vector_env = compose["services"]["vector"].setdefault("environment", {})
+        vector_env["LOGFLARE_PUBLIC_ACCESS_TOKEN"] = os.environ.get("LOGFLARE_PUBLIC_ACCESS_TOKEN", "")
+        vector_env["NAMESPACE"] = os.environ.get("VELA_DEPLOYMENT_NAMESPACE_PREFIX", "")
+        vector_env["VELA_BRANCH"] = str(branch_id).lower()
+
+        with open(compose_file, "w") as f:
+            yaml.safe_dump(compose, f, sort_keys=False)
+
+    except (OSError, yaml.YAMLError, KeyError) as e:
+        raise RuntimeError(f"Failed to inject branch env into compose file: {e}") from e
+
+
 class DeploymentParameters(BaseModel):
     database: dbstr
     database_user: dbstr
@@ -121,6 +142,12 @@ async def create_vela_config(branch_id: Identifier, parameters: DeploymentParame
     compose_file = Path(__file__).with_name("compose.yml")
     if not compose_file.exists():
         raise FileNotFoundError(f"docker-compose manifest not found at {compose_file}")
+
+    inject_branch_env(compose_file, branch_id)
+
+    vector_file = Path(__file__).with_name("vector.yml")
+    if not vector_file.exists():
+        raise FileNotFoundError(f"vector config file not found at {vector_file}")
     values_content = yaml.safe_load((chart / "values.yaml").read_text())
 
     # Override defaults
@@ -171,6 +198,8 @@ async def create_vela_config(branch_id: Identifier, parameters: DeploymentParame
                     "--create-namespace",
                     "--set-file",
                     f"composeYaml={compose_file}",
+                    "--set-file",
+                    f"vectorYaml={vector_file}",
                     "-f",
                     temp_values.name,
                 ],

@@ -28,6 +28,11 @@ spec:
             - configMapRef:
                 name: vela-controller-config
           env:
+            - name: LOGFLARE_PUBLIC_ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: vela-logflare-secret
+                  key: LOGFLARE_PUBLIC_ACCESS_TOKEN
             - name: DB_USER
               valueFrom:
                 secretKeyRef:
@@ -50,6 +55,7 @@ spec:
               value: 'controller'
             - name: VELA_KEYCLOAK_CLIENT_SECRET
               value: 'controller-secret'
+              
           livenessProbe:
             httpGet:
               path: /health
