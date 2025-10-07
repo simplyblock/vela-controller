@@ -1,4 +1,5 @@
 import base64
+import logging
 from collections.abc import Sequence
 from typing import Any, Literal
 
@@ -21,6 +22,7 @@ from ....deployment import (
 )
 from ....deployment.kubevirt import KubevirtSubresourceAction, call_kubevirt_subresource, get_virtualmachine_status
 from ....deployment.settings import settings as deployment_settings
+from ....exceptions import VelaDeploymentError
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ...db import SessionDep
 from ...models.branch import (
@@ -91,15 +93,27 @@ async def _public(branch: Branch) -> BranchPublic:
         storage_bytes=None,
     )
     namespace, vmi_name = get_db_vmi_identity(branch.id)
-    status = await get_virtualmachine_status(namespace, vmi_name)
-    # TODO: replace with real service health status once available
-    _service_health = BranchStatus(
-        database="ACTIVE_HEALTHY" if status == "Running" else "STOPPED",
-        realtime="ACTIVE_HEALTHY" if status == "Running" else "STOPPED",
-        storage="ACTIVE_HEALTHY" if status == "Running" else "STOPPED",
-        meta="ACTIVE_HEALTHY" if status == "Running" else "STOPPED",
-        rest="ACTIVE_HEALTHY" if status == "Running" else "STOPPED",
-    )
+    try:
+        status = await get_virtualmachine_status(namespace, vmi_name)
+        # TODO: replace with real service health status once available
+        _service_health = BranchStatus(
+            database="ACTIVE_HEALTHY" if status == "Running" else "STOPPED",
+            realtime="ACTIVE_HEALTHY" if status == "Running" else "STOPPED",
+            storage="ACTIVE_HEALTHY" if status == "Running" else "STOPPED",
+            meta="ACTIVE_HEALTHY" if status == "Running" else "STOPPED",
+            rest="ACTIVE_HEALTHY" if status == "Running" else "STOPPED",
+        )
+    except VelaDeploymentError:
+        logging.exception("Failed to query VM status")
+        status = "UNKNOWN"
+        _service_health = BranchStatus(
+            database="UNKNOWN",
+            realtime="UNKNOWN",
+            storage="UNKNOWN",
+            meta="UNKNOWN",
+            rest="UNKNOWN",
+        )
+
     api_keys = BranchApiKeys(anon="", service_role="")
 
     return BranchPublic(
