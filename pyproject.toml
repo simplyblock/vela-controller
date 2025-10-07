@@ -12,6 +12,8 @@ dependencies = [
     'sqlmodel',
     'asyncpg',
     'pyjwt',
+    'pydantic==2.11.10',
+    'pydantic-core==2.33.2',
     'pydantic-settings',
     'kubernetes-asyncio',
     'pyyaml',
@@ -56,6 +58,7 @@ description = 'Run API tests'
 labels = ['dynamic']
 deps = ['schemathesis', 'httpx', 'testcontainers[postgres]']
 commands = [['python3', 'tests/schemathesis.py']]
+passenv = ['DOCKER_HOST']
 
 
 [tool.ruff]
