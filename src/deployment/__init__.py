@@ -27,7 +27,7 @@ DEFAULT_DATABASE_VM_NAME = "supabase-supabase-db"
 def deployment_namespace(branch_id: Identifier) -> str:
     """Return the Kubernetes namespace for a branch using `<prefix>-<branch_id>` format."""
 
-    branch_value = str(branch_id)
+    branch_value = str(branch_id).lower()
     prefix = settings.deployment_namespace_prefix
     if prefix:
         return f"{prefix}-{branch_value}"
@@ -82,7 +82,7 @@ def inject_branch_env(compose_file: Path, branch_id: Identifier):
         vector_env = compose["services"]["vector"].setdefault("environment", {})
         vector_env["LOGFLARE_PUBLIC_ACCESS_TOKEN"] = os.environ.get("LOGFLARE_PUBLIC_ACCESS_TOKEN", "")
         vector_env["NAMESPACE"] = os.environ.get("VELA_DEPLOYMENT_NAMESPACE_PREFIX", "")
-        vector_env["VELA_BRANCH"] = str(branch_id)
+        vector_env["VELA_BRANCH"] = str(branch_id).lower()
 
         with open(compose_file, "w") as f:
             yaml.safe_dump(compose, f, sort_keys=False)
