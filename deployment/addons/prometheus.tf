@@ -7,27 +7,31 @@ resource "helm_release" "prometheus" {
   version          = "25.18.0"
 
   set {
-    name  = "prometheus.server.fullnameOverride"
+    name  = "server.fullnameOverride"
     value = "vela-prometheus"
   }
 
   set {
-    name  = "prometheus.server.replicaCount"
+    name  = "server.replicaCount"
     value = 1
   }
 
   set {
-    name  = "prometheus.server.statefulSet.enabled"
+    name  = "server.statefulSet.enabled"
     value = true
   }
 
   set {
-    name  = "prometheus.server.persistentVolume.enabled"
+    name  = "server.persistentVolume.enabled"
     value = true
   }
 
   set {
-    name  = "prometheus.server.persistentVolume.size"
+    name  = "server.persistentVolume.size"
     value = "5Gi"
+  }
+  set {
+    name  = "server.service.servicePort"
+    value = 9090
   }
 }
