@@ -120,7 +120,7 @@ spec:
       volumes:
         - name: tls-certs
           secret:
-            secretName: vela-auth-tls
+            secretName: {{ .Release.Name }}-tls-auth-secret
         - name: init-sql
           configMap:
             name: vela-auth-config
