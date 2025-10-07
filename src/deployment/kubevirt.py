@@ -1,9 +1,11 @@
 from typing import Literal, cast
 
+from aiohttp.client_exceptions import ClientError
 from fastapi import HTTPException
 from kubernetes_asyncio import client, config
 
 from .._util import StatusType
+from ..exceptions import VelaKubernetesError
 
 KubevirtSubresourceAction = Literal["pause", "unpause", "start", "stop"]
 
@@ -53,10 +55,8 @@ async def get_virtualmachine_status(namespace: str, name: str) -> StatusType:
             plural="virtualmachines",
             name=name,
         )
-    except client.ApiException as e:
-        if e.status == 404:
-            raise HTTPException(status_code=404, detail=f"VirtualMachine {name} not found in {namespace}") from e
-        raise
+    except (client.ApiException, ClientError) as e:
+        raise VelaKubernetesError("Failed to query virtual machine status") from e
 
     # KubeVirt exposes status.printableStatus as a human readable state
     try:
