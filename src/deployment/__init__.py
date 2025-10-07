@@ -87,8 +87,9 @@ def inject_branch_env(compose_file: Path, branch_id: Identifier):
         with open(compose_file, "w") as f:
             yaml.safe_dump(compose, f, sort_keys=False)
 
-    except Exception as e:
-        raise RuntimeError(f"Failed to inject branch env into compose file: {e}")
+    except (OSError, yaml.YAMLError, KeyError) as e:
+        raise RuntimeError(f"Failed to inject branch env into compose file: {e}") from e
+
 
 class DeploymentParameters(BaseModel):
     database: dbstr
