@@ -17,6 +17,10 @@ domaincertsecret: vela-run-staging-wildcard-cert  # TODO: use cert manager
 keycloak:
   realmFile: files/realm.json
 
+secret:
+  jwt:
+    pgmeta_crypto_key: "secret"
+
 analytics:
   DB_HOST: database
   DB_DATABASE: logflare
