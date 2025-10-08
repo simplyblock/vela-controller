@@ -241,7 +241,7 @@ class BranchDetailResources(BaseModel):
             **STORAGE_SIZE_CONSTRAINTS,
             description="Database storage capacity in bytes (mirrors Branch.database_size).",
         ),
-    ]
+    ]status
 
 
 async def lookup(session: SessionDep, project: ProjectDep, branch_id: Identifier) -> Branch:

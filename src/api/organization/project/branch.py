@@ -210,6 +210,7 @@ async def create(
     entity = Branch(
         name=parameters.name,
         project_id=project.id,
+        organization_id=project.organization_id,
         parent_id=source.id,
         database=source.database,
         database_user=source.database_user,
