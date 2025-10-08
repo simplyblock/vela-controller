@@ -31,7 +31,16 @@ def _use_route_names_as_operation_ids(app: FastAPI) -> None:
             route.operation_id = route.name
 
 
-app = FastAPI(root_path=settings.root_path)
+_tags = [
+    {"name": "user"},
+    {"name": "organization"},
+    {"name": "role", "parent": "organization"},
+    {"name": "project", "parent": "organization"},
+    {"name": "branch", "parent": "project"},
+]
+
+
+app = FastAPI(openapi_tags=_tags, root_path=settings.root_path)
 
 app.add_middleware(
     CORSMiddleware,

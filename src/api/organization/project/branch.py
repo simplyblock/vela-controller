@@ -41,7 +41,7 @@ from ...models.organization import OrganizationDep
 from ...models.project import ProjectDep
 from ...settings import settings
 
-api = APIRouter()
+api = APIRouter(tags=["branch"])
 
 
 async def _public(branch: Branch) -> BranchPublic:
@@ -249,7 +249,7 @@ async def create(
     )
 
 
-instance_api = APIRouter(prefix="/{branch_id}")
+instance_api = APIRouter(prefix="/{branch_id}", tags=["branch"])
 
 
 @instance_api.get(
