@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from kubernetes_asyncio.client.exceptions import ApiException
 from sqlalchemy.exc import IntegrityError
 
+from ...._util import Identifier
 from ....deployment import (
     DeploymentParameters,
     ResizeParameters,
@@ -51,8 +52,8 @@ api = APIRouter(tags=["branch"])
 
 async def _deploy_branch_environment_task(
     *,
-    project_id: str,
-    branch_id: str,
+    project_id: Identifier,
+    branch_id: Identifier,
     branch_slug: str,
     parameters: DeploymentParameters,
 ) -> None:
