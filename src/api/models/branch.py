@@ -26,6 +26,8 @@ class Branch(AsyncAttrs, Model, table=True):
     DEFAULT_SLUG: ClassVar[Slug] = "main"
 
     name: Slug
+    env_type: str
+    organization_id: Identifier = Model.foreign_key_field("organization")
     project_id: Identifier = Model.foreign_key_field("project")
     project: Project | None = Relationship(back_populates="branches")
     parent_id: Identifier | None = Model.foreign_key_field("branch", nullable=True)
@@ -56,18 +58,18 @@ class Branch(AsyncAttrs, Model, table=True):
             storage_bytes=self.storage_size,
         )
 
-
 class BranchCreate(BaseModel):
     name: Name
     source: Identifier
+    organization_id: Identifier | None = None
     # Clone options (reserved for future use)
     config_copy: bool = False
     data_copy: bool = False
-
+    env_type: str
 
 class BranchUpdate(BaseModel):
     name: Name | None = None
-
+    env_type: str | None = None
 
 BranchServiceStatus = Literal[
     "ACTIVE_HEALTHY",
@@ -81,7 +83,6 @@ BranchServiceStatus = Literal[
     "STOPPING",
     "UNKNOWN",
 ]
-
 
 class DatabaseInformation(BaseModel):
     host: str

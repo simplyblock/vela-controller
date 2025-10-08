@@ -55,7 +55,10 @@
       "directAccessGrantsEnabled": true,
       "publicClient": false,
       "secret": "client-secret",
-      "protocol": "openid-connect"
+      "protocol": "openid-connect",
+      "attributes": {
+        "access.token.lifespan": "31536000"
+      }
     },
     {
       "clientId": "controller",

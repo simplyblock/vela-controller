@@ -5,7 +5,7 @@ from uuid import UUID
 from pydantic import StringConstraints
 from sqlalchemy import UUID as SQLAlchemyUUID  # noqa: N811
 from sqlalchemy import TypeDecorator
-from sqlmodel import Field as SQLField
+from sqlmodel import Field as SQLField, Field
 from sqlmodel import SQLModel
 from ulid import ULID
 
@@ -17,7 +17,6 @@ Name = Annotated[
         min_length=1,
     ),
 ]
-
 
 class _DatabaseIdentifier(TypeDecorator):
     """SQLAlchemy type that stores ULIDs as UUIDs in the database."""

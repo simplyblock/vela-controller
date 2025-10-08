@@ -107,6 +107,7 @@ def inject_branch_env(compose_file: Path, branch_id: Identifier):
 
 
 class DeploymentParameters(BaseModel):
+    env_type: str
     database: dbstr
     database_user: dbstr
     database_password: dbstr

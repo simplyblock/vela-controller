@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING, Annotated
 from uuid import UUID
+from enum import Enum as PyEnum
 
 from fastapi import Depends, HTTPException
 from sqlalchemy.exc import NoResultFound
@@ -14,16 +15,48 @@ from .organization import Organization, OrganizationDep
 if TYPE_CHECKING:
     from .user import User
 
+class RoleType(PyEnum):
+    organization = 0
+    environment = 1
+    project = 2
+    branch = 3
 
 class RoleUserLink(AsyncAttrs, SQLModel, table=True):
     role_id: int | None = Model.foreign_key_field("role", nullable=True, primary_key=True)
     user_id: UUID = Field(foreign_key="user.id", primary_key=True)
+    environment_entity: str
+    project_entity: Identifier | None = Model.foreign_key_field("project", nullable=True)
+    branch_entity: Identifier | None = Model.foreign_key_field("branch", nullable=True)
+
+class RoleAccessRight(AsyncAttrs, SQLModel, table=True):
+    role_id: Identifier = Model.foreign_key_field("role", nullable=False, primary_key=True)
+    access_right_id: Identifier = Model.foreign_key_field("accessright", nullable=False, primary_key=True)
 
 
 class Role(AsyncAttrs, Model, table=True):
-    organization_id: int | None = Model.foreign_key_field("organization", nullable=True)
+    organization_id: Identifier | None = Model.foreign_key_field("organization", nullable=True)
     organization: Organization | None = Relationship(back_populates="roles")
-    users: list["User"] = Relationship(back_populates="roles", link_model=RoleUserLink)
+    role_type: RoleType
+    is_active: bool
+
+    users: list["User"] = Relationship(
+        back_populates="roles",
+        link_model=RoleUserLink
+    )
+
+    access_rights: list["AccessRight"] = Relationship(
+        back_populates="roles",
+        link_model=RoleAccessRight
+    )
+
+class AccessRight(AsyncAttrs, Model, table=True):
+    entry: str
+    role_type: RoleType
+
+    roles: list[Role] = Relationship(
+        back_populates="access_rights",
+        link_model=RoleAccessRight  # ✅ class reference
+    )
 
 
 async def _lookup(session: SessionDep, organization: OrganizationDep, role_id: Identifier) -> Role:

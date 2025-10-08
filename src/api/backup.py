@@ -11,7 +11,7 @@ from sqlalchemy import delete
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from .db import get_db
-from .models.base import Organization, Branch, Project
+from .models._util import Identifier
 from .models.backups import (
     BackupSchedule,
     BackupScheduleRow,
@@ -19,6 +19,9 @@ from .models.backups import (
     BackupLog,
     NextBackup,
 )
+from .models.branch import Branch
+from .models.organization import Organization
+from .models.project import Project
 
 router = APIRouter()
 
@@ -64,8 +67,8 @@ class SchedulePayload(BaseModel):
 @router.put("/backup/branches/{branch_ref}/schedule", response_model=None)
 async def add_or_replace_backup_schedule(
     payload: SchedulePayload,
-    org_ref: Optional[str] = None,
-    branch_ref: Optional[str] = None,
+    org_ref: Optional[Identifier] = None,
+    branch_ref: Optional[Identifier] = None,
     db: AsyncSession = Depends(get_db),
 ):
     # Determine caller method from FastAPI internals isn't available here,

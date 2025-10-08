@@ -69,7 +69,7 @@ class BackupMonitor:
     async def run_once(self, db: AsyncSession):
         """Run a single iteration of backup monitoring."""
         now = datetime.utcnow()
-        result = await db.exec(select(Branch).where(Branch.status == "active"))
+        result = await db.exec(select(Branch))
         branches = result.all()
         logger.info("Found %d active branches", len(branches))
 

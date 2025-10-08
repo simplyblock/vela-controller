@@ -131,7 +131,6 @@ async def list_users(
 ) -> Sequence[UUID | UserPublic]:
     return await public_user_list(await role.awaitable_attrs.users, response)
 
-
 @instance_api.post(
     "/users/",
     name="organizations:roles:users:add",
@@ -143,7 +142,6 @@ async def add_user(session: SessionDep, role: RoleDep, user_id: UUID) -> Respons
     role.users.append(user)
     await session.commit()
     return Response("", status_code=201)
-
 
 @instance_api.delete(
     "/users/{user_id}/",
