@@ -20,6 +20,7 @@ from ....deployment.kubevirt import call_kubevirt_subresource
 from ....exceptions import VelaError
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ...db import SessionDep
+from ...auth import AuthUserDep
 from ...models.branch import Branch
 from ...models.organization import OrganizationDep
 from ...models.project import Project, ProjectCreate, ProjectDep, ProjectPublic, ProjectUpdate
@@ -36,6 +37,7 @@ async def _deploy_branch_environment_task(
     project_id: Identifier,
     branch_id: Identifier,
     branch_slug: str,
+    user: AuthUserDep,
     parameters: DeploymentParameters,
 ) -> None:
     try:
@@ -44,6 +46,7 @@ async def _deploy_branch_environment_task(
             project_id=project_id,
             branch_id=branch_id,
             branch_slug=branch_slug,
+            user=user,
             parameters=parameters,
         )
     except VelaError:
@@ -167,6 +170,7 @@ async def create(
             project_id=entity.id,
             branch_id=branch_dbid,
             branch_slug=branch_slug,
+            user: AuthUserDep,
             parameters=parameters.deployment,
         )
     )

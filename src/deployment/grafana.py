@@ -101,6 +101,19 @@ def remove_team(team_id):
         raise Exception(f"Failed to remove team: {r.text}")
 
 
+def get_user_via_jwt(GRAFANA_JWT):
+    jwt_headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {GRAFANA_JWT}"
+    }
+    r = requests.get(f"{GRAFANA_URL}/api/user", headers=jwt_headers)
+    if r.status_code == 200:
+        user_info = r.json()
+        print(f"[+] Authenticated as '{user_info['login']}' ({user_info['email']})")
+        return user_info["id"]
+    else:
+        raise Exception(f"Failed to authenticate via JWT: {r.status_code} {r.text}")
+
 # Remove Folder
 def remove_folder(folder_uid):
     r = requests.delete(f"{GRAFANA_URL}/api/folders/{folder_uid}", auth=auth, headers=headers)
@@ -124,6 +137,7 @@ def remove_user_from_team(team_id, user_id):
         print(f"[!] User {user_id} not found in team {team_id}.")
     else:
         raise Exception(f"Failed to remove user from team: {r.text}")
+
 
 def create_dashboard(org_name, folder_uid, folder_name):
     dashboard_payload = {
