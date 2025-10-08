@@ -127,6 +127,7 @@ async def create(
     request: Request,
     organization: OrganizationDep,
     parameters: ProjectCreate,
+    user: AuthUserDep,
     response: Literal["empty", "full"] = "empty",
 ) -> JSONResponse:
     entity = Project(
@@ -170,7 +171,7 @@ async def create(
             project_id=entity.id,
             branch_id=branch_dbid,
             branch_slug=branch_slug,
-            user: AuthUserDep,
+            user=user,
             parameters=parameters.deployment,
         )
     )
