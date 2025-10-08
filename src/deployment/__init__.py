@@ -151,6 +151,9 @@ async def create_vela_config(branch_id: Identifier, parameters: DeploymentParame
     db_secrets["adminpassword"] = parameters.database_password
     db_secrets["admindb"] = parameters.database
 
+    secret_spec = values_content.setdefault("secret", {}).setdefault("jwt", {})
+    secret_spec["pgmeta_crypto_key"] = settings.pgmeta_crypto_key
+
     db_spec = values_content.setdefault("db", {})
     resource_cfg = db_spec.setdefault("resources", {})
 
@@ -433,14 +436,15 @@ def _realtime_route_specs(ref: str, domain: str, namespace: str) -> list[HTTPRou
 def _pgmeta_route_specs(ref: str, domain: str, namespace: str) -> list[HTTPRouteSpec]:
     """HTTPRoute definitions that expose the Postgres Meta service for a branch."""
 
+    path = f"/platform/pgmeta/{ref}"
     return [
         HTTPRouteSpec(
             ref=ref,
-            domain=domain,
+            domain=domain,  # TODO: change domain to api.
             namespace=namespace,
             service_name="supabase-supabase-meta",
             service_port=8080,
-            path_prefix="/meta",
+            path_prefix=path,
             route_suffix="pgmeta-route",
         ),
     ]
