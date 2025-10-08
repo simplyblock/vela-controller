@@ -1,14 +1,14 @@
 import asyncio
 import logging
 from collections.abc import Sequence
-from typing import Any, Literal
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from kubernetes_asyncio.client.exceptions import ApiException
 from sqlalchemy.exc import IntegrityError
 
-from ...._util import Identifier, StatusType
+from ...._util import Identifier
 from ....deployment import (
     DeploymentParameters,
     delete_deployment,
@@ -22,7 +22,14 @@ from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_fo
 from ...db import SessionDep
 from ...models.branch import Branch
 from ...models.organization import OrganizationDep
-from ...models.project import Project, ProjectCreate, ProjectDep, ProjectPublic, ProjectUpdate
+from ...models.project import (
+    Project,
+    ProjectBranchStatus,
+    ProjectCreate,
+    ProjectDep,
+    ProjectPublic,
+    ProjectUpdate,
+)
 from . import branch as branch_module
 
 logger = logging.getLogger(__name__)
@@ -54,13 +61,19 @@ async def _deploy_branch_environment_task(
 
 
 async def _public(project: Project) -> ProjectPublic:
-    branch_status: dict[Any, StatusType] = {}
+    branch_status: list[ProjectBranchStatus] = []
     branches = await project.awaitable_attrs.branches
     if not branches:
         raise HTTPException(500, "Project has no branches")
     for branch in branches:
         status = await get_deployment_status(branch.id)
-        branch_status[branch.name] = status.status
+        branch_status.append(
+            ProjectBranchStatus(
+                branch_id=branch.id,
+                branch_name=branch.name,
+                status=status.status,
+            )
+        )
     return ProjectPublic(
         organization_id=project.organization_id,
         id=project.id,
