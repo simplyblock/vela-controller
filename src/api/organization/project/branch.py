@@ -1,7 +1,8 @@
+import asyncio
 import base64
 import logging
 from collections.abc import Sequence
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from Crypto.Cipher import AES
 from Crypto.Hash import MD5
@@ -12,17 +13,19 @@ from kubernetes_asyncio.client.exceptions import ApiException
 from sqlalchemy.exc import IntegrityError
 
 from ....deployment import (
+    DeploymentParameters,
     ResizeParameters,
     branch_api_domain,
     branch_domain,
     branch_rest_endpoint,
     delete_deployment,
+    deploy_branch_environment,
     get_db_vmi_identity,
     resize_deployment,
 )
 from ....deployment.kubevirt import KubevirtSubresourceAction, call_kubevirt_subresource, get_virtualmachine_status
 from ....deployment.settings import settings as deployment_settings
-from ....exceptions import VelaDeploymentError
+from ....exceptions import VelaDeploymentError, VelaError
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ...db import SessionDep
 from ...models.branch import (
@@ -36,12 +39,37 @@ from ...models.branch import (
     DatabaseInformation,
     ResourceUsageDefinition,
 )
-from ...models.branch import lookup as lookup_branch
+from ...models.branch import (
+    lookup as lookup_branch,
+)
 from ...models.organization import OrganizationDep
 from ...models.project import ProjectDep
 from ...settings import settings
 
 api = APIRouter(tags=["branch"])
+
+
+async def _deploy_branch_environment_task(
+    *,
+    project_id: str,
+    branch_id: str,
+    branch_slug: str,
+    parameters: DeploymentParameters,
+) -> None:
+    try:
+        await deploy_branch_environment(
+            project_id=project_id,
+            branch_id=branch_id,
+            branch_slug=branch_slug,
+            parameters=parameters,
+        )
+    except VelaError:
+        logging.exception(
+            "Branch deployment failed for project_id=%s branch_id=%s branch_slug=%s",
+            project_id,
+            branch_id,
+            branch_slug,
+        )
 
 
 async def _public(branch: Branch) -> BranchPublic:
@@ -205,22 +233,38 @@ async def create(
     parameters: BranchCreate,
     response: Literal["empty", "full"] = "empty",
 ) -> JSONResponse:
-    # TODO implement cloning logic
-    source = await lookup_branch(session, project, parameters.source)
-    entity = Branch(
-        name=parameters.name,
-        project_id=project.id,
-        parent_id=source.id,
-        database=source.database,
-        database_user=source.database_user,
-        database_password=source.database_password,
-        database_size=source.database_size,
-        storage_size=source.storage_size,
-        milli_vcpu=source.milli_vcpu,
-        memory=source.memory,
-        iops=source.iops,
-        database_image_tag=source.database_image_tag,
-    )
+    if parameters.source is not None:
+        source = await lookup_branch(session, project, parameters.source.branch_id)
+        entity = Branch(
+            name=parameters.name,
+            project_id=project.id,
+            parent_id=source.id,
+            database=source.database,
+            database_user=source.database_user,
+            database_password=source.database_password,
+            database_size=source.database_size,
+            storage_size=source.storage_size,
+            milli_vcpu=source.milli_vcpu,
+            memory=source.memory,
+            iops=source.iops,
+            database_image_tag=source.database_image_tag,
+        )
+    else:
+        deployment_params = cast("DeploymentParameters", parameters.deployment)
+        entity = Branch(
+            name=parameters.name,
+            project_id=project.id,
+            parent=None,
+            database=deployment_params.database,
+            database_user=deployment_params.database_user,
+            database_password=deployment_params.database_password,
+            database_size=deployment_params.database_size,
+            storage_size=deployment_params.storage_size,
+            milli_vcpu=deployment_params.milli_vcpu,
+            memory=deployment_params.memory_bytes,
+            iops=deployment_params.iops,
+            database_image_tag=deployment_params.database_image_tag,
+        )
     session.add(entity)
     try:
         await session.commit()
@@ -239,7 +283,16 @@ async def create(
         project_id=await project.awaitable_attrs.id,
         branch_id=entity.id,
     )
-    # TODO: implement branch logic using clones
+    if parameters.deployment is not None:
+        asyncio.create_task(
+            _deploy_branch_environment_task(
+                project_id=project.id,
+                branch_id=entity.id,
+                branch_slug=entity.name,
+                parameters=parameters.deployment,
+            )
+        )
+    # TODO: implement source branch cloning for config/data copy
     payload = (await _public(entity)).model_dump() if response == "full" else None
 
     return JSONResponse(
