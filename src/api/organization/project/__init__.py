@@ -32,6 +32,7 @@ api = APIRouter()
 
 async def _deploy_branch_environment_task(
     *,
+    organization: str,
     project_id: Identifier,
     branch_id: Identifier,
     branch_slug: str,
@@ -39,6 +40,7 @@ async def _deploy_branch_environment_task(
 ) -> None:
     try:
         await deploy_branch_environment(
+            organization=organization,
             project_id=project_id,
             branch_id=branch_id,
             branch_slug=branch_slug,
@@ -161,6 +163,7 @@ async def create(
 
     asyncio.create_task(
         _deploy_branch_environment_task(
+            organization=organization,
             project_id=entity.id,
             branch_id=branch_dbid,
             branch_slug=branch_slug,
