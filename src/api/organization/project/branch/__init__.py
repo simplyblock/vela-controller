@@ -249,6 +249,22 @@ async def create(
     parameters: BranchCreate,
     response: Literal["empty", "full"] = "empty",
 ) -> JSONResponse:
+    # TODO implement cloning logic
+    source = await lookup_branch(session, project, parameters.source)
+    entity = Branch(
+        name=parameters.name,
+        project_id=project.id,
+        organization_id=project.organization_id,
+        parent_id=source.id,
+        database=source.database,
+        database_user=source.database_user,
+        database_password=source.database_password,
+        database_size=source.database_size,
+        vcpu=source.vcpu,
+        memory=source.memory,
+        iops=source.iops,
+        database_image_tag=source.database_image_tag,
+    )
     if parameters.source is not None:
         source = await lookup_branch(session, project, parameters.source.branch_id)
         entity = Branch(
