@@ -1,9 +1,12 @@
+import os
 import requests
 import json
 
-GRAFANA_URL = "http://localhost:3000"
+NAMESPACE = os.environ.get("VELA_DEPLOYMENT_NAMESPACE_PREFIX", "")
+
+GRAFANA_URL = f"http://vela-grafana.{NAMESPACE}.svc.cluster.local:3000"
 GRAFANA_USER = "admin"
-GRAFANA_PASSWORD = "admin"
+GRAFANA_PASSWORD = "password"
 
 # Basic Auth for Grafana
 auth = (GRAFANA_USER, GRAFANA_PASSWORD)
