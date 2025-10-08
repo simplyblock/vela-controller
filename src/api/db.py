@@ -15,7 +15,6 @@ engine = create_async_engine(
     pool_recycle=3600,
 )
 
-
 async def _get_session():
     async with AsyncSession(engine) as session:
         yield session

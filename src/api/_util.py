@@ -1,9 +1,13 @@
+import uuid
 from functools import wraps
 from typing import Any
 
 from asyncpg import UniqueViolationError
 from fastapi import HTTPException, Request
 from pydantic import BaseModel
+from uuid import UUID
+
+from uuid import UUID
 
 
 class HTTPError(BaseModel):
