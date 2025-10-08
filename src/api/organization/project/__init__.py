@@ -68,14 +68,17 @@ async def _deploy_branch_environment_task(
             branch_slug,
         )
 
-
 async def _public(project: Project) -> ProjectPublic:
     return ProjectPublic(
+        organization_id=project.organization_id,
+        max_backups=project.max_backups,
+        id=project.id,
+        name=project.name,
+        branch_status=branch_status,
         organization_id=await project.awaitable_attrs.organization_id,
         id=await project.awaitable_attrs.id,
         name=await project.awaitable_attrs.name,
     )
-
 
 @api.get(
     "/",
@@ -135,12 +138,15 @@ async def create(
     entity = Project(
         organization=organization,
         name=parameters.name,
+        max_backups=parameters.max_backups
     )
     session.add(entity)
     main_branch = Branch(
         name=Branch.DEFAULT_SLUG,
         project=entity,
+        organization_id=entity.organization_id,
         parent=None,
+        env_type=parameters.deployment.env_type,
         database=parameters.deployment.database,
         database_user=parameters.deployment.database_user,
         database_password=parameters.deployment.database_password,

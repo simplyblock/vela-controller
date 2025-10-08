@@ -1,8 +1,10 @@
-from datetime import datetime
-from sqlmodel import SQLModel, Field, Relationship
-from typing import Optional
 from enum import Enum as PyEnum
-from uuid import UUID
+from datetime import datetime
+from typing import List, Optional
+
+from sqlalchemy.ext.asyncio import AsyncAttrs
+from ._util import Model
+from ..._util import Identifier
 
 # ---------------------------
 # Enums
@@ -19,53 +21,47 @@ class EntityType(PyEnum):
     org_env = "org_env"
     project = "project"
 
-
 # ---------------------------
 # RESOURCE LIMITS & PROVISIONING
 # ---------------------------
-class ResourceLimit(SQLModel, table=True):
-    id: Optional[UUID] = Field(default=None, primary_key=True)
+class ResourceLimit(AsyncAttrs, Model,  table=True):
     entity_type: EntityType
     resource: ResourceType
-    org_id: UUID = Field(foreign_key="organizations.id")
+    org_id: Identifier = Model.foreign_key_field("organization")
     env_type: Optional[str] = None
-    project_id: Optional[UUID] = Field(default=None, foreign_key="projects.id")
+    project_id: Identifier = Model.foreign_key_field("project")
     max_total: int
     max_per_branch: int
 
 
-class BranchProvisioning(SQLModel, table=True):
-    id: Optional[UUID] = Field(default=None, primary_key=True)
-    branch_id: UUID = Field(foreign_key="branches.id")
+class BranchProvisioning(AsyncAttrs, Model,  table=True):
+    branch_id: Identifier = Model.foreign_key_field("branch")
     resource: ResourceType
     amount: int
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime
 
 
-class ProvisioningLog(SQLModel, table=True):
-    id: Optional[UUID] = Field(default=None, primary_key=True)
-    branch_id: Optional[UUID] = Field(default=None, foreign_key="branches.id")
+class ProvisioningLog(AsyncAttrs, Model,  table=True):
+    branch_id: Identifier = Model.foreign_key_field("branch")
     resource: ResourceType
     amount: int
     action: str
     reason: Optional[str] = None
-    ts: datetime = Field(default_factory=datetime.utcnow)
+    ts: datetime
 
 
-class ResourceUsageMinute(SQLModel, table=True):
-    id: Optional[UUID] = Field(default=None, primary_key=True)
+class ResourceUsageMinute(AsyncAttrs, Model,  table=True):
     ts_minute: datetime
-    org_id: UUID = Field(foreign_key="organizations.id")
-    project_id: UUID = Field(foreign_key="projects.id")
-    branch_id: UUID = Field(foreign_key="branches.id")
+    org_id: Identifier = Model.foreign_key_field("organization")
+    project_id: Identifier = Model.foreign_key_field("project")
+    branch_id: Identifier = Model.foreign_key_field("branch")
     resource: ResourceType
     amount: int
 
 
-class ResourceConsumptionLimit(SQLModel, table=True):
-    id: Optional[UUID] = Field(default=None, primary_key=True)
+class ResourceConsumptionLimit(AsyncAttrs, Model,  table=True):
     entity_type: EntityType
-    org_id: UUID = Field(foreign_key="organizations.id")
-    project_id: Optional[UUID] = Field(default=None, foreign_key="projects.id")
+    org_id: Identifier = Model.foreign_key_field("organization")
+    project_id: Identifier = Model.foreign_key_field("project")
     resource: ResourceType
     max_total_minutes: int

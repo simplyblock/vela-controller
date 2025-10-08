@@ -3,6 +3,9 @@ from typing import Annotated, Any
 
 from asyncpg import UniqueViolationError
 from fastapi import HTTPException, Request
+from pydantic import BaseModel
+from uuid import UUID
+
 from pydantic import BaseModel, Field
 
 

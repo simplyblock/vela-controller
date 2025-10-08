@@ -103,6 +103,7 @@ def inject_branch_env(compose: dict[str, Any], branch_id: Identifier) -> dict[st
 
 
 class DeploymentParameters(BaseModel):
+    env_type: str
     database: dbstr
     database_user: dbstr
     database_password: dbstr

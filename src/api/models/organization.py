@@ -1,14 +1,20 @@
 
-from typing import Annotated, TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated
+
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel, StrictBool
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlmodel import select, Relationship, Field
+from sqlmodel import Field, Relationship, select
+
+from ..._util import Identifier
 from ..db import SessionDep
-from ._util import Name
-from ._util import Model
+from ._util import Model, Name
+from .membership import Membership
+
 if TYPE_CHECKING:
+    from .project import Project
+    from .role import Role
     from .user import User
 
 class Organization(AsyncAttrs, Model, table=True):
@@ -17,23 +23,23 @@ class Organization(AsyncAttrs, Model, table=True):
     projects: list["Project"] = Relationship(back_populates="organization", cascade_delete=True)
     roles: list["Role"] = Relationship(back_populates="organization", cascade_delete=True)
     users: list["User"] = Relationship(back_populates="organizations", link_model=Membership)
-    schedules: list["BackupSchedule"] = Relationship(back_populates="organization")
-
     max_backups: int
-
     require_mfa: bool = False
+    envs : str
 
 class OrganizationCreate(BaseModel):
     name: Name
     locked: StrictBool = False
     require_mfa: StrictBool = False
-
+    max_backups: int
+    envs: str
 
 class OrganizationUpdate(BaseModel):
     name: Name | None = None
     locked: StrictBool | None = None
     require_mfa: StrictBool | None = None
-
+    max_backups: int | None = None
+    envs: str | None = None
 
 async def _lookup(session: SessionDep, organization_id: Identifier) -> Organization:
     try:

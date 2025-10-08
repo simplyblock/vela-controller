@@ -7,7 +7,6 @@ from typing import Dict, Optional
 from datetime import datetime
 
 from .db import _get_session
-from .models.base import Organization, Project, Branch
 from .models.ressources import (
     BranchProvisioning, ResourceLimit,
     ResourceUsageMinute, ProvisioningLog,
