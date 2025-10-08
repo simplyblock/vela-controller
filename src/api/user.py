@@ -11,7 +11,7 @@ from .auth import authenticated_user
 from .keycloak import admin as keycloak_admin
 from .models.user import User, UserParameters, UserPublic
 
-api = APIRouter(dependencies=[Depends(authenticated_user)])
+api = APIRouter(dependencies=[Depends(authenticated_user)], tags=["user"])
 
 
 async def public(id_: UUID) -> UserPublic:

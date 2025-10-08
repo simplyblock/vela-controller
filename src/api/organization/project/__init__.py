@@ -27,7 +27,7 @@ from . import branch as branch_module
 
 logger = logging.getLogger(__name__)
 
-api = APIRouter()
+api = APIRouter(tags=["project"])
 
 
 async def _deploy_branch_environment_task(
@@ -183,7 +183,7 @@ async def create(
     )
 
 
-instance_api = APIRouter(prefix="/{project_id}")
+instance_api = APIRouter(prefix="/{project_id}", tags=["project"])
 instance_api.include_router(branch_module.api, prefix="/branches")
 
 
