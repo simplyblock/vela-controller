@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Annotated, ClassVar, Literal, Optional
 
 from fastapi import Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from pydantic import Field as PydanticField
 from sqlalchemy import BigInteger, Column, String, UniqueConstraint
 from sqlalchemy.exc import NoResultFound
@@ -18,6 +18,7 @@ from ..._util import (
     Identifier,
     Slug,
 )
+from ...deployment import DeploymentParameters
 from ..db import SessionDep
 from ._util import Model, Name
 from .project import Project, ProjectDep
@@ -58,12 +59,23 @@ class Branch(AsyncAttrs, Model, table=True):
         )
 
 
-class BranchCreate(BaseModel):
-    name: Name
-    source: Identifier
-    # Clone options (reserved for future use)
+class BranchSourceParameters(BaseModel):
+    branch_id: Identifier
     config_copy: bool = False
     data_copy: bool = False
+
+
+class BranchCreate(BaseModel):
+    name: Name
+    source: BranchSourceParameters | None = None
+    deployment: DeploymentParameters | None = None
+
+    @model_validator(mode="after")
+    def _validate_source_or_deployment(self) -> "BranchCreate":
+        provided = sum(value is not None for value in (self.source, self.deployment))
+        if provided != 1:
+            raise ValueError("Provide exactly one of source or deployment")
+        return self
 
 
 class BranchUpdate(BaseModel):
