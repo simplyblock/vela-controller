@@ -2,6 +2,8 @@ import os
 import requests
 import json
 
+from fastapi import Request, HTTPException, status
+
 #NAMESPACE = os.environ.get("VELA_DEPLOYMENT_NAMESPACE_PREFIX", "")
 
 #GRAFANA_URL = f"http://vela-grafana.{NAMESPACE}.svc.cluster.local:3000"
@@ -15,6 +17,18 @@ auth = (GRAFANA_USER, GRAFANA_PASSWORD)
 headers = {"Content-Type": "application/json"}
 
 
+def get_token_from_request(request: Request) -> str:
+    auth_header = request.headers.get("authorization")
+
+    if not auth_header:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing Authorization header")
+
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Authorization header format")
+
+    # return only the token part
+    return auth_header.split("Bearer ")[1]
+    
 # Create Team
 def create_team(team_name):
     payload = {"name": team_name}

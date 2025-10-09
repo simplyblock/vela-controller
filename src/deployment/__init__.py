@@ -20,6 +20,7 @@ from .._util import (
     STORAGE_SIZE_CONSTRAINTS,
     Identifier,
     Slug,
+    Name,
     StatusType,
     bytes_to_gib,
     bytes_to_mib,
@@ -30,7 +31,7 @@ from ..exceptions import VelaCloudflareError, VelaKubernetesError
 from .kubernetes import KubernetesService
 from .kubevirt import get_virtualmachine_status
 from .settings import settings
-from .grafana import create_team, create_folder, set_folder_permissions, add_user_to_team, get_user_via_jwt
+from .grafana import create_team, create_folder, set_folder_permissions, add_user_to_team, get_user_via_jwt, get_token_from_request
 
 logger = logging.getLogger(__name__)
 
@@ -123,14 +124,22 @@ class DeploymentStatus(BaseModel):
     status: StatusType
 
 
-async def create_vela_grafana_obj(organization: str, branch_id: Identifier, parameters: DeploymentParameters, branch: Slug, token: Any ):
-    logger.info(f"Creating Grafana object organization {organization} branch: {branch_id}")
+async def create_vela_grafana_obj(organization_id: Identifier, branch_id: Identifier, parameters: DeploymentParameters, branch: Slug, token: Any ):
+    logger.info(f"Creating Grafana object organization {organization_id} branch: {branch_id}")
     team_id = create_team(str(branch_id))
-    parent_folder_id = create_folder(str(organization))
+    parent_folder_id = create_folder(str(organization_id))
     set_folder_permissions(parent_folder_id, team_id)
+
+    logger.info(f"here is the parent folder Id: {parent_folder_id}")
+
     folder_id = create_folder(str(branch_id), parent_uid=parent_folder_id)
     set_folder_permissions(folder_id, team_id)
+
+    token = get_token_from_request(token)
+
+    logger.info(f"here is the JWT token {token}")
     user_id = get_user_via_jwt(token)
+
     add_user_to_team(team_id, user_id)
 
 
@@ -538,7 +547,7 @@ async def provision_branch_endpoints(
 
 async def deploy_branch_environment(
     *,
-    organization: Any,
+    organization_id: Identifier,
     project_id: Identifier,
     branch_id: Identifier,
     branch_slug: Slug,
@@ -548,7 +557,7 @@ async def deploy_branch_environment(
     """Background task: provision infra for a branch and persist the resulting endpoint."""
 
     # Create grafana objects for vela 
-    await create_vela_grafana_obj(organization, branch_id, parameters, branch_slug, token)
+    await create_vela_grafana_obj(organization_id, branch_id, parameters, branch_slug, token)
 
     # Create the main deployment (database etc)
     await create_vela_config(branch_id, parameters, branch_slug)

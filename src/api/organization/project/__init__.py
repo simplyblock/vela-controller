@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from kubernetes_asyncio.client.exceptions import ApiException
 from sqlalchemy.exc import IntegrityError
 
-from ...._util import Identifier, StatusType
+from ...._util import Identifier, StatusType, Name
 from ....deployment import (
     DeploymentParameters,
     delete_deployment,
@@ -33,20 +33,20 @@ api = APIRouter()
 
 async def _deploy_branch_environment_task(
     *,
-    organization: Any,
+    organization_id: Identifier,
     project_id: Identifier,
     branch_id: Identifier,
     branch_slug: str,
-    user: AuthUserDep,
+    token: Any,
     parameters: DeploymentParameters,
 ) -> None:
     try:
         await deploy_branch_environment(
-            organization=organization,
+            organization_id=organization_id,
             project_id=project_id,
             branch_id=branch_id,
             branch_slug=branch_slug,
-            token=user.token,
+            token=token,
             parameters=parameters,
         )
     except VelaError:
@@ -167,11 +167,11 @@ async def create(
 
     asyncio.create_task(
         _deploy_branch_environment_task(
-            organization=organization.name,
+            organization_id=entity.organization_id,
             project_id=entity.id,
             branch_id=branch_dbid,
             branch_slug=branch_slug,
-            user=user,
+            token=request,
             parameters=parameters.deployment,
         )
     )

@@ -98,16 +98,20 @@ services:
     environment:
       GF_SECURITY_ADMIN_USER: "admin"
       GF_SECURITY_ADMIN_PASSWORD: "password"
+      GF_LOG_MODE: "console"
+      GF_LOG_LEVEL: "debug"
       GF_ALERTING_ENABLED: "true"
       GF_PATHS_PROVISIONING: "/etc/grafana/provisioning"
       GF_SERVER_ROOT_URL: "http://localhost"
       GF_AUTH_JWT_ENABLED: "true"
-      GF_AUTH_JWT_HEADER_NAME: "X-JWT-Assertion"
+      GF_AUTH_JWT_HEADER_NAME: "Authorization"
       GF_AUTH_JWT_USERNAME_CLAIM: "sub"
       GF_AUTH_JWT_EMAIL_CLAIM: "email"
       GF_AUTH_JWT_AUTO_SIGN_UP: "true"
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_AUTH_JWT_JWK_SET_URL: "https://caddy:8443/auth/realms/vela/protocol/openid-connect/certs"
+      GF_AUTH_JWT_ALLOW_INSECURE_CERTIFICATE: "true"
+      GF_AUTH_JWT_TLS_SKIP_VERIFY_INSECURE: "true"
     user: "472:0" 
 
   caddy:
@@ -117,4 +121,10 @@ services:
       - "8443:8443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
+  
