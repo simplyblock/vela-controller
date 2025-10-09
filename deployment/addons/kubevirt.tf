@@ -28,8 +28,9 @@ resource "kubectl_manifest" "kubevirt_cr" {
     spec = {
       certificateRotateStrategy = {}
       configuration = {
+        vmRolloutStrategy = "LiveUpdate"
         developerConfiguration = {
-          useEmulation = true
+          featureGates  = ["LiveMigration", "ExpandDisks"]
         }
       }
       workloadUpdateStrategy = {
