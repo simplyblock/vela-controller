@@ -36,6 +36,7 @@ services:
       VELA_CLOUDFLARE_DOMAIN_SUFFIX: 'example.com'
       VELA_DEPLOYMENT_NAMESPACE_PREFIX: 'vela'
       LOGFLARE_PUBLIC_ACCESS_TOKEN: 'my-super-secret-api-key'
+      VELA_DEPLOYMENT_ENV: 'docker'
 
     depends_on:
       database:
@@ -90,7 +91,8 @@ services:
     restart: unless-stopped
 
   grafana:
-    image: grafana/grafana:10.0.12
+    #image: grafana/grafana:10.0.12
+    image: grafana/grafana:latest
     container_name: vela-grafana
     restart: unless-stopped
     ports:
@@ -98,8 +100,6 @@ services:
     environment:
       GF_SECURITY_ADMIN_USER: "admin"
       GF_SECURITY_ADMIN_PASSWORD: "password"
-      GF_LOG_MODE: "console"
-      GF_LOG_LEVEL: "debug"
       GF_ALERTING_ENABLED: "true"
       GF_PATHS_PROVISIONING: "/etc/grafana/provisioning"
       GF_SERVER_ROOT_URL: "http://localhost"
@@ -127,4 +127,3 @@ services:
 volumes:
   caddy_data:
   caddy_config:
-  

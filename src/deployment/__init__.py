@@ -128,18 +128,13 @@ async def create_vela_grafana_obj(organization_id: Identifier, branch_id: Identi
     logger.info(f"Creating Grafana object organization {organization_id} branch: {branch_id}")
     team_id = create_team(str(branch_id))
     parent_folder_id = create_folder(str(organization_id))
+
     set_folder_permissions(parent_folder_id, team_id)
-
-    logger.info(f"here is the parent folder Id: {parent_folder_id}")
-
     folder_id = create_folder(str(branch_id), parent_uid=parent_folder_id)
     set_folder_permissions(folder_id, team_id)
 
     token = get_token_from_request(token)
-
-    logger.info(f"here is the JWT token {token}")
     user_id = get_user_via_jwt(token)
-
     add_user_to_team(team_id, user_id)
 
 

@@ -4,11 +4,14 @@ import json
 
 from fastapi import Request, HTTPException, status
 
-#NAMESPACE = os.environ.get("VELA_DEPLOYMENT_NAMESPACE_PREFIX", "")
+ENV = os.environ.get("VELA_DEPLOYMENT_ENV", "")
 
-#GRAFANA_URL = f"http://vela-grafana.{NAMESPACE}.svc.cluster.local:3000"
+NAMESPACE = os.environ.get("VELA_DEPLOYMENT_NAMESPACE_PREFIX", "")
 
-GRAFANA_URL = "http://grafana:3000"
+GRAFANA_URL = f"http://vela-grafana.{NAMESPACE}.svc.cluster.local:3000"
+if ENV == "docker":
+    GRAFANA_URL = "http://grafana:3000"
+    
 GRAFANA_USER = "admin"
 GRAFANA_PASSWORD = "password"
 
@@ -28,7 +31,7 @@ def get_token_from_request(request: Request) -> str:
 
     # return only the token part
     return auth_header.split("Bearer ")[1]
-    
+
 # Create Team
 def create_team(team_name):
     payload = {"name": team_name}

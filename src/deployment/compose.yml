@@ -78,13 +78,13 @@ services:
     restart: unless-stopped
     environment:
       PG_META_DB_HOST: db
-      PG_META_DB_PORT: "5432"
+      PG_META_DB_PORT: '5432'
       PG_META_DB_NAME: ${POSTGRES_DB:-postgres}
       PG_META_DB_USER: supabase_admin
       PG_META_DB_PASSWORD: ${POSTGRES_PASSWORD:-example123456}
       PG_META_DB_DRIVER: postgres
       PG_META_DB_SSL_MODE: disable
-      PG_META_PORT: "8080"
+      PG_META_PORT: '8080'
     ports:
     - 8080:8080
     networks:
@@ -141,9 +141,9 @@ services:
       interval: 5s
       retries: 3
     environment:
-      LOGFLARE_PUBLIC_ACCESS_TOKEN: ${LOGFLARE_PUBLIC_ACCESS_TOKEN}
-      VELA_BRANCH: ${VELA_BRANCH:-local}
-      NAMESPACE: ${NAMESPACE}
+      LOGFLARE_PUBLIC_ACCESS_TOKEN: my-super-secret-api-key
+      VELA_BRANCH: 01k74txccw6c8av3r0etd23gh0
+      NAMESPACE: vela
     command:
     - --config
     - /etc/vector/vector.yml
