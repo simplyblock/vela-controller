@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
         - name: vela-auth
-          image: quay.io/keycloak/keycloak:latest
+          image: quay.io/keycloak/keycloak:26.4
           imagePullPolicy: IfNotPresent
           args:
             - "start-dev"
