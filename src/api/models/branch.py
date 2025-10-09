@@ -197,7 +197,6 @@ class ApiKeyDetails(BaseModel):
     name: str
     api_key: str
     id: str
-    type: Literal["legacy"]
     hash: str
     prefix: str
     description: str

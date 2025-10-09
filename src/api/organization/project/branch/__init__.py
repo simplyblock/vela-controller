@@ -483,7 +483,6 @@ async def get_apikeys(
             name=name,
             api_key=key,
             id=name,
-            type="legacy",
             hash=hashlib.sha256(key.encode()).hexdigest(),
             prefix=key[:5],
             description=description,
