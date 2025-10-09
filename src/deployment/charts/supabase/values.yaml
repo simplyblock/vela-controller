@@ -5,7 +5,7 @@
 # |-- 4.  Meta
 # |-- 5.  Storage API
 # |-- 5.  Minio S3 
-
+ 
 # docker-compose payload injected via helm --set-file composeYaml
 composeYaml: ""
 vectorYaml: ""
