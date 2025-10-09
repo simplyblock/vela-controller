@@ -20,10 +20,15 @@ spec:
         - name: vela-auth
           image: quay.io/keycloak/keycloak:latest
           imagePullPolicy: IfNotPresent
-          args: ['start-dev', '--import-realm']
+          args:
+            - "start-dev"
+            - "--import-realm"
+            - "--https-port=8443"
+            - "--https-certificate-file=/etc/x509/https/tls.crt"
+            - "--https-certificate-key-file=/etc/x509/https/tls.key"
           ports:
-            - name: http
-              containerPort: 8080
+            - name: https
+              containerPort: 8443
               protocol: TCP
           envFrom:
             - configMapRef:
@@ -40,6 +45,9 @@ spec:
             - name: workspace
               mountPath: /tmp
               subPath: tmp
+            - name: tls-certs
+              mountPath: /etc/x509/https
+              readOnly: true
           startupProbe:
             httpGet:
               path: /auth/health/started
@@ -110,6 +118,9 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
       volumes:
+        - name: tls-certs
+          secret:
+            secretName: {{ .Release.Name }}-tls-auth-secret
         - name: init-sql
           configMap:
             name: vela-auth-config
@@ -239,9 +250,9 @@ spec:
   selector:
     app.kubernetes.io/name: vela-auth
   ports:
-    - name: http
-      port: 8080
-      targetPort: 8080
+    - name: https
+      port: 8443
+      targetPort: 8443
       protocol: TCP
 
 ---
@@ -263,4 +274,5 @@ spec:
       backendRefs:
         - name: vela-auth-service
           namespace: {{ .Release.Namespace }}
-          port: 8080
+          port: 8443
+          

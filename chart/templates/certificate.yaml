@@ -11,3 +11,18 @@ spec:
     group: cert-manager.io
   dnsNames:
     - "{{ .Values.domain }}"
+
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: vela-auth-cert
+  namespace: {{ .Release.Namespace }}
+spec:
+  secretName: {{ .Release.Name }}-tls-auth-secret
+  issuerRef:
+    name: {{ .Values.issuer }}
+    kind: ClusterIssuer
+    group: cert-manager.io
+  dnsNames:
+    - vela-auth-service.{{ .Release.Namespace }}.svc.cluster.local

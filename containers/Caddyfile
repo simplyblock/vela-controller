@@ -1,0 +1,4 @@
+https://caddy:8443 {
+  tls internal
+  reverse_proxy auth:8080
+}
