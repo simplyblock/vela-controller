@@ -315,6 +315,7 @@ class HTTPRouteSpec(BaseModel):
     service_port: int
     path_prefix: str
     route_suffix: str
+    plugins: list[str] = Field(default_factory=lambda: ["realtime-cors"])
 
 
 class BranchEndpointProvisionSpec(BaseModel):
@@ -348,16 +349,19 @@ async def _create_dns_record(cf: CloudflareConfig, domain: str) -> None:
 
 
 def _build_http_route(cfg: KubeGatewayConfig, spec: HTTPRouteSpec) -> dict[str, Any]:
+    annotations = {
+        "konghq.com/strip-path": "true",
+    }
+    if spec.plugins:
+        annotations["konghq.com/plugins"] = ",".join(spec.plugins)
+
     return {
         "apiVersion": "gateway.networking.k8s.io/v1",
         "kind": "HTTPRoute",
         "metadata": {
             "name": f"{spec.ref}-{spec.route_suffix}",
             "namespace": spec.namespace,
-            "annotations": {
-                "konghq.com/strip-path": "true",
-                "konghq.com/plugins": "realtime-cors",
-            },
+            "annotations": annotations,
         },
         "spec": {
             "parentRefs": [
@@ -444,6 +448,7 @@ def _pgmeta_route_specs(ref: str, domain: str, namespace: str) -> list[HTTPRoute
             service_port=8080,
             path_prefix=path,
             route_suffix="pgmeta-route",
+            plugins=["realtime-cors", "require-x-connection-encrypted"],
         ),
     ]
 
@@ -456,23 +461,41 @@ async def _apply_http_routes(namespace: str, routes: list[dict[str, Any]]) -> No
         raise VelaKubernetesError(f"Failed to apply HTTPRoute: {exc}") from exc
 
 
-def _build_kong_plugin(namespace: str) -> dict[str, Any]:
-    return {
-        "apiVersion": "configuration.konghq.com/v1",
-        "kind": "KongPlugin",
-        "metadata": {
-            "name": "realtime-cors",
-            "namespace": namespace,
+def _build_kong_plugins(namespace: str) -> list[dict[str, Any]]:
+    return [
+        {
+            "apiVersion": "configuration.konghq.com/v1",
+            "kind": "KongPlugin",
+            "metadata": {
+                "name": "realtime-cors",
+                "namespace": namespace,
+            },
+            "config": {
+                "origins": ["*"],  # todo: restrict this
+                "methods": ["GET", "POST", "OPTIONS", "PUT", "DELETE"],
+                "headers": ["*"],
+                "exposed_headers": ["*"],
+                "credentials": True,
+            },
+            "plugin": "cors",
         },
-        "config": {
-            "origins": ["*"],  # todo: restrict this
-            "methods": ["GET", "POST", "OPTIONS", "PUT", "DELETE"],
-            "headers": ["*"],
-            "exposed_headers": ["*"],
-            "credentials": True,
+        {
+            "apiVersion": "configuration.konghq.com/v1",
+            "kind": "KongPlugin",
+            "metadata": {
+                "name": "require-x-connection-encrypted",
+                "namespace": namespace,
+            },
+            "config": {
+                "message": "Missing required x-connection-encrypted header",
+                "status_code": 403,
+                "trigger": "header",
+                "trigger_value": "x-connection-encrypted",
+                "trigger_on_missing": True,
+            },
+            "plugin": "request-termination",
         },
-        "plugin": "cors",
-    }
+    ]
 
 
 async def _apply_kong_plugin(namespace: str, plugin: dict[str, Any]) -> None:
@@ -510,9 +533,10 @@ async def provision_branch_endpoints(
 
     await _create_dns_record(cf_cfg, domain)
 
-    # Apply the KongPlugin for CORS
-    kong_plugin = _build_kong_plugin(gateway_cfg.namespace)
-    await _apply_kong_plugin(gateway_cfg.namespace, kong_plugin)
+    # Apply the KongPlugins required for the branch routes
+    kong_plugins = _build_kong_plugins(gateway_cfg.namespace)
+    for plugin in kong_plugins:
+        await _apply_kong_plugin(gateway_cfg.namespace, plugin)
 
     route_specs = (
         _postgrest_route_specs(ref, domain, gateway_cfg.namespace)
