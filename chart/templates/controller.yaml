@@ -51,10 +51,10 @@ spec:
               value: {{ .Values.host }}
             - name: VELA_KEYCLOAK_URL
               value: 'http://auth:8080/auth/'
-            - name: VELA_KEYCLOAK_CLIENT_ID
-              value: 'controller'
-            - name: VELA_KEYCLOAK_CLIENT_SECRET
-              value: 'controller-secret'
+            - name: VELA_KEYCLOAK_ADMIN_NAME
+              value: 'admin'
+            - name: VELA_KEYCLOAK_ADMIN_SECRET
+              value: 'admin'
               
           livenessProbe:
             httpGet:
@@ -82,7 +82,7 @@ kind: ConfigMap
 metadata:
   name: vela-controller-config
 data:
-  VELA_JWT_SECRET: 'http://vela-auth-service:8080/auth/realms/vela/protocol/openid-connect/certs'
+  VELA_JWT_SECRET: 'https://vela-auth-service:8443/auth/realms/vela/protocol/openid-connect/certs'
   VELA_ROOT_PATH: '/vela'
   VELA_PGMETA_CRYPTO_KEY: 'secret'
   VELA_GATEWAY_NAME: {{ .Values.gateway.name }}

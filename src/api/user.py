@@ -8,14 +8,14 @@ from pydantic import BaseModel, EmailStr
 
 from ._util import NotFound, Unauthenticated
 from .auth import authenticated_user
-from .keycloak import admin as keycloak_admin
+from .keycloak import realm_admin
 from .models.user import User, UserParameters, UserPublic
 
-api = APIRouter(dependencies=[Depends(authenticated_user)])
+api = APIRouter(dependencies=[Depends(authenticated_user)], tags=["user"])
 
 
 async def public(id_: UUID) -> UserPublic:
-    user = await keycloak_admin.a_get_user(str(id_))
+    user = await realm_admin("vela").a_get_user(str(id_))
     return UserPublic(
         id=user["id"],
         email=user["email"],
@@ -42,7 +42,9 @@ async def public_list(
     responses={401: Unauthenticated, 404: NotFound},
 )
 async def get(user_ref: UUID | EmailStr) -> UserPublic:
-    user_id = UUID(await keycloak_admin.a_get_user_id(str(user_ref))) if isinstance(user_ref, EmailStr) else user_ref
+    user_id = (
+        UUID(await realm_admin("vela").a_get_user_id(str(user_ref))) if isinstance(user_ref, EmailStr) else user_ref
+    )
     return await public(user_id)
 
 
@@ -58,7 +60,7 @@ class UserCreationResult(BaseModel):
 )
 async def add(parameters: UserParameters) -> tuple[UserCreationResult, int]:
     password = secrets.token_hex(16)
-    user_id = await keycloak_admin.a_create_user(
+    user_id = await realm_admin("vela").a_create_user(
         {
             "email": parameters.email,
             "enabled": True,
@@ -73,7 +75,7 @@ async def add(parameters: UserParameters) -> tuple[UserCreationResult, int]:
             ],
         }
     )
-    await keycloak_admin.a_send_verify_email(user_id)
+    await realm_admin("vela").a_send_verify_email(user_id)
     return UserCreationResult(
         id=UUID(user_id),
         password=password,

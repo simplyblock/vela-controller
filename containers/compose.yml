@@ -28,8 +28,8 @@ services:
       VELA_CORS_ORIGINS: '["http://localhost:3000"]'
       VELA_PGMETA_CRYPTO_KEY: 'secret'
       VELA_KEYCLOAK_URL: 'http://auth:8080/auth/'
-      VELA_KEYCLOAK_CLIENT_ID: 'controller'
-      VELA_KEYCLOAK_CLIENT_SECRET: 'controller-secret'
+      VELA_KEYCLOAK_ADMIN_NAME: 'admin'
+      VELA_KEYCLOAK_ADMIN_SECRET: 'admin'
       VELA_CLOUDFLARE_API_TOKEN: 'your_cloudflare_api_token'
       VELA_CLOUDFLARE_ZONE_ID: 'your_cloudflare_zone_id'
       VELA_CLOUDFLARE_BRANCH_REF_CNAME: 'branch-ref.staging.vela.run'
@@ -50,7 +50,7 @@ services:
 
 
   auth:
-    image: quay.io/keycloak/keycloak:latest
+    image: quay.io/keycloak/keycloak:26.4
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_BOOTSTRAP_ADMIN_PASSWORD: admin
@@ -64,7 +64,7 @@ services:
       KC_HEALTH_ENABLED: 'true'
     command: start-dev --import-realm --verbose
     volumes:
-    - ./realm.json:/opt/keycloak/data/import/vela-realm.json:ro
+    - ../chart/files/realm.json:/opt/keycloak/data/import/vela-realm.json:ro
     healthcheck:
       test: ["CMD-SHELL", "timeout 10 bash -c '</dev/tcp/localhost/8080' || exit 1"]  # This should do a proper request, but the container doesn't ship curl, wget, or telnet and using bash builtins is nasty
       interval: 30s

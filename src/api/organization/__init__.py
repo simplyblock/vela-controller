@@ -16,7 +16,7 @@ from .member import api as member_api
 from .project import api as project_api
 from .role import api as role_api
 
-api = APIRouter(dependencies=[Depends(authenticated_user)])
+api = APIRouter(dependencies=[Depends(authenticated_user)], tags=["organization"])
 
 
 @api.get(
@@ -107,6 +107,7 @@ async def _check_user_access(user: AuthUserDep, organization: OrganizationDep):
 instance_api = APIRouter(
     prefix="/{organization_id}",
     dependencies=[Depends(_check_user_access)],
+    tags=["organization"],
 )
 
 

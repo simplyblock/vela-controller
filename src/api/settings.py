@@ -13,8 +13,8 @@ class Settings(BaseSettings):
     pgmeta_crypto_key: str
     keycloak_url: HttpUrl
     keycloak_realm: str = "vela"
-    keycloak_client_id: str
-    keycloak_client_secret: str
+    keycloak_admin_name: str
+    keycloak_admin_secret: str
 
 
 settings = Settings()  # type: ignore[call-arg]

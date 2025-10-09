@@ -18,12 +18,17 @@ spec:
     spec:
       containers:
         - name: vela-auth
-          image: quay.io/keycloak/keycloak:latest
+          image: quay.io/keycloak/keycloak:26.4
           imagePullPolicy: IfNotPresent
-          args: ['start-dev', '--import-realm']
+          args:
+            - "start-dev"
+            - "--import-realm"
+            - "--https-port=8443"
+            - "--https-certificate-file=/etc/x509/https/tls.crt"
+            - "--https-certificate-key-file=/etc/x509/https/tls.key"
           ports:
-            - name: http
-              containerPort: 8080
+            - name: https
+              containerPort: 8443
               protocol: TCP
           envFrom:
             - configMapRef:
@@ -40,6 +45,9 @@ spec:
             - name: workspace
               mountPath: /tmp
               subPath: tmp
+            - name: tls-certs
+              mountPath: /etc/x509/https
+              readOnly: true
           startupProbe:
             httpGet:
               path: /auth/health/started
@@ -110,6 +118,9 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
       volumes:
+        - name: tls-certs
+          secret:
+            secretName: {{ .Release.Name }}-tls-auth-secret
         - name: init-sql
           configMap:
             name: vela-auth-config
@@ -143,92 +154,8 @@ data:
     CREATE DATABASE keycloak OWNER keycloak;
     GRANT ALL PRIVILEGES ON DATABASE keycloak TO keycloak;
     ALTER ROLE keycloak SET search_path TO keycloak,public;
-  realm.json: |
-    {
-      "id": "vela",
-      "realm": "vela",
-      "enabled": true,
-      "registrationAllowed": true,
-      "registrationEmailAsUsername": true,
-      "verifyEmail": true,
-      "users": [
-        {
-          "username": "testuser",
-          "enabled": true,
-          "email": "testuser@example.com",
-          "firstName": "Test",
-          "lastName": "User",
-          "emailVerified": true,
-          "credentials": [
-            {
-              "type": "password",
-              "value": "testpassword",
-              "temporary": false
-            }
-          ]
-        },
-        {
-          "username": "service-account-controller",
-          "emailVerified": false,
-          "enabled": true,
-          "serviceAccountClientId": "controller",
-          "realmRoles": [
-            "default-roles-vela"
-          ],
-          "clientRoles": {
-            "realm-management": [
-              "manage-users",
-              "query-users",
-              "view-users"
-            ]
-          }
-        }
-      ],
-      "clients": [
-        {
-          "clientId": "frontend",
-          "name": "Frontend Application",
-          "enabled": true,
-          "redirectUris": [
-            "http://{{ .Values.host }}/*"
-          ],
-          "webOrigins": [
-            "http://{{ .Values.host }}"
-          ],
-          "standardFlowEnabled": true,
-          "directAccessGrantsEnabled": true,
-          "publicClient": false,
-          "secret": "client-secret",
-          "protocol": "openid-connect"
-        },
-        {
-          "clientId": "controller",
-          "name": "Vela controller",
-          "enabled": true,
-          "redirectUris": [
-            "http://{{ .Values.host }}/*"
-          ],
-          "webOrigins": [
-            "http://{{ .Values.host }}"
-          ],
-          "standardFlowEnabled": true,
-          "directAccessGrantsEnabled": true,
-          "publicClient": false,
-          "secret": "controller-secret",
-          "protocol": "openid-connect",
-          "serviceAccountsEnabled": true,
-          "defaultClientScopes": [
-            "service_account",
-            "web-origins",
-            "acr",
-            "roles",
-            "profile",
-            "basic",
-            "email"
-          ]
-        }
-      ]
-    }
+  realm.json: |- 
+    {{ .Files.Get .Values.keycloak.realmFile | nindent 4 }}
 
 ---
 apiVersion: v1
@@ -239,9 +166,9 @@ spec:
   selector:
     app.kubernetes.io/name: vela-auth
   ports:
-    - name: http
-      port: 8080
-      targetPort: 8080
+    - name: https
+      port: 8443
+      targetPort: 8443
       protocol: TCP
 
 ---
@@ -263,4 +190,5 @@ spec:
       backendRefs:
         - name: vela-auth-service
           namespace: {{ .Release.Namespace }}
-          port: 8080
+          port: 8443
+          

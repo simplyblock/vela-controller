@@ -16,7 +16,7 @@ from ..models.role import Role, RoleDep, RoleUserLink
 from ..models.user import UserPublic
 from ..user import public_list as public_user_list
 
-api = APIRouter()
+api = APIRouter(tags=["role"])
 
 
 @api.get(
@@ -85,7 +85,7 @@ async def create(
     )
 
 
-instance_api = APIRouter(prefix="/{role_id}")
+instance_api = APIRouter(prefix="/{role_id}", tags=["role"])
 
 
 @instance_api.get(

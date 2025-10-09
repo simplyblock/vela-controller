@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel
@@ -35,11 +35,17 @@ class ProjectUpdate(BaseModel):
     name: Name | None = None
 
 
+class ProjectBranchStatus(BaseModel):
+    branch_id: Identifier
+    branch_name: Name
+    status: StatusType
+
+
 class ProjectPublic(BaseModel):
     organization_id: Identifier
     id: Identifier
     name: Name
-    branch_status: dict[Any, StatusType]
+    branch_status: list[ProjectBranchStatus]
 
 
 async def _lookup(session: SessionDep, organization: OrganizationDep, project_id: Identifier) -> Project:
