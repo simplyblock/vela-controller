@@ -31,7 +31,7 @@ from ..exceptions import VelaCloudflareError, VelaKubernetesError
 from .kubernetes import KubernetesService
 from .kubevirt import get_virtualmachine_status
 from .settings import settings
-from .grafana import create_team, create_folder, set_folder_permissions, add_user_to_team, get_user_via_jwt, get_token_from_request
+from .grafana import create_team, create_folder, set_folder_permissions, add_user_to_team, get_user_via_jwt, get_token_from_request, create_dashboard
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +136,7 @@ async def create_vela_grafana_obj(organization_id: Identifier, branch_id: Identi
     token = get_token_from_request(token)
     user_id = get_user_via_jwt(token)
     add_user_to_team(team_id, user_id)
+    create_dashboard(str(organization_id), folder_id, str(branch_id))
 
 
 async def create_vela_config(branch_id: Identifier, parameters: DeploymentParameters, branch: Slug):
