@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from collections.abc import Sequence
-from typing import Literal
+from typing import Literal, Any
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
@@ -9,11 +9,7 @@ from keycloak.exceptions import KeycloakError
 from kubernetes_asyncio.client.exceptions import ApiException
 from sqlalchemy.exc import IntegrityError
 
-<<<<<<< HEAD
-from ...._util import Identifier, StatusType, Name
-=======
 from ...._util import Identifier
->>>>>>> main
 from ....deployment import (
     DeploymentParameters,
     delete_deployment,
@@ -25,11 +21,7 @@ from ....deployment.kubevirt import call_kubevirt_subresource
 from ....exceptions import VelaError
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ...db import SessionDep
-<<<<<<< HEAD
-from ...auth import AuthUserDep
-=======
 from ...keycloak import realm_admin
->>>>>>> main
 from ...models.branch import Branch
 from ...models.organization import OrganizationDep
 from ...models.project import (
@@ -53,7 +45,7 @@ async def _deploy_branch_environment_task(
     project_id: Identifier,
     branch_id: Identifier,
     branch_slug: str,
-    token: Any,
+    request: Any,
     parameters: DeploymentParameters,
 ) -> None:
     try:
@@ -62,7 +54,7 @@ async def _deploy_branch_environment_task(
             project_id=project_id,
             branch_id=branch_id,
             branch_slug=branch_slug,
-            token=token,
+            request=request,
             parameters=parameters,
         )
     except VelaError:
@@ -194,7 +186,7 @@ async def create(
         _deploy_branch_environment_task(
             organization_id=entity.organization_id,
             project_id=entity.id,
-            token=request,
+            request=request,
             branch_id=main_branch.id,
             branch_slug=main_branch.name,
             parameters=parameters.deployment,

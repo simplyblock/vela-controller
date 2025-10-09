@@ -124,7 +124,7 @@ class DeploymentStatus(BaseModel):
     status: StatusType
 
 
-async def create_vela_grafana_obj(organization_id: Identifier, branch_id: Identifier, parameters: DeploymentParameters, branch: Slug, token: Any ):
+async def create_vela_grafana_obj(organization_id: Identifier, branch_id: Identifier, parameters: DeploymentParameters, branch: Slug, request: Any ):
     logger.info(f"Creating Grafana object organization {organization_id} branch: {branch_id}")
     team_id = create_team(str(branch_id))
     parent_folder_id = create_folder(str(organization_id))
@@ -133,7 +133,7 @@ async def create_vela_grafana_obj(organization_id: Identifier, branch_id: Identi
     folder_id = create_folder(str(branch_id), parent_uid=parent_folder_id)
     set_folder_permissions(folder_id, team_id)
 
-    token = get_token_from_request(token)
+    token = get_token_from_request(request)
     user_id = get_user_via_jwt(token)
     add_user_to_team(team_id, user_id)
     create_dashboard(str(organization_id), folder_id, str(branch_id))
@@ -547,13 +547,13 @@ async def deploy_branch_environment(
     project_id: Identifier,
     branch_id: Identifier,
     branch_slug: Slug,
-    token: Any,
+    request: Any,
     parameters: DeploymentParameters,
 ) -> None:
     """Background task: provision infra for a branch and persist the resulting endpoint."""
 
     # Create grafana objects for vela 
-    await create_vela_grafana_obj(organization_id, branch_id, parameters, branch_slug, token)
+    await create_vela_grafana_obj(organization_id, branch_id, parameters, branch_slug, request)
 
     # Create the main deployment (database etc)
     await create_vela_config(branch_id, parameters, branch_slug)
