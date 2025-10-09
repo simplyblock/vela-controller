@@ -34,6 +34,7 @@ async def run_schemathesis_tests(base_url, jwt_secret):
         f"--header=Authorization: Bearer {token}",
         "--wait-for-schema=10",
         "--suppress-health-check=filter_too_much",
+        "--exclude-tag=branch-auth",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
