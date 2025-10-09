@@ -18,8 +18,7 @@ keycloak:
   realmFile: files/realm.json
 
 secret:
-  jwt:
-    pgmeta_crypto_key: "secret"
+  pgmeta_crypto_key: "secret"
 
 analytics:
   DB_HOST: database

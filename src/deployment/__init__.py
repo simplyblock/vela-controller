@@ -150,9 +150,7 @@ async def create_vela_config(branch_id: Identifier, parameters: DeploymentParame
     db_secrets["adminusername"] = parameters.database_user
     db_secrets["adminpassword"] = parameters.database_password
     db_secrets["admindb"] = parameters.database
-
-    secret_spec = values_content.setdefault("secret", {}).setdefault("jwt", {})
-    secret_spec["pgmeta_crypto_key"] = settings.pgmeta_crypto_key
+    db_secrets["pgmeta_crypto_key"] = settings.pgmeta_crypto_key
 
     db_spec = values_content.setdefault("db", {})
     resource_cfg = db_spec.setdefault("resources", {})
