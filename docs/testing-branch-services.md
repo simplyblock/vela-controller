@@ -1,74 +1,85 @@
 ### Intro
 
-When a branch is created, we setup PGMeta, PGRest, PGRealtime, PGStorage and PostgreSQL.
-This guide talks about how each of the above service has been tested and could also act as a guide about how these can be used. 
+When a new branch is created, we provision PGMeta, PostgREST, PGRealtime, PGStorage, and PostgreSQL. This document outlines how each service has been validated and doubles as a quick-start reference for everyday use.
 
-### PG Rest
+### Authentication
 
-This is a hosted version of https://github.com/PostgREST/postgrest and the offical documentation can be found here https://docs.postgrest.org/en/v13/tutorials/tut0.html
+This section summarises the authentication model for each service. Kong-level authentication is still pending.
 
-The PG rest is connected to the `postgres` database and `public`,`storage`,`graphql_public` schemas.
-At the moment there is no authentication. But we'll it very soon. 
+Every branch service requires an API token. Retrieve tokens for the Rest, Storage, and Realtime services from `/branch/<branch-id>/apikeys`, then supply the token as a bearer token in the `Authorization` header.
 
+The API keys endpoint returns two keys: `anonKey` (read-only access) and `serviceRole` (elevated access with write permissions). Select the least-privileged key that satisfies your needs.
 
-To get information from `todos` table (make sure that this table exists). The below request can be used.
+PGMeta does not require an `Authorization` header, but it does require the `x-connection-encrypted` header. The encrypted connection string is available at `/branch/<branch-id>` under the `encrypted_connection_string` field.
+
+### PostgREST
+
+This environment hosts https://github.com/PostgREST/postgrest. The official documentation is available at https://docs.postgrest.org/en/v13/tutorials/tut0.html.
+
+PostgREST connects to the `postgres` database and exposes the `public`, `storage`, and `graphql_public` schemas.
+
+Read data from the `todos` table (ensure the table exists):
+
 ```sh
-curl -X POST "https://01k612e965yy5dy4vh27dtjt8r.staging.vela.run/pgrest/todos"
+curl -X GET "https://01k612e965yy5dy4vh27dtjt8r.staging.vela.run/pgrest/todos" \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
-To write info from `todos` table (make sure that this table exists). The below request can be used. 
+Insert a row into the `todos` table:
+
 ```sh
+export TOKEN=anonKey
 curl -X POST "https://01k612e965yy5dy4vh27dtjt8r.staging.vela.run/pgrest/todos" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -H "Prefer: return=representation" \
   -d '{"task": "Write docs"}'
 ```
 
-##### how to switch between schemas
+##### Switching schemas
 TODO
 
-### PG Meta
+### PGMeta
 
-This is a hosted version of https://github.com/supabase/postgres-meta and the OpenAPI spec can be found at: https://supabase.github.io/postgres-meta/
+This deployment hosts https://github.com/supabase/postgres-meta. The OpenAPI specification is available at https://supabase.github.io/postgres-meta/.
 
+PGMeta connects to the `postgres` database and the `public` schema.
 
-The PG rest is connected to the `postgres` database and `public` schema. 
-At the moment there is no authentication. But we'll it very soon. 
+List all schemas:
 
-To list all the schemas
 ```sh
-curl -X GET https://01k6mpdwnay4jf91j9pd916ngf.staging.vela.run/meta/schemas
+export ENCRYPTED_CONNECTION_STRING='U2FsdGVkX19oQDMfZ/1CLHjEU1T4T4p34tUYlIAgLkZ0KoHrW7c23FFygmZ/XjQL5FFT/1k/UaVl0rQjl09X5wt1Q9E/+Vt29p8J7Y1lHKY='
+curl -X GET https://01k6mpdwnay4jf91j9pd916ngf.staging.vela.run/meta/schemas \
+  -H "x-connection-encrypted: $ENCRYPTED_CONNECTION_STRING"
 ```
 
-To list all the tables across schemas
+List all tables across schemas:
+
 ```sh
-curl -X GET https://01k6mpdwnay4jf91j9pd916ngf.staging.vela.run/meta/tables
+curl -X GET https://01k6mpdwnay4jf91j9pd916ngf.staging.vela.run/meta/tables \
+  -H "x-connection-encrypted: $ENCRYPTED_CONNECTION_STRING"
 ```
 
-### PG Realtime
+### PGRealtime
 
-This is a hosted version of https://github.com/supabase/realtime that broadcast Postgres Changes via WebSockets
+This service hosts https://github.com/supabase/realtime and streams Postgres changes over WebSockets.
 
-at the moment socket connect is establed
+Opening a WebSocket session currently returns HTTP 200, indicating the upgrade path is not yet configured:
+
 ```sh
 wscat -c wss://01k6mpdwnay4jf91j9pd916ngf.staging.vela.run/realtime
-error: Unexpected server response: 200
->
+# error: Unexpected server response: 200
 ```
-#### how to listen for events changes on a particular table
+
+##### Listening for table events
 TODO
 
 ### Storage API
 
-This is a hosted version of https://github.com/supabase/storage
+This service hosts https://github.com/supabase/storage. Export the token fetched from the `/apikeys` endpoint into the `TOKEN` environment variable before running the commands below.
 
-We don't generate tokens yet. So try out this service, a hardcoded token can be used. 
+Create a bucket:
 
-```
-export TOKEN=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJzZXJ2aWNlX3JvbGUiLAogICAgImlzcyI6ICJzdXBhYmFzZS1kZW1vIiwKICAgICJpYXQiOiAxNjQxNzY5MjAwLAogICAgImV4cCI6IDE3OTk1MzU2MDAKfQ.DaYlNEoUrrEn2Ig7tqibS-PHK5vgusbcbo7X36XVt4Q
-```
-
-* Create a bucket
 ```sh
 curl -X POST 'https://01k6mpdwnay4jf91j9pd916ngf.staging.vela.run/storage/bucket' \
   -H "Authorization: Bearer $TOKEN" \
@@ -79,14 +90,16 @@ curl -X POST 'https://01k6mpdwnay4jf91j9pd916ngf.staging.vela.run/storage/bucket
       }'
 ```
 
-* upload a file to a bucket
+Upload a file to a bucket:
+
 ```sh
 curl -X POST "https://01k6mpdwnay4jf91j9pd916ngf.staging.vela.run/storage/object/my_bucket/asdf.txt" \
   -H "Authorization: Bearer $TOKEN" \
   --data-binary @asdf.txt
 ```
 
-* list objects
+List objects:
+
 ```sh
 curl -X POST \
   "https://01k6mpdwnay4jf91j9pd916ngf.staging.vela.run/storage/object/list/my_bucket" \
@@ -95,24 +108,25 @@ curl -X POST \
   -d '{"prefix": ""}' | jq .
 ```
 
-* retrive the file and store it. 
+Retrieve the file and store it locally:
+
 ```sh
 curl -X GET "https://01k6mpdwnay4jf91j9pd916ngf.staging.vela.run/storage/object/my_bucket/asdf.txt" \
   -H "Authorization: Bearer $TOKEN" -o asdf-out.txt
 ```
 
-* checksum between the 2 files
+Verify the checksum of the original and downloaded files:
+
 ```sh
-sha256sum asdf.txt asdf-out.txt 
+sha256sum asdf.txt asdf-out.txt
 ```
 
+### Debugging
 
-### debugging
+We use Alpine as the base image. The build recipe is available at http://github.com/simplyblock/image-tools/.
 
-we use alpine as the base image and recipe to create the image can be found [here](http://github.com/simplyblock/image-tools/)
+To access the KubeVirt VM console:
 
-
-To Kubevirt VM to connect to the server.
 ```
 kubectl virt -n <namespace> console supabase-supabase-db
 ```
