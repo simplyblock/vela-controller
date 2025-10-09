@@ -464,6 +464,8 @@ async def control_branch(
 
 
 instance_api.include_router(auth_api, prefix="/auth")
+
+
 @instance_api.get(
     "/apikeys",
     name="organizations:projects:branch:apikeys",
