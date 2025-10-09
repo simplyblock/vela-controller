@@ -12,11 +12,11 @@ data:
     datasources:
     - name: Prometheus
       type: prometheus
-      url: http://vela-prometheus.monitoring.svc.cluster.local:9090
+      url: http://{{ .Values.prometheus.name }}.{{ .Values.prometheus.namespace }}.svc.cluster.local:9090
       isDefault: true
       access: proxy
       uid: PBFA97CFB590B2093
-      editable: true
+      editable: true      
 ---
 apiVersion: apps/v1
 kind: Deployment
