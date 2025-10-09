@@ -32,3 +32,8 @@ variable "external_ip" {
   description = "External IP address to use"
   type        = string
 }
+
+variable "kube_ovn_master_node_name" {
+  description = "Name of the node that should be labeled as the Kube-OVN master"
+  type        = string
+}
