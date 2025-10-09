@@ -1,7 +1,11 @@
+import json
+import re
+from importlib.resources import files
 from typing import Literal
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 from fastapi.routing import APIRoute
 from pydantic import BaseModel
 from sqlmodel import SQLModel
@@ -50,6 +54,106 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*"],
 )
+
+
+def _openapi() -> dict:
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    def convert_path(path: str) -> str:
+        pattern = r"^/admin/realms/\{realm\}"
+        replacement = "/organizations/{organization_id}/projects/{project_id}/branches/{branch_id}/auth"
+        return re.sub(pattern, replacement, path)
+
+    def convert_method(method_spec: dict) -> dict:
+        method_spec["tags"] = ["branch-auth"]
+        return method_spec
+
+    def convert_path_spec(path_spec: dict) -> dict:
+        path_spec.setdefault("parameters", []).extend(
+            [
+                {
+                    "name": "organization_id",
+                    "in": "path",
+                    "required": True,
+                    "schema": {
+                        "type": "string",
+                        "format": "ulid",
+                        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+                        "minLength": 26,
+                        "maxLength": 26,
+                        "description": "A ULID (Universally Unique Lexicographically Sortable Identifier)",
+                        "examples": [
+                            "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                            "01H945P9C3K2QJ8F7N6M4R2E8V",
+                        ],
+                        "title": "Organization Id",
+                    },
+                },
+                {
+                    "name": "branch_id",
+                    "in": "path",
+                    "required": True,
+                    "schema": {
+                        "type": "string",
+                        "format": "ulid",
+                        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+                        "minLength": 26,
+                        "maxLength": 26,
+                        "description": "A ULID (Universally Unique Lexicographically Sortable Identifier)",
+                        "examples": [
+                            "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                            "01H945P9C3K2QJ8F7N6M4R2E8V",
+                        ],
+                        "title": "Branch Id",
+                    },
+                },
+                {
+                    "name": "project_id",
+                    "in": "path",
+                    "required": True,
+                    "schema": {
+                        "type": "string",
+                        "format": "ulid",
+                        "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+                        "minLength": 26,
+                        "maxLength": 26,
+                        "description": "A ULID (Universally Unique Lexicographically Sortable Identifier)",
+                        "examples": [
+                            "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                            "01H945P9C3K2QJ8F7N6M4R2E8V",
+                        ],
+                        "title": "Project Id",
+                    },
+                },
+            ]
+        )
+        path_spec["parameters"] = [param for param in path_spec["parameters"] if param["name"] != "realm"]
+        for method, method_spec in ((k, v) for k, v in path_spec.items() if k != "parameters"):
+            path_spec[method] = convert_method(method_spec)
+
+        return path_spec
+
+    openapi_schema = get_openapi(
+        title="Vela API",
+        version="0.1.0",  # TODO: derive from repo version
+        routes=app.routes,
+    )
+
+    keycloak_openapi_schema = json.loads(files(__package__).joinpath("keycloak-26.4.0-api.json").read_text())
+
+    openapi_schema["paths"].update(
+        **{
+            convert_path(path): convert_path_spec(spec)
+            for path, spec in keycloak_openapi_schema["paths"].items()
+            if path != "/admin/realms"
+        }
+    )
+    openapi_schema["components"]["schemas"].update(**keycloak_openapi_schema["components"]["schemas"])
+    return openapi_schema
+
+
+app.openapi = _openapi  # type: ignore[method-assign]
 
 
 @app.on_event("startup")
