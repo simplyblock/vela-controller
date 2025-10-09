@@ -62,7 +62,6 @@ jobs:
 
     - name: Add, update, or remove PR comment
       uses: actions/github-script@v7
-      if: ${{ !github.event.pull_request.draft }}
       with:
         github-token: ${{ secrets.GITHUB_TOKEN }}
         script: |
