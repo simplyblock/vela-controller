@@ -33,7 +33,7 @@ api = APIRouter()
 
 async def _deploy_branch_environment_task(
     *,
-    organization: str,
+    organization: Any,
     project_id: Identifier,
     branch_id: Identifier,
     branch_slug: str,
@@ -46,7 +46,7 @@ async def _deploy_branch_environment_task(
             project_id=project_id,
             branch_id=branch_id,
             branch_slug=branch_slug,
-            user=user,
+            token=user.token,
             parameters=parameters,
         )
     except VelaError:
@@ -167,7 +167,7 @@ async def create(
 
     asyncio.create_task(
         _deploy_branch_environment_task(
-            organization=organization,
+            organization=organization.name,
             project_id=entity.id,
             branch_id=branch_dbid,
             branch_slug=branch_slug,

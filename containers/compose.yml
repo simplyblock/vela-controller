@@ -88,3 +88,33 @@ services:
       interval: 5s
       retries: 3
     restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.0.12
+    container_name: vela-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: "admin"
+      GF_SECURITY_ADMIN_PASSWORD: "password"
+      GF_ALERTING_ENABLED: "true"
+      GF_PATHS_PROVISIONING: "/etc/grafana/provisioning"
+      GF_SERVER_ROOT_URL: "http://localhost"
+      GF_AUTH_JWT_ENABLED: "true"
+      GF_AUTH_JWT_HEADER_NAME: "X-JWT-Assertion"
+      GF_AUTH_JWT_USERNAME_CLAIM: "sub"
+      GF_AUTH_JWT_EMAIL_CLAIM: "email"
+      GF_AUTH_JWT_AUTO_SIGN_UP: "true"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_JWT_JWK_SET_URL: "https://caddy:8443/auth/realms/vela/protocol/openid-connect/certs"
+    user: "472:0" 
+
+  caddy:
+    image: caddy:2
+    container_name: caddy
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      
