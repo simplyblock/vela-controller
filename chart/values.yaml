@@ -14,6 +14,9 @@ securityContext:
 domain: staging.vela.run
 domaincertsecret: vela-run-staging-wildcard-cert  # TODO: use cert manager 
 
+keycloak:
+  realmFile: files/realm.json
+
 analytics:
   DB_HOST: database
   DB_DATABASE: logflare
