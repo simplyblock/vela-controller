@@ -27,8 +27,8 @@ class Settings(BaseSettings):
     deployment_namespace_prefix: str
     logflare_public_access_token: str
     deployment_env: str
-    gf_security_admin_user: str
-    gf_security_admin_password: str
+    grafana_security_admin_user: str
+    grafana_security_admin_password: str
 
 
 settings = Settings()  # type: ignore[call-arg]

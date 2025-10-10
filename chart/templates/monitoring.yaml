@@ -6,8 +6,8 @@ metadata:
   namespace: {{ .Release.Namespace }}
 type: Opaque
 stringData:
-  VELA_GF_SECURITY_ADMIN_USER: "{{ .Values.monitoring.VELA_GF_SECURITY_ADMIN_USER }}"
-  VELA_GF_SECURITY_ADMIN_PASSWORD: "{{ .Values.monitoring.VELA_GF_SECURITY_ADMIN_PASSWORD }}"
+  VELA_GRAFANA_SECURITY_ADMIN_USER: "{{ .Values.monitoring.VELA_GRAFANA_SECURITY_ADMIN_USER }}"
+  VELA_GRAFANA_SECURITY_ADMIN_PASSWORD: "{{ .Values.monitoring.VELA_GRAFANA_SECURITY_ADMIN_PASSWORD }}"
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -55,12 +55,12 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: vela-grafana-secret
-                  key: VELA_GF_SECURITY_ADMIN_USER
+                  key: VELA_GRAFANA_SECURITY_ADMIN_USER
             - name: GF_SECURITY_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: vela-grafana-secret
-                  key: VELA_GF_SECURITY_ADMIN_PASSWORD
+                  key: VELA_GRAFANA_SECURITY_ADMIN_PASSWORD
             - name: GF_ALERTING_ENABLED
               value: "true"
             - name: GF_PATHS_PROVISIONING

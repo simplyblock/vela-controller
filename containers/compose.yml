@@ -37,8 +37,8 @@ services:
       VELA_DEPLOYMENT_NAMESPACE_PREFIX: 'vela'
       VELA_LOGFLARE_PUBLIC_ACCESS_TOKEN: 'my-super-secret-api-key'
       VELA_DEPLOYMENT_ENV: 'local'
-      VELA_GF_SECURITY_ADMIN_USER: "admin"
-      VELA_GF_SECURITY_ADMIN_PASSWORD: "password"
+      VELA_GRAFANA_SECURITY_ADMIN_USER: "admin"
+      VELA_GRAFANA_SECURITY_ADMIN_PASSWORD: "password"
 
     depends_on:
       database:
