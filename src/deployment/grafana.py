@@ -1,17 +1,15 @@
+import logging
 import json
 import os
+from typing import Any
 
-import requests
+import httpx
 from fastapi import HTTPException, Request, status
 from .settings import settings
 
-ENV = settings.deployment_env
+from .._util import Identifier
 
-NAMESPACE = settings.deployment_namespace_prefix
-
-GRAFANA_URL = f"http://vela-grafana.{NAMESPACE}.svc.cluster.local:3000"
-if ENV == "local":
-    GRAFANA_URL = "http://grafana:3000"
+GRAFANA_URL = settings.grafana_url
 
 GRAFANA_USER = settings.gf_security_admin_user
 GRAFANA_PASSWORD = settings.gf_security_admin_password
@@ -20,6 +18,22 @@ GRAFANA_PASSWORD = settings.gf_security_admin_password
 auth = (GRAFANA_USER, GRAFANA_PASSWORD)
 headers = {"Content-Type": "application/json"}
 
+logger = logging.getLogger(__name__)
+
+
+async def create_vela_grafana_obj(organization_id: Identifier, branch_id: Identifier, request: Any):
+    logger.info(f"Creating Grafana object organization {organization_id} branch: {branch_id}")
+    team_id = create_team(str(branch_id))
+    parent_folder_id = create_folder(str(organization_id))
+
+    set_folder_permissions(parent_folder_id, team_id)
+    folder_id = create_folder(str(branch_id), parent_uid=parent_folder_id)
+    set_folder_permissions(folder_id, team_id)
+
+    token = get_token_from_request(request)
+    user_id = get_user_via_jwt(token)
+    add_user_to_team(team_id, user_id)
+    create_dashboard(str(organization_id), folder_id, str(branch_id))
 
 def get_token_from_request(request: Request) -> str:
     auth_header = request.headers.get("authorization")
@@ -37,14 +51,14 @@ def get_token_from_request(request: Request) -> str:
 # Create Team
 def create_team(team_name):
     payload = {"name": team_name}
-    r = requests.post(f"{GRAFANA_URL}/api/teams", auth=auth, headers=headers, data=json.dumps(payload))
+    r = httpx.post(f"{GRAFANA_URL}/api/teams", auth=auth, headers=headers, data=json.dumps(payload))
     if r.status_code == 200:
         print(f"[+] Team '{team_name}' created.")
         return r.json().get("teamId")
     elif r.status_code == 409:
         print(f"[!] Team '{team_name}' already exists. Fetching ID...")
         # Fetch existing team
-        res = requests.get(f"{GRAFANA_URL}/api/teams/search?name={team_name}", auth=auth)
+        res = httpx.get(f"{GRAFANA_URL}/api/teams/search?name={team_name}", auth=auth)
         return res.json()["teams"][0]["id"]
     else:
         raise Exception(f"Failed to create team: {r.text}")
@@ -55,14 +69,14 @@ def create_folder(folder_name, parent_uid=None):
     payload = {"title": folder_name}
     if parent_uid:
         payload["parentUid"] = parent_uid
-    r = requests.post(f"{GRAFANA_URL}/api/folders", auth=auth, headers=headers, data=json.dumps(payload))
+    r = httpx.post(f"{GRAFANA_URL}/api/folders", auth=auth, headers=headers, data=json.dumps(payload))
     if r.status_code == 200:
         print(f"[+] Folder '{folder_name}' created.")
         return r.json()["uid"]
     elif r.status_code == 412:
         print(f"[!] Folder '{folder_name}' already exists. Fetching ID...")
         # Fetch existing folder
-        res = requests.get(f"{GRAFANA_URL}/api/folders", auth=auth)
+        res = httpx.get(f"{GRAFANA_URL}/api/folders", auth=auth)
         for f in res.json():
             if f["title"] == folder_name:
                 return f["uid"]
@@ -81,7 +95,7 @@ def set_folder_permissions(folder_uid, team_id):
         ]
     }
 
-    r = requests.post(
+    r = httpx.post(
         f"{GRAFANA_URL}/api/folders/{folder_uid}/permissions",
         auth=auth,
         headers=headers,
@@ -95,7 +109,7 @@ def set_folder_permissions(folder_uid, team_id):
 
 def get_user_via_jwt(jwt_token):
     jwt_headers = {"Content-Type": "application/json", "Authorization": f"Bearer {jwt_token}"}
-    r = requests.get(f"{GRAFANA_URL}/api/user", headers=jwt_headers)
+    r = httpx.get(f"{GRAFANA_URL}/api/user", headers=jwt_headers)
     if r.status_code == 200:
         user_info = r.json()
         print(f"[+] Authenticated as '{user_info['login']}' ({user_info['email']})")
@@ -107,7 +121,7 @@ def get_user_via_jwt(jwt_token):
 # Add User to Team
 def add_user_to_team(team_id, user_id):
     payload = {"userId": user_id}
-    r = requests.post(
+    r = httpx.post(
         f"{GRAFANA_URL}/api/teams/{team_id}/members", auth=auth, headers=headers, data=json.dumps(payload)
     )
     if r.status_code == 200:
@@ -119,7 +133,7 @@ def add_user_to_team(team_id, user_id):
 
 
 def remove_team(team_id):
-    r = requests.delete(f"{GRAFANA_URL}/api/teams/{team_id}", auth=auth, headers=headers)
+    r = httpx.delete(f"{GRAFANA_URL}/api/teams/{team_id}", auth=auth, headers=headers)
     if r.status_code == 200:
         print(f"[+] Team {team_id} removed.")
     elif r.status_code == 404:
@@ -130,7 +144,7 @@ def remove_team(team_id):
 
 # Remove Folder
 def remove_folder(folder_uid):
-    r = requests.delete(f"{GRAFANA_URL}/api/folders/{folder_uid}", auth=auth, headers=headers)
+    r = httpx.delete(f"{GRAFANA_URL}/api/folders/{folder_uid}", auth=auth, headers=headers)
     if r.status_code == 200:
         print(f"[+] Folder {folder_uid} removed.")
     elif r.status_code == 404:
@@ -140,7 +154,7 @@ def remove_folder(folder_uid):
 
 
 def remove_user_from_team(team_id, user_id):
-    r = requests.delete(f"{GRAFANA_URL}/api/teams/{team_id}/members/{user_id}", auth=auth, headers=headers)
+    r = httpx.delete(f"{GRAFANA_URL}/api/teams/{team_id}/members/{user_id}", auth=auth, headers=headers)
     if r.status_code == 200:
         print(f"[+] User {user_id} removed from team {team_id}.")
     elif r.status_code == 404:
@@ -197,7 +211,7 @@ def create_dashboard(org_name, folder_uid, folder_name):
         "overwrite": True,
     }
 
-    r = requests.post(
+    r = httpx.post(
         f"{GRAFANA_URL}/api/dashboards/db", auth=auth, headers=headers, data=json.dumps(dashboard_payload)
     )
     if r.status_code in (200, 202):

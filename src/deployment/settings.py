@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     gateway_namespace: str = "kong-system"
     deployment_namespace_prefix: str
     logflare_public_access_token: str
-    deployment_env: str
+    grafana_url: str
     grafana_security_admin_user: str
     grafana_security_admin_password: str
 

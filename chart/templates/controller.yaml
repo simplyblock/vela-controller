@@ -65,6 +65,8 @@ spec:
               value: 'admin'
             - name: VELA_KEYCLOAK_ADMIN_SECRET
               value: 'admin'
+            - name: VELA_GRAFANA_URL
+              value: "http://vela-grafana:3000"
               
           livenessProbe:
             httpGet:
