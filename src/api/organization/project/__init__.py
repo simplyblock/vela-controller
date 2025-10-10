@@ -159,8 +159,8 @@ async def create(
     except IntegrityError as exc:
         await session.rollback()
         error = str(exc)
-        if "asyncpg.exceptions.UniqueViolationError" in error and "unique_branch_name_per_project" in error:
-            raise HTTPException(409, f"Project already has branch named {parameters.name}") from exc
+        if ("asyncpg.exceptions.UniqueViolationError" in error) and ("unique_project_name" in error):
+            raise HTTPException(409, f"Organization already has project named {parameters.name}") from exc
         raise
     except KeycloakError:
         await session.rollback()
