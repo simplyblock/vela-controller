@@ -71,9 +71,9 @@ async def _deploy_branch_environment_task(
 
 async def _public(project: Project) -> ProjectPublic:
     return ProjectPublic(
-        organization_id=project.organization_id,
-        id=project.id,
-        name=project.name,
+        organization_id=await project.awaitable_attrs.organization_id,
+        id=await project.awaitable_attrs.id,
+        name=await project.awaitable_attrs.name,
     )
 
 
