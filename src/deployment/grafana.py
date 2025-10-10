@@ -77,7 +77,7 @@ async def create_team(team_name: str):
 
 
 # --- FOLDER CREATION ---
-async def create_folder(folder_name: str, parent_uid: str) -> str:
+async def create_folder(folder_name: str, parent_uid: str | None = None) -> str:
     async with httpx.AsyncClient() as client:
         try:
             payload = {"title": folder_name}
