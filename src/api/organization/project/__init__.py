@@ -393,9 +393,4 @@ def _generate_keys(branch_id: str) -> tuple[str, str, str]:
         headers={"alg": "HS256", "typ": "JWT"},
     )
 
-    if isinstance(anon_key, bytes):
-        anon_key = anon_key.decode("utf-8")
-    if isinstance(service_key, bytes):
-        service_key = service_key.decode("utf-8")
-
     return jwt_secret, anon_key, service_key
