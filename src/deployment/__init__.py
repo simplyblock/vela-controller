@@ -3,12 +3,12 @@ import math
 import os
 import subprocess
 import tempfile
+import uuid
 from importlib import resources
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
 import yaml
-import uuid
 from cloudflare import AsyncCloudflare, CloudflareError
 from kubernetes_asyncio.client.exceptions import ApiException
 from pydantic import BaseModel, Field
@@ -218,7 +218,7 @@ async def create_vela_config(
                 stderr=subprocess.PIPE,
                 text=True,
             )
-            
+
             modified_compose.unlink()
             logger.info(f"Removed temporary file: {modified_compose}")
         except subprocess.CalledProcessError as e:
