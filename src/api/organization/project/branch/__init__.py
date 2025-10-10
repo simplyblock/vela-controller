@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import hashlib
 import logging
 from collections.abc import Sequence
 from typing import Any, Literal, cast
@@ -32,6 +33,7 @@ from ...._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_f
 from ....db import SessionDep
 from ....keycloak import realm_admin
 from ....models.branch import (
+    ApiKeyDetails,
     Branch,
     BranchApiKeys,
     BranchCreate,
@@ -62,6 +64,9 @@ async def _deploy_branch_environment_task(
     branch_id: Identifier,
     branch_slug: str,
     parameters: DeploymentParameters,
+    jwt_secret: str,
+    anon_key: str,
+    service_key: str,
 ) -> None:
     try:
         await deploy_branch_environment(
@@ -71,6 +76,9 @@ async def _deploy_branch_environment_task(
             branch_slug=branch_slug,
             request=request,
             parameters=parameters,
+            jwt_secret=jwt_secret,
+            anon_key=anon_key,
+            service_key=service_key,
         )
     except VelaError:
         logging.exception(
@@ -151,7 +159,7 @@ async def _public(branch: Branch) -> BranchPublic:
             rest="UNKNOWN",
         )
 
-    api_keys = BranchApiKeys(anon="", service_role="")
+    api_keys = BranchApiKeys(anon=branch.anon_key, service_role=branch.service_key)
 
     return BranchPublic(
         id=branch.id,
@@ -308,6 +316,9 @@ async def create(
                 branch_id=entity.id,
                 branch_slug=entity.name,
                 parameters=parameters.deployment,
+                jwt_secret=entity.jwt_secret,
+                anon_key=entity.anon_key,
+                service_key=entity.service_key,
             )
         )
     # TODO: implement source branch cloning for config/data copy
@@ -459,6 +470,37 @@ async def control_branch(
 
 
 instance_api.include_router(auth_api, prefix="/auth")
+
+
+@instance_api.get(
+    "/apikeys",
+    name="organizations:projects:branch:apikeys",
+    response_model=list[ApiKeyDetails],
+    responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
+)
+async def get_apikeys(
+    _organization: OrganizationDep,
+    _project: ProjectDep,
+    branch: BranchDep,
+) -> list[ApiKeyDetails]:
+    if not branch.anon_key or not branch.service_key:
+        raise HTTPException(status_code=404, detail="API keys not found for this branch")
+
+    def create_key_details(name: str, key: str, description: str) -> ApiKeyDetails:
+        return ApiKeyDetails(
+            name=name,
+            api_key=key,
+            id=name,
+            hash=hashlib.sha256(key.encode()).hexdigest(),
+            prefix=key[:5],
+            description=description,
+        )
+
+    return [
+        create_key_details("anon", branch.anon_key, "Legacy anon API key"),
+        create_key_details("service_role", branch.service_key, "Legacy service_role API key"),
+    ]
+
 
 api.include_router(instance_api)
 

@@ -1,5 +1,6 @@
 import logging
 import math
+import os
 import subprocess
 import tempfile
 from importlib import resources
@@ -35,8 +36,6 @@ from .settings import settings
 logger = logging.getLogger(__name__)
 
 kube_service = KubernetesService()
-
-DEFAULT_DATABASE_VM_NAME = "supabase-supabase-db"
 
 
 def deployment_namespace(branch_id: Identifier) -> str:
@@ -87,24 +86,18 @@ def _release_name(namespace: str) -> str:
     return settings.deployment_release_name
 
 
-def inject_branch_env(compose_file: Path, branch_id: Identifier):
+def inject_branch_env(compose: dict[str, Any], branch_id: Identifier) -> dict[str, Any]:
     try:
-        with open(compose_file) as f:
-            compose = yaml.safe_load(f)
+        vector_service = compose["services"]["vector"]
+    except KeyError as e:
+        raise RuntimeError("Failed to inject branch env into compose file: missing services.vector") from e
 
-        if "services" not in compose or "vector" not in compose["services"]:
-            raise KeyError("Missing 'vector' service in compose file")
+    vector_env = vector_service.setdefault("environment", {})
+    vector_env["LOGFLARE_PUBLIC_ACCESS_TOKEN"] = os.environ.get("LOGFLARE_PUBLIC_ACCESS_TOKEN", "")
+    vector_env["NAMESPACE"] = os.environ.get("VELA_DEPLOYMENT_NAMESPACE_PREFIX", "")
+    vector_env["VELA_BRANCH"] = str(branch_id).lower()
 
-        vector_env = compose["services"]["vector"].setdefault("environment", {})
-        vector_env["LOGFLARE_PUBLIC_ACCESS_TOKEN"] = settings.logflare_public_access_token
-        vector_env["NAMESPACE"] = settings.deployment_namespace_prefix
-        vector_env["VELA_BRANCH"] = str(branch_id).lower()
-
-        with open(compose_file, "w") as f:
-            yaml.safe_dump(compose, f, sort_keys=False)
-
-    except (OSError, yaml.YAMLError, KeyError) as e:
-        raise RuntimeError(f"Failed to inject branch env into compose file: {e}") from e
+    return compose
 
 
 class DeploymentParameters(BaseModel):
@@ -123,7 +116,14 @@ class DeploymentStatus(BaseModel):
     status: StatusType
 
 
-async def create_vela_config(branch_id: Identifier, parameters: DeploymentParameters, branch: Slug):
+async def create_vela_config(
+    branch_id: Identifier,
+    parameters: DeploymentParameters,
+    branch: Slug,
+    jwt_secret: str,
+    anon_key: str,
+    service_key: str,
+):
     namespace = deployment_namespace(branch_id)
     logging.info(
         "Creating Vela configuration for namespace: %s (database %s, user %s, branch %s, branch_id=%s)",
@@ -135,11 +135,12 @@ async def create_vela_config(branch_id: Identifier, parameters: DeploymentParame
     )
 
     chart = resources.files(__package__) / "charts" / "supabase"
-    compose_file = Path(__file__).with_name("compose.yml")
-    if not compose_file.exists():
-        raise FileNotFoundError(f"docker-compose manifest not found at {compose_file}")
+    compose_file_path = Path(__file__).with_name("compose.yml")
+    if not compose_file_path.exists():
+        raise FileNotFoundError(f"docker-compose manifest not found at {compose_file_path}")
 
-    inject_branch_env(compose_file, branch_id)
+    compose_file = yaml.safe_load(compose_file_path.read_text())
+    compose_file = inject_branch_env(compose_file, branch_id)
 
     vector_file = Path(__file__).with_name("vector.yml")
     if not vector_file.exists():
@@ -147,6 +148,12 @@ async def create_vela_config(branch_id: Identifier, parameters: DeploymentParame
     values_content = yaml.safe_load((chart / "values.yaml").read_text())
 
     # Override defaults
+    values_content.setdefault("secret", {}).setdefault("jwt", {}).update(
+        secret=jwt_secret,
+        anonKey=anon_key,
+        serviceKey=service_key,
+    )
+
     db_secrets = values_content.setdefault("db", {}).setdefault("credentials", {})
     db_secrets["adminusername"] = parameters.database_user
     db_secrets["adminpassword"] = parameters.database_password
@@ -176,12 +183,17 @@ async def create_vela_config(branch_id: Identifier, parameters: DeploymentParame
     storage_persistence = storage_spec.setdefault("persistence", {})
     storage_persistence["enabled"] = True
     storage_persistence["size"] = f"{bytes_to_gib(parameters.storage_size)}Gi"
-    namespace = deployment_namespace(branch_id)
 
     # todo: create an storage class with the given IOPS
     values_content["provisioning"] = {"iops": parameters.iops}
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as temp_values:
+    with (
+        tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as temp_values,
+        tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as modified_compose,
+    ):
+        yaml.safe_dump(compose_file, modified_compose, default_flow_style=False)
         yaml.safe_dump(values_content, temp_values, default_flow_style=False)
+        modified_compose.flush()
+        temp_values.flush()
 
         try:
             await check_output(
@@ -194,7 +206,7 @@ async def create_vela_config(branch_id: Identifier, parameters: DeploymentParame
                     namespace,
                     "--create-namespace",
                     "--set-file",
-                    f"composeYaml={compose_file}",
+                    f"composeYaml={modified_compose.name}",
                     "--set-file",
                     f"vectorYaml={vector_file}",
                     "-f",
@@ -559,6 +571,9 @@ async def deploy_branch_environment(
     branch_slug: Slug,
     request: Request,
     parameters: DeploymentParameters,
+    jwt_secret: str,
+    anon_key: str,
+    service_key: str,
 ) -> None:
     """Background task: provision infra for a branch and persist the resulting endpoint."""
 
@@ -566,7 +581,9 @@ async def deploy_branch_environment(
     await create_vela_grafana_obj(organization_id, branch_id, request)
 
     # Create the main deployment (database etc)
-    await create_vela_config(branch_id, parameters, branch_slug)
+    await create_vela_config(
+        project_id, parameters, branch_slug, jwt_secret=jwt_secret, anon_key=anon_key, service_key=service_key
+    )
 
     # Provision DNS + HTTPRoute resources
     ref = branch_dns_label(branch_id)

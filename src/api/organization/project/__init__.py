@@ -1,8 +1,11 @@
 import asyncio
 import logging
+import secrets
 from collections.abc import Sequence
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
+import jwt
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from keycloak.exceptions import KeycloakError
@@ -15,7 +18,6 @@ from ....deployment import (
     delete_deployment,
     deploy_branch_environment,
     get_db_vmi_identity,
-    get_deployment_status,
 )
 from ....deployment.kubevirt import call_kubevirt_subresource
 from ....exceptions import VelaError
@@ -26,7 +28,6 @@ from ...models.branch import Branch
 from ...models.organization import OrganizationDep
 from ...models.project import (
     Project,
-    ProjectBranchStatus,
     ProjectCreate,
     ProjectDep,
     ProjectPublic,
@@ -47,6 +48,9 @@ async def _deploy_branch_environment_task(
     branch_slug: str,
     request: Request,
     parameters: DeploymentParameters,
+    jwt_secret: str,
+    anon_key: str,
+    service_key: str,
 ) -> None:
     try:
         await deploy_branch_environment(
@@ -56,6 +60,9 @@ async def _deploy_branch_environment_task(
             branch_slug=branch_slug,
             request=request,
             parameters=parameters,
+            jwt_secret=jwt_secret,
+            anon_key=anon_key,
+            service_key=service_key,
         )
     except VelaError:
         logger.exception(
@@ -67,24 +74,10 @@ async def _deploy_branch_environment_task(
 
 
 async def _public(project: Project) -> ProjectPublic:
-    branch_status: list[ProjectBranchStatus] = []
-    branches = await project.awaitable_attrs.branches
-    if not branches:
-        raise HTTPException(500, "Project has no branches")
-    for branch in branches:
-        status = await get_deployment_status(branch.id)
-        branch_status.append(
-            ProjectBranchStatus(
-                branch_id=branch.id,
-                branch_name=branch.name,
-                status=status.status,
-            )
-        )
     return ProjectPublic(
         organization_id=project.organization_id,
         id=project.id,
         name=project.name,
-        branch_status=branch_status,
     )
 
 
@@ -180,6 +173,16 @@ async def create(
 
     await session.refresh(entity)
     await session.refresh(main_branch)
+    project_id = entity.id
+    branch_slug = main_branch.name
+    branch_dbid = main_branch.id
+
+    # Generate keys and store keys
+    jwt_secret, anon_key, service_key = _generate_keys(branch_dbid.__str__())
+    main_branch.jwt_secret = jwt_secret
+    main_branch.anon_key = anon_key
+    main_branch.service_key = service_key
+    await session.commit()
 
     asyncio.create_task(
         _deploy_branch_environment_task(
@@ -188,7 +191,13 @@ async def create(
             request=request,
             branch_id=main_branch.id,
             branch_slug=main_branch.name,
+            project_id=project_id,
+            branch_id=branch_dbid,
+            branch_slug=branch_slug,
             parameters=parameters.deployment,
+            jwt_secret=jwt_secret,
+            anon_key=anon_key,
+            service_key=service_key,
         )
     )
     await session.refresh(organization)
@@ -196,7 +205,7 @@ async def create(
         request,
         "organizations:projects:detail",
         organization_id=organization.id,
-        project_id=entity.id,
+        project_id=project_id,
     )
     payload = (await _public(entity)).model_dump() if response == "full" else None
 
@@ -337,3 +346,44 @@ async def resume(_organization: OrganizationDep, project: ProjectDep):
 
 
 api.include_router(instance_api)
+
+
+def _generate_keys(branch_id: str) -> tuple[str, str, str]:
+    """Generates JWT secret, anon key, and service role key"""
+    jwt_secret = secrets.token_urlsafe(32)
+
+    iat = int(datetime.now(UTC).timestamp())
+    # 10 years expiration
+    exp = int((datetime.now(UTC) + timedelta(days=365 * 10)).timestamp())
+
+    anon_payload = {
+        "iss": "supabase",
+        "ref": branch_id,
+        "role": "anon",
+        "iat": iat,
+        "exp": exp,
+    }
+
+    service_role_payload = {
+        "iss": "supabase",
+        "ref": branch_id,
+        "role": "service_role",
+        "iat": iat,
+        "exp": exp,
+    }
+
+    anon_key = jwt.encode(
+        payload=anon_payload,
+        key=jwt_secret,
+        algorithm="HS256",
+        headers={"alg": "HS256", "typ": "JWT"},
+    )
+
+    service_key = jwt.encode(
+        payload=service_role_payload,
+        key=jwt_secret,
+        algorithm="HS256",
+        headers={"alg": "HS256", "typ": "JWT"},
+    )
+
+    return jwt_secret, anon_key, service_key
