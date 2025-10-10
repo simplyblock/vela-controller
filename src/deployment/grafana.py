@@ -4,16 +4,16 @@ import json
 
 from fastapi import Request, HTTPException, status
 
-ENV = os.environ.get("VELA_DEPLOYMENT_ENV", "")
+ENV=os.environ.get("VELA_DEPLOYMENT_ENV", "")
 
-NAMESPACE = os.environ.get("VELA_DEPLOYMENT_NAMESPACE_PREFIX", "")
+NAMESPACE=os.environ.get("VELA_DEPLOYMENT_NAMESPACE_PREFIX", "")
 
 GRAFANA_URL = f"http://vela-grafana.{NAMESPACE}.svc.cluster.local:3000"
 if ENV == "docker":
     GRAFANA_URL = "http://grafana:3000"
     
-GRAFANA_USER = "admin"
-GRAFANA_PASSWORD = "password"
+GRAFANA_USER="admin"
+GRAFANA_PASSWORD="password"
 
 # Basic Auth for Grafana
 auth = (GRAFANA_USER, GRAFANA_PASSWORD)
@@ -86,10 +86,10 @@ def set_folder_permissions(folder_uid, team_id):
 
 
 
-def get_user_via_jwt(GRAFANA_JWT):
+def get_user_via_jwt(jwt_token):
     jwt_headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {GRAFANA_JWT}"
+        "Authorization": f"Bearer {jwt_token}"
     }
     r = requests.get(f"{GRAFANA_URL}/api/user", headers=jwt_headers)
     if r.status_code == 200:
@@ -119,28 +119,13 @@ def remove_team(team_id):
     else:
         raise Exception(f"Failed to remove team: {r.text}")
 
-
-def get_user_via_jwt(GRAFANA_JWT):
-    jwt_headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {GRAFANA_JWT}"
-    }
-    r = requests.get(f"{GRAFANA_URL}/api/user", headers=jwt_headers)
-    if r.status_code == 200:
-        user_info = r.json()
-        print(f"[+] Authenticated as '{user_info['login']}' ({user_info['email']})")
-        return user_info["id"]
-    else:
-        raise Exception(f"Failed to authenticate via JWT: {r.status_code} {r.text}")
-
 # Remove Folder
 def remove_folder(folder_uid):
     r = requests.delete(f"{GRAFANA_URL}/api/folders/{folder_uid}", auth=auth, headers=headers)
     if r.status_code == 200:
         print(f"[+] Folder {folder_uid} removed.")
     elif r.status_code == 404:
-        print(f"[!] Folder {folder_uid} not found.")
-        
+        print(f"[!] Folder {folder_uid} not found.")        
     else:
         raise Exception(f"Failed to remove folder: {r.text}")
 
@@ -217,7 +202,6 @@ def create_dashboard(org_name, folder_uid, folder_name):
 
     r = requests.post(f"{GRAFANA_URL}/api/dashboards/db",
                       auth=auth, headers=headers, data=json.dumps(dashboard_payload))
-
     if r.status_code in (200, 202):
         print(f"[+] Dashboard created in folder '{folder_name}' with project variable.")
     else:
