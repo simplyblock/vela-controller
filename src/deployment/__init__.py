@@ -35,10 +35,6 @@ logger = logging.getLogger(__name__)
 
 kube_service = KubernetesService()
 
-DEFAULT_DATABASE_VM_NAME = "supabase-supabase-db"
-DEFAULT_GATEWAY_NAME = "vela-public-gateway"
-DEFAULT_GATEWAY_NAMESPACE = "kong-system"
-
 
 def deployment_namespace(branch_id: Identifier) -> str:
     """Return the Kubernetes namespace for a branch using `<prefix>-<branch_id>` format."""
@@ -155,10 +151,11 @@ async def create_vela_config(
     values_content = yaml.safe_load((chart / "values.yaml").read_text())
 
     # Override defaults
-    jwt_creds = values_content.setdefault("secret", {}).setdefault("jwt", {})
-    jwt_creds["secret"] = jwt_secret
-    jwt_creds["anonKey"] = anon_key
-    jwt_creds["serviceKey"] = service_key
+    values_content.setdefault("secret", {}).setdefault("jwt", {}).update(
+        secret=jwt_secret,
+        anonKey=anon_key,
+        serviceKey=service_key,
+    )
 
     db_secrets = values_content.setdefault("db", {}).setdefault("credentials", {})
     db_secrets["adminusername"] = parameters.database_user
