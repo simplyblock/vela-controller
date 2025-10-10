@@ -28,7 +28,7 @@ spec:
             - configMapRef:
                 name: vela-controller-config
           env:
-            - name: LOGFLARE_PUBLIC_ACCESS_TOKEN
+            - name: VELA_LOGFLARE_PUBLIC_ACCESS_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: vela-logflare-secret
