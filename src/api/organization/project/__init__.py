@@ -173,7 +173,7 @@ async def create(
 
     await session.refresh(entity)
     await session.refresh(main_branch)
-    organization_id=entity.organization_id
+    organization_id = entity.organization_id
     project_id = entity.id
     branch_slug = main_branch.name
     branch_dbid = main_branch.id

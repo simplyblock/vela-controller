@@ -13,5 +13,6 @@ class VelaKubernetesError(VelaDeploymentError):
 class VelaCloudflareError(VelaDeploymentError):
     """Error interacting with Cloudflare"""
 
+
 class VelaGrafanaError(VelaDeploymentError):
     """Error interacting with Grafana"""
