@@ -173,6 +173,7 @@ async def create(
 
     await session.refresh(entity)
     await session.refresh(main_branch)
+    organization_id=entity.organization_id
     project_id = entity.id
     branch_slug = main_branch.name
     branch_dbid = main_branch.id
@@ -186,11 +187,8 @@ async def create(
 
     asyncio.create_task(
         _deploy_branch_environment_task(
-            organization_id=entity.organization_id,
-            project_id=entity.id,
+            organization_id=organization_id,
             request=request,
-            branch_id=main_branch.id,
-            branch_slug=main_branch.name,
             project_id=project_id,
             branch_id=branch_dbid,
             branch_slug=branch_slug,

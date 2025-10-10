@@ -15,4 +15,3 @@ class VelaCloudflareError(VelaDeploymentError):
 
 class VelaGrafanaError(VelaDeploymentError):
     """Error interacting with Grafana"""
-    

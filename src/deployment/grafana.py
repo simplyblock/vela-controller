@@ -1,11 +1,12 @@
 import logging
+
 import httpx
-from httpx import HTTPError
 from fastapi import HTTPException, Request, status
+from httpx import HTTPError
 
 from .._util import Identifier
-from .settings import settings
 from ..exceptions import VelaGrafanaError
+from .settings import settings
 
 GRAFANA_URL = settings.grafana_url
 GRAFANA_USER = settings.grafana_security_admin_user
@@ -49,7 +50,9 @@ def get_token_from_request(request: Request) -> str:
 async def create_team(team_name: str):
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.post(f"{GRAFANA_URL}/api/teams", auth=auth, headers=headers, json={"name": team_name})
+            response = await client.post(
+                f"{GRAFANA_URL}/api/teams", auth=auth, headers=headers, json={"name": team_name}
+            )
             response.raise_for_status()
             logger.info(f"Team '{team_name}' created successfully.")
             return response.json().get("teamId")
@@ -59,7 +62,9 @@ async def create_team(team_name: str):
             if status_code == 409:
                 logger.warning(f"Team '{team_name}' already exists. Fetching existing team ID...")
                 try:
-                    res = await client.get(f"{GRAFANA_URL}/api/teams/search?name={team_name}", auth=auth, headers=headers)
+                    res = await client.get(
+                        f"{GRAFANA_URL}/api/teams/search?name={team_name}", auth=auth, headers=headers
+                    )
                     res.raise_for_status()
                     team_id = res.json()["teams"][0]["id"]
                     logger.info(f"Fetched existing team ID: {team_id}")
@@ -187,6 +192,7 @@ async def add_user_to_team(team_id: int, user_id: int):
             logger.exception(f"Unexpected error adding user {user_id} to team {team_id}.")
             raise VelaGrafanaError(f"Unexpected error adding user to team: {exc}") from exc
 
+
 async def remove_team(team_id: int):
     async with httpx.AsyncClient() as client:
         try:
@@ -209,6 +215,7 @@ async def remove_team(team_id: int):
         except Exception as exc:
             logger.exception(f"Unexpected error removing team {team_id}.")
             raise VelaGrafanaError(f"Unexpected error removing team: {exc}") from exc
+
 
 async def remove_folder(folder_uid: str):
     async with httpx.AsyncClient() as client:
@@ -311,7 +318,9 @@ async def create_dashboard(org_name: str, folder_uid: str, folder_name: str):
 
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.post(f"{GRAFANA_URL}/api/dashboards/db", auth=auth, headers=headers, json=dashboard_payload)
+            response = await client.post(
+                f"{GRAFANA_URL}/api/dashboards/db", auth=auth, headers=headers, json=dashboard_payload
+            )
             response.raise_for_status()
             logger.info(f"Dashboard created successfully in folder '{folder_name}'.")
         except Exception as exc:
