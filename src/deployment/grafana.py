@@ -12,8 +12,8 @@ GRAFANA_URL = f"http://vela-grafana.{NAMESPACE}.svc.cluster.local:3000"
 if ENV == "docker":
     GRAFANA_URL = "http://grafana:3000"
 
-GRAFANA_USER = "admin"
-GRAFANA_PASSWORD = "password"
+GRAFANA_USER = os.environ.get("VELA_GF_SECURITY_ADMIN_USER", "")
+GRAFANA_PASSWORD = os.environ.get("VELA_GF_SECURITY_ADMIN_PASSWORD", "")
 
 # Basic Auth for Grafana
 auth = (GRAFANA_USER, GRAFANA_PASSWORD)
