@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from collections.abc import Sequence
-from typing import Any, Literal
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
@@ -45,7 +45,7 @@ async def _deploy_branch_environment_task(
     project_id: Identifier,
     branch_id: Identifier,
     branch_slug: str,
-    request: Any,
+    request: Request,
     parameters: DeploymentParameters,
 ) -> None:
     try:

@@ -1,6 +1,5 @@
 import logging
 import math
-import os
 import subprocess
 import tempfile
 from importlib import resources
@@ -9,6 +8,7 @@ from typing import Annotated, Any, Literal
 
 import yaml
 from cloudflare import AsyncCloudflare, CloudflareError
+from fastapi import Request
 from kubernetes_asyncio.client.exceptions import ApiException
 from pydantic import BaseModel, Field
 
@@ -28,7 +28,6 @@ from .._util import (
 )
 from ..exceptions import VelaCloudflareError, VelaKubernetesError
 from .grafana import create_vela_grafana_obj
-
 from .kubernetes import KubernetesService
 from .kubevirt import get_virtualmachine_status
 from .settings import settings
@@ -558,7 +557,7 @@ async def deploy_branch_environment(
     project_id: Identifier,
     branch_id: Identifier,
     branch_slug: Slug,
-    request: Any,
+    request: Request,
     parameters: DeploymentParameters,
 ) -> None:
     """Background task: provision infra for a branch and persist the resulting endpoint."""

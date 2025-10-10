@@ -1,13 +1,11 @@
-import logging
 import json
-import os
-from typing import Any
+import logging
 
 import httpx
 from fastapi import HTTPException, Request, status
-from .settings import settings
 
 from .._util import Identifier
+from .settings import settings
 
 GRAFANA_URL = settings.grafana_url
 
@@ -21,7 +19,7 @@ headers = {"Content-Type": "application/json"}
 logger = logging.getLogger(__name__)
 
 
-async def create_vela_grafana_obj(organization_id: Identifier, branch_id: Identifier, request: Any):
+async def create_vela_grafana_obj(organization_id: Identifier, branch_id: Identifier, request: Request):
     logger.info(f"Creating Grafana object organization {organization_id} branch: {branch_id}")
     team_id = create_team(str(branch_id))
     parent_folder_id = create_folder(str(organization_id))

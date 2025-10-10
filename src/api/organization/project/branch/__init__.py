@@ -58,7 +58,7 @@ async def _deploy_branch_environment_task(
     *,
     organization_id: Identifier,
     project_id: Identifier,
-    request: Any,
+    request: Request,
     branch_id: Identifier,
     branch_slug: str,
     parameters: DeploymentParameters,
