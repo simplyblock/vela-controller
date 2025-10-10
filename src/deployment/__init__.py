@@ -20,7 +20,6 @@ from .._util import (
     STORAGE_SIZE_CONSTRAINTS,
     Identifier,
     Slug,
-    Name,
     StatusType,
     bytes_to_gib,
     bytes_to_mib,
@@ -28,10 +27,18 @@ from .._util import (
     dbstr,
 )
 from ..exceptions import VelaCloudflareError, VelaKubernetesError
+from .grafana import (
+    add_user_to_team,
+    create_dashboard,
+    create_folder,
+    create_team,
+    get_token_from_request,
+    get_user_via_jwt,
+    set_folder_permissions,
+)
 from .kubernetes import KubernetesService
 from .kubevirt import get_virtualmachine_status
 from .settings import settings
-from .grafana import create_team, create_folder, set_folder_permissions, add_user_to_team, get_user_via_jwt, get_token_from_request, create_dashboard
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +131,9 @@ class DeploymentStatus(BaseModel):
     status: StatusType
 
 
-async def create_vela_grafana_obj(organization_id: Identifier, branch_id: Identifier, parameters: DeploymentParameters, branch: Slug, request: Any ):
+async def create_vela_grafana_obj(
+    organization_id: Identifier, branch_id: Identifier, request: Any
+):
     logger.info(f"Creating Grafana object organization {organization_id} branch: {branch_id}")
     team_id = create_team(str(branch_id))
     parent_folder_id = create_folder(str(organization_id))
@@ -578,8 +587,8 @@ async def deploy_branch_environment(
 ) -> None:
     """Background task: provision infra for a branch and persist the resulting endpoint."""
 
-    # Create grafana objects for vela 
-    await create_vela_grafana_obj(organization_id, branch_id, parameters, branch_slug, request)
+    # Create grafana objects for vela
+    await create_vela_grafana_obj(organization_id, branch_id, request)
 
     # Create the main deployment (database etc)
     await create_vela_config(branch_id, parameters, branch_slug)

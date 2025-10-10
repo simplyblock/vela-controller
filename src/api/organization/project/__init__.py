@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from collections.abc import Sequence
-from typing import Literal, Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
@@ -141,7 +141,6 @@ async def create(
     request: Request,
     organization: OrganizationDep,
     parameters: ProjectCreate,
-    user: AuthUserDep,
     response: Literal["empty", "full"] = "empty",
 ) -> JSONResponse:
     entity = Project(

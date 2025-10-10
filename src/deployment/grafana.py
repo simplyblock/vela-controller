@@ -1,8 +1,8 @@
-import os
-import requests
 import json
+import os
 
-from fastapi import Request, HTTPException, status
+import requests
+from fastapi import HTTPException, Request, status
 
 ENV=os.environ.get("VELA_DEPLOYMENT_ENV", "")
 
@@ -11,7 +11,7 @@ NAMESPACE=os.environ.get("VELA_DEPLOYMENT_NAMESPACE_PREFIX", "")
 GRAFANA_URL = f"http://vela-grafana.{NAMESPACE}.svc.cluster.local:3000"
 if ENV == "docker":
     GRAFANA_URL = "http://grafana:3000"
-    
+
 GRAFANA_USER="admin"
 GRAFANA_PASSWORD="password"
 
@@ -84,8 +84,6 @@ def set_folder_permissions(folder_uid, team_id):
     else:
         raise Exception(f"Failed to set folder permissions: {r.text}")
 
-
-
 def get_user_via_jwt(jwt_token):
     jwt_headers = {
         "Content-Type": "application/json",
@@ -102,7 +100,8 @@ def get_user_via_jwt(jwt_token):
 # Add User to Team
 def add_user_to_team(team_id, user_id):
     payload = {"userId": user_id}
-    r = requests.post(f"{GRAFANA_URL}/api/teams/{team_id}/members", auth=auth, headers=headers, data=json.dumps(payload))
+    r = requests.post(f"{GRAFANA_URL}/api/teams/{team_id}/members",
+                            auth=auth, headers=headers, data=json.dumps(payload))
     if r.status_code == 200:
         print(f"[+] User {user_id} added to team {team_id}.")
     elif r.status_code == 400:
@@ -125,7 +124,7 @@ def remove_folder(folder_uid):
     if r.status_code == 200:
         print(f"[+] Folder {folder_uid} removed.")
     elif r.status_code == 404:
-        print(f"[!] Folder {folder_uid} not found.")        
+        print(f"[!] Folder {folder_uid} not found.")
     else:
         raise Exception(f"Failed to remove folder: {r.text}")
 
@@ -161,7 +160,7 @@ def create_dashboard(org_name, folder_uid, folder_name):
                     "datasource": {"type": "prometheus", "uid": "eev2sidbr5ekgb"},
                     "targets": [
                         {
-                            "expr": f'custom_metric_value{{org="$organization",proj="$project"}}',
+                            "expr": 'custom_metric_value{org="$organization",proj="$project"}',
                             "legendFormat": "{{instance}}",
                             "refId": "A"
                         }
