@@ -23,7 +23,9 @@ from ....deployment import (
 from ....deployment.kubernetes.kubevirt import call_kubevirt_subresource
 from ....exceptions import VelaError
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
-from ...db import SessionDep
+
+
+
 from ...keycloak import realm_admin
 
 from ...models.branch import Branch
@@ -39,7 +41,6 @@ from . import branch as branch_module
 
 from ...db import get_db
 from sqlmodel.ext.asyncio.session import AsyncSession
-
 SessionDep = Annotated[AsyncSession, Depends(get_db)]
 
 logger = logging.getLogger(__name__)

@@ -15,7 +15,6 @@ from .settings import settings
 
 from .db import get_db
 from sqlmodel.ext.asyncio.session import AsyncSession
-
 SessionDep = Annotated[AsyncSession, Depends(get_db)]
 
 # HTTPBearer returns 403 instead of 401. Avoid this by raising the error manually

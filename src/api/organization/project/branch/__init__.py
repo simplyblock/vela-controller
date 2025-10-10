@@ -1,72 +1,36 @@
 import asyncio
-import base64
-import hashlib
 import logging
 from collections.abc import Sequence
-from typing import Any, Literal, Annotated
-from typing import Any, Literal, cast
+from typing import Literal, Annotated
 
-from Crypto.Cipher import AES
-from Crypto.Hash import MD5
-from Crypto.Random import get_random_bytes
 from fastapi import APIRouter, HTTPException, Request, Response, Depends
 from fastapi.responses import JSONResponse
-from keycloak.exceptions import KeycloakError
 from kubernetes_asyncio.client.exceptions import ApiException
 from sqlalchemy.exc import IntegrityError
 
+from .. import VelaError
 from ....._util import Identifier
 from .....deployment import (
     DeploymentParameters,
-    ResizeParameters,
-    branch_api_domain,
-    branch_domain,
-    branch_rest_endpoint,
     delete_deployment,
     deploy_branch_environment,
     get_db_vmi_identity,
-    resize_deployment,
+    get_deployment_status,
 )
-from ....deployment.kubevirt import KubevirtSubresourceAction, call_kubevirt_subresource, get_virtualmachine_status
-from ....deployment.settings import settings as deployment_settings
-from ....exceptions import VelaDeploymentError
-from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
-from ...db import get_db
-from sqlmodel.ext.asyncio.session import AsyncSession
-
-SessionDep = Annotated[AsyncSession, Depends(get_db)]
-from ...models.branch import (
-from .....deployment.kubernetes.kubevirt import (
-    KubevirtSubresourceAction,
-    call_kubevirt_subresource,
-    get_virtualmachine_status,
-)
-from .....deployment.settings import settings as deployment_settings
-from .....exceptions import VelaDeploymentError, VelaError
+from .....deployment.kubernetes.kubevirt import call_kubevirt_subresource
 from ...._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
-from ....db import SessionDep
-from ....keycloak import realm_admin
-from ....models.branch import (
-    ApiKeyDetails,
-    Branch,
-    BranchApiKeys,
-    BranchCreate,
-    BranchDep,
-    BranchPublic,
-    BranchStatus,
-    BranchUpdate,
-    DatabaseInformation,
-    ResourceUsageDefinition,
-)
-from ....models.branch import (
-    lookup as lookup_branch,
-)
-from ....models.organization import OrganizationDep
-from ....models.project import ProjectDep
-from ....settings import settings
-from .auth import api as auth_api
+from ....db import get_db
+from sqlmodel.ext.asyncio.session import AsyncSession
+SessionDep = Annotated[AsyncSession, Depends(get_db)]
 
-api = APIRouter(tags=["branch"])
+from ....models.branch import Branch
+from ....models.organization import OrganizationDep
+from ....models.project import Project, ProjectCreate, ProjectDep, ProjectPublic, ProjectUpdate
+from .. import branch as branch_module
+
+logger = logging.getLogger(__name__)
+
+api = APIRouter()
 
 
 async def _deploy_branch_environment_task(
@@ -75,9 +39,6 @@ async def _deploy_branch_environment_task(
     branch_id: Identifier,
     branch_slug: str,
     parameters: DeploymentParameters,
-    jwt_secret: str,
-    anon_key: str,
-    service_key: str,
 ) -> None:
     try:
         await deploy_branch_environment(
@@ -85,12 +46,9 @@ async def _deploy_branch_environment_task(
             branch_id=branch_id,
             branch_slug=branch_slug,
             parameters=parameters,
-            jwt_secret=jwt_secret,
-            anon_key=anon_key,
-            service_key=service_key,
         )
     except VelaError:
-        logging.exception(
+        logger.exception(
             "Branch deployment failed for project_id=%s branch_id=%s branch_slug=%s",
             project_id,
             branch_id,
@@ -98,145 +56,48 @@ async def _deploy_branch_environment_task(
         )
 
 
-async def _public(branch: Branch) -> BranchPublic:
-    project = await branch.awaitable_attrs.project
-
-    db_host = branch.endpoint_domain or branch_domain(branch.id)
-    if not db_host:
-        db_host = deployment_settings.deployment_host
-    port = 5432
-
-    connection_string = "postgresql://{user}:{password}@{host}:{port}/{database}".format(  # noqa: UP032
-        user=branch.database_user,
-        password=branch.database_password,  # TODO: handle situation where password is changed
-        host="db",
-        port=port,
-        database="postgres",
-    )
-
-    rest_endpoint = branch_rest_endpoint(branch.id)
-    api_domain = branch_api_domain(branch.id)
-
-    if rest_endpoint:
-        service_endpoint = rest_endpoint.removesuffix("/rest")
-    elif api_domain:
-        service_endpoint = f"https://{api_domain}"
-    else:
-        # Fall back to using the same host as the database when dedicated domains are unavailable.
-        service_endpoint = f"https://{db_host}"
-
-    max_resources = branch.provisioned_resources()
-
-    database_info = DatabaseInformation(
-        host=db_host,
-        port=port,
-        username=branch.database_user,
-        name=branch.database,
-        encrypted_connection_string=_encrypt(connection_string, settings.pgmeta_crypto_key),
-        service_endpoint_uri=service_endpoint,
-        version=branch.database_image_tag,
-        has_replicas=False,
-    )
-
-    # FIXME: Replace placeholder telemetry data once usage metrics and labels are wired in.
-    used_resources = ResourceUsageDefinition(
-        milli_vcpu=0,
-        ram_bytes=0,
-        nvme_bytes=0,
-        iops=0,
-        storage_bytes=None,
-    )
-    #namespace, vmi_name = get_db_vmi_identity(branch.id)
-    try:
-        #status = await get_virtualmachine_status(namespace, vmi_name)
-        # TODO: replace with real service health status once available
-        status = "Running"
-        _service_health = BranchStatus(
-            database="ACTIVE_HEALTHY" if status == "Running" else "STOPPED",
-            realtime="ACTIVE_HEALTHY" if status == "Running" else "STOPPED",
-            storage="ACTIVE_HEALTHY" if status == "Running" else "STOPPED",
-            meta="ACTIVE_HEALTHY" if status == "Running" else "STOPPED",
-            rest="ACTIVE_HEALTHY" if status == "Running" else "STOPPED",
-        )
-    except VelaDeploymentError:
-        logging.exception("Failed to query VM status")
-        status = "UNKNOWN"
-        _service_health = BranchStatus(
-            database="UNKNOWN",
-            realtime="UNKNOWN",
-            storage="UNKNOWN",
-            meta="UNKNOWN",
-            rest="UNKNOWN",
-        )
-
-    api_keys = BranchApiKeys(anon=branch.anon_key, service_role=branch.service_key)
-
-    return BranchPublic(
-        id=branch.id,
-        name=branch.name,
-        env_type=branch.env_type,
-        project_id=branch.project_id,
+async def _public(project: Project) -> ProjectPublic:
+    status = await get_deployment_status(project.id, Branch.DEFAULT_SLUG)
+    return ProjectPublic(
         organization_id=project.organization_id,
-        database=database_info,
-        max_resources=max_resources,
-        assigned_labels=[],
-        used_resources=used_resources,
-        api_keys=api_keys,
-        status=status,
-        service_health=_service_health,
-        ptir_enabled=False,
-        created_at=branch.created_datetime,
-        created_by="system",  # TODO: update it when user management is in place
-        updated_at=None,
-        updated_by=None,
+        id=project.id,
+        name=project.name,
+        status=status.status,
     )
 
 
 @api.get(
     "/",
-    name="organizations:projects:branch:list",
+    name="organizations:projects:list",
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
-async def list_branches(
-    session: SessionDep,
-    _organization: OrganizationDep,
-    project: ProjectDep,
-) -> Sequence[BranchPublic]:
-    await session.refresh(project, ["branches"])
-    branches = await project.awaitable_attrs.branches
-    return [await _public(branch) for branch in branches]
+async def list_(session: SessionDep, organization: OrganizationDep) -> Sequence[ProjectPublic]:
+    await session.refresh(organization, ["projects"])
+    projects = await organization.awaitable_attrs.projects
+    return [await _public(project) for project in projects]
 
 
 _links = {
     "detail": {
-        "operationId": "organizations:projects:branch:detail",
-        "parameters": {
-            "project_id": "$response.header.Location#regex:/projects/(.+)/",
-            "branch_id": "$response.header.Location#regex:/branches/(.+)/",
-        },
+        "operationId": "organizations:projects:detail",
+        "parameters": {"project_id": "$response.header.Location#regex:/projects/(.+)/"},
     },
     "update": {
-        "operationId": "organizations:projects:branch:update",
-        "parameters": {
-            "project_id": "$response.header.Location#regex:/projects/(.+)/",
-            "branch_id": "$response.header.Location#regex:/branches/(.+)/",
-        },
+        "operationId": "organizations:projects:update",
+        "parameters": {"project_id": "$response.header.Location#regex:/projects/(.+)/"},
     },
     "delete": {
-        "operationId": "organizations:projects:branch:delete",
-        "parameters": {
-            "project_id": "$response.header.Location#regex:/projects/(.+)/",
-            "branch_id": "$response.header.Location#regex:/branches/(.+)/",
-        },
+        "operationId": "organizations:projects:delete",
+        "parameters": {"project_id": "$response.header.Location#regex:/projects/(.+)/"},
     },
 }
 
 
 @api.post(
     "/",
-    name="organizations:projects:branch:create",
+    name="organizations:projects:create",
     status_code=201,
-    response_model=BranchPublic | None,
+    response_model=ProjectPublic | None,
     responses={
         201: {
             "headers": {
@@ -257,96 +118,58 @@ async def create(
     session: SessionDep,
     request: Request,
     organization: OrganizationDep,
-    project: ProjectDep,
-    parameters: BranchCreate,
+    parameters: ProjectCreate,
     response: Literal["empty", "full"] = "empty",
 ) -> JSONResponse:
-    # TODO implement cloning logic
-    source = await lookup_branch(session, project, parameters.source)
-    entity = Branch(
+    entity = Project(
+        organization=organization,
         name=parameters.name,
-        project_id=project.id,
-        organization_id=project.organization_id,
-        parent_id=source.id,
-        database=source.database,
-        database_user=source.database_user,
-        database_password=source.database_password,
-        database_size=source.database_size,
-        vcpu=source.vcpu,
-        memory=source.memory,
-        iops=source.iops,
-        database_image_tag=source.database_image_tag,
     )
-    if parameters.source is not None:
-        source = await lookup_branch(session, project, parameters.source.branch_id)
-        entity = Branch(
-            name=parameters.name,
-            project_id=project.id,
-            parent_id=source.id,
-            database=source.database,
-            database_user=source.database_user,
-            database_password=source.database_password,
-            database_size=source.database_size,
-            storage_size=source.storage_size,
-            milli_vcpu=source.milli_vcpu,
-            memory=source.memory,
-            iops=source.iops,
-            database_image_tag=source.database_image_tag,
-        )
-    else:
-        deployment_params = cast("DeploymentParameters", parameters.deployment)
-        entity = Branch(
-            name=parameters.name,
-            project_id=project.id,
-            parent=None,
-            database=deployment_params.database,
-            database_user=deployment_params.database_user,
-            database_password=deployment_params.database_password,
-            database_size=deployment_params.database_size,
-            storage_size=deployment_params.storage_size,
-            milli_vcpu=deployment_params.milli_vcpu,
-            memory=deployment_params.memory_bytes,
-            iops=deployment_params.iops,
-            database_image_tag=deployment_params.database_image_tag,
-        )
     session.add(entity)
     try:
-        await realm_admin("master").a_create_realm({"realm": str(entity.id)})
-        await realm_admin(str(entity.id)).a_create_client({"clientId": "application-client"})
         await session.commit()
-    except IntegrityError as exc:
-        await session.rollback()
-        error = str(exc)
-        if "asyncpg.exceptions.UniqueViolationError" in error and "unique_branch_name_per_project" in error:
-            raise HTTPException(409, f"Project already has branch named {parameters.name}") from exc
-        raise
-    except KeycloakError:
-        await session.rollback()
-        logging.exception("Failed to connect to keycloak")
-        raise
-
+    except IntegrityError as e:
+        error = str(e)
+        if ("asyncpg.exceptions.UniqueViolationError" not in error) or ("unique_project_name" not in error):
+            raise
+        raise HTTPException(409, f"Organization already has project named {parameters.name}") from e
     await session.refresh(entity)
+    # Ensure default branch exists
+    main_branch = Branch(
+        name=Branch.DEFAULT_SLUG,
+        project=entity,
+        parent=None,
+        database=parameters.deployment.database,
+        database_user=parameters.deployment.database_user,
+        database_password=parameters.deployment.database_password,
+        database_size=parameters.deployment.database_size,
+        vcpu=parameters.deployment.vcpu,
+        memory=parameters.deployment.memory,
+        iops=parameters.deployment.iops,
+        database_image_tag=parameters.deployment.database_image_tag,
+    )
+    session.add(main_branch)
+    await session.commit()
+    await session.refresh(main_branch)
+    await session.refresh(entity)
+    branch_slug = main_branch.name
+    branch_dbid = main_branch.id
 
+    asyncio.create_task(
+        _deploy_branch_environment_task(
+            project_id=entity.id,
+            branch_id=branch_dbid,
+            branch_slug=branch_slug,
+            parameters=parameters.deployment,
+        )
+    )
+    await session.refresh(organization)
     entity_url = url_path_for(
         request,
-        "organizations:projects:branch:detail",
-        organization_id=await organization.awaitable_attrs.id,
-        project_id=await project.awaitable_attrs.id,
-        branch_id=entity.id,
+        "organizations:projects:detail",
+        organization_id=organization.id,
+        project_id=entity.id,
     )
-    if parameters.deployment is not None:
-        asyncio.create_task(
-            _deploy_branch_environment_task(
-                project_id=project.id,
-                branch_id=entity.id,
-                branch_slug=entity.name,
-                parameters=parameters.deployment,
-                jwt_secret=entity.jwt_secret,
-                anon_key=entity.anon_key,
-                service_key=entity.service_key,
-            )
-        )
-    # TODO: implement source branch cloning for config/data copy
     payload = (await _public(entity)).model_dump() if response == "full" else None
 
     return JSONResponse(
@@ -356,26 +179,22 @@ async def create(
     )
 
 
-instance_api = APIRouter(prefix="/{branch_id}", tags=["branch"])
+instance_api = APIRouter(prefix="/{project_id}")
+instance_api.include_router(branch_module.api, prefix="/branches")
 
 
 @instance_api.get(
     "/",
-    name="organizations:projects:branch:detail",
-    response_model=BranchPublic,
+    name="organizations:projects:detail",
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
-async def detail(
-    _organization: OrganizationDep,
-    _project: ProjectDep,
-    branch: BranchDep,
-) -> BranchPublic:
-    return await _public(branch)
+async def detail(_organization: OrganizationDep, project: ProjectDep) -> ProjectPublic:
+    return await _public(project)
 
 
 @instance_api.put(
     "/",
-    name="organizations:projects:branch:update",
+    name="organizations:projects:update",
     status_code=204,
     responses={
         204: {
@@ -395,160 +214,80 @@ async def detail(
     },
 )
 async def update(
-    _session: SessionDep,
-    _organization: OrganizationDep,
-    _project: ProjectDep,
-    _branch: BranchDep,
-    _parameters: BranchUpdate,
+    request: Request,
+    session: SessionDep,
+    organization: OrganizationDep,
+    project: ProjectDep,
+    parameters: ProjectUpdate,
 ):
-    # TODO implement update logic
-    return Response(status_code=204)
+    for key, value in parameters.model_dump(exclude_unset=True, exclude_none=True).items():
+        assert hasattr(project, key)
+        setattr(project, key, value)
+    try:
+        await session.commit()
+    except IntegrityError as e:
+        raise HTTPException(409, f"Organization already has project named {parameters.name}") from e
+
+    # Refer to potentially updated location
+    return Response(
+        status_code=204,
+        headers={
+            "Location": url_path_for(
+                request,
+                "organizations:projects:detail",
+                organization_id=await organization.awaitable_attrs.id,
+                project_id=await project.awaitable_attrs.id,
+            ),
+        },
+    )
 
 
 @instance_api.delete(
     "/",
-    name="organizations:projects:branch:delete",
+    name="organizations:projects:delete",
     status_code=204,
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
-async def delete(
-    session: SessionDep,
-    _organization: OrganizationDep,
-    _project: ProjectDep,
-    branch: BranchDep,
-):
-    if branch.name == Branch.DEFAULT_SLUG:
-        raise HTTPException(400, "Default branch cannot be deleted")
-    await delete_deployment(branch.id)
-    await realm_admin("master").a_delete_realm(str(branch.id))
-    await session.delete(branch)
+async def delete(session: SessionDep, _organization: OrganizationDep, project: ProjectDep):
+    await session.refresh(project, ["branches"])
+    branches = await project.awaitable_attrs.branches
+    for branch in branches:
+        await delete_deployment(project.id, branch.name)
+    await session.delete(project)
     await session.commit()
     return Response(status_code=204)
 
 
-# Resize controls
-@instance_api.post(
-    "/resize",
-    name="organizations:projects:branch:resize",
-    status_code=202,
-    responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
-)
-async def resize(_organization: OrganizationDep, _project: ProjectDep, parameters: ResizeParameters, branch: BranchDep):
-    # Trigger helm upgrade with provided parameters; returns 202 Accepted
-    resize_deployment(branch.id, parameters)
-    return Response(status_code=202)
-
-
-_control_responses: dict[int | str, dict[str, Any]] = {
-    401: Unauthenticated,
-    403: Forbidden,
-    404: NotFound,
-}
-
-_CONTROL_TO_KUBEVIRT: dict[str, KubevirtSubresourceAction] = {
-    "pause": "pause",
-    "resume": "unpause",
-    "start": "start",
-    "stop": "stop",
-}
-
-
 @instance_api.post(
     "/pause",
-    name="organizations:projects:branch:pause",
+    name="organizations:projects:pause",
     status_code=204,
-    responses=_control_responses,
+    responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
-@instance_api.post(
-    "/resume",
-    name="organizations:projects:branch:resume",
-    status_code=204,
-    responses=_control_responses,
-)
-@instance_api.post(
-    "/start",
-    name="organizations:projects:branch:start",
-    status_code=204,
-    responses=_control_responses,
-)
-@instance_api.post(
-    "/stop",
-    name="organizations:projects:branch:stop",
-    status_code=204,
-    responses=_control_responses,
-)
-async def control_branch(
-    request: Request,
-    _organization: OrganizationDep,
-    _project: ProjectDep,
-    branch: BranchDep,
-):
-    action = request.scope["route"].name.split(":")[-1]
-    assert action in _CONTROL_TO_KUBEVIRT
-    namespace, vmi_name = get_db_vmi_identity(branch.id)
+async def pause(_organization: OrganizationDep, project: ProjectDep):
+    namespace, vmi_name = get_db_vmi_identity(project.id, Branch.DEFAULT_SLUG)
     try:
-        await call_kubevirt_subresource(namespace, vmi_name, _CONTROL_TO_KUBEVIRT[action])
+        await call_kubevirt_subresource(namespace, vmi_name, "pause")
         return Response(status_code=204)
     except ApiException as e:
         status = 404 if e.status == 404 else 400
         raise HTTPException(status_code=status, detail=e.body or str(e)) from e
 
 
-instance_api.include_router(auth_api, prefix="/auth")
-
-
-@instance_api.get(
-    "/apikeys",
-    name="organizations:projects:branch:apikeys",
-    response_model=list[ApiKeyDetails],
+@instance_api.post(
+    "/resume",
+    name="organizations:projects:resume",
+    status_code=204,
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
-async def get_apikeys(
-    _organization: OrganizationDep,
-    _project: ProjectDep,
-    branch: BranchDep,
-) -> list[ApiKeyDetails]:
-    if not branch.anon_key or not branch.service_key:
-        raise HTTPException(status_code=404, detail="API keys not found for this branch")
-
-    def create_key_details(name: str, key: str, description: str) -> ApiKeyDetails:
-        return ApiKeyDetails(
-            name=name,
-            api_key=key,
-            id=name,
-            hash=hashlib.sha256(key.encode()).hexdigest(),
-            prefix=key[:5],
-            description=description,
-        )
-
-    return [
-        create_key_details("anon", branch.anon_key, "Legacy anon API key"),
-        create_key_details("service_role", branch.service_key, "Legacy service_role API key"),
-    ]
+async def resume(_organization: OrganizationDep, project: ProjectDep):
+    namespace, vmi_name = get_db_vmi_identity(project.id, Branch.DEFAULT_SLUG)
+    try:
+        await call_kubevirt_subresource(namespace, vmi_name, "unpause")
+        return Response(status_code=204)
+    except ApiException as e:
+        status = 404 if e.status == 404 else 400
+        raise HTTPException(status_code=status, detail=e.body or str(e)) from e
 
 
 api.include_router(instance_api)
-
-
-def _evp_bytes_to_key(passphrase: str, salt: bytes) -> tuple[bytes, bytes]:
-    derived = b""
-    block = b""
-    key_len = 32
-    iv_len = 16
-
-    while len(derived) < key_len + iv_len:
-        block = MD5.new(block + passphrase.encode("utf-8") + salt).digest()
-        derived += block
-
-    return derived[:key_len], derived[key_len : key_len + iv_len]
-
-
-def _encrypt(plaintext: str, passphrase: str) -> str:
-    salt = get_random_bytes(8)
-    key, iv = _evp_bytes_to_key(passphrase, salt)
-    cipher = AES.new(key, AES.MODE_CBC, iv)
-    encoded = plaintext.encode("utf-8")
-    padding = 16 - (len(encoded) % 16)
-    padded = encoded + bytes([padding]) * padding
-    payload = cipher.encrypt(padded)
-    return base64.b64encode(b"Salted__" + salt + payload).decode("utf-8")
