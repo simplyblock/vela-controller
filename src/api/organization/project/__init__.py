@@ -15,7 +15,6 @@ from ....deployment import (
     delete_deployment,
     deploy_branch_environment,
     get_db_vmi_identity,
-    get_deployment_status,
 )
 from ....deployment.kubevirt import call_kubevirt_subresource
 from ....exceptions import VelaError
@@ -26,7 +25,6 @@ from ...models.branch import Branch
 from ...models.organization import OrganizationDep
 from ...models.project import (
     Project,
-    ProjectBranchStatus,
     ProjectCreate,
     ProjectDep,
     ProjectPublic,
@@ -63,24 +61,10 @@ async def _deploy_branch_environment_task(
 
 
 async def _public(project: Project) -> ProjectPublic:
-    branch_status: list[ProjectBranchStatus] = []
-    branches = await project.awaitable_attrs.branches
-    if not branches:
-        raise HTTPException(500, "Project has no branches")
-    for branch in branches:
-        status = await get_deployment_status(branch.id)
-        branch_status.append(
-            ProjectBranchStatus(
-                branch_id=branch.id,
-                branch_name=branch.name,
-                status=status.status,
-            )
-        )
     return ProjectPublic(
         organization_id=project.organization_id,
         id=project.id,
         name=project.name,
-        branch_status=branch_status,
     )
 
 
