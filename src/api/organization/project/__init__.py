@@ -3,8 +3,9 @@ import logging
 import secrets
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
-from typing import Literal
+from typing import Any, Literal, Annotated
 
+from fastapi import APIRouter, HTTPException, Request, Response, Depends
 import jwt
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
@@ -24,6 +25,7 @@ from ....exceptions import VelaError
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ...db import SessionDep
 from ...keycloak import realm_admin
+
 from ...models.branch import Branch
 from ...models.organization import OrganizationDep
 from ...models.project import (
@@ -34,6 +36,11 @@ from ...models.project import (
     ProjectUpdate,
 )
 from . import branch as branch_module
+
+from ...db import get_db
+from sqlmodel.ext.asyncio.session import AsyncSession
+
+SessionDep = Annotated[AsyncSession, Depends(get_db)]
 
 logger = logging.getLogger(__name__)
 
@@ -70,10 +77,7 @@ async def _deploy_branch_environment_task(
 
 async def _public(project: Project) -> ProjectPublic:
     return ProjectPublic(
-        organization_id=project.organization_id,
         max_backups=project.max_backups,
-        id=project.id,
-        name=project.name,
         branch_status=branch_status,
         organization_id=await project.awaitable_attrs.organization_id,
         id=await project.awaitable_attrs.id,

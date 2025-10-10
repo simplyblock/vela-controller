@@ -2,6 +2,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List, Optional
 
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import SQLModel, Field, Relationship
 from ._util import Model
@@ -9,12 +10,15 @@ from ..._util import Identifier
 from .branch import Branch
 from .organization import Organization, OrganizationDep
 
+
+
+
 class BackupSchedule(AsyncAttrs, Model, table=True):
-    organization_id: Identifier = Model.foreign_key_field("organization")
+    organization_id: Identifier = Model.foreign_key_field("organization", nullable=True)
     #organization: Organization = Relationship(back_populates="backup_schedules")
-    branch_id: Identifier = Model.foreign_key_field("branch")
+    branch_id: Identifier = Model.foreign_key_field("branch", nullable=True)
     #branch: Branch = Relationship(back_populates="backup_schedules")
-    env_type: str
+    env_type: Optional[str] = Field(default=None)
     #rows: List["BackupScheduleRow"] = Relationship(back_populates="backup_schedule", cascade_delete=True)
 
 
@@ -45,7 +49,17 @@ class BackupEntry(AsyncAttrs, Model, table=True):
 class BackupLog(AsyncAttrs, Model,  table=True):
     branch_id: Identifier = Model.foreign_key_field("branch")
     #branch: Branch = Relationship(back_populates="branches")
-    backup_uuid: Identifier = Model.foreign_key_field("backupentry")
+    backup_uuid: str
     #backup: BackupEntry = Relationship(back_populates="backup_entries")
+    action: str
+    ts: datetime
+
+class BackupLogCreate(BaseModel):
+    backup_uuid: str
+    action: str
+    ts: datetime
+
+class BackupLogUpdate(BaseModel):
+    backup_uuid: str
     action: str
     ts: datetime

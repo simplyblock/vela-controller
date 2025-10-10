@@ -8,7 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship, SQLModel, select
 
 from ..._util import Identifier
-from ..db import SessionDep
+from ..db import get_db
+from sqlmodel.ext.asyncio.session import AsyncSession
+
+SessionDep = Annotated[AsyncSession, Depends(get_db)]
 from ._util import Model
 from .organization import Organization, OrganizationDep
 

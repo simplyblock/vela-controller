@@ -1,4 +1,5 @@
-from typing import Annotated, ClassVar, Optional
+from datetime import datetime
+from typing import Annotated, ClassVar, Optional, Literal
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel, model_validator
@@ -17,8 +18,12 @@ from ..._util import (
     Identifier,
     Slug,
 )
+from ..db import get_db
+from sqlmodel.ext.asyncio.session import AsyncSession
+
+SessionDep = Annotated[AsyncSession, Depends(get_db)]
+
 from ...deployment import DeploymentParameters
-from ..db import SessionDep
 from ._util import Model, Name
 from .project import Project, ProjectDep
 
@@ -219,6 +224,7 @@ class BranchStatus(BaseModel):
 class BranchPublic(BaseModel):
     id: Identifier
     name: Slug
+    env_type: str
     project_id: Identifier
     organization_id: Identifier
     database: DatabaseInformation
@@ -271,13 +277,13 @@ class BranchDetailResources(BaseModel):
             **STORAGE_SIZE_CONSTRAINTS,
             description="Database storage capacity in bytes (mirrors Branch.database_size).",
         ),
-    ]status
+    ]
 
 
 async def lookup(session: SessionDep, project: ProjectDep, branch_id: Identifier) -> Branch:
     try:
         query = select(Branch).where(Branch.project_id == project.id, Branch.id == branch_id)
-        return (await session.exec(query)).one()
+        return (await session.execute(query)).scalars().one()
     except NoResultFound as e:
         raise HTTPException(404, f"Branch {branch_id} not found") from e
 

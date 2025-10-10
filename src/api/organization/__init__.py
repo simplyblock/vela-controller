@@ -9,7 +9,10 @@ from sqlalchemy.exc import IntegrityError
 from ...deployment import delete_deployment
 from .._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ..auth import AuthUserDep, authenticated_user
-from ..db import SessionDep
+from ..db import get_db
+from sqlmodel.ext.asyncio.session import AsyncSession
+
+SessionDep = Annotated[AsyncSession, Depends(get_db)]
 from ..models.audit import OrganizationAuditLog
 from ..models.organization import Organization, OrganizationCreate, OrganizationDep, OrganizationUpdate
 from .member import api as member_api

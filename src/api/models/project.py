@@ -9,7 +9,10 @@ from sqlmodel import Relationship, select
 
 from ..._util import Identifier
 from ...deployment import DeploymentParameters
-from ..db import SessionDep
+from ..db import get_db
+from sqlmodel.ext.asyncio.session import AsyncSession
+
+SessionDep = Annotated[AsyncSession, Depends(get_db)]
 from ._util import Model, Name
 from .organization import Organization, OrganizationDep
 
@@ -46,7 +49,7 @@ class ProjectPublic(BaseModel):
 async def _lookup(session: SessionDep, organization: OrganizationDep, project_id: Identifier) -> Project:
     try:
         query = select(Project).where(Project.organization_id == organization.id, Project.id == project_id)
-        return (await session.exec(query)).one()
+        return (await session.execute(query)).scalars().one()
     except NoResultFound as e:
         raise HTTPException(404, f"Project {project_id} not found") from e
 

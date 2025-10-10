@@ -1,15 +1,18 @@
 # api/backups_async.py
-
+import logging
+import os
 from typing import List, Optional
 from datetime import datetime
+
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field, validator
+from fastapi import APIRouter, Depends, HTTPException, logger, Request
+from pydantic import BaseModel, validator
 from sqlmodel import select
 from sqlalchemy import delete
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from .db import get_db
 from .models._util import Identifier
 from .models.backups import (
@@ -25,7 +28,9 @@ from .models.project import Project
 
 router = APIRouter()
 
-# --- Constants copied from your code
+# ---------------------------
+# Constants
+# ---------------------------
 UNIT_MULTIPLIER = {
     "min": 60, "minute": 60, "minutes": 60,
     "h": 3600, "hour": 3600, "hours": 3600,
@@ -33,7 +38,8 @@ UNIT_MULTIPLIER = {
     "w": 604800, "week": 604800, "weeks": 604800,
 }
 
-VALID_UNITS = {"minute", "hour", "day", "week", "min", "minutes", "h", "hours", "d", "days", "w", "weeks"}
+VALID_UNITS = set(UNIT_MULTIPLIER.keys())
+
 INTERVAL_LIMITS = {
     "minute": 59, "minutes": 59, "min": 59,
     "hour": 23, "hours": 23, "h": 23,
@@ -42,7 +48,7 @@ INTERVAL_LIMITS = {
 }
 
 # ---------------------------
-# Pydantic request schemas
+# Pydantic Schemas
 # ---------------------------
 class ScheduleRow(BaseModel):
     row_index: int
@@ -53,7 +59,7 @@ class ScheduleRow(BaseModel):
     @validator("unit")
     def unit_must_be_valid(cls, v: str):
         if v not in VALID_UNITS:
-            raise ValueError("invalid unit")
+            raise ValueError("Invalid unit")
         return v
 
 
@@ -61,6 +67,15 @@ class SchedulePayload(BaseModel):
     rows: List[ScheduleRow]
     env_type: Optional[str] = None
 
+logging.basicConfig(
+    level=os.environ.get("LOG_LEVEL", "INFO"),
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+logger = logging.getLogger("backup-monitor")
+
+# ---------------------------
+# Create/Update Schedule
+# ---------------------------
 @router.post("/backup/organizations/{org_ref}/schedule", response_model=None)
 @router.put("/backup/organizations/{org_ref}/schedule", response_model=None)
 @router.post("/backup/branches/{branch_ref}/schedule", response_model=None)
@@ -70,114 +85,112 @@ async def add_or_replace_backup_schedule(
     org_ref: Optional[Identifier] = None,
     branch_ref: Optional[Identifier] = None,
     db: AsyncSession = Depends(get_db),
+    request: Request = None,
 ):
-    # Determine caller method from FastAPI internals isn't available here,
-    # so we infer intent by having separate routes for POST/PUT. FastAPI
-    # provides request.method via Request if needed; simpler: rely on route used.
-    # But to preserve previous behavior (checking existing schedule on POST), we'll:
-    # - If route invoked via POST -> create error if exists
-    # - If invoked via PUT -> require existing and replace
-    # FastAPI allows us to get the method through dependency, but for simplicity
-    # we can treat POST/PUT separately by inspecting the path operation name.
-    #
-    # However to keep a single handler, we can detect the method using
-    # request.scope["method"] if needed. For simplicity, we will pull from
-    # the underlying ASGI scope via db (not ideal). Instead, assume:
-    #   - If schedule exists -> this call acts like PUT (replace)
-    #   - If it does not exist -> acts like POST (create)
-    #
-    # This keeps behavior idempotent and straightforward in async handler.
 
-    # Basic validation
-    rows = payload.rows
-    if not rows:
+    if not payload.rows:
         raise HTTPException(status_code=400, detail="No rows provided")
-
-    if len(rows) > 10:
+    if len(payload.rows) > 10:
         raise HTTPException(status_code=422, detail="Too many rows in schedule. Max: 10")
 
-    # Resolve org or branch
-    org = None
-    branch = None
-    org_id = None
-    branch_id = None
+    # Resolve organization or branch
+    org = branch = project = None
+    org_id = branch_id = None
 
     if org_ref:
-        result = await db.exec(select(Organization).where(Organization.id == org_ref))
-        org = result.one_or_none()
+        result = await db.execute(select(Organization).where(Organization.id == org_ref))
+        org = result.scalars().first()
         if org:
             org_id = org.id
+            logger.info("org-level backup:",str(org_id))
     elif branch_ref:
-        result = await db.exec(select(Branch).where(Branch.id == branch_ref))
-        branch = result.one_or_none()
+        result = await db.execute(select(Branch).where(Branch.id == branch_ref))
+        branch = result.scalars().first()
         if branch:
             branch_id = branch.id
+            result = await db.execute(select(Project).where(Project.id == branch.project_id))
+            project = result.scalars().first()
+            logger.info("branch-level backup:",str(branch_id))
 
     if not org and not branch:
         raise HTTPException(status_code=404, detail="Valid branch or organization required.")
 
-    # find existing schedule for the same org/branch + env_type
-    env_type = payload.env_type
-    stmt = select(BackupSchedule).where(
-        BackupSchedule.organization_id == org_id,
-        BackupSchedule.branch_id == branch_id,
-        BackupSchedule.env_type == env_type,
-    )
-    result = await db.exec(stmt)
-    schedule = result.one_or_none()
+   # Find existing schedule and eager-load rows
+    schedule=None
+    env_type=payload.env_type
+    if request.method=="PUT":
+      if env_type:
+        stmt = (
+          select(BackupSchedule)
+          .where(
+            BackupSchedule.organization_id == org_id,
+            BackupSchedule.branch_id == branch_id,
+            BackupSchedule.env_type == payload.env_type
+          )
+      )
+      else:
+        stmt = (
+            select(BackupSchedule)
+            .where(
+                BackupSchedule.organization_id == org_id,
+                BackupSchedule.branch_id == branch_id
+            )
+        )
+      result = await db.execute(stmt)
+      schedule = result.scalars().first()
 
-    # We'll decide create vs replace based on existence:
-    # - If schedule exists: we will replace rows (PUT-like)
-    # - If schedule doesn't exist: create (POST-like)
-    # If you want to enforce strict POST/PUT semantics, adapt later.
-
-    # Validate rows: duplicates, unit interval limits, total retention
-    total = 0
-    seen = set()
-    for r in rows:
+    # Validate schedule rows
+    total_retention = 0
+    seen_keys = set()
+    for r in payload.rows:
         key = (r.interval, r.unit)
-        if key in seen:
+        if key in seen_keys:
             raise HTTPException(status_code=422, detail="Duplicate row found in schedule")
-        seen.add(key)
-
-        if r.unit not in VALID_UNITS:
-            raise HTTPException(status_code=400, detail=f"Invalid unit: {r.unit}")
-
+        seen_keys.add(key)
         if r.interval > INTERVAL_LIMITS.get(r.unit, 9999):
             raise HTTPException(
                 status_code=400,
                 detail=f"Interval for {r.unit} cannot exceed {INTERVAL_LIMITS.get(r.unit)}",
             )
-        total += r.retention
+        total_retention += r.retention
 
-    # Max backups check
-    if branch is None and org and total > getattr(org, "max_backups", 0):
+    # Max backups validation
+    max_allowed = org.max_backups if org else getattr(project, "max_backups", 0)
+    if total_retention > max_allowed:
+        entity_type = "Organization" if org else "Branch"
+        entity_ref = org_ref if org else branch_ref
         raise HTTPException(
             status_code=422,
-            detail=f"Max Backups {org.max_backups} of Organization {org_ref} exceeded: {total}",
-        )
-    elif branch and total > getattr(branch, "max_backups", 0):
-        raise HTTPException(
-            status_code=422,
-            detail=f"Max Backups {branch.max_backups} of Branch {branch_ref} exceeded: {total}",
+            detail=f"Max Backups {max_allowed} of {entity_type} {entity_ref} exceeded: {total_retention}",
         )
 
-    # If schedule exists -> delete existing rows
+    # Delete old rows if schedule exists
     if schedule:
-        await db.exec(delete(BackupScheduleRow).where(BackupScheduleRow.schedule_id == schedule.id))
+        await db.execute(delete(BackupScheduleRow).where(BackupScheduleRow.schedule_id == schedule.id))
+        await db.execute(delete(NextBackup).where(NextBackup.schedule_id == schedule.id))
         await db.commit()
     else:
+        if branch_ref:
+           await db.execute(delete(NextBackup).where(NextBackup.branch_id == branch_ref))
+        elif env_type is not None:
+            stmt = delete(NextBackup).where(
+                NextBackup.branch_id.in_(
+                    select(Branch.id).where(Branch.env_type == env_type)
+                )
+            )
+            await db.execute(stmt)
+            await db.commit()
         schedule = BackupSchedule(
             organization_id=org_id,
             branch_id=branch_id,
-            env_type=env_type,
+            env_type=payload.env_type,
         )
         db.add(schedule)
-        await db.commit()  # persist to get id
+        await db.commit()
         await db.refresh(schedule)
 
-    # Add new rows
-    for r in rows:
+    # Insert new rows
+    for r in payload.rows:
         row = BackupScheduleRow(
             schedule_id=schedule.id,
             row_index=r.row_index,
@@ -188,26 +201,21 @@ async def add_or_replace_backup_schedule(
         db.add(row)
 
     await db.commit()
-    # refresh schedule to ensure rows are loaded if caller needs them
     await db.refresh(schedule)
-    return {"status": "ok", "schedule_id": schedule.id}
-
+    return {"status": "ok", "schedule_id": str(schedule.id)}
 
 # ---------------------------
-# List schedules
-# GET /backup/organizations/{org_ref}/schedule
-# GET /backup/branches/{branch_ref}/schedule
+# List Schedules
 # ---------------------------
 @router.get("/backup/organizations/{org_ref}/schedule")
 @router.get("/backup/branches/{branch_ref}/schedule")
 async def list_schedules(
-    org_ref: Optional[str] = None,
-    branch_ref: Optional[str] = None,
+    org_ref: Optional[Identifier] = None,
+    branch_ref: Optional[Identifier] = None,
     env_type: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = select(BackupSchedule).options(selectinload(BackupSchedule.rows))
-
+    stmt = select(BackupSchedule)
     if org_ref:
         stmt = stmt.where(BackupSchedule.organization_id == org_ref)
     if branch_ref:
@@ -215,62 +223,65 @@ async def list_schedules(
     if env_type is not None:
         stmt = stmt.where(BackupSchedule.env_type == env_type)
 
-    result = await db.exec(stmt)
-    schedules = result.all()
-
+    result = await db.execute(stmt)
+    schedules = result.scalars().all()
     if not schedules:
-        raise HTTPException(status_code=404, detail="no schedules found.")
+        raise HTTPException(status_code=404, detail="No schedules found.")
 
     out = []
     for s in schedules:
+        stmt = select(BackupScheduleRow)
+        stmt = stmt.where(BackupScheduleRow.schedule_id==s.id)
+        result = await db.execute(stmt)
+        rows = result.scalars().all()
         out.append(
             {
-                "ref": s.id,
-                "organization_id": s.organization_id,
-                "branch_id": s.branch_id,
+                "ref": str(s.id),
+                "organization_id": str(s.organization_id) if s.organization_id else None,
+                "branch_id": str(s.branch_id) if s.branch_id else None,
                 "env_type": s.env_type,
                 "rows": [
-                    {"row_index": r.row_index, "interval": r.interval, "unit": r.unit, "retention": r.retention}
-                    for r in getattr(s, "rows", [])
+                    {
+                        "row_index": r.row_index,
+                        "interval": r.interval,
+                        "unit": r.unit,
+                        "retention": r.retention,
+                    }
+                    for r in rows
                 ],
             }
         )
     return out
 
-
 # ---------------------------
-# List backups
-# GET /backup/organizations/{org_ref}/
-# GET /backup/branches/{branch_ref}/
+# List Backups
 # ---------------------------
 @router.get("/backup/organizations/{org_ref}/")
 @router.get("/backup/branches/{branch_ref}/")
 async def list_backups(
-    org_ref: Optional[str] = None,
-    branch_ref: Optional[str] = None,
+    org_ref: Optional[Identifier] = None,
+    branch_ref: Optional[Identifier] = None,
     env_type: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ):
     if org_ref:
-        # join BackupEntry -> Branch and filter by organization (and env_type if provided)
         stmt = select(BackupEntry).join(Branch).where(Branch.organization_id == org_ref)
         if env_type is not None:
             stmt = stmt.where(Branch.env_type == env_type)
-        res = await db.exec(stmt)
-        backups = res.all()
     elif branch_ref:
-        res = await db.exec(select(BackupEntry).where(BackupEntry.branch_id == branch_ref))
-        backups = res.all()
+        stmt = select(BackupEntry).where(BackupEntry.branch_id == branch_ref)
     else:
-        raise HTTPException(status_code=400, detail="either org-ref or branch-ref needed.")
+        raise HTTPException(status_code=400, detail="Either org-ref or branch-ref needed.")
 
+    result = await db.execute(stmt)
+    backups = result.scalars().all()
     if not backups:
-        raise HTTPException(status_code=404, detail="no backups found.")
+        raise HTTPException(status_code=404, detail="No backups found.")
 
     out = [
         {
-            "branch_id": b.branch_id,
-            "backup_uuid": b.id,
+            "branch_id": str(b.branch_id),
+            "backup_uuid": str(b.id),
             "row_index": b.row_index,
             "created_at": b.created_at.isoformat() if isinstance(b.created_at, datetime) else b.created_at,
         }
@@ -278,54 +289,46 @@ async def list_backups(
     ]
     return out
 
-
 # ---------------------------
-# Delete schedule
-# DELETE /backup/organizations/{org_ref}/schedule
-# DELETE /backup/branches/{branch_ref}/schedule
+# Delete Schedule
 # ---------------------------
 @router.delete("/backup/organizations/{org_ref}/schedule")
 @router.delete("/backup/branches/{branch_ref}/schedule")
 async def delete_schedule(
-    org_ref: Optional[str] = None,
-    branch_ref: Optional[str] = None,
+    org_ref: Optional[Identifier] = None,
+    branch_ref: Optional[Identifier] = None,
     env_type: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ):
     stmt = select(BackupSchedule)
     if org_ref:
-        stmt = stmt.where(BackupSchedule.organization_id == org_ref)
+        stmt = stmt.where(BackupSchedule.organization_id == org_ref,BackupSchedule.env_type.is_(None))
         if env_type is not None:
             stmt = stmt.where(BackupSchedule.env_type == env_type)
     elif branch_ref:
         stmt = stmt.where(BackupSchedule.branch_id == branch_ref)
     else:
-        raise HTTPException(status_code=400, detail="either org-ref or branch-ref needed.")
+        raise HTTPException(status_code=400, detail="Either org-ref or branch-ref needed.")
 
-    res = await db.exec(stmt)
-    schedule = res.one_or_none()
+    result = await db.execute(stmt)
+    schedule = result.scalars().first()
     if not schedule:
         raise HTTPException(status_code=404, detail="Schedule not found")
 
-    # delete related rows and next_backup entries
-    await db.exec(delete(BackupScheduleRow).where(BackupScheduleRow.schedule_id == schedule.id))
-    await db.exec(delete(NextBackup).where(NextBackup.schedule_id == schedule.id))
-
-    # delete schedule
+    await db.execute(delete(BackupScheduleRow).where(BackupScheduleRow.schedule_id == schedule.id))
+    await db.execute(delete(NextBackup).where(NextBackup.schedule_id == schedule.id))
     await db.delete(schedule)
     await db.commit()
 
     return {"status": "success", "message": "Schedule and related data deleted successfully"}
 
-
 # ---------------------------
-# Manual backup
-# POST /backup/branches/{branch_ref}/
+# Manual Backup
 # ---------------------------
 @router.post("/backup/branches/{branch_ref}/")
-async def manual_backup(branch_ref: str, db: AsyncSession = Depends(get_db)):
-    res = await db.exec(select(Branch).where(Branch.id == branch_ref))
-    branch = res.one_or_none()
+async def manual_backup(branch_ref: Identifier, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Branch).where(Branch.id == branch_ref))
+    branch = result.scalars().first()
     if not branch:
         raise HTTPException(status_code=404, detail="Branch not found")
 
@@ -343,22 +346,20 @@ async def manual_backup(branch_ref: str, db: AsyncSession = Depends(get_db)):
         branch_id=branch.id,
         action="manual-create",
         ts=datetime.utcnow(),
-        backup_uuid=backup.id,
+        backup_uuid=str(backup.id),
+
     )
     db.add(log)
     await db.commit()
-
-    return {"status": "manual backup created", "backup_id": backup.id}
-
+    return {"status": "manual backup created", "backup_id": str(backup.id)}
 
 # ---------------------------
-# Delete backup
-# DELETE /backup/{backup_ref}
+# Delete Backup
 # ---------------------------
 @router.delete("/backup/{backup_ref}")
-async def delete_backup(backup_ref: str, db: AsyncSession = Depends(get_db)):
-    res = await db.exec(select(BackupEntry).where(BackupEntry.id == backup_ref))
-    backup = res.one_or_none()
+async def delete_backup(backup_ref: Identifier, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(BackupEntry).where(BackupEntry.id == backup_ref))
+    backup = result.scalars().first()
     if not backup:
         raise HTTPException(status_code=404, detail="Backup not found")
 
@@ -367,7 +368,7 @@ async def delete_backup(backup_ref: str, db: AsyncSession = Depends(get_db)):
 
     log = BackupLog(
         branch_id=backup.branch_id,
-        backup_uuid=backup.id,
+        backup_uuid=str(backup.id),
         action="manual-delete",
         ts=datetime.utcnow(),
     )

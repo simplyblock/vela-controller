@@ -8,7 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship, select
 
 from ..._util import Identifier
-from ..db import SessionDep
+from ..db import get_db
+from sqlmodel.ext.asyncio.session import AsyncSession
+SessionDep = Annotated[AsyncSession, Depends(get_db)]
+
 from ._util import Model, Name
 from .membership import Membership
 
@@ -43,7 +46,7 @@ class OrganizationUpdate(BaseModel):
 
 async def _lookup(session: SessionDep, organization_id: Identifier) -> Organization:
     try:
-        return (await session.exec(select(Organization).where(Organization.id == organization_id))).one()
+        return (await session.execute(select(Organization).where(Organization.id == organization_id))).scalars().one()
     except NoResultFound as e:
         raise HTTPException(404, f"Organization {organization_id} not found") from e
 

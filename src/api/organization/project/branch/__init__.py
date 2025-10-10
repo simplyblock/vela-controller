@@ -3,12 +3,13 @@ import base64
 import hashlib
 import logging
 from collections.abc import Sequence
+from typing import Any, Literal, Annotated
 from typing import Any, Literal, cast
 
 from Crypto.Cipher import AES
 from Crypto.Hash import MD5
 from Crypto.Random import get_random_bytes
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, HTTPException, Request, Response, Depends
 from fastapi.responses import JSONResponse
 from keycloak.exceptions import KeycloakError
 from kubernetes_asyncio.client.exceptions import ApiException
@@ -26,6 +27,15 @@ from .....deployment import (
     get_db_vmi_identity,
     resize_deployment,
 )
+from ....deployment.kubevirt import KubevirtSubresourceAction, call_kubevirt_subresource, get_virtualmachine_status
+from ....deployment.settings import settings as deployment_settings
+from ....exceptions import VelaDeploymentError
+from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
+from ...db import get_db
+from sqlmodel.ext.asyncio.session import AsyncSession
+
+SessionDep = Annotated[AsyncSession, Depends(get_db)]
+from ...models.branch import (
 from .....deployment.kubernetes.kubevirt import (
     KubevirtSubresourceAction,
     call_kubevirt_subresource,
@@ -136,10 +146,11 @@ async def _public(branch: Branch) -> BranchPublic:
         iops=0,
         storage_bytes=None,
     )
-    namespace, vmi_name = get_db_vmi_identity(branch.id)
+    #namespace, vmi_name = get_db_vmi_identity(branch.id)
     try:
-        status = await get_virtualmachine_status(namespace, vmi_name)
+        #status = await get_virtualmachine_status(namespace, vmi_name)
         # TODO: replace with real service health status once available
+        status = "Running"
         _service_health = BranchStatus(
             database="ACTIVE_HEALTHY" if status == "Running" else "STOPPED",
             realtime="ACTIVE_HEALTHY" if status == "Running" else "STOPPED",
@@ -163,6 +174,7 @@ async def _public(branch: Branch) -> BranchPublic:
     return BranchPublic(
         id=branch.id,
         name=branch.name,
+        env_type=branch.env_type,
         project_id=branch.project_id,
         organization_id=project.organization_id,
         database=database_info,

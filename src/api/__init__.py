@@ -18,12 +18,16 @@ from .roles_access_rights import router as roles_api
 from .backup import router as backup_router
 from .ressources import router as ressources_router
 from .backupmonitor import *
+from .ressources import monitor_resources
 import logging
 import signal
 from threading import Thread, Event
 
 from pydantic import BaseModel
 
+
+from .db import engine
+from sqlmodel import SQLModel
 
 class _FastAPI(FastAPI):
     def openapi(self) -> dict[str, Any]:
@@ -165,9 +169,9 @@ app.include_router(organization_api, prefix="/organizations")
 app.include_router(user_api, prefix="/users")
 app.include_router(roles_api, prefix="/roles")
 app.include_router(backup_router)
-app.include_router(ressources_router)
+app.include_router(ressources_router, prefix="/resources")
 
-_use_route_names_as_operation_ids(app)
+#_use_route_names_as_operation_ids(app)
 
 @app.on_event("startup")
 async def on_startup():
@@ -185,5 +189,13 @@ logging.basicConfig(level=logging.INFO)
 import asyncio
 
 @app.on_event("startup")
-async def startup_event():
+async def on_startup():
+    # create tables
+    from . import models
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
+
+    # start async background monitor
     asyncio.create_task(run_monitor())
+    asyncio.create_task(monitor_resources(60))
+

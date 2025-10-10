@@ -1,5 +1,5 @@
 from collections.abc import Sequence
-from typing import Literal
+from typing import Literal, Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -8,7 +8,10 @@ from sqlalchemy.exc import IntegrityError
 
 from .._util import Forbidden, NotFound, Unauthenticated
 from ..auth import MemberDep, UserDep, authenticated_user, user_by_id
-from ..db import SessionDep
+from ..db import get_db
+from sqlmodel.ext.asyncio.session import AsyncSession
+
+SessionDep = Annotated[AsyncSession, Depends(get_db)]
 from ..models.organization import OrganizationDep
 from ..models.user import UserID, UserPublic
 from ..user import public_list as public_user_list

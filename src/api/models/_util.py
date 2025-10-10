@@ -46,7 +46,7 @@ class Model(SQLModel):
 
     # This would ideally be a classmethod, but initialization order prevents that
     @staticmethod
-    def foreign_key_field(table_name, *, nullable=False, **kwargs):
+    def foreign_key_field(table_name, *, nullable=True, **kwargs):
         return SQLField(
             default=None if nullable else ...,
             foreign_key=f"{table_name}.id",

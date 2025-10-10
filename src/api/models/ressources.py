@@ -3,6 +3,8 @@ from datetime import datetime
 from typing import List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncAttrs
+from sqlmodel import Field
+
 from ._util import Model
 from ..._util import Identifier
 
@@ -10,16 +12,17 @@ from ..._util import Identifier
 # Enums
 # ---------------------------
 class ResourceType(PyEnum):
-    vcpu = "vcpu"
+    milli_vcpu = "milli_vcpu"
     ram = "ram"
     iops = "iops"
-    backup_storage = "backup_storage"
-    nvme = "nvme"
+    storage_size = "storage_size"
+    database_size = "database_size"
 
 class EntityType(PyEnum):
     org = "org"
     org_env = "org_env"
     project = "project"
+
 
 # ---------------------------
 # RESOURCE LIMITS & PROVISIONING
@@ -27,22 +30,22 @@ class EntityType(PyEnum):
 class ResourceLimit(AsyncAttrs, Model,  table=True):
     entity_type: EntityType
     resource: ResourceType
-    org_id: Identifier = Model.foreign_key_field("organization")
-    env_type: Optional[str] = None
-    project_id: Identifier = Model.foreign_key_field("project")
+    org_id: Identifier = Model.foreign_key_field("organization", nullable=True)
+    env_type: Optional[str] = Field(default=None)
+    project_id: Identifier = Model.foreign_key_field("project", nullable=True)
     max_total: int
     max_per_branch: int
 
 
 class BranchProvisioning(AsyncAttrs, Model,  table=True):
-    branch_id: Identifier = Model.foreign_key_field("branch")
+    branch_id: Identifier = Model.foreign_key_field("branch", nullable=True)
     resource: ResourceType
     amount: int
     updated_at: datetime
 
 
 class ProvisioningLog(AsyncAttrs, Model,  table=True):
-    branch_id: Identifier = Model.foreign_key_field("branch")
+    branch_id: Identifier = Model.foreign_key_field("branch", nullable=True)
     resource: ResourceType
     amount: int
     action: str
@@ -52,16 +55,16 @@ class ProvisioningLog(AsyncAttrs, Model,  table=True):
 
 class ResourceUsageMinute(AsyncAttrs, Model,  table=True):
     ts_minute: datetime
-    org_id: Identifier = Model.foreign_key_field("organization")
-    project_id: Identifier = Model.foreign_key_field("project")
-    branch_id: Identifier = Model.foreign_key_field("branch")
+    org_id: Identifier = Model.foreign_key_field("organization", nullable=True)
+    project_id: Identifier = Model.foreign_key_field("project", nullable=True)
+    branch_id: Identifier = Model.foreign_key_field("branch", nullable=True)
     resource: ResourceType
     amount: int
 
 
 class ResourceConsumptionLimit(AsyncAttrs, Model,  table=True):
     entity_type: EntityType
-    org_id: Identifier = Model.foreign_key_field("organization")
-    project_id: Identifier = Model.foreign_key_field("project")
+    org_id: Identifier = Model.foreign_key_field("organization", nullable=True)
+    project_id: Identifier = Model.foreign_key_field("project", nullable=True)
     resource: ResourceType
     max_total_minutes: int
