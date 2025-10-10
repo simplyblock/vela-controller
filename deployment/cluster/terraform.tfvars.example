@@ -10,9 +10,9 @@ control_plane_count = 1  # 3 for HA setup
 worker_count       = 3
 
 # Network Configuration
-default_gateway      = "10.10.10.1"
-ip_range_start      = "10.10.10.10"  # First node will get this IP
-ip_range_end        = "10.10.10.50"  # For validation/documentation
+default_gateway      = "10.10.11.1"
+ip_range_start      = "10.10.11.10"  # First node will get this IP
+ip_range_end        = "10.10.11.50"  # For validation/documentation
 network_cidr        = "24"
 hypervisor_ipv6_subnet = "2001:db8::/64"
 
