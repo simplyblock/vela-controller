@@ -4,7 +4,6 @@
 # |-- 3.  Realtime
 # |-- 4.  Meta
 # |-- 5.  Storage API
-# |-- 5.  Minio S3 
 
 # docker-compose payload injected via helm --set-file composeYaml
 composeYaml: ""
@@ -16,22 +15,13 @@ secret:
   # JWT Secret: Analytics, Auth, Rest, Realtime, Storage
   pgmeta_crypto_key: ''
   jwt:
-    anonKey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE
-    serviceKey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJzZXJ2aWNlX3JvbGUiLAogICAgImlzcyI6ICJzdXBhYmFzZS1kZW1vIiwKICAgICJpYXQiOiAxNjQxNzY5MjAwLAogICAgImV4cCI6IDE3OTk1MzU2MDAKfQ.DaYlNEoUrrEn2Ig7tqibS-PHK5vgusbcbo7X36XVt4Q
-    secret: your-super-secret-jwt-token-with-at-least-32-characters-long
-    # specify existing secret, which takes precedence over variables above
-    secretRef: ""
-    # override secret keys for existing secret refs
-    secretRefKey:
-      anonKey: anonKey
-      serviceKey: serviceKey
-      secret: secret
+    anonKey: ""
+    serviceKey: ""
+    secret: ""
   # database credentials
   # these fields must be provided even if using external database
   db:
-    username: postgres
-    password: example123456
-    database: postgres
+    password: ""
     # specify existing secret, which takes precedence over variables above
     secretRef: ""
     # override secret keys for existing secret refs
@@ -47,46 +37,11 @@ secret:
     # override secret keys for existing secret refs
     secretRefKey:
       apiKey: apiKey
-  # smtp will be used to reference secret including smtp credentials
-  smtp:
-    username: your-mail@example.com
-    password: example123456
-    # specify existing secret, which takes precedence over variables above
-    # secretRef: ""
-    # override secret keys for existing secret refs
-    secretRefKey:
-      username: username
-      password: password
-  # secret used to access the studio dashboard
-  # leave it empty to disable dashboard authentication
-  dashboard:
-    username: supabase
-    password: this_password_is_insecure_and_should_be_updated
-    # specify existing secret, which takes precedence over variables above
-    # secretRef: ""
-    # override secret keys for existing secret refs
-    secretRefKey:
-      username: username
-      password: password
-  # S3 credentials for storage object bucket
-  s3:
-    # keyId: ""
-    # accessKey: ""
-    # specify existing secret, which takes precedence over variables above
-    # secretRef: ""
-    # override secret keys for existing secret refs
-    secretRefKey:
-      keyId: keyId
-      accessKey: accessKey
 
 # A standalone Postgres database configured to work with Supabase services.
 db:
   # Enable database provisioning
   enabled: true
-  credentials:
-    adminusername: ''
-    adminpassword: ''
-    admindb: ''
   image:
     repository: supabase/postgres
     pullPolicy: IfNotPresent
@@ -496,82 +451,6 @@ storage:
     size: 10Gi
     accessModes:
       - ReadWriteMany
-    class: ""
-  autoscaling:
-    enabled: true
-    minReplicas: 1
-    maxReplicas: 100
-    targetCPUUtilizationPercentage: 80
-    # targetMemoryUtilizationPercentage: 80
-  nodeSelector: {}
-  tolerations: []
-  affinity: {}
-
-# minio
-minio:
-  enabled: false
-  image:
-    repository: minio/minio
-    pullPolicy: IfNotPresent
-    tag: "latest"
-  imagePullSecrets: []
-  replicaCount: 1
-  nameOverride: ""
-  fullnameOverride: ""
-  livenessProbe: {}
-  readinessProbe: {}
-  serviceAccount:
-    # Specifies whether a service account should be created
-    create: true
-    # Annotations to add to the service account
-    annotations: {}
-    # The name of the service account to use.
-    # If not set and create is true, a name is generated using the fullname template
-    name: ""
-  podAnnotations: {}
-  podSecurityContext: {}
-    # fsGroup: 2000
-  securityContext: {}
-    # capabilities:
-    #   drop:
-    #   - ALL
-    # readOnlyRootFilesystem: true
-    # runAsNonRoot: true
-    # runAsUser: 1000
-  service:
-    type: ClusterIP
-    port: 9000
-  environment: {}
-  # Mount user functions
-  # volumeMounts:
-  #   - name: my_functions
-  #     mountPath: /home/deno/functions/main/main
-  # volumes:
-  #   - name: my_functions
-  #     secret:
-  #       defaultMode: 733
-  #       secretName: my_secret
-  #       items:
-  #       - key: my_secret.ts
-  #         path: name_of_file_in_container.ts
-  resources: {}
-    # We usually recommend not to specify default resources and to leave this as a conscious
-    # choice for the user. This also increases chances charts run on environments with little
-    # resources, such as Minikube. If you do want to specify resources, uncomment the following
-    # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
-    # limits:
-    #   cpu: 100m
-    #   memory: 128Mi
-    # requests:
-    #   cpu: 100m
-    #   memory: 128Mi
-  persistence:
-    enabled: false
-    storageClassName: ""
-    annotations: {}
-    size: 10Gi
-    accessModes:
-      - ReadWriteOnce
     class: ""
   autoscaling:
     enabled: true

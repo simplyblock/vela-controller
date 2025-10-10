@@ -103,8 +103,8 @@ def inject_branch_env(compose: dict[str, Any], branch_id: Identifier) -> dict[st
 
 
 class DeploymentParameters(BaseModel):
-    database: dbstr
-    database_user: dbstr
+    database: dbstr  # deprecated;
+    database_user: dbstr  # deprecated;
     database_password: dbstr
     database_size: Annotated[int, Field(**DATABASE_SIZE_CONSTRAINTS)]
     storage_size: Annotated[int, Field(**STORAGE_SIZE_CONSTRAINTS)]
@@ -128,10 +128,8 @@ async def create_vela_config(
 ):
     namespace = deployment_namespace(branch_id)
     logging.info(
-        "Creating Vela configuration for namespace: %s (database %s, user %s, branch %s, branch_id=%s)",
+        "Creating Vela configuration for namespace: %s (branch %s, branch_id=%s)",
         namespace,
-        parameters.database,
-        parameters.database_user,
         branch,
         branch_id,
     )
@@ -156,10 +154,10 @@ async def create_vela_config(
         serviceKey=service_key,
     )
 
+    db_credentials = values_content.setdefault("db", {})
+    db_credentials["password"] = parameters.database_password
+
     db_secrets = values_content.setdefault("db", {}).setdefault("credentials", {})
-    db_secrets["adminusername"] = parameters.database_user
-    db_secrets["adminpassword"] = parameters.database_password
-    db_secrets["admindb"] = parameters.database
     db_secrets["pgmeta_crypto_key"] = settings.pgmeta_crypto_key
 
     db_spec = values_content.setdefault("db", {})
