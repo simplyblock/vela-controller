@@ -104,8 +104,8 @@ def inject_branch_env(compose_file: Path, branch_id: Identifier):
             raise KeyError("Missing 'vector' service in compose file")
 
         vector_env = compose["services"]["vector"].setdefault("environment", {})
-        vector_env["LOGFLARE_PUBLIC_ACCESS_TOKEN"] = os.environ.get("LOGFLARE_PUBLIC_ACCESS_TOKEN", "")
-        vector_env["NAMESPACE"] = os.environ.get("VELA_DEPLOYMENT_NAMESPACE_PREFIX", "")
+        vector_env["LOGFLARE_PUBLIC_ACCESS_TOKEN"] = settings.logflare_public_access_token
+        vector_env["NAMESPACE"] = settings.deployment_namespace_prefix
         vector_env["VELA_BRANCH"] = str(branch_id).lower()
 
         with open(compose_file, "w") as f:

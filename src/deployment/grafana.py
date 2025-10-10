@@ -3,17 +3,18 @@ import os
 
 import requests
 from fastapi import HTTPException, Request, status
+from .settings import settings
 
-ENV = os.environ.get("VELA_DEPLOYMENT_ENV", "")
+ENV = settings.deployment_env
 
-NAMESPACE = os.environ.get("VELA_DEPLOYMENT_NAMESPACE_PREFIX", "")
+NAMESPACE = settings.deployment_namespace_prefix
 
 GRAFANA_URL = f"http://vela-grafana.{NAMESPACE}.svc.cluster.local:3000"
-if ENV == "docker":
+if ENV == "local":
     GRAFANA_URL = "http://grafana:3000"
 
-GRAFANA_USER = os.environ.get("VELA_GF_SECURITY_ADMIN_USER", "")
-GRAFANA_PASSWORD = os.environ.get("VELA_GF_SECURITY_ADMIN_PASSWORD", "")
+GRAFANA_USER = settings.gf_security_admin_user
+GRAFANA_PASSWORD = settings.gf_security_admin_password
 
 # Basic Auth for Grafana
 auth = (GRAFANA_USER, GRAFANA_PASSWORD)
