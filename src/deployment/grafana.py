@@ -36,6 +36,9 @@ async def create_vela_grafana_obj(organization_id: Identifier, branch_id: Identi
 def get_token_from_request(request: Request) -> str:
     auth_header = request.headers.get("authorization")
 
+    if not auth_header:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing Authorization header")
+
     if not auth_header.startswith("Bearer "):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Authorization header format")
 
@@ -74,7 +77,7 @@ async def create_team(team_name: str):
 
 
 # --- FOLDER CREATION ---
-async def create_folder(folder_name: str, parent_uid: str = None) -> str:
+async def create_folder(folder_name: str, parent_uid: str) -> str:
     async with httpx.AsyncClient() as client:
         try:
             payload = {"title": folder_name}
