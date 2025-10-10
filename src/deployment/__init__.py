@@ -3,7 +3,6 @@ import math
 import os
 import subprocess
 import tempfile
-import uuid
 from importlib import resources
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -85,29 +84,18 @@ def _release_name(namespace: str) -> str:
     return settings.deployment_release_name
 
 
-def inject_branch_env(compose_file: Path, branch_id: Identifier) -> Path:
+def inject_branch_env(compose: dict[str, Any], branch_id: Identifier) -> dict[str, Any]:
     try:
-        with open(compose_file) as f:
-            compose = yaml.safe_load(f)
+        vector_service = compose["services"]["vector"]
+    except KeyError as e:
+        raise RuntimeError("Failed to inject branch env into compose file: missing services.vector") from e
 
-        if "services" not in compose or "vector" not in compose["services"]:
-            raise KeyError("Missing 'vector' service in compose file")
+    vector_env = vector_service.setdefault("environment", {})
+    vector_env["LOGFLARE_PUBLIC_ACCESS_TOKEN"] = os.environ.get("LOGFLARE_PUBLIC_ACCESS_TOKEN", "")
+    vector_env["NAMESPACE"] = os.environ.get("VELA_DEPLOYMENT_NAMESPACE_PREFIX", "")
+    vector_env["VELA_BRANCH"] = str(branch_id).lower()
 
-        vector_env = compose["services"]["vector"].setdefault("environment", {})
-        vector_env["LOGFLARE_PUBLIC_ACCESS_TOKEN"] = os.environ.get("LOGFLARE_PUBLIC_ACCESS_TOKEN", "")
-        vector_env["NAMESPACE"] = os.environ.get("VELA_DEPLOYMENT_NAMESPACE_PREFIX", "")
-        vector_env["VELA_BRANCH"] = str(branch_id).lower()
-
-        tmp_dir = Path(tempfile.gettempdir())
-        modified_compose = tmp_dir / f"compose_{uuid.uuid4().hex}.yml"
-
-        with open(modified_compose, "w") as f:
-            yaml.safe_dump(compose, f, sort_keys=False)
-
-        return modified_compose
-
-    except (OSError, yaml.YAMLError, KeyError) as e:
-        raise RuntimeError(f"Failed to inject branch env into compose file: {e}") from e
+    return compose
 
 
 class DeploymentParameters(BaseModel):
@@ -145,11 +133,12 @@ async def create_vela_config(
     )
 
     chart = resources.files(__package__) / "charts" / "supabase"
-    compose_file = Path(__file__).with_name("compose.yml")
-    if not compose_file.exists():
-        raise FileNotFoundError(f"docker-compose manifest not found at {compose_file}")
+    compose_file_path = Path(__file__).with_name("compose.yml")
+    if not compose_file_path.exists():
+        raise FileNotFoundError(f"docker-compose manifest not found at {compose_file_path}")
 
-    modified_compose = inject_branch_env(compose_file, branch_id)
+    compose_file = yaml.safe_load(compose_file_path.read_text())
+    compose_file = inject_branch_env(compose_file, branch_id)
 
     vector_file = Path(__file__).with_name("vector.yml")
     if not vector_file.exists():
@@ -195,8 +184,13 @@ async def create_vela_config(
 
     # todo: create an storage class with the given IOPS
     values_content["provisioning"] = {"iops": parameters.iops}
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as temp_values:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as temp_values, \
+        tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as modified_compose:
+
+        yaml.safe_dump(compose_file, modified_compose, default_flow_style=False)
         yaml.safe_dump(values_content, temp_values, default_flow_style=False)
+        modified_compose.flush()
+        temp_values.flush()
 
         try:
             await check_output(
@@ -209,7 +203,7 @@ async def create_vela_config(
                     namespace,
                     "--create-namespace",
                     "--set-file",
-                    f"composeYaml={modified_compose}",
+                    f"composeYaml={modified_compose.name}",
                     "--set-file",
                     f"vectorYaml={vector_file}",
                     "-f",
