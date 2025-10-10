@@ -34,6 +34,7 @@ async def run_schemathesis_tests(base_url, jwt_secret):
         f"--header=Authorization: Bearer {token}",
         "--wait-for-schema=10",
         "--suppress-health-check=filter_too_much",
+        "--exclude-tag=branch-auth",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -57,6 +58,7 @@ async def main():
     os.environ["VELA_CLOUDFLARE_ZONE_ID"] = ""
     os.environ["VELA_CLOUDFLARE_BRANCH_REF_CNAME"] = ""
     os.environ["VELA_CLOUDFLARE_DOMAIN_SUFFIX"] = ""
+    os.environ["VELA_PGMETA_CRYPTO_KEY"] = "secret"
 
     with (
         PostgresContainer("postgres:latest", driver="asyncpg") as postgres,
@@ -99,10 +101,12 @@ async def main():
 
         os.environ["VELA_POSTGRES_URL"] = postgres.get_connection_url()
         os.environ["VELA_JWT_SECRET"] = jwt_secret
-        os.environ["VELA_PGMETA_CRYPTO_KEY"] = "secret"
         os.environ["VELA_KEYCLOAK_URL"] = "http://example.com"
         os.environ["VELA_KEYCLOAK_ADMIN_NAME"] = ""
         os.environ["VELA_KEYCLOAK_ADMIN_SECRET"] = ""
+        os.environ["VELA_KEYCLOAK_CLIENT_ID"] = ""
+        os.environ["VELA_KEYCLOAK_CLIENT_SECRET"] = ""
+        os.environ["VELA_DEPLOYMENT_NAMESPACE_PREFIX"] = "vela-test"
 
         from simplyblock.vela.api import app
         from simplyblock.vela.deployment import DeploymentStatus

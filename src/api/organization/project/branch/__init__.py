@@ -51,6 +51,7 @@ from ....settings import settings
 from .auth import api as auth_api
 
 api = APIRouter(tags=["branch"])
+SUPABASE_ADMIN_USER = "supabase_admin"  # created as part of the db init script
 
 
 async def _deploy_branch_environment_task(
@@ -85,11 +86,11 @@ async def _public(branch: Branch) -> BranchPublic:
     port = 5432
 
     connection_string = "postgresql://{user}:{password}@{host}:{port}/{database}".format(  # noqa: UP032
-        user=branch.database_user,
-        password=branch.database_password,
-        host=db_host,
+        user=SUPABASE_ADMIN_USER,
+        password=branch.database_password,  # TODO: handle situation where password is changed
+        host="db",
         port=port,
-        database=branch.database,
+        database="postgres",
     )
 
     rest_endpoint = branch_rest_endpoint(branch.id)
@@ -457,12 +458,16 @@ api.include_router(instance_api)
 
 
 def _evp_bytes_to_key(passphrase: str, salt: bytes) -> tuple[bytes, bytes]:
-    d = d_i = b""
-    while len(d) < 48:  # 32 bytes key + 16 bytes IV
-        d_i = MD5.new(d_i + passphrase.encode("utf-8") + salt).digest()
-        d += d_i
+    derived = b""
+    block = b""
+    key_len = 32
+    iv_len = 16
 
-    return d[:32], d[32:48]
+    while len(derived) < key_len + iv_len:
+        block = MD5.new(block + passphrase.encode("utf-8") + salt).digest()
+        derived += block
+
+    return derived[:key_len], derived[key_len : key_len + iv_len]
 
 
 def _encrypt(plaintext: str, passphrase: str) -> str:

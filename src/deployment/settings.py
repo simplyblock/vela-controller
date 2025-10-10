@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     ] = "vela"
     deployment_release_name: str = "supabase"
     deployment_host: str = "localhost"
+    pgmeta_crypto_key: str
     cloudflare_api_token: str
     cloudflare_zone_id: str
     cloudflare_branch_ref_cname: str
