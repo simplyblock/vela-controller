@@ -28,7 +28,7 @@ from .._util import (
 )
 from ..exceptions import VelaCloudflareError, VelaKubernetesError
 from .kubernetes import KubernetesService
-from .kubevirt import get_virtualmachine_status
+from .kubernetes.kubevirt import get_virtualmachine_status
 from .settings import settings
 
 logger = logging.getLogger(__name__)

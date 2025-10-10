@@ -19,7 +19,7 @@ from ....deployment import (
     deploy_branch_environment,
     get_db_vmi_identity,
 )
-from ....deployment.kubevirt import call_kubevirt_subresource
+from ....deployment.kubernetes.kubevirt import call_kubevirt_subresource
 from ....exceptions import VelaError
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ...db import SessionDep
