@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Annotated, Any, Literal
 
 import yaml
+import uuid
 from cloudflare import AsyncCloudflare, CloudflareError
 from kubernetes_asyncio.client.exceptions import ApiException
 from pydantic import BaseModel, Field
@@ -84,7 +85,7 @@ def _release_name(namespace: str) -> str:
     return settings.deployment_release_name
 
 
-def inject_branch_env(compose_file: Path, branch_id: Identifier):
+def inject_branch_env(compose_file: Path, branch_id: Identifier) -> Path:
     try:
         with open(compose_file) as f:
             compose = yaml.safe_load(f)
@@ -92,13 +93,18 @@ def inject_branch_env(compose_file: Path, branch_id: Identifier):
         if "services" not in compose or "vector" not in compose["services"]:
             raise KeyError("Missing 'vector' service in compose file")
 
+        # Generate new file name: compose_<uuid>.yml
+        modified_compose = compose_file.parent / f"compose_{uuid.uuid4().hex}.yml"
+
         vector_env = compose["services"]["vector"].setdefault("environment", {})
         vector_env["LOGFLARE_PUBLIC_ACCESS_TOKEN"] = os.environ.get("LOGFLARE_PUBLIC_ACCESS_TOKEN", "")
         vector_env["NAMESPACE"] = os.environ.get("VELA_DEPLOYMENT_NAMESPACE_PREFIX", "")
         vector_env["VELA_BRANCH"] = str(branch_id).lower()
 
-        with open(compose_file, "w") as f:
+        with open(modified_compose, "w") as f:
             yaml.safe_dump(compose, f, sort_keys=False)
+
+        return modified_compose
 
     except (OSError, yaml.YAMLError, KeyError) as e:
         raise RuntimeError(f"Failed to inject branch env into compose file: {e}") from e
@@ -143,7 +149,7 @@ async def create_vela_config(
     if not compose_file.exists():
         raise FileNotFoundError(f"docker-compose manifest not found at {compose_file}")
 
-    inject_branch_env(compose_file, branch_id)
+    modified_compose = inject_branch_env(compose_file, branch_id)
 
     vector_file = Path(__file__).with_name("vector.yml")
     if not vector_file.exists():
@@ -203,7 +209,7 @@ async def create_vela_config(
                     namespace,
                     "--create-namespace",
                     "--set-file",
-                    f"composeYaml={compose_file}",
+                    f"composeYaml={modified_compose}",
                     "--set-file",
                     f"vectorYaml={vector_file}",
                     "-f",
@@ -212,8 +218,13 @@ async def create_vela_config(
                 stderr=subprocess.PIPE,
                 text=True,
             )
+            
+            modified_compose.unlink()
+            logger.info(f"Removed temporary file: {modified_compose}")
         except subprocess.CalledProcessError as e:
             logger.exception(f"Failed to create deployment: {e.stderr}")
+            modified_compose.unlink()
+            logger.info(f"Removed temporary file: {modified_compose}")
             release_name = _release_name(namespace)
             await check_output(
                 ["helm", "uninstall", release_name, "-n", namespace],
