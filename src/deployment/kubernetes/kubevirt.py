@@ -2,33 +2,20 @@ from typing import Literal, cast
 
 from aiohttp.client_exceptions import ClientError
 from fastapi import HTTPException
-from kubernetes_asyncio import client, config
+from kubernetes_asyncio import client
 
-from .._util import StatusType
-from ..exceptions import VelaKubernetesError
+from ..._util import StatusType
+from ...exceptions import VelaKubernetesError
+from ._util import api_client, custom_api_client
 
 KubevirtSubresourceAction = Literal["pause", "unpause", "start", "stop"]
 
 
-async def _ensure_kubeconfig() -> None:
-    try:
-        config.load_incluster_config()
-    except config.config_exception.ConfigException:
-        try:
-            await config.load_kube_config()
-        except config.config_exception.ConfigException as e:
-            raise HTTPException(
-                status_code=503,
-                detail="Kubernetes client not configured. Mount kubeconfig or run in-cluster.",
-            ) from e
-
-
 async def call_kubevirt_subresource(namespace: str, name: str, action: KubevirtSubresourceAction):
-    await _ensure_kubeconfig()
     path = f"/apis/subresources.kubevirt.io/v1/namespaces/{namespace}/virtualmachines/{name}/{action}"
     print("calling kubevirt subresource", path)
-    async with client.ApiClient() as api_client:
-        return await api_client.call_api(
+    async with api_client() as client:
+        return await client.call_api(
             path,
             "PUT",
             response_types_map={},
@@ -44,19 +31,17 @@ async def get_virtualmachine_status(namespace: str, name: str) -> StatusType:
     Fetch the current status of a VirtualMachine object.
     Looks for .status.printableStatus first, else falls back to UNKNOWN.
     """
-    await _ensure_kubeconfig()
-
-    custom_api = client.CustomObjectsApi()
-    try:
-        vm = await custom_api.get_namespaced_custom_object(
-            group="kubevirt.io",
-            version="v1",
-            namespace=namespace,
-            plural="virtualmachines",
-            name=name,
-        )
-    except (client.ApiException, ClientError) as e:
-        raise VelaKubernetesError("Failed to query virtual machine status") from e
+    async with custom_api_client() as custom_client:
+        try:
+            vm = await custom_client.get_namespaced_custom_object(
+                group="kubevirt.io",
+                version="v1",
+                namespace=namespace,
+                plural="virtualmachines",
+                name=name,
+            )
+        except (client.ApiException, ClientError) as e:
+            raise VelaKubernetesError("Failed to query virtual machine status") from e
 
     # KubeVirt exposes status.printableStatus as a human readable state
     try:

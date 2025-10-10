@@ -26,7 +26,11 @@ from .....deployment import (
     get_db_vmi_identity,
     resize_deployment,
 )
-from .....deployment.kubevirt import KubevirtSubresourceAction, call_kubevirt_subresource, get_virtualmachine_status
+from .....deployment.kubernetes.kubevirt import (
+    KubevirtSubresourceAction,
+    call_kubevirt_subresource,
+    get_virtualmachine_status,
+)
 from .....deployment.settings import settings as deployment_settings
 from .....exceptions import VelaDeploymentError, VelaError
 from ...._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
