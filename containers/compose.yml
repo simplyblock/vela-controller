@@ -91,7 +91,6 @@ services:
     restart: unless-stopped
 
   grafana:
-    #image: grafana/grafana:10.0.12
     image: grafana/grafana:latest
     container_name: vela-grafana
     restart: unless-stopped
