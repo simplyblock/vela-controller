@@ -56,7 +56,7 @@ async def create_team(team_name: str):
             logger.info(f"Team '{team_name}' created successfully.")
             return response.json().get("teamId")
 
-        except httpx.HTTPError as exc:
+        except httpx.HTTPStatusError as exc:
             status_code = getattr(exc.response, "status_code", None)
             if status_code == 409:
                 logger.warning(f"Team '{team_name}' already exists. Fetching existing team ID...")
@@ -89,7 +89,7 @@ async def create_folder(folder_name: str, parent_uid: str | None = None) -> str:
             logger.info(f"Folder '{folder_name}' created successfully.")
             return response.json()["uid"]
 
-        except httpx.HTTPError as exc:
+        except httpx.HTTPStatusError as exc:
             status_code = getattr(exc.response, "status_code", None)
             if status_code == 412:
                 logger.warning(f"Folder '{folder_name}' already exists. Fetching existing UID...")
@@ -122,7 +122,7 @@ async def set_folder_permissions(folder_uid: str, team_id: int):
             response.raise_for_status()
             logger.info(f"Permissions set for team {team_id} on folder {folder_uid}.")
 
-        except httpx.HTTPError as exc:
+        except httpx.HTTPStatusError as exc:
             status_code = getattr(exc.response, "status_code", None)
             if status_code == 404:
                 logger.warning(f"Folder {folder_uid} not found while setting permissions.")
@@ -148,7 +148,7 @@ async def get_user_via_jwt(jwt_token: str):
             logger.info(f"Authenticated as '{user_info['login']}' ({user_info['email']})")
             return user_info["id"]
 
-        except httpx.HTTPError as exc:
+        except httpx.HTTPStatusError as exc:
             status_code = getattr(exc.response, "status_code", None)
             if status_code == 401:
                 logger.warning("Invalid or expired JWT token.")
@@ -179,7 +179,7 @@ async def add_user_to_team(team_id: int, user_id: int):
             else:
                 response.raise_for_status()
 
-        except httpx.HTTPError as exc:
+        except httpx.HTTPStatusError as exc:
             status_code = getattr(exc.response, "status_code", None)
             if status_code == 404:
                 logger.warning(f"Team {team_id} not found when adding user {user_id}.")
@@ -203,7 +203,7 @@ async def remove_team(team_id: int):
             else:
                 response.raise_for_status()
 
-        except httpx.HTTPError as exc:
+        except httpx.HTTPStatusError as exc:
             status_code = getattr(exc.response, "status_code", None)
             if status_code == 403:
                 logger.warning(f"Permission denied when removing team {team_id}.")
@@ -227,7 +227,7 @@ async def remove_folder(folder_uid: str):
             else:
                 response.raise_for_status()
 
-        except httpx.HTTPError as exc:
+        except httpx.HTTPStatusError as exc:
             status_code = getattr(exc.response, "status_code", None)
             if status_code == 403:
                 logger.warning(f"Permission denied when removing folder {folder_uid}.")
@@ -253,7 +253,7 @@ async def remove_user_from_team(team_id: int, user_id: int):
             else:
                 response.raise_for_status()
 
-        except httpx.HTTPError as exc:
+        except httpx.HTTPStatusError as exc:
             status_code = getattr(exc.response, "status_code", None)
             if status_code == 403:
                 logger.warning(f"Permission denied when removing user {user_id} from team {team_id}.")
