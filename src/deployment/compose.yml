@@ -141,9 +141,9 @@ services:
       interval: 5s
       retries: 3
     environment:
-      LOGFLARE_PUBLIC_ACCESS_TOKEN: my-super-secret-api-key
-      VELA_BRANCH: 01k74vm39xba7yskrqb7h79txx
-      NAMESPACE: vela
+      LOGFLARE_PUBLIC_ACCESS_TOKEN: ${LOGFLARE_PUBLIC_ACCESS_TOKEN}
+      VELA_BRANCH: ${VELA_BRANCH:-local}
+      NAMESPACE: ${NAMESPACE}
     command:
     - --config
     - /etc/vector/vector.yml
