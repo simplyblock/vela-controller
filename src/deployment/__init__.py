@@ -184,9 +184,10 @@ async def create_vela_config(
 
     # todo: create an storage class with the given IOPS
     values_content["provisioning"] = {"iops": parameters.iops}
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as temp_values, \
-        tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as modified_compose:
-
+    with (
+        tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as temp_values,
+        tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as modified_compose,
+    ):
         yaml.safe_dump(compose_file, modified_compose, default_flow_style=False)
         yaml.safe_dump(values_content, temp_values, default_flow_style=False)
         modified_compose.flush()
