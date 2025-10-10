@@ -3,6 +3,7 @@ import math
 import os
 import subprocess
 import tempfile
+import textwrap
 from importlib import resources
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -34,6 +35,9 @@ from .settings import settings
 logger = logging.getLogger(__name__)
 
 kube_service = KubernetesService()
+
+DEFAULT_DATABASE_VM_NAME = "supabase-supabase-db"
+CHECK_ENCRYPTED_HEADER_PLUGIN_NAME = "check-x-connection-encrypted"
 
 
 def deployment_namespace(branch_id: Identifier) -> str:
@@ -459,7 +463,7 @@ def _pgmeta_route_specs(ref: str, domain: str, namespace: str) -> list[HTTPRoute
             service_port=8080,
             path_prefix=path,
             route_suffix="pgmeta-route",
-            plugins=["realtime-cors", "require-x-connection-encrypted"],
+            plugins=["realtime-cors", CHECK_ENCRYPTED_HEADER_PLUGIN_NAME],
         ),
     ]
 
@@ -474,39 +478,52 @@ async def _apply_http_routes(namespace: str, routes: list[dict[str, Any]]) -> No
 
 def _build_kong_plugins(namespace: str) -> list[dict[str, Any]]:
     return [
-        {
-            "apiVersion": "configuration.konghq.com/v1",
-            "kind": "KongPlugin",
-            "metadata": {
-                "name": "realtime-cors",
-                "namespace": namespace,
-            },
-            "config": {
-                "origins": ["*"],  # todo: restrict this
-                "methods": ["GET", "POST", "OPTIONS", "PUT", "DELETE"],
-                "headers": ["*"],
-                "exposed_headers": ["*"],
-                "credentials": True,
-            },
-            "plugin": "cors",
-        },
-        {
-            "apiVersion": "configuration.konghq.com/v1",
-            "kind": "KongPlugin",
-            "metadata": {
-                "name": "require-x-connection-encrypted",
-                "namespace": namespace,
-            },
-            "config": {
-                "message": "Missing required x-connection-encrypted header",
-                "status_code": 403,
-                "trigger": "header",
-                "trigger_value": "x-connection-encrypted",
-                "trigger_on_missing": True,
-            },
-            "plugin": "request-termination",
-        },
+        _build_realtime_cors_plugin(namespace),
+        _build_check_encrypted_header_plugin(namespace),
     ]
+
+
+def _build_realtime_cors_plugin(namespace: str) -> dict[str, Any]:
+    return {
+        "apiVersion": "configuration.konghq.com/v1",
+        "kind": "KongPlugin",
+        "metadata": {
+            "name": "realtime-cors",
+            "namespace": namespace,
+        },
+        "config": {
+            "origins": ["*"],  # todo: restrict this
+            "methods": ["GET", "POST", "OPTIONS", "PUT", "DELETE"],
+            "headers": ["*"],
+            "exposed_headers": ["*"],
+            "credentials": True,
+        },
+        "plugin": "cors",
+    }
+
+
+def _build_check_encrypted_header_plugin(namespace: str) -> dict[str, Any]:
+    lua_script = textwrap.dedent(
+        """
+        local hdr = kong.request.get_header("x-connection-encrypted")
+        if not hdr then
+            return kong.response.exit(403, { message = "Missing x-connection-encrypted" })
+        end
+        """
+    ).strip()
+
+    return {
+        "apiVersion": "configuration.konghq.com/v1",
+        "kind": "KongPlugin",
+        "metadata": {
+            "name": CHECK_ENCRYPTED_HEADER_PLUGIN_NAME,
+            "namespace": namespace,
+        },
+        "config": {
+            "access": [lua_script],
+        },
+        "plugin": "pre-function",
+    }
 
 
 async def _apply_kong_plugin(namespace: str, plugin: dict[str, Any]) -> None:
