@@ -7,7 +7,7 @@ from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Relationship, select
 
-from ..._util import Identifier, StatusType
+from ..._util import Identifier
 from ...deployment import DeploymentParameters
 from ..db import SessionDep
 from ._util import Model, Name
@@ -35,17 +35,10 @@ class ProjectUpdate(BaseModel):
     name: Name | None = None
 
 
-class ProjectBranchStatus(BaseModel):
-    branch_id: Identifier
-    branch_name: Name
-    status: StatusType
-
-
 class ProjectPublic(BaseModel):
     organization_id: Identifier
     id: Identifier
     name: Name
-    branch_status: list[ProjectBranchStatus]
 
 
 async def _lookup(session: SessionDep, organization: OrganizationDep, project_id: Identifier) -> Project:
