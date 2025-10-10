@@ -58,6 +58,7 @@ async def _deploy_branch_environment_task(
     *,
     organization_id: Identifier,
     project_id: Identifier,
+    request: Any,
     branch_id: Identifier,
     branch_slug: str,
     parameters: DeploymentParameters,
@@ -68,6 +69,7 @@ async def _deploy_branch_environment_task(
             project_id=project_id,
             branch_id=branch_id,
             branch_slug=branch_slug,
+            request=request,
             parameters=parameters,
         )
     except VelaError:
@@ -302,6 +304,7 @@ async def create(
             _deploy_branch_environment_task(
                 organization_id=organization.id,
                 project_id=project.id,
+                request=request,
                 branch_id=entity.id,
                 branch_slug=entity.name,
                 parameters=parameters.deployment,
