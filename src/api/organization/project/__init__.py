@@ -1,66 +1,104 @@
+import asyncio
+import logging
 from collections.abc import Sequence
-from datetime import datetime
-from typing import Annotated, Literal
+from typing import Literal, Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, HTTPException, Request, Response, Depends
 from fastapi.responses import JSONResponse
+from kubernetes_asyncio.client.exceptions import ApiException
 from sqlalchemy.exc import IntegrityError
 
-from ....deployment import delete_deployment
+from ....exceptions import VelaError
+from ...._util import Identifier
+from ....deployment import (
+    DeploymentParameters,
+    delete_deployment,
+    deploy_branch_environment,
+    get_db_vmi_identity,
+    get_deployment_status,
+)
+from ....deployment.kubernetes.kubevirt import call_kubevirt_subresource
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
-from ...auth import AuthUserDep, authenticated_user
-from ...models.audit import OrganizationAuditLog
+
 from ...models.branch import Branch
-from ...models.organization import Organization, OrganizationCreate, OrganizationDep, OrganizationUpdate
-from ..member import api as member_api
-from ..role import api as role_api
+from ...models.organization import OrganizationDep
+from ...models.project import Project, ProjectCreate, ProjectDep, ProjectPublic, ProjectUpdate
+from . import branch as branch_module
 
 from ...db import get_db
 from sqlmodel.ext.asyncio.session import AsyncSession
-
 SessionDep = Annotated[AsyncSession, Depends(get_db)]
 
-api = APIRouter(dependencies=[Depends(authenticated_user)])
+logger = logging.getLogger(__name__)
+
+api = APIRouter()
+
+
+async def _deploy_branch_environment_task(
+    *,
+    project_id: Identifier,
+    branch_id: Identifier,
+    branch_slug: str,
+    parameters: DeploymentParameters,
+) -> None:
+    try:
+        await deploy_branch_environment(
+            project_id=project_id,
+            branch_id=branch_id,
+            branch_slug=branch_slug,
+            parameters=parameters,
+        )
+    except VelaError:
+        logger.exception(
+            "Branch deployment failed for project_id=%s branch_id=%s branch_slug=%s",
+            project_id,
+            branch_id,
+            branch_slug,
+        )
+
+
+async def _public(project: Project) -> ProjectPublic:
+    status = await get_deployment_status(project.id, Branch.DEFAULT_SLUG)
+    return ProjectPublic(
+        organization_id=project.organization_id,
+        id=project.id,
+        name=project.name,
+        status=status.status,
+    )
 
 
 @api.get(
     "/",
-    name="organizations:list",
-    responses={401: Unauthenticated},
+    name="organizations:projects:list",
+    responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
-async def list_(user: AuthUserDep) -> Sequence[Organization]:
-    return await user.awaitable_attrs.organizations
+async def list_(session: SessionDep, organization: OrganizationDep) -> Sequence[ProjectPublic]:
+    await session.refresh(organization, ["projects"])
+    projects = await organization.awaitable_attrs.projects
+    return [await _public(project) for project in projects]
 
 
 _links = {
     "detail": {
-        "operationId": "organizations:detail",
-        "parameters": {"organization_id": "$response.header.Location#regex:/organizations/(.+)/"},
+        "operationId": "organizations:projects:detail",
+        "parameters": {"project_id": "$response.header.Location#regex:/projects/(.+)/"},
     },
     "update": {
-        "operationId": "organizations:update",
-        "parameters": {"organization_id": "$response.header.Location#regex:/organizations/(.+)/"},
+        "operationId": "organizations:projects:update",
+        "parameters": {"project_id": "$response.header.Location#regex:/projects/(.+)/"},
     },
     "delete": {
-        "operationId": "organizations:delete",
-        "parameters": {"organization_id": "$response.header.Location#regex:/organizations/(.+)/"},
-    },
-    "create_project": {
-        "operationId": "organizations:projects:create",
-        "parameters": {"organization_id": "$response.header.Location#regex:/organizations/(.+)/"},
-    },
-    "list_projects": {
-        "operationId": "organizations:projects:list",
-        "parameters": {"organization_id": "$response.header.Location#regex:/organizations/(.+)/"},
+        "operationId": "organizations:projects:delete",
+        "parameters": {"project_id": "$response.header.Location#regex:/projects/(.+)/"},
     },
 }
 
 
 @api.post(
     "/",
-    name="organizations:create",
+    name="organizations:projects:create",
     status_code=201,
-    response_model=Organization | None,
+    response_model=ProjectPublic | None,
     responses={
         201: {
             "headers": {
@@ -72,60 +110,92 @@ _links = {
             "links": _links,
         },
         401: Unauthenticated,
+        403: Forbidden,
+        404: NotFound,
         409: Conflict,
     },
 )
 async def create(
     session: SessionDep,
     request: Request,
-    parameters: OrganizationCreate,
-    user: AuthUserDep,
+    organization: OrganizationDep,
+    parameters: ProjectCreate,
     response: Literal["empty", "full"] = "empty",
 ) -> JSONResponse:
-    entity = Organization(**parameters.model_dump(), users=[user])
+    entity = Project(
+        organization=organization,
+        name=parameters.name,
+    )
     session.add(entity)
     try:
         await session.commit()
     except IntegrityError as e:
         error = str(e)
-        if ("asyncpg.exceptions.UniqueViolationError" not in error) or ("organization_name_key" not in error):
+        if ("asyncpg.exceptions.UniqueViolationError" not in error) or ("unique_project_name" not in error):
             raise
-        raise HTTPException(409, f"Organization {parameters.name} already exists") from e
+        raise HTTPException(409, f"Organization already has project named {parameters.name}") from e
     await session.refresh(entity)
-    entity_url = url_path_for(request, "organizations:detail", organization_id=entity.id)
+    # Ensure default branch exists
+    main_branch = Branch(
+        name=Branch.DEFAULT_SLUG,
+        project=entity,
+        parent=None,
+        database=parameters.deployment.database,
+        database_user=parameters.deployment.database_user,
+        database_password=parameters.deployment.database_password,
+        database_size=parameters.deployment.database_size,
+        vcpu=parameters.deployment.vcpu,
+        memory=parameters.deployment.memory,
+        iops=parameters.deployment.iops,
+        database_image_tag=parameters.deployment.database_image_tag,
+    )
+    session.add(main_branch)
+    await session.commit()
+    await session.refresh(main_branch)
+    await session.refresh(entity)
+    branch_slug = main_branch.name
+    branch_dbid = main_branch.id
+
+    asyncio.create_task(
+        _deploy_branch_environment_task(
+            project_id=entity.id,
+            branch_id=branch_dbid,
+            branch_slug=branch_slug,
+            parameters=parameters.deployment,
+        )
+    )
+    await session.refresh(organization)
+    entity_url = url_path_for(
+        request,
+        "organizations:projects:detail",
+        organization_id=organization.id,
+        project_id=entity.id,
+    )
+    payload = (await _public(entity)).model_dump() if response == "full" else None
+
     return JSONResponse(
-        content=entity.model_dump() if response == "full" else None,
+        content=payload,
         status_code=201,
         headers={"Location": entity_url},
     )
 
 
-async def _check_user_access(user: AuthUserDep, organization: OrganizationDep):
-    if organization.require_mfa and not user.token.mfa():
-        raise HTTPException(401, detail="This operation requires multi-factor authentication")
-
-    if user not in await organization.awaitable_attrs.users:
-        raise HTTPException(403, detail="Unauthorized access")
-
-
-instance_api = APIRouter(
-    prefix="/{organization_id}",
-    dependencies=[Depends(_check_user_access)],
-)
+instance_api = APIRouter(prefix="/{project_id}")
+instance_api.include_router(branch_module.api, prefix="/branches")
 
 
 @instance_api.get(
     "/",
-    name="organizations:detail",
+    name="organizations:projects:detail",
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
-async def detail(organization: OrganizationDep) -> Organization:
-    return organization
+async def detail(_organization: OrganizationDep, project: ProjectDep) -> ProjectPublic:
+    return await _public(project)
 
 
 @instance_api.put(
     "/",
-    name="organizations:update",
+    name="organizations:projects:update",
     status_code=204,
     responses={
         204: {
@@ -144,15 +214,20 @@ async def detail(organization: OrganizationDep) -> Organization:
         409: Conflict,
     },
 )
-async def update(request: Request, session: SessionDep, organization: OrganizationDep, parameters: OrganizationUpdate):
+async def update(
+    request: Request,
+    session: SessionDep,
+    organization: OrganizationDep,
+    project: ProjectDep,
+    parameters: ProjectUpdate,
+):
     for key, value in parameters.model_dump(exclude_unset=True, exclude_none=True).items():
-        assert hasattr(organization, key)
-        setattr(organization, key, value)
-
+        assert hasattr(project, key)
+        setattr(project, key, value)
     try:
         await session.commit()
     except IntegrityError as e:
-        raise HTTPException(409, f"Organization {parameters.name} already exists") from e
+        raise HTTPException(409, f"Organization already has project named {parameters.name}") from e
 
     # Refer to potentially updated location
     return Response(
@@ -160,8 +235,9 @@ async def update(request: Request, session: SessionDep, organization: Organizati
         headers={
             "Location": url_path_for(
                 request,
-                "organizations:detail",
+                "organizations:projects:detail",
                 organization_id=await organization.awaitable_attrs.id,
+                project_id=await project.awaitable_attrs.id,
             ),
         },
     )
@@ -169,33 +245,50 @@ async def update(request: Request, session: SessionDep, organization: Organizati
 
 @instance_api.delete(
     "/",
-    name="organizations:delete",
+    name="organizations:projects:delete",
     status_code=204,
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
-async def delete(session: SessionDep, organization: OrganizationDep):
-    for project in await organization.awaitable_attrs.projects:
-        await delete_deployment(project.id, Branch.DEFAULT_SLUG)
-
-    await session.delete(organization)
+async def delete(session: SessionDep, _organization: OrganizationDep, project: ProjectDep):
+    await session.refresh(project, ["branches"])
+    branches = await project.awaitable_attrs.branches
+    for branch in branches:
+        await delete_deployment(project.id, branch.name)
+    await session.delete(project)
     await session.commit()
     return Response(status_code=204)
 
 
-@instance_api.get(
-    "/audit",
-    name="organizations:audits:list",
-    status_code=200,
+@instance_api.post(
+    "/pause",
+    name="organizations:projects:pause",
+    status_code=204,
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
-def list_audits(
-    _from: Annotated[datetime, Query(alias="from")],
-    _to: Annotated[datetime, Query(alias="to")],
-) -> OrganizationAuditLog:
-    return OrganizationAuditLog(result=[], retention_period=0)
+async def pause(_organization: OrganizationDep, project: ProjectDep):
+    namespace, vmi_name = get_db_vmi_identity(project.id, Branch.DEFAULT_SLUG)
+    try:
+        await call_kubevirt_subresource(namespace, vmi_name, "pause")
+        return Response(status_code=204)
+    except ApiException as e:
+        status = 404 if e.status == 404 else 400
+        raise HTTPException(status_code=status, detail=e.body or str(e)) from e
 
 
-instance_api.include_router(api, prefix="/projects")
-instance_api.include_router(member_api, prefix="/members")
-instance_api.include_router(role_api, prefix="/roles")
+@instance_api.post(
+    "/resume",
+    name="organizations:projects:resume",
+    status_code=204,
+    responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
+)
+async def resume(_organization: OrganizationDep, project: ProjectDep):
+    namespace, vmi_name = get_db_vmi_identity(project.id, Branch.DEFAULT_SLUG)
+    try:
+        await call_kubevirt_subresource(namespace, vmi_name, "unpause")
+        return Response(status_code=204)
+    except ApiException as e:
+        status = 404 if e.status == 404 else 400
+        raise HTTPException(status_code=status, detail=e.body or str(e)) from e
+
+
 api.include_router(instance_api)
