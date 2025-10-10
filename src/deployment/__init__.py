@@ -592,7 +592,12 @@ async def deploy_branch_environment(
 
     # Create the main deployment (database etc)
     await create_vela_config(
-        project_id, parameters, branch_slug, jwt_secret=jwt_secret, anon_key=anon_key, service_key=service_key
+        branch_id=branch_id,
+        parameters=parameters,
+        branch=branch_slug,
+        jwt_secret=jwt_secret,
+        anon_key=anon_key,
+        service_key=service_key,
     )
 
     # Provision DNS + HTTPRoute resources
