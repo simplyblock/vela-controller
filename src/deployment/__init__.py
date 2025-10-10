@@ -131,9 +131,7 @@ class DeploymentStatus(BaseModel):
     status: StatusType
 
 
-async def create_vela_grafana_obj(
-    organization_id: Identifier, branch_id: Identifier, request: Any
-):
+async def create_vela_grafana_obj(organization_id: Identifier, branch_id: Identifier, request: Any):
     logger.info(f"Creating Grafana object organization {organization_id} branch: {branch_id}")
     team_id = create_team(str(branch_id))
     parent_folder_id = create_folder(str(organization_id))

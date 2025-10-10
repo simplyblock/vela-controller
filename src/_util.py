@@ -94,6 +94,7 @@ def single(xs):
 
 dbstr = Annotated[str, Field(pattern=r"^[^\x00]*$")]
 
+
 async def check_output(cmd: list[str], *, stderr=None, text: bool = False, timeout: float | None = None):
     process = await asyncio.create_subprocess_exec(*cmd, stdout=subprocess.PIPE)
 
