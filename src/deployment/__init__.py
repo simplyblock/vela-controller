@@ -4,6 +4,7 @@ import os
 import subprocess
 import tempfile
 import uuid
+import tempfile
 from importlib import resources
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -95,13 +96,13 @@ def inject_branch_env(compose_file: Path, branch_id: Identifier) -> Path:
         if "services" not in compose or "vector" not in compose["services"]:
             raise KeyError("Missing 'vector' service in compose file")
 
-        # Generate new file name: compose_<uuid>.yml
-        modified_compose = compose_file.parent / f"compose_{uuid.uuid4().hex}.yml"
-
         vector_env = compose["services"]["vector"].setdefault("environment", {})
         vector_env["LOGFLARE_PUBLIC_ACCESS_TOKEN"] = os.environ.get("LOGFLARE_PUBLIC_ACCESS_TOKEN", "")
         vector_env["NAMESPACE"] = os.environ.get("VELA_DEPLOYMENT_NAMESPACE_PREFIX", "")
         vector_env["VELA_BRANCH"] = str(branch_id).lower()
+
+        tmp_dir = Path(tempfile.gettempdir())
+        modified_compose = tmp_dir / f"compose_{uuid.uuid4().hex}.yml"
 
         with open(modified_compose, "w") as f:
             yaml.safe_dump(compose, f, sort_keys=False)
@@ -208,13 +209,8 @@ async def create_vela_config(branch_id: Identifier, parameters: DeploymentParame
                 stderr=subprocess.PIPE,
                 text=True,
             )
-
-            modified_compose.unlink()
-            logger.info(f"Removed temporary file: {modified_compose}")
         except subprocess.CalledProcessError as e:
             logger.exception(f"Failed to create deployment: {e.stderr}")
-            modified_compose.unlink()
-            logger.info(f"Removed temporary file: {modified_compose}")
             release_name = _release_name(namespace)
             await check_output(
                 ["helm", "uninstall", release_name, "-n", namespace],
