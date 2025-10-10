@@ -98,6 +98,8 @@ async def main():
         )
         mock_keycloak_instance.a_get_user_id = unittest.mock.AsyncMock(return_value=str(uuid4()))
         mock_keycloak_instance.a_send_verify_email = unittest.mock.AsyncMock(return_value=None)
+        mock_keycloak_instance.a_create_realm = unittest.mock.AsyncMock(return_value=None)
+        mock_keycloak_instance.a_create_client = unittest.mock.AsyncMock(return_value=None)
 
         os.environ["VELA_POSTGRES_URL"] = postgres.get_connection_url()
         os.environ["VELA_JWT_SECRET"] = jwt_secret

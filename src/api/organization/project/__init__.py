@@ -19,7 +19,7 @@ from ....deployment import (
     deploy_branch_environment,
     get_db_vmi_identity,
 )
-from ....deployment.kubevirt import call_kubevirt_subresource
+from ....deployment.kubernetes.kubevirt import call_kubevirt_subresource
 from ....exceptions import VelaError
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ...db import SessionDep
@@ -75,9 +75,9 @@ async def _deploy_branch_environment_task(
 
 async def _public(project: Project) -> ProjectPublic:
     return ProjectPublic(
-        organization_id=project.organization_id,
-        id=project.id,
-        name=project.name,
+        organization_id=await project.awaitable_attrs.organization_id,
+        id=await project.awaitable_attrs.id,
+        name=await project.awaitable_attrs.name,
     )
 
 
@@ -163,8 +163,8 @@ async def create(
     except IntegrityError as exc:
         await session.rollback()
         error = str(exc)
-        if "asyncpg.exceptions.UniqueViolationError" in error and "unique_branch_name_per_project" in error:
-            raise HTTPException(409, f"Project already has branch named {parameters.name}") from exc
+        if ("asyncpg.exceptions.UniqueViolationError" in error) and ("unique_project_name" in error):
+            raise HTTPException(409, f"Organization already has project named {parameters.name}") from exc
         raise
     except KeycloakError:
         await session.rollback()

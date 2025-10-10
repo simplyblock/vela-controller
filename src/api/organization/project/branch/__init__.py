@@ -26,7 +26,11 @@ from .....deployment import (
     get_db_vmi_identity,
     resize_deployment,
 )
-from .....deployment.kubevirt import KubevirtSubresourceAction, call_kubevirt_subresource, get_virtualmachine_status
+from .....deployment.kubernetes.kubevirt import (
+    KubevirtSubresourceAction,
+    call_kubevirt_subresource,
+    get_virtualmachine_status,
+)
 from .....deployment.settings import settings as deployment_settings
 from .....exceptions import VelaDeploymentError, VelaError
 from ...._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
@@ -53,7 +57,6 @@ from ....settings import settings
 from .auth import api as auth_api
 
 api = APIRouter(tags=["branch"])
-SUPABASE_ADMIN_USER = "supabase_admin"  # created as part of the db init script
 
 
 async def _deploy_branch_environment_task(
@@ -98,7 +101,7 @@ async def _public(branch: Branch) -> BranchPublic:
     port = 5432
 
     connection_string = "postgresql://{user}:{password}@{host}:{port}/{database}".format(  # noqa: UP032
-        user=SUPABASE_ADMIN_USER,
+        user=branch.database_user,
         password=branch.database_password,  # TODO: handle situation where password is changed
         host="db",
         port=port,
