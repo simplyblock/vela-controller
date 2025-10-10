@@ -24,7 +24,6 @@ class Settings(BaseSettings):
     cloudflare_domain_suffix: str
     gateway_name: str = "public-gateway"
     gateway_namespace: str = "kong-system"
-    deployment_namespace_prefix: str
     logflare_public_access_token: str
     grafana_url: str
     grafana_security_admin_user: str
