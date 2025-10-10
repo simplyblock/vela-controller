@@ -49,6 +49,9 @@ Slug = Annotated[
     ),
 ]
 
+DEFAULT_DB_NAME = "postgres"
+DEFAULT_DB_USER = "postgres"
+
 # Represents the state of Kubevirt VM
 # https://github.com/kubevirt/kubevirt/blob/main/staging/src/kubevirt.io/api/core/v1/types.go#L1897-L1942
 StatusType = Literal[

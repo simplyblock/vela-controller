@@ -14,7 +14,7 @@ from keycloak.exceptions import KeycloakError
 from kubernetes_asyncio.client.exceptions import ApiException
 from sqlalchemy.exc import IntegrityError
 
-from ....._util import Identifier
+from ....._util import DEFAULT_DB_NAME, DEFAULT_DB_USER, Identifier
 from .....deployment import (
     DeploymentParameters,
     ResizeParameters,
@@ -255,8 +255,8 @@ async def create(
             name=parameters.name,
             project_id=project.id,
             parent_id=source.id,
-            database=source.database,
-            database_user=source.database_user,
+            database=DEFAULT_DB_NAME,
+            database_user=DEFAULT_DB_USER,
             database_password=source.database_password,
             database_size=source.database_size,
             storage_size=source.storage_size,
@@ -271,8 +271,8 @@ async def create(
             name=parameters.name,
             project_id=project.id,
             parent=None,
-            database=deployment_params.database,
-            database_user=deployment_params.database_user,
+            database=DEFAULT_DB_NAME,
+            database_user=DEFAULT_DB_USER,
             database_password=deployment_params.database_password,
             database_size=deployment_params.database_size,
             storage_size=deployment_params.storage_size,

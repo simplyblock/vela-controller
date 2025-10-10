@@ -12,7 +12,7 @@ from keycloak.exceptions import KeycloakError
 from kubernetes_asyncio.client.exceptions import ApiException
 from sqlalchemy.exc import IntegrityError
 
-from ...._util import Identifier
+from ...._util import DEFAULT_DB_NAME, DEFAULT_DB_USER, Identifier
 from ....deployment import (
     DeploymentParameters,
     delete_deployment,
@@ -141,8 +141,8 @@ async def create(
         name=Branch.DEFAULT_SLUG,
         project=entity,
         parent=None,
-        database=parameters.deployment.database,
-        database_user=parameters.deployment.database_user,
+        database=DEFAULT_DB_NAME,
+        database_user=DEFAULT_DB_USER,
         database_password=parameters.deployment.database_password,
         database_size=parameters.deployment.database_size,
         storage_size=parameters.deployment.storage_size,
