@@ -1,7 +1,6 @@
-import json
 import logging
-
 import httpx
+from httpx import HTTPError
 from fastapi import HTTPException, Request, status
 
 from .._util import Identifier
@@ -9,11 +8,9 @@ from .settings import settings
 from ..exceptions import VelaGrafanaError
 
 GRAFANA_URL = settings.grafana_url
+GRAFANA_USER = settings.grafana_security_admin_user
+GRAFANA_PASSWORD = settings.grafana_security_admin_password
 
-GRAFANA_USER = settings.gf_security_admin_user
-GRAFANA_PASSWORD = settings.gf_security_admin_password
-
-# Basic Auth for Grafana
 auth = (GRAFANA_USER, GRAFANA_PASSWORD)
 headers = {"Content-Type": "application/json"}
 
@@ -21,18 +18,20 @@ logger = logging.getLogger(__name__)
 
 
 async def create_vela_grafana_obj(organization_id: Identifier, branch_id: Identifier, request: Request):
-    logger.info(f"Creating Grafana object organization {organization_id} branch: {branch_id}")
-    team_id = create_team(str(branch_id))
-    parent_folder_id = create_folder(str(organization_id))
+    logger.info(f"Creating Grafana object for organization={organization_id}, branch={branch_id}")
 
-    set_folder_permissions(parent_folder_id, team_id)
-    folder_id = create_folder(str(branch_id), parent_uid=parent_folder_id)
-    set_folder_permissions(folder_id, team_id)
+    team_id = await create_team(str(branch_id))
+    parent_folder_id = await create_folder(str(organization_id))
+
+    await set_folder_permissions(parent_folder_id, team_id)
+    folder_id = await create_folder(str(branch_id), parent_uid=parent_folder_id)
+    await set_folder_permissions(folder_id, team_id)
 
     token = get_token_from_request(request)
-    user_id = get_user_via_jwt(token)
-    add_user_to_team(team_id, user_id)
-    create_dashboard(str(organization_id), folder_id, str(branch_id))
+    user_id = await get_user_via_jwt(token)
+    await add_user_to_team(team_id, user_id)
+    await create_dashboard(str(organization_id), folder_id, str(branch_id))
+
 
 def get_token_from_request(request: Request) -> str:
     auth_header = request.headers.get("authorization")
@@ -43,178 +42,278 @@ def get_token_from_request(request: Request) -> str:
     if not auth_header.startswith("Bearer "):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Authorization header format")
 
-    # return only the token part
     return auth_header.split("Bearer ")[1]
 
 
-# Create Team
-def create_team(team_name):
-    try:
-        payload = {"name": team_name}
-        r = httpx.post(f"{GRAFANA_URL}/api/teams", auth=auth, headers=headers, data=json.dumps(payload))
-        if r.status_code == 200:
-            print(f"[+] Team '{team_name}' created.")
-            return r.json().get("teamId")
-        elif r.status_code == 409:
-            print(f"[!] Team '{team_name}' already exists. Fetching ID...")
-            # Fetch existing team
-            res = httpx.get(f"{GRAFANA_URL}/api/teams/search?name={team_name}", auth=auth)
-            return res.json()["teams"][0]["id"]
-    except Exception as exc:  # pragma: no cover - surfaced to caller
-        raise VelaGrafanaError(f"Failed to create team: {exc}") from exc
+# --- TEAM CREATION ---
+async def create_team(team_name: str):
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(f"{GRAFANA_URL}/api/teams", auth=auth, headers=headers, json={"name": team_name})
+            response.raise_for_status()
+            logger.info(f"Team '{team_name}' created successfully.")
+            return response.json().get("teamId")
 
-# Create Folder
-def create_folder(folder_name, parent_uid=None):
-    try:
-        payload = {"title": folder_name}
-        if parent_uid:
-            payload["parentUid"] = parent_uid
-        r = httpx.post(f"{GRAFANA_URL}/api/folders", auth=auth, headers=headers, data=json.dumps(payload))
-        if r.status_code == 200:
-            print(f"[+] Folder '{folder_name}' created.")
-            return r.json()["uid"]
-        elif r.status_code == 412:
-            print(f"[!] Folder '{folder_name}' already exists. Fetching ID...")
-            # Fetch existing folder
-            res = httpx.get(f"{GRAFANA_URL}/api/folders", auth=auth)
-            for f in res.json():
-                if f["title"] == folder_name:
-                    return f["uid"]
-    except Exception as exc:  # pragma: no cover - surfaced to caller
-        raise VelaGrafanaError(f"Failed to create folder: {exc}") from exc
+        except HTTPError as exc:
+            status_code = getattr(exc.response, "status_code", None)
+            if status_code == 409:
+                logger.warning(f"Team '{team_name}' already exists. Fetching existing team ID...")
+                try:
+                    res = await client.get(f"{GRAFANA_URL}/api/teams/search?name={team_name}", auth=auth, headers=headers)
+                    res.raise_for_status()
+                    team_id = res.json()["teams"][0]["id"]
+                    logger.info(f"Fetched existing team ID: {team_id}")
+                    return team_id
+                except Exception as fetch_exc:
+                    logger.error(f"Failed to fetch existing team '{team_name}': {fetch_exc}")
+                    raise VelaGrafanaError(f"Failed to fetch existing team '{team_name}'") from fetch_exc
 
-# Link Team to Folder Permissions
-def set_folder_permissions(folder_uid, team_id):
-    try:
-        permissions_payload = {
-            "items": [
-                {
-                    "teamId": team_id,
-                    "permission": 1,  # 1=View, 2=Edit, 4=Admin
-                }
-            ]
-        }
+            logger.error(f"Failed to create Grafana team '{team_name}': {exc}")
+            raise VelaGrafanaError(f"Failed to create Grafana team '{team_name}': {exc}") from exc
 
-        r = httpx.post(
-            f"{GRAFANA_URL}/api/folders/{folder_uid}/permissions",
-            auth=auth,
-            headers=headers,
-            data=json.dumps(permissions_payload),
-        )
-        if r.status_code == 200:
-            print(f"[+] Permissions set for team {team_id} on folder {folder_uid}.")
-    except Exception as exc:  # pragma: no cover - surfaced to caller
-        raise VelaGrafanaError(f"Failed to set folder permissions: {exc}") from exc
 
-def get_user_via_jwt(jwt_token):
-    try:
-        jwt_headers = {"Content-Type": "application/json", "Authorization": f"Bearer {jwt_token}"}
-        r = httpx.get(f"{GRAFANA_URL}/api/user", headers=jwt_headers)
-        if r.status_code == 200:
-            user_info = r.json()
-            print(f"[+] Authenticated as '{user_info['login']}' ({user_info['email']})")
+# --- FOLDER CREATION ---
+async def create_folder(folder_name: str, parent_uid: str = None):
+    async with httpx.AsyncClient() as client:
+        try:
+            payload = {"title": folder_name}
+            if parent_uid:
+                payload["parentUid"] = parent_uid
+
+            response = await client.post(f"{GRAFANA_URL}/api/folders", auth=auth, headers=headers, json=payload)
+            response.raise_for_status()
+            logger.info(f"Folder '{folder_name}' created successfully.")
+            return response.json()["uid"]
+
+        except HTTPError as exc:
+            status_code = getattr(exc.response, "status_code", None)
+            if status_code == 412:
+                logger.warning(f"Folder '{folder_name}' already exists. Fetching existing UID...")
+                try:
+                    res = await client.get(f"{GRAFANA_URL}/api/folders", auth=auth, headers=headers)
+                    res.raise_for_status()
+                    for f in res.json():
+                        if f["title"] == folder_name:
+                            logger.info(f"Fetched existing folder UID: {f['uid']}")
+                            return f["uid"]
+                except Exception as fetch_exc:
+                    logger.error(f"Failed to fetch folder '{folder_name}': {fetch_exc}")
+                    raise VelaGrafanaError(f"Failed to fetch existing folder '{folder_name}'") from fetch_exc
+
+            logger.error(f"Failed to create Grafana folder '{folder_name}': {exc}")
+            raise VelaGrafanaError(f"Failed to create Grafana folder '{folder_name}'") from exc
+
+
+# --- PERMISSIONS ---
+async def set_folder_permissions(folder_uid: str, team_id: int):
+    async with httpx.AsyncClient() as client:
+        try:
+            payload = {"items": [{"teamId": team_id, "permission": 1}]}
+            response = await client.post(
+                f"{GRAFANA_URL}/api/folders/{folder_uid}/permissions",
+                auth=auth,
+                headers=headers,
+                json=payload,
+            )
+            response.raise_for_status()
+            logger.info(f"Permissions set for team {team_id} on folder {folder_uid}.")
+
+        except HTTPError as exc:
+            status_code = getattr(exc.response, "status_code", None)
+            if status_code == 404:
+                logger.warning(f"Folder {folder_uid} not found while setting permissions.")
+            elif status_code == 403:
+                logger.warning(f"Insufficient permission to set folder permissions for {folder_uid}.")
+            else:
+                logger.error(f"HTTP error while setting permissions for {folder_uid}: {exc}")
+            raise VelaGrafanaError(f"Failed to set folder permissions for {folder_uid}: {exc}") from exc
+
+        except Exception as exc:
+            logger.exception(f"Unexpected error setting folder permissions for {folder_uid}")
+            raise VelaGrafanaError(f"Unexpected error setting folder permissions: {exc}") from exc
+
+
+# --- USER MANAGEMENT ---
+async def get_user_via_jwt(jwt_token: str):
+    async with httpx.AsyncClient() as client:
+        try:
+            jwt_headers = {"Authorization": f"Bearer {jwt_token}"}
+            response = await client.get(f"{GRAFANA_URL}/api/user", headers=jwt_headers)
+            response.raise_for_status()
+            user_info = response.json()
+            logger.info(f"Authenticated as '{user_info['login']}' ({user_info['email']})")
             return user_info["id"]
-    except Exception as exc:  # pragma: no cover - surfaced to caller
-        raise VelaGrafanaError(f"Failed to authenticate via JWT: {exc}") from exc
 
-# Add User to Team
-def add_user_to_team(team_id, user_id):
-    try:
-        payload = {"userId": user_id}
-        r = httpx.post(
-            f"{GRAFANA_URL}/api/teams/{team_id}/members", auth=auth, headers=headers, data=json.dumps(payload)
-        )
-        if r.status_code == 200:
-            print(f"[+] User {user_id} added to team {team_id}.")
-        elif r.status_code == 400:
-            print(f"[!] User {user_id} is already in team {team_id}.")
-    except Exception as exc:  # pragma: no cover - surfaced to caller
-        raise VelaGrafanaError(f"Failed to add user to team:: {exc}") from exc
+        except HTTPError as exc:
+            status_code = getattr(exc.response, "status_code", None)
+            if status_code == 401:
+                logger.warning("Invalid or expired JWT token.")
+            elif status_code == 403:
+                logger.warning("Access denied while authenticating user via JWT.")
+            else:
+                logger.error(f"HTTP error during JWT authentication: {exc}")
+            raise VelaGrafanaError(f"Failed to authenticate via JWT: {exc}") from exc
 
-def remove_team(team_id):
-    try:
-        r = httpx.delete(f"{GRAFANA_URL}/api/teams/{team_id}", auth=auth, headers=headers)
-        if r.status_code == 200:
-            print(f"[+] Team {team_id} removed.")
-        elif r.status_code == 404:
-            print(f"[!] Team {team_id} not found.")
-    except Exception as exc:  # pragma: no cover - surfaced to caller
-        raise VelaGrafanaError(f"Failed to remove team: {exc}") from exc
+        except Exception as exc:
+            logger.exception("Unexpected error during JWT authentication.")
+            raise VelaGrafanaError(f"Unexpected error authenticating user: {exc}") from exc
 
-# Remove Folder
-def remove_folder(folder_uid):
-    try:
-        r = httpx.delete(f"{GRAFANA_URL}/api/folders/{folder_uid}", auth=auth, headers=headers)
-        if r.status_code == 200:
-            print(f"[+] Folder {folder_uid} removed.")
-        elif r.status_code == 404:
-            print(f"[!] Folder {folder_uid} not found.")
-    except Exception as exc:  # pragma: no cover - surfaced to caller
-        raise VelaGrafanaError(f"Failed to remove folder: {exc}") from exc
 
-def remove_user_from_team(team_id, user_id):
-    try:
-        r = httpx.delete(f"{GRAFANA_URL}/api/teams/{team_id}/members/{user_id}", auth=auth, headers=headers)
-        if r.status_code == 200:
-            print(f"[+] User {user_id} removed from team {team_id}.")
-        elif r.status_code == 404:
-            print(f"[!] User {user_id} not found in team {team_id}.")
-    except Exception as exc:  # pragma: no cover - surfaced to caller
-        raise VelaGrafanaError(f"Failed to remove user from team: {exc}") from exc
+async def add_user_to_team(team_id: int, user_id: int):
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                f"{GRAFANA_URL}/api/teams/{team_id}/members",
+                auth=auth,
+                headers=headers,
+                json={"userId": user_id},
+            )
+            if response.status_code == 200:
+                logger.info(f"User {user_id} added to team {team_id}.")
+            elif response.status_code == 400:
+                logger.warning(f"User {user_id} already in team {team_id}.")
+            else:
+                response.raise_for_status()
 
-def create_dashboard(org_name, folder_uid, folder_name):
-    try:
-        dashboard_payload = {
-            "dashboard": {
-                "id": None,
-                "uid": None,
-                "title": f"{folder_name} Metrics",
-                "tags": [folder_name],
-                "timezone": "browser",
-                "schemaVersion": 36,
-                "version": 0,
-                "panels": [
+        except HTTPError as exc:
+            status_code = getattr(exc.response, "status_code", None)
+            if status_code == 404:
+                logger.warning(f"Team {team_id} not found when adding user {user_id}.")
+            else:
+                logger.error(f"HTTP error adding user {user_id} to team {team_id}: {exc}")
+            raise VelaGrafanaError(f"Failed to add user to team: {exc}") from exc
+
+        except Exception as exc:
+            logger.exception(f"Unexpected error adding user {user_id} to team {team_id}.")
+            raise VelaGrafanaError(f"Unexpected error adding user to team: {exc}") from exc
+
+async def remove_team(team_id: int):
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.delete(f"{GRAFANA_URL}/api/teams/{team_id}", auth=auth, headers=headers)
+            if response.status_code == 200:
+                logger.info(f"Team {team_id} removed.")
+            elif response.status_code == 404:
+                logger.warning(f"Team {team_id} not found.")
+            else:
+                response.raise_for_status()
+
+        except HTTPError as exc:
+            status_code = getattr(exc.response, "status_code", None)
+            if status_code == 403:
+                logger.warning(f"Permission denied when removing team {team_id}.")
+            else:
+                logger.error(f"HTTP error removing team {team_id}: {exc}")
+            raise VelaGrafanaError(f"Failed to remove team {team_id}: {exc}") from exc
+
+        except Exception as exc:
+            logger.exception(f"Unexpected error removing team {team_id}.")
+            raise VelaGrafanaError(f"Unexpected error removing team: {exc}") from exc
+
+async def remove_folder(folder_uid: str):
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.delete(f"{GRAFANA_URL}/api/folders/{folder_uid}", auth=auth, headers=headers)
+            if response.status_code == 200:
+                logger.info(f"Folder {folder_uid} removed.")
+            elif response.status_code == 404:
+                logger.warning(f"Folder {folder_uid} not found.")
+            else:
+                response.raise_for_status()
+
+        except HTTPError as exc:
+            status_code = getattr(exc.response, "status_code", None)
+            if status_code == 403:
+                logger.warning(f"Permission denied when removing folder {folder_uid}.")
+            else:
+                logger.error(f"HTTP error removing folder {folder_uid}: {exc}")
+            raise VelaGrafanaError(f"Failed to remove folder {folder_uid}: {exc}") from exc
+
+        except Exception as exc:
+            logger.exception(f"Unexpected error removing folder {folder_uid}.")
+            raise VelaGrafanaError(f"Unexpected error removing folder: {exc}") from exc
+
+
+async def remove_user_from_team(team_id: int, user_id: int):
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.delete(
+                f"{GRAFANA_URL}/api/teams/{team_id}/members/{user_id}", auth=auth, headers=headers
+            )
+            if response.status_code == 200:
+                logger.info(f"User {user_id} removed from team {team_id}.")
+            elif response.status_code == 404:
+                logger.warning(f"User {user_id} not found in team {team_id}.")
+            else:
+                response.raise_for_status()
+
+        except HTTPError as exc:
+            status_code = getattr(exc.response, "status_code", None)
+            if status_code == 403:
+                logger.warning(f"Permission denied when removing user {user_id} from team {team_id}.")
+            else:
+                logger.error(f"HTTP error removing user {user_id} from team {team_id}: {exc}")
+            raise VelaGrafanaError(f"Failed to remove user from team: {exc}") from exc
+
+        except Exception as exc:
+            logger.exception(f"Unexpected error removing user {user_id} from team {team_id}.")
+            raise VelaGrafanaError(f"Unexpected error removing user from team: {exc}") from exc
+
+
+# --- DASHBOARD CREATION ---
+async def create_dashboard(org_name: str, folder_uid: str, folder_name: str):
+    dashboard_payload = {
+        "dashboard": {
+            "id": None,
+            "uid": None,
+            "title": f"{folder_name} Metrics",
+            "tags": [folder_name],
+            "timezone": "browser",
+            "schemaVersion": 36,
+            "version": 0,
+            "panels": [
+                {
+                    "type": "timeseries",
+                    "title": "Example Metric",
+                    "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0},
+                    "datasource": {"type": "prometheus", "uid": "eev2sidbr5ekgb"},
+                    "targets": [
+                        {
+                            "expr": 'custom_metric_value{org="$organization",proj="$project"}',
+                            "legendFormat": "{{instance}}",
+                            "refId": "A",
+                        }
+                    ],
+                }
+            ],
+            "templating": {
+                "list": [
                     {
-                        "type": "timeseries",
-                        "title": "Example Metric",
-                        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0},
-                        "datasource": {"type": "prometheus", "uid": "eev2sidbr5ekgb"},
-                        "targets": [
-                            {
-                                "expr": 'custom_metric_value{org="$organization",proj="$project"}',
-                                "legendFormat": "{{instance}}",
-                                "refId": "A",
-                            }
-                        ],
-                    }
-                ],
-                "templating": {
-                    "list": [
-                        {
-                            "name": "organization",
-                            "type": "constant",
-                            "label": org_name,
-                            "query": org_name,
-                            "current": {"selected": True, "text": org_name, "value": org_name},
-                        },
-                        {
-                            "name": "project",
-                            "type": "constant",
-                            "label": folder_name,
-                            "query": folder_name,
-                            "current": {"selected": True, "text": folder_name, "value": folder_name},
-                        },
-                    ]
-                },
+                        "name": "organization",
+                        "type": "constant",
+                        "label": org_name,
+                        "query": org_name,
+                        "current": {"selected": True, "text": org_name, "value": org_name},
+                    },
+                    {
+                        "name": "project",
+                        "type": "constant",
+                        "label": folder_name,
+                        "query": folder_name,
+                        "current": {"selected": True, "text": folder_name, "value": folder_name},
+                    },
+                ]
             },
-            "folderUid": folder_uid,
-            "overwrite": True,
-        }
+        },
+        "folderUid": folder_uid,
+        "overwrite": True,
+    }
 
-        r = httpx.post(
-            f"{GRAFANA_URL}/api/dashboards/db", auth=auth, headers=headers, data=json.dumps(dashboard_payload)
-        )
-        if r.status_code in (200, 202):
-            print(f"[+] Dashboard created in folder '{folder_name}' with project variable.")
-    except Exception as exc:  # pragma: no cover - surfaced to caller
-        raise VelaGrafanaError(f"Failed to create dashboard: {exc}") from exc
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(f"{GRAFANA_URL}/api/dashboards/db", auth=auth, headers=headers, json=dashboard_payload)
+            response.raise_for_status()
+            logger.info(f"Dashboard created successfully in folder '{folder_name}'.")
+        except Exception as exc:
+            logger.error(f"Failed to create dashboard for folder '{folder_name}': {exc}")
+            raise VelaGrafanaError(f"Failed to create dashboard: {exc}") from exc

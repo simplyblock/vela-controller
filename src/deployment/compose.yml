@@ -80,7 +80,7 @@ services:
       PG_META_PORT: 8080
       PG_META_DB_DRIVER: postgres
       PG_META_DB_SSL_MODE: disable
-      PG_META_DB_URL: '' # DB URI is decrypted from x-connection-encrypted header
+      PG_META_DB_URL: ''
       CRYPTO_KEY: ${PGMETA_CRYPTO_KEY}
     ports:
     - 8080:8080
