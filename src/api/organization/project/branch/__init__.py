@@ -56,6 +56,7 @@ SUPABASE_ADMIN_USER = "supabase_admin"  # created as part of the db init script
 
 async def _deploy_branch_environment_task(
     *,
+    organization_id: Identifier,
     project_id: Identifier,
     branch_id: Identifier,
     branch_slug: str,
@@ -63,6 +64,7 @@ async def _deploy_branch_environment_task(
 ) -> None:
     try:
         await deploy_branch_environment(
+            organization_id=organization_id,
             project_id=project_id,
             branch_id=branch_id,
             branch_slug=branch_slug,
@@ -298,6 +300,7 @@ async def create(
     if parameters.deployment is not None:
         asyncio.create_task(
             _deploy_branch_environment_task(
+                organization_id=organization.id,
                 project_id=project.id,
                 branch_id=entity.id,
                 branch_slug=entity.name,
