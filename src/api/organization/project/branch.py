@@ -24,8 +24,8 @@ from ....deployment.settings import settings as deployment_settings
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ...db import get_db
 from sqlmodel.ext.asyncio.session import AsyncSession
-SessionDep = Annotated[AsyncSession, Depends(get_db)]
 
+SessionDep = Annotated[AsyncSession, Depends(get_db)]
 from ...models.branch import (
     Branch,
     BranchApiKeys,
@@ -325,7 +325,6 @@ _CONTROL_TO_KUBEVIRT: dict[str, KubevirtSubresourceAction] = {
     "start": "start",
     "stop": "stop",
 }
-
 
 @instance_api.post(
     "/pause",
