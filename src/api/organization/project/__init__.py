@@ -31,10 +31,10 @@ SessionDep = Annotated[AsyncSession, Depends(get_db)]
 
 logger = logging.getLogger(__name__)
 
-api=APIRouter()
-project_api=APIRouter()
-api.include_router(instance_api,prefix="/projects")
-project_api.include_router(instance_api,prefix="/projects/{project_id}")
+projects_api = APIRouter(
+    prefix="/organizations/{organization_id}/projects",
+    tags=["projects"],
+)
 
 async def _deploy_branch_environment_task(
     *,
@@ -63,13 +63,14 @@ async def _public(project: Project) -> ProjectPublic:
     status = await get_deployment_status(project.id, Branch.DEFAULT_SLUG)
     return ProjectPublic(
         organization_id=project.organization_id,
+        max_backups=project.max_backups,
         id=project.id,
         name=project.name,
         status=status.status,
     )
 
 
-@api.get(
+@projects_api.get(
     "/",
     name="organizations:projects:list",
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
@@ -96,7 +97,7 @@ _links = {
 }
 
 
-@api.post(
+@projects_api.post(
     "/",
     name="organizations:projects:create",
     status_code=201,
@@ -126,6 +127,7 @@ async def create(
 ) -> JSONResponse:
     entity = Project(
         organization=organization,
+        max_backups=parameters.max_backups,
         name=parameters.name,
     )
     session.add(entity)
@@ -141,6 +143,8 @@ async def create(
     main_branch = Branch(
         name=Branch.DEFAULT_SLUG,
         project=entity,
+        env_type=parameters.env_type,
+        organization_id=organization.id,
         parent=None,
         database=parameters.deployment.database,
         database_user=parameters.deployment.database_user,
@@ -181,8 +185,8 @@ async def create(
         headers={"Location": entity_url},
     )
 
-@project_api.get(
-    "/",
+@projects_api.get(
+    "/{project_id}",
     name="organizations:projects:detail",
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
@@ -190,8 +194,8 @@ async def detail(_organization: OrganizationDep, project: ProjectDep) -> Project
     return await _public(project)
 
 
-@project_api.put(
-    "/",
+@projects_api.put(
+    "/{project_id}",
     name="organizations:projects:update",
     status_code=204,
     responses={
@@ -240,8 +244,8 @@ async def update(
     )
 
 
-@project_api.delete(
-    "/",
+@projects_api.delete(
+    "/{project_id}/",
     name="organizations:projects:delete",
     status_code=204,
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
@@ -256,8 +260,8 @@ async def delete(session: SessionDep, _organization: OrganizationDep, project: P
     return Response(status_code=204)
 
 
-@project_api.post(
-    "/pause",
+@projects_api.post(
+    "/{project_id}/pause",
     name="organizations:projects:pause",
     status_code=204,
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
@@ -272,8 +276,8 @@ async def pause(_organization: OrganizationDep, project: ProjectDep):
         raise HTTPException(status_code=status, detail=e.body or str(e)) from e
 
 
-@project_api.post(
-    "/resume",
+@projects_api.post(
+    "/{project_id}/resume",
     name="organizations:projects:resume",
     status_code=204,
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},

@@ -103,6 +103,7 @@ async def _public(branch: Branch) -> BranchPublic:
     return BranchPublic(
         id=branch.id,
         name=branch.name,
+        env_type=branch.env_type,
         project_id=branch.project_id,
         organization_id=project.organization_id,
         database=database_info,

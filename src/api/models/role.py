@@ -15,14 +15,20 @@ SessionDep = Annotated[AsyncSession, Depends(get_db)]
 from ._util import Model
 from .organization import Organization, OrganizationDep
 
+from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from .user import User
+    from .user import User  # forward reference for type hints
+    from .role import RoleUserLink
 
 class RoleType(PyEnum):
     organization = 0
     environment = 1
     project = 2
     branch = 3
+
+class RoleAccessRight(AsyncAttrs, Model, table=True):
+    role_id: Identifier = Model.foreign_key_field("role", nullable=False, primary_key=True)
+    access_right_id: Identifier = Model.foreign_key_field("accessright", nullable=False, primary_key=True)
 
 class RoleUserLink(AsyncAttrs, Model, table=True):
     role_id: int | None = Model.foreign_key_field("role", nullable=True, primary_key=True)
@@ -31,15 +37,14 @@ class RoleUserLink(AsyncAttrs, Model, table=True):
     project_entity: Identifier | None = Model.foreign_key_field("project", nullable=True)
     branch_entity: Identifier | None = Model.foreign_key_field("branch", nullable=True)
 
-class RoleAccessRight(AsyncAttrs, Model, table=True):
-    role_id: Identifier = Model.foreign_key_field("role", nullable=False, primary_key=True)
-    access_right_id: Identifier = Model.foreign_key_field("accessright", nullable=False, primary_key=True)
 
 
 class Role(AsyncAttrs, Model, table=True):
     organization_id: Identifier | None = Model.foreign_key_field("organization", nullable=True)
+    organization: Organization | None = Relationship(back_populates="roles")
     role_type: RoleType
     is_active: bool
+
 
 class AccessRight(AsyncAttrs, Model, table=True):
     entry: str
