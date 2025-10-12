@@ -12,7 +12,7 @@ from cloudflare import AsyncCloudflare, CloudflareError
 from kubernetes_asyncio.client.exceptions import ApiException
 from pydantic import BaseModel, Field
 
-from ..exceptions import VelaError
+from .. import VelaError
 from .._util import GIB, Identifier, Slug, bytes_to_gib, check_output, dbstr
 from .kubernetes import KubernetesService
 from .settings import settings
