@@ -1,11 +1,11 @@
 import base64
 from collections.abc import Sequence
-from typing import Any, Literal
+from typing import Any, Literal, Annotated
 
 from Crypto.Cipher import AES
 from Crypto.Hash import MD5
 from Crypto.Random import get_random_bytes
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, HTTPException, Request, Response, Depends
 from fastapi.responses import JSONResponse
 from kubernetes_asyncio.client.exceptions import ApiException
 from sqlalchemy.exc import IntegrityError
@@ -22,10 +22,9 @@ from ....deployment import (
 from ....deployment.kubevirt import KubevirtSubresourceAction, call_kubevirt_subresource
 from ....deployment.settings import settings as deployment_settings
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
-from ...db import SessionDep
-
-
-
+from ...db import get_db
+from sqlmodel.ext.asyncio.session import AsyncSession
+SessionDep = Annotated[AsyncSession, Depends(get_db)]
 
 from ...models.branch import (
     Branch,

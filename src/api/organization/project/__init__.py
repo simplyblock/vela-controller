@@ -17,7 +17,7 @@ from ....deployment import (
     get_db_vmi_identity,
     get_deployment_status,
 )
-from ....deployment.kubernetes.kubevirt import call_kubevirt_subresource
+from ....deployment.kubevirt import call_kubevirt_subresource
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 
 from ...models.branch import Branch
