@@ -24,48 +24,31 @@ class RoleType(PyEnum):
     project = 2
     branch = 3
 
-class RoleUserLink(AsyncAttrs, SQLModel, table=True):
+class RoleUserLink(AsyncAttrs, Model, table=True):
     role_id: int | None = Model.foreign_key_field("role", nullable=True, primary_key=True)
     user_id: UUID = Field(foreign_key="user.id", primary_key=True)
-    environment_entity: str
+    environment_entity: str = Field(nullable=True)
     project_entity: Identifier | None = Model.foreign_key_field("project", nullable=True)
     branch_entity: Identifier | None = Model.foreign_key_field("branch", nullable=True)
 
-class RoleAccessRight(AsyncAttrs, SQLModel, table=True):
+class RoleAccessRight(AsyncAttrs, Model, table=True):
     role_id: Identifier = Model.foreign_key_field("role", nullable=False, primary_key=True)
     access_right_id: Identifier = Model.foreign_key_field("accessright", nullable=False, primary_key=True)
 
 
 class Role(AsyncAttrs, Model, table=True):
     organization_id: Identifier | None = Model.foreign_key_field("organization", nullable=True)
-    organization: Organization | None = Relationship(back_populates="roles")
     role_type: RoleType
     is_active: bool
-
-    users: list["User"] = Relationship(
-        back_populates="roles",
-        link_model=RoleUserLink
-    )
-
-    access_rights: list["AccessRight"] = Relationship(
-        back_populates="roles",
-        link_model=RoleAccessRight
-    )
 
 class AccessRight(AsyncAttrs, Model, table=True):
     entry: str
     role_type: RoleType
 
-    roles: list[Role] = Relationship(
-        back_populates="access_rights",
-        link_model=RoleAccessRight  # ✅ class reference
-    )
-
-
 async def _lookup(session: SessionDep, organization: OrganizationDep, role_id: Identifier) -> Role:
     try:
         query = select(Role).where(Role.id == role_id, Role.organization_id == organization.id)
-        return (await session.exec(query)).one()
+        return (await session.execute(query)).scalars().one()
     except NoResultFound as e:
         raise HTTPException(404, f"Role {role_id} not found") from e
 

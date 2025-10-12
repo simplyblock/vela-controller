@@ -16,17 +16,8 @@ SessionDep = Annotated[AsyncSession, Depends(get_db)]
 from ..models.audit import OrganizationAuditLog
 from ..models.organization import Organization, OrganizationCreate, OrganizationDep, OrganizationUpdate
 from .member import api as member_api
-from .project import api as project_api
 from .role import api as role_api
 
-api = APIRouter(dependencies=[Depends(authenticated_user)], tags=["organization"])
-
-
-@api.get(
-    "/",
-    name="organizations:list",
-    responses={401: Unauthenticated},
-)
 async def list_(user: AuthUserDep) -> Sequence[Organization]:
     return await user.awaitable_attrs.organizations
 
@@ -54,26 +45,6 @@ _links = {
     },
 }
 
-
-@api.post(
-    "/",
-    name="organizations:create",
-    status_code=201,
-    response_model=Organization | None,
-    responses={
-        201: {
-            "headers": {
-                "Location": {
-                    "description": "URL of the created item",
-                    "schema": {"type": "string"},
-                },
-            },
-            "links": _links,
-        },
-        401: Unauthenticated,
-        409: Conflict,
-    },
-)
 async def create(
     session: SessionDep,
     request: Request,
@@ -106,13 +77,42 @@ async def _check_user_access(user: AuthUserDep, organization: OrganizationDep):
     if user not in await organization.awaitable_attrs.users:
         raise HTTPException(403, detail="Unauthorized access")
 
-
+api=APIRouter(prefix="/organizations",
+    dependencies=[Depends(_check_user_access)],
+    tags=["organization"],)
 instance_api = APIRouter(
-    prefix="/{organization_id}",
+    prefix="/organizations/{organization_id}",
     dependencies=[Depends(_check_user_access)],
     tags=["organization"],
 )
+#instance_api.include_router(member_api, prefix="/{organization_id}/members")
+#instance_api.include_router(role_api, prefix="/{organization_id}/roles")
 
+@api.post(
+    "/",
+    name="organizations:create",
+    status_code=201,
+    response_model=Organization | None,
+    responses={
+        201: {
+            "headers": {
+                "Location": {
+                    "description": "URL of the created item",
+                    "schema": {"type": "string"},
+                },
+            },
+            "links": _links,
+        },
+        401: Unauthenticated,
+        409: Conflict,
+    },
+)
+
+@api.get(
+    "/",
+    name="organizations:list",
+    responses={401: Unauthenticated},
+)
 
 @instance_api.get(
     "/",
@@ -185,7 +185,6 @@ async def delete(session: SessionDep, organization: OrganizationDep):
     await session.commit()
     return Response(status_code=204)
 
-
 @instance_api.get(
     "/audit",
     name="organizations:audits:list",
@@ -199,7 +198,4 @@ def list_audits(
     return OrganizationAuditLog(result=[], retention_period=0)
 
 
-instance_api.include_router(project_api, prefix="/projects")
-instance_api.include_router(member_api, prefix="/members")
-instance_api.include_router(role_api, prefix="/roles")
-api.include_router(instance_api)
+

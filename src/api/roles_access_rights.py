@@ -1,48 +1,88 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel.ext.asyncio.session import AsyncSession
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 from uuid import UUID
 from typing import Optional, Dict
 
-from .models.role import Role, AccessRight, RoleUserLink, RoleAccessRight
+from .models.role import Role, RoleUserLink, AccessRight
 from .db import get_db
-from .access_right_utils import check_access, get_user_rights
+from .access_right_utils import check_access
 
 router = APIRouter(prefix="/roles")
 
+from pydantic import BaseModel
+from typing import Optional
+from uuid import UUID
+
+class AccessCheckRequest(BaseModel):
+    access: str  # e.g., "project:settings:update"
+    organization_id: Optional[UUID] = None
+    project_id: Optional[UUID] = None
+    branch_id: Optional[UUID] = None
+    environment_id: Optional[UUID] = None
+
+from typing import List
+
+class AccessRightPayload(BaseModel):
+    entry: str  # e.g., "project:settings:update"
+
+class RolePayload(BaseModel):
+    role_type: str
+    is_active: bool = True
+    access_rights: Optional[List[AccessRightPayload]] = []
+
+class RoleAssignmentPayload(BaseModel):
+    # Single or multiple projects/branches/environments
+    organization_id: Optional[UUID] = None
+    project_ids: Optional[List[UUID]] = None
+    branch_ids: Optional[List[UUID]] = None
+    environment_ids: Optional[List[UUID]] = None
 
 # ----------------------
 # Create role
 # ----------------------
 @router.post("/")
-async def create_role(role: Role, session: AsyncSession = Depends(get_db)):
+async def create_role(payload: RolePayload, session: AsyncSession = Depends(get_db)):
+    role = Role(role_type=payload.role_type, is_active=payload.is_active)
     session.add(role)
     await session.commit()
     await session.refresh(role)
-    return role
 
+    # Add access rights if provided
+    if payload.access_rights:
+        for ar_payload in payload.access_rights:
+            ar = AccessRight(entry=ar_payload.entry)
+            role.access_rights.append(ar)
+        session.add(role)
+        await session.commit()
+        await session.refresh(role)
+
+    return role
 
 # ----------------------
 # Modify role
 # ----------------------
 @router.put("/{role_id}")
-async def modify_role(role_id: UUID, updated_role: Role, session: AsyncSession = Depends(get_db)):
+async def modify_role(role_id: UUID, payload: RolePayload, session: AsyncSession = Depends(get_db)):
     role = await session.get(Role, role_id)
     if not role:
         raise HTTPException(404, f"Role {role_id} not found")
 
-    role.role_type = updated_role.role_type
-    role.is_active = updated_role.is_active
-    # Optionally update access rights
-    if updated_role.access_rights:
-        # Clear existing and add new
+    role.role_type = payload.role_type
+    role.is_active = payload.is_active
+
+    if payload.access_rights is not None:
+        # Clear existing access rights and add new ones
         role.access_rights.clear()
-        role.access_rights.extend(updated_role.access_rights)
+        for ar_payload in payload.access_rights:
+            ar = AccessRight(entry=ar_payload.entry)
+            role.access_rights.append(ar)
 
     session.add(role)
     await session.commit()
     await session.refresh(role)
     return role
+
 
 
 # ----------------------
@@ -53,6 +93,7 @@ async def delete_role(role_id: UUID, session: AsyncSession = Depends(get_db)):
     role = await session.get(Role, role_id)
     if not role:
         raise HTTPException(404, f"Role {role_id} not found")
+
     await session.delete(role)
     await session.commit()
     return {"status": "deleted"}
@@ -65,26 +106,49 @@ async def delete_role(role_id: UUID, session: AsyncSession = Depends(get_db)):
 async def assign_role(
     role_id: UUID,
     user_id: UUID,
-    context: Optional[Dict[str, UUID]] = None,
+    payload: RoleAssignmentPayload,
     session: AsyncSession = Depends(get_db)
 ):
     """
-    context: dict with keys like organization_id, project_id, branch_id, environment_id
+    Assign a role to a user in one or more contexts. The context is passed as JSON.
     """
-    # Check role exists
     role = await session.get(Role, role_id)
     if not role:
         raise HTTPException(404, f"Role {role_id} not found")
 
-    link = RoleUserLink(role_id=role_id, user_id=user_id)
-    if context:
-        for key, val in context.items():
-            setattr(link, f"{key}_entity", val)
+    # Prepare combinations of context assignments
+    org_id = payload.organization_id
+    project_ids = payload.project_ids or [None]
+    branch_ids = payload.branch_ids or [None]
+    env_ids = payload.environment_ids or [None]
 
-    session.add(link)
+    created_links = []
+
+    # Create RoleUserLink for every combination
+    for project_id in project_ids:
+        for branch_id in branch_ids:
+            for env_id in env_ids:
+                link = RoleUserLink(role_id=role_id, user_id=user_id)
+                if org_id:
+                    link.organization_id = org_id
+                if project_id:
+                    link.project_id = project_id
+                if branch_id:
+                    link.branch_id = branch_id
+                if env_id:
+                    link.environment_id = env_id
+
+                session.add(link)
+                created_links.append(link)
+
     await session.commit()
-    await session.refresh(link)
-    return {"status": "assigned", "link": link}
+
+    # Refresh all links
+    for link in created_links:
+        await session.refresh(link)
+
+    return {"status": "assigned", "count": len(created_links), "links": created_links}
+
 
 
 # ----------------------
@@ -103,15 +167,18 @@ async def unassign_role(
     """
     stmt = select(RoleUserLink).where(
         RoleUserLink.role_id == role_id,
-        RoleUserLink.user_id == user_id
+        RoleUserLink.user_id == user_id,
     )
 
     if context:
         for key, val in context.items():
-            stmt = stmt.where(getattr(RoleUserLink, f"{key}_entity") == val)
+            if hasattr(RoleUserLink, key):
+                stmt = stmt.where(getattr(RoleUserLink, key) == val)
 
-    result = await session.exec(stmt)
-    links = result.all()
+    # ✅ Use session.execute() instead of session.exec()
+    result = await session.execute(stmt)
+    links = result.scalars().all()
+
     if not links:
         raise HTTPException(404, "No matching role assignment found")
 
@@ -125,10 +192,36 @@ async def unassign_role(
 # ----------------------
 # Check access for a user
 # ----------------------
+from fastapi import Body
 
-@router.get("/check_access/{user_id}")
-async def api_check_access(user_id: UUID, access: str, context: Dict[str, UUID], session: AsyncSession = Depends(get_db)):
-    allowed = await check_access(session, user_id, access, context)
+@router.post("/check_access/{user_id}")
+async def api_check_access(
+    user_id: UUID,
+    payload: AccessCheckRequest = Body(...),
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Example POST JSON:
+    {
+        "access": "project:settings:update",
+        "project_id": "01ABCDEF2345XYZ"
+    }
+    """
+    # Build entity_context from the JSON payload
+    entity_context = {
+        k: v
+        for k, v in {
+            "organization_id": payload.organization_id,
+            "project_id": payload.project_id,
+            "branch_id": payload.branch_id,
+            "environment_id": payload.environment_id,
+        }.items()
+        if v is not None
+    }
+
+    allowed = await check_access(session, user_id, payload.access, entity_context)
     if not allowed:
         raise HTTPException(status_code=403, detail="Access denied")
-    return {"access_granted": allowed}
+
+    return {"access_granted": True, "context": entity_context}
+

@@ -23,6 +23,11 @@ def match_access(required: str, rights: List[str]) -> bool:
         return True
     return False
 
+from typing import List
+
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import select
+
 async def get_user_rights(session: AsyncSession, user_id, entity_context) -> List[str]:
     """
     Fetch all access rights for a user in a specific entity context.
@@ -43,7 +48,7 @@ async def get_user_rights(session: AsyncSession, user_id, entity_context) -> Lis
         )
     )
 
-    # Apply context filters
+    # Apply context filters if sub != "*" and sub != req_sub:
     if "organization_id" in entity_context:
         stmt = stmt.where(RoleUserLink.organization_id == entity_context["organization_id"])
     if "project_id" in entity_context:
@@ -53,9 +58,10 @@ async def get_user_rights(session: AsyncSession, user_id, entity_context) -> Lis
     if "environment_id" in entity_context:
         stmt = stmt.where(RoleUserLink.environment_entity == entity_context["environment_id"])
 
-    result = await session.exec(stmt)
-    return [r for r in result.all()]
+    result = await session.execute(stmt)
+    return [r for r in result.scalars().all()]
 
 async def check_access(session: AsyncSession, user_id, required_access: str, entity_context) -> bool:
     rights = await get_user_rights(session, user_id, entity_context)
     return match_access(required_access, rights)
+

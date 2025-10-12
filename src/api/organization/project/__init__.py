@@ -23,15 +23,21 @@ from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_fo
 from ...models.branch import Branch
 from ...models.organization import OrganizationDep
 from ...models.project import Project, ProjectCreate, ProjectDep, ProjectPublic, ProjectUpdate
+from .. import instance_api
 from . import branch as branch_module
 
 from ...db import get_db
 from sqlmodel.ext.asyncio.session import AsyncSession
 SessionDep = Annotated[AsyncSession, Depends(get_db)]
 
+
+
 logger = logging.getLogger(__name__)
 
-api = APIRouter()
+api=APIRouter()
+project_api=APIRouter()
+api.include_router(instance_api,prefix="/projects")
+project_api.include_router(instance_api,prefix="/projects/{project_id}")
 
 
 async def _deploy_branch_environment_task(
@@ -179,12 +185,7 @@ async def create(
         headers={"Location": entity_url},
     )
 
-
-instance_api = APIRouter(prefix="/{project_id}")
-instance_api.include_router(branch_module.api, prefix="/branches")
-
-
-@instance_api.get(
+@project_api.get(
     "/",
     name="organizations:projects:detail",
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
@@ -193,7 +194,7 @@ async def detail(_organization: OrganizationDep, project: ProjectDep) -> Project
     return await _public(project)
 
 
-@instance_api.put(
+@project_api.put(
     "/",
     name="organizations:projects:update",
     status_code=204,
@@ -243,7 +244,7 @@ async def update(
     )
 
 
-@instance_api.delete(
+@project_api.delete(
     "/",
     name="organizations:projects:delete",
     status_code=204,
@@ -259,7 +260,7 @@ async def delete(session: SessionDep, _organization: OrganizationDep, project: P
     return Response(status_code=204)
 
 
-@instance_api.post(
+@project_api.post(
     "/pause",
     name="organizations:projects:pause",
     status_code=204,
@@ -275,7 +276,7 @@ async def pause(_organization: OrganizationDep, project: ProjectDep):
         raise HTTPException(status_code=status, detail=e.body or str(e)) from e
 
 
-@instance_api.post(
+@project_api.post(
     "/resume",
     name="organizations:projects:resume",
     status_code=204,
@@ -291,4 +292,4 @@ async def resume(_organization: OrganizationDep, project: ProjectDep):
         raise HTTPException(status_code=status, detail=e.body or str(e)) from e
 
 
-api.include_router(instance_api)
+
