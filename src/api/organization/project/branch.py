@@ -43,7 +43,10 @@ from ...models.project import ProjectDep
 from ...settings import settings
 
 api = APIRouter()
-
+branch_api = APIRouter(
+    prefix="/organizations/{organization_id}/projects/{project_id}/branches",
+    tags=["projects"],
+)
 
 async def _public(branch: Branch) -> BranchPublic:
     project = await branch.awaitable_attrs.project
@@ -85,14 +88,7 @@ async def _public(branch: Branch) -> BranchPublic:
         has_replicas=False,
     )
 
-    # FIXME: Replace placeholder telemetry data once usage metrics and labels are wired in.
-    used_resources = ResourceUsageDefinition(
-        vcpu=0,
-        ram_bytes=0,
-        nvme_bytes=0,
-        iops=0,
-        storage_bytes=None,
-    )
+
     status = BranchStatus(
         database="ACTIVE_HEALTHY",
         realtime="STOPPED",
@@ -109,7 +105,6 @@ async def _public(branch: Branch) -> BranchPublic:
         database=database_info,
         max_resources=max_resources,
         assigned_labels=[],
-        used_resources=used_resources,
         api_keys=api_keys,
         status=status,
         ptir_enabled=False,
@@ -120,7 +115,7 @@ async def _public(branch: Branch) -> BranchPublic:
     )
 
 
-@api.get(
+@branch_api.get(
     "/",
     name="organizations:projects:branch:list",
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
@@ -160,7 +155,7 @@ _links = {
 }
 
 
-@api.post(
+@branch_api.post(
     "/",
     name="organizations:projects:branch:create",
     status_code=201,
@@ -238,11 +233,8 @@ async def create(
     )
 
 
-instance_api = APIRouter(prefix="/{branch_id}")
-
-
-@instance_api.get(
-    "/",
+@branch_api.get(
+    "/{branch_id}",
     name="organizations:projects:branch:detail",
     response_model=BranchPublic,
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
@@ -255,8 +247,8 @@ async def detail(
     return await _public(branch)
 
 
-@instance_api.put(
-    "/",
+@branch_api.put(
+    "/{branch_id}",
     name="organizations:projects:branch:update",
     status_code=204,
     responses={
@@ -287,8 +279,8 @@ async def update(
     return Response(status_code=204)
 
 
-@instance_api.delete(
-    "/",
+@branch_api.delete(
+    "/{branch_id}",
     name="organizations:projects:branch:delete",
     status_code=204,
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
@@ -308,8 +300,8 @@ async def delete(
 
 
 # Resize controls
-@instance_api.post(
-    "/resize",
+@branch_api.post(
+    "/{branch_id}/resize",
     name="organizations:projects:branch:resize",
     status_code=202,
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
@@ -333,26 +325,26 @@ _CONTROL_TO_KUBEVIRT: dict[str, KubevirtSubresourceAction] = {
     "stop": "stop",
 }
 
-@instance_api.post(
-    "/pause",
+@branch_api.post(
+    "/{branch_id}/pause",
     name="organizations:projects:branch:pause",
     status_code=204,
     responses=_control_responses,
 )
-@instance_api.post(
-    "/resume",
+@branch_api.post(
+    "/{branch_id}/resume",
     name="organizations:projects:branch:resume",
     status_code=204,
     responses=_control_responses,
 )
-@instance_api.post(
-    "/start",
+@branch_api.post(
+    "/{branch_id}/start",
     name="organizations:projects:branch:start",
     status_code=204,
     responses=_control_responses,
 )
-@instance_api.post(
-    "/stop",
+@branch_api.post(
+    "/{branch_id}/stop",
     name="organizations:projects:branch:stop",
     status_code=204,
     responses=_control_responses,
@@ -377,7 +369,7 @@ async def control_branch(
         raise HTTPException(status_code=status, detail=e.body or str(e)) from e
 
 
-api.include_router(instance_api)
+
 
 
 def _evp_bytes_to_key(passphrase: str, salt: bytes) -> tuple[bytes, bytes]:

@@ -60,13 +60,16 @@ async def _deploy_branch_environment_task(
 
 
 async def _public(project: Project) -> ProjectPublic:
-    status = await get_deployment_status(project.id, Branch.DEFAULT_SLUG)
+    #status = await get_deployment_status(project.id, Branch.DEFAULT_SLUG)
+    branch_status = {
+        "main": "UNKNOWN"
+    }
     return ProjectPublic(
         organization_id=project.organization_id,
         max_backups=project.max_backups,
         id=project.id,
         name=project.name,
-        status=status.status,
+        branch_status=branch_status,
     )
 
 
@@ -243,7 +246,6 @@ async def update(
         },
     )
 
-
 @projects_api.delete(
     "/{project_id}/",
     name="organizations:projects:delete",
@@ -253,8 +255,8 @@ async def update(
 async def delete(session: SessionDep, _organization: OrganizationDep, project: ProjectDep):
     await session.refresh(project, ["branches"])
     branches = await project.awaitable_attrs.branches
-    for branch in branches:
-        await delete_deployment(project.id, branch.name)
+    #for branch in branches:
+    #    await delete_deployment(project.id, branch.name)
     await session.delete(project)
     await session.commit()
     return Response(status_code=204)

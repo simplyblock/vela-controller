@@ -139,8 +139,8 @@ async def delete_organization(organization: OrganizationDep, session: SessionDep
     for project in projects:
         await session.refresh(project, ["branches"])
         branches = await project.awaitable_attrs.branches
-        for branch in branches:
-            await delete_deployment(branch.id)
+        #for branch in branches:
+        #    await delete_deployment(branch.id)
     await session.delete(organization)
     await session.commit()
     return Response(status_code=204)

@@ -29,6 +29,7 @@ class Project(AsyncAttrs, Model, table=True):
 class ProjectCreate(BaseModel):
     name: Name
     max_backups: int
+    env_type: str
     deployment: DeploymentParameters
 
 class ProjectUpdate(BaseModel):

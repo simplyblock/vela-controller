@@ -1,19 +1,66 @@
+
+export TOKEN=$(curl -s http://localhost:8000/auth/realms/vela/protocol/openid-connect/token   -H "Content-Type: application/x-www-form-urlencoded"   -d "username=testuser"   -d "password=testpassword"    -d "grant_type=password"   -d "client_id=frontend" -d "client_secret=client-secret" | jq -r '.access_token')
+echo $TOKEN
+
+-------------------------------------------------------------------------------------------------------------------------
+ORG, PROJECT, BRANCH
+-------------------------------------------------------------------------------------------------------------------------
+
+1. WE NEED NOW MAX_BACKUPS AND OPT. ENVS (COMMA-SEPARATED LIST) WHEN CREATING AN ORG OR CHANGING AN ORG
+2. WE NEED ALSO MAX_BACKUPS WHEN CREATING OR CHANGING A PROJECT
+3. WE NEED AN ENV_TYPE WHEN CREATING A BRANCH
+
+curl -X POST "http://localhost:8000/vela/organizations/?response=full" \
+-H "Authorization: Bearer $TOKEN" \
+-H "Content-Type: application/json" \
+-d '{
+    "name": "VELA",
+    "display_name": "VELA",
+    "require_mfa": false,
+    "max_backups": 20,
+    "envs": "prod, staging, qa, analytics, dev"
+}'
+
+curl -X GET "http://localhost:8000/vela/organizations/" -H "Authorization: Bearer $TOKEN" 
+
+curl -X POST "http://localhost:8000/vela/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/projects/?response=full" \
+-H "Authorization: Bearer $TOKEN" \
+-H "Content-Type: application/json" \
+-d '{
+    "name": "MySalesTrackerApp2",
+    "max_backups" : 12,
+    "env_type" : "dev",
+    "deployment": {
+        "database": "myprojectdb",
+        "database_user": "myuser",
+        "database_password": "mypassword",
+        "database_size": 1073741824,
+        "vcpu": 1,
+        "memory": 1073741824,
+        "storage_size": 1073741824,
+        "iops": 100,
+        "database_image_tag": "15.1.0.147"
+    }
+}'
+
+curl -X GET "http://localhost:8000/vela/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/projects/"
+curl -X DELETE "http://localhost:8000/vela/organizations/01K7CV4DWA0VC9K6HFTZRKPZ1K/projects/01K7D15M3CF6H5AHXREEX198VQ/"
+curl -X GET "http://localhost:8000/vela/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/projects/01K7D3Z1HRTJF1DW66X1V8TK07/branches"
+curl -X DELETE "http://localhost:8000/vela/organizations/01K7CV4DWA0VC9K6HFTZRKPZ1K/" -H "Authorization: Bearer $TOKEN"
+
 -----------------------------------------------------------------------------------------------------------------------
 DATABASE BACKUPS
 -----------------------------------------------------------------------------------------------------------------------
 
 1. TO SET THE LIMIT OF RETENTIONS, USE MAX_BACKUPS WHEN CREATING OR UPDATING AN ORGANIZATION OR PROJECT
-2. ENV_TYPES CAN BE SET WHEN CREATING OR UPDATING AN ORGANIZATION. IT CONTAINS A COMMA-SEPARATED LIST OF ACCEPTED
-   ENVIRONMENT TYPES.
-3. A SPECIFIC ENV_TYPE HAS TO BE SET WHEN CREATING A BRANCH (OR A PROJECT WITH A BRANCH).
-4. BACKUP SCHEDULES CAN BE CREATED, MODIFIED AND DELETED ON THREE LEVELS: ORGANIZATION, ENVIRONMENT TYPE AND BRANCH.
+2. BACKUP SCHEDULES CAN BE CREATED, MODIFIED AND DELETED ON THREE LEVELS: ORGANIZATION, ENVIRONMENT TYPE AND BRANCH.
    THE MOST SPECIFIC SCHEDULE IS ALWAYS USED (ENV TYPE IS MORE SPECIFIC THAN ORG AND BRANCH IS MORE 
    SPECIFIC THAN ENV TYPE).
-5. WHEN MODIFYING A SCHEDULE, ALL ROWS ARE REPLACED. THE NEW SCHEDULE CAN CONTAIN MORE OR LESS ROWS.
-6. NOT MORE THAN 10 ROWS ARE ALLOWED, NOT MORE THAN 59 minutes, 23 hours, 7 days and 12 weeks are allowed.
+3. WHEN MODIFYING A SCHEDULE, ALL ROWS ARE REPLACED. THE NEW SCHEDULE CAN CONTAIN MORE OR LESS ROWS.
+4. NOT MORE THAN 10 ROWS ARE ALLOWED, NOT MORE THAN 59 minutes, 23 hours, 7 days and 12 weeks are allowed.
    EACH SCHEDULE ROW MUST BE DIFFERENT FROM THE OTHER ROWS, DUPLICATE ROWS NOT ACCEPTED.
-7. WHEN RETRIEVING SCHEDULES FOR AN ORGANIZATION, ALL SCHEDULES FOR ALL ENV TYPES ARE RETRIEVED AS WELL.
-8. THERE IS AN OPTION TO DELETE INDIVIDUAL BACKUPS AND TO CREATE AD-HOC BACKUPS. THIS MUST BE AVAILABLE IN THE UI TOO.
+5. WHEN RETRIEVING SCHEDULES FOR AN ORGANIZATION, ALL SCHEDULES FOR ALL ENV TYPES ARE RETRIEVED AS WELL.
+6. THERE IS AN OPTION TO DELETE INDIVIDUAL BACKUPS AND TO CREATE AD-HOC BACKUPS. THIS MUST BE AVAILABLE IN THE UI TOO.
      
      curl -X POST "http://localhost:8000/vela/backup/organizations/01K71RXH98EP0WSCCJ169RV4QR/schedule" \   
   -H "Content-Type: application/json" \
@@ -63,6 +110,7 @@ DATABASE BACKUPS
 
 -----------------------------------------------------------------------------------------------------------------------
 RESOURCE LIMITS AND CONSUMPTION
+-----------------------------------------------------------------------------------------------------------------------
 -----------------------------------------------------------------------------------------------------------------------
 
 1. THERE ARE MULTIPLE ADDITIONAL SETTINGS ON BOTH ORGANIZATION AND PROJECT. PROJECT IS OPTIONAL AND "OVERRIDES" ORG AS ITS MORE SPECIFIC.
@@ -184,63 +232,60 @@ curl -X POST "http://localhost:8000/vela/resources/branches/01K729MMKXJJHD1TTV1A
   }
 }'
 
-curl -X POST "http://localhost:8000/vela/resources/branches/01K729NDSB6PAKCG50G0XBSSQ4/provision" \
-       -H "Content-Type: application/json" \
-     -d ' {
-  "ressources": {
-    "milli_vcpu": 1500,
-    "ram": 8000,
-    "iops": 12500,
-    "storage_size": 150,
-    "database_size": 80
-  }
+----------------------------------------------------------------
+RBAC
+----------------------------------------------------------------
+
+
+curl -X POST "http://localhost:8000/roles/" \
+-H "Content-Type: application/json" \
+-d '{
+  "role_type": "project_admin",
+  "is_active": true,
+  "access_rights": [
+    {"entry": "project:settings:update"},
+    {"entry": "branch:deploy:start"}
+  ]
 }'
 
-curl -X POST "http://localhost:8000/vela/resources/branches/01K74V8V254V2KSMZ4WMRZCAN0/provision" \
-       -H "Content-Type: application/json" \
-     -d ' {
-  "ressources": {
-    "milli_vcpu": 800,
-    "ram": 12000,
-    "iops": 5000,
-    "storage_size": 300,
-    "database_size": 150
-  }
+curl -X PUT "http://localhost:8000/roles/<role_id>" \
+-H "Content-Type: application/json" \
+-d '{
+  "role_type": "project_manager",
+  "is_active": false,
+  "access_rights": [
+    {"entry": "project:settings:read"}
+  ]
 }'
 
-curl -X POST "http://localhost:8000/vela/resources/branches/01K729MMKXJJHD1TTV1AEGCGJP/provision" \
-       -H "Content-Type: application/json" \
-     -d ' {
-  "ressources": {
-    "milli_vcpu": 1600,
-    "ram": 16000,
-    "iops": 8000,
-    "storage_size": 100,
-    "database_size": 10
-  }
-}'
+curl -X DELETE "http://localhost:8000/roles/<role_id>"
 
-curl -X GET "http://localhost:8000/vela/resources/branches/01K74V8V254V2KSMZ4WMRZCAN0/limits"
 
-curl -X GET "http://localhost:8000/vela/resources/organizations/01K71RXH98EP0WSCCJ169RV4QR/usage"\
-      -H "Content-Type: application/json" \
-     -d ' {
-  "cycle_start": "2025-10-10T19:00:00Z",
-  "cycle_end": "2025-10-10T23:00:00Z"
-}'
-
-curl -X GET "http://localhost:8000/vela/resources/projects/01K729MMKNBPMRG638ZF8X3VSF/usage"\
-      -H "Content-Type: application/json" \
-     -d ' {
-  "cycle_start": "2025-10-10T19:00:00Z",
-  "cycle_end": "2025-10-10T23:00:00Z"
+curl -X POST "http://localhost:8000/roles/<role_id>/assign/<user_id>" \
+-H "Content-Type: application/json" \
+-d '{
+  "organization_id": "org_123",
+  "project_ids": ["proj_456"],
+  "branch_ids": ["branch_main"],
+  "environment_ids": ["env_prod"]
 }'
 
 
+curl -X POST "http://localhost:8000/roles/<role_id>/unassign/<user_id>" \
+-H "Content-Type: application/json" \
+-d '{
+  "organization_id": "org_123",
+  "project_ids": ["proj_456"],
+  "branch_ids": ["branch_main"],
+   "environment_ids": ["env_prod"]
+}'
 
-      
-
-
-
-
-
+curl -X POST "http://localhost:8000/roles/check_access/<user_id>" \
+-H "Content-Type: application/json" \
+-d '{
+  "access": "project:settings:update",
+  "organization_id": "org_123",
+  "project_id": "proj_456",
+  "branch_id": "branch_main",
+  "environment_id": "env_prod"
+}'

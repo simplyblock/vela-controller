@@ -16,6 +16,7 @@ from .user import api as user_api
 from .roles_access_rights import router as roles_api
 from .backup import router as backup_router
 from .organization import instance_api
+from .organization.project.branch import branch_api
 from .organization.project import projects_api
 from .ressources import router as ressources_router
 from .backupmonitor import *
@@ -173,6 +174,7 @@ app.include_router(backup_router)
 app.include_router(ressources_router, prefix="/resources")
 app.include_router(instance_api)
 app.include_router(projects_api)
+app.include_router(branch_api)
 
 #_use_route_names_as_operation_ids(app)
 

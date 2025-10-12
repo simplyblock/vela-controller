@@ -193,7 +193,6 @@ class BranchPublic(BaseModel):
     database: DatabaseInformation
     max_resources: ResourcesDefinition
     assigned_labels: list[str]
-    used_resources: ResourceUsageDefinition
     api_keys: BranchApiKeys
     status: BranchStatus
     ptir_enabled: bool
