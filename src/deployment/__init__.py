@@ -1,53 +1,37 @@
+import asyncio
 import logging
-import math
-import os
 import subprocess
 import tempfile
-import textwrap
 from importlib import resources
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
 import yaml
+from aiohttp.client_exceptions import ClientError
 from cloudflare import AsyncCloudflare, CloudflareError
 from kubernetes_asyncio.client.exceptions import ApiException
 from pydantic import BaseModel, Field
 
-from .._util import (
-    CPU_CONSTRAINTS,
-    DATABASE_SIZE_CONSTRAINTS,
-    IOPS_CONSTRAINTS,
-    MEMORY_CONSTRAINTS,
-    STORAGE_SIZE_CONSTRAINTS,
-    Identifier,
-    Slug,
-    StatusType,
-    bytes_to_gib,
-    bytes_to_mib,
-    check_output,
-    dbstr,
-)
-from ..exceptions import VelaCloudflareError, VelaKubernetesError
+from ..exceptions import VelaError
+from .._util import GIB, Identifier, Slug, bytes_to_gib, check_output, dbstr
 from .kubernetes import KubernetesService
-from .kubevirt import get_virtualmachine_status
 from .settings import settings
 
 logger = logging.getLogger(__name__)
 
 kube_service = KubernetesService()
 
-DEFAULT_DATABASE_VM_NAME = "supabase-supabase-db"
-CHECK_ENCRYPTED_HEADER_PLUGIN_NAME = "check-x-connection-encrypted"
+DEFAULT_GATEWAY_NAME = "public-gateway"
+DEFAULT_GATEWAY_NAMESPACE = "kong-system"
 
 
-def deployment_namespace(branch_id: Identifier) -> str:
-    """Return the Kubernetes namespace for a branch using `<prefix>-<branch_id>` format."""
-
-    branch_value = str(branch_id).lower()
-    prefix = settings.deployment_namespace_prefix
-    if prefix:
-        return f"{prefix}-{branch_value}"
-    return branch_value
+def deployment_namespace(id_: Identifier, branch: Slug) -> str:
+    branch_value = branch.lower()
+    identifier = str(id_).lower()
+    prefix = f"{settings.deployment_namespace_prefix.lower()}-deployment-"
+    max_branch_length = max(1, 63 - len(prefix) - len(identifier) - 1)
+    trimmed_branch = branch_value[:max_branch_length]
+    return f"{prefix}{identifier}-{trimmed_branch}"
 
 
 def branch_dns_label(branch_id: Identifier) -> str:
@@ -88,115 +72,55 @@ def _release_name(namespace: str) -> str:
     return settings.deployment_release_name
 
 
-def inject_branch_env(compose: dict[str, Any], branch_id: Identifier) -> dict[str, Any]:
-    try:
-        vector_service = compose["services"]["vector"]
-    except KeyError as e:
-        raise RuntimeError("Failed to inject branch env into compose file: missing services.vector") from e
-
-    vector_env = vector_service.setdefault("environment", {})
-    vector_env["LOGFLARE_PUBLIC_ACCESS_TOKEN"] = os.environ.get("LOGFLARE_PUBLIC_ACCESS_TOKEN", "")
-    vector_env["NAMESPACE"] = os.environ.get("VELA_DEPLOYMENT_NAMESPACE_PREFIX", "")
-    vector_env["VELA_BRANCH"] = str(branch_id).lower()
-
-    return compose
-
-
 class DeploymentParameters(BaseModel):
-    env_type: str
     database: dbstr
     database_user: dbstr
     database_password: dbstr
-    database_size: Annotated[int, Field(**DATABASE_SIZE_CONSTRAINTS)]
-    storage_size: Annotated[int, Field(**STORAGE_SIZE_CONSTRAINTS)]
-    milli_vcpu: Annotated[int, Field(**CPU_CONSTRAINTS)]  # units of milli vCPU
-    memory_bytes: Annotated[int, Field(**MEMORY_CONSTRAINTS)]
-    iops: Annotated[int, Field(**IOPS_CONSTRAINTS)]
+    database_size: Annotated[int, Field(gt=0, le=2**63 - 1, multiple_of=GIB)]
+    vcpu: Annotated[int, Field(gt=0, le=2**31 - 1)]
+    memory: Annotated[int, Field(gt=0, le=2**63 - 1, multiple_of=GIB)]
+    iops: Annotated[int, Field(ge=100, le=2**31 - 1)]
     database_image_tag: Literal["15.1.0.147"]
+
+
+StatusType = Literal["ACTIVE_HEALTHY", "ACTIVE_UNHEALTHY", "COMING_UP", "INACTIVE", "UNKNOWN"]
 
 
 class DeploymentStatus(BaseModel):
     status: StatusType
+    pods: dict[str, str]
+    message: str
 
 
-async def create_vela_config(
-    branch_id: Identifier,
-    parameters: DeploymentParameters,
-    branch: Slug,
-    jwt_secret: str,
-    anon_key: str,
-    service_key: str,
-):
-    namespace = deployment_namespace(branch_id)
+async def create_vela_config(id_: Identifier, parameters: DeploymentParameters, branch: Slug):
     logging.info(
-        "Creating Vela configuration for namespace: %s (database %s, user %s, branch %s, branch_id=%s)",
-        namespace,
-        parameters.database,
-        parameters.database_user,
-        branch,
-        branch_id,
+        f"Creating Vela configuration for namespace: {deployment_namespace(id_, branch)}"
+        f" (database {parameters.database}, user {parameters.database_user}, branch {branch})"
     )
 
     chart = resources.files(__package__) / "charts" / "supabase"
-    compose_file_path = Path(__file__).with_name("compose.yml")
-    if not compose_file_path.exists():
-        raise FileNotFoundError(f"docker-compose manifest not found at {compose_file_path}")
-
-    compose_file = yaml.safe_load(compose_file_path.read_text())
-    compose_file = inject_branch_env(compose_file, branch_id)
-
-    vector_file = Path(__file__).with_name("vector.yml")
-    if not vector_file.exists():
-        raise FileNotFoundError(f"vector config file not found at {vector_file}")
+    compose_file = Path(__file__).with_name("compose.yml")
+    if not compose_file.exists():
+        raise FileNotFoundError(f"docker-compose manifest not found at {compose_file}")
     values_content = yaml.safe_load((chart / "values.yaml").read_text())
 
     # Override defaults
-    values_content.setdefault("secret", {}).setdefault("jwt", {}).update(
-        secret=jwt_secret,
-        anonKey=anon_key,
-        serviceKey=service_key,
-    )
-
     db_secrets = values_content.setdefault("db", {}).setdefault("credentials", {})
     db_secrets["adminusername"] = parameters.database_user
     db_secrets["adminpassword"] = parameters.database_password
     db_secrets["admindb"] = parameters.database
-    db_secrets["pgmeta_crypto_key"] = settings.pgmeta_crypto_key
 
     db_spec = values_content.setdefault("db", {})
-    resource_cfg = db_spec.setdefault("resources", {})
-
-    cpu_provisioning_factor = 0.25  # request = 25% of limit
-    memory_request_fraction = 0.90  # request = 90% of limit
-
-    resource_cfg["limits"] = {
-        "cpu": f"{parameters.milli_vcpu}m",
-        "memory": f"{bytes_to_mib(parameters.memory_bytes)}Mi",
-    }
-    resource_cfg["requests"] = {
-        "cpu": f"{int(parameters.milli_vcpu * cpu_provisioning_factor)}m",
-        "memory": f"{bytes_to_mib(math.floor(parameters.memory_bytes * memory_request_fraction))}Mi",
-    }
-
+    db_spec["vcpu"] = parameters.vcpu
+    db_spec["ram"] = bytes_to_gib(parameters.memory)
     db_spec.setdefault("persistence", {})["size"] = f"{bytes_to_gib(parameters.database_size)}Gi"
-    db_spec.setdefault("storagePersistence", {})["size"] = f"{bytes_to_gib(parameters.storage_size)}Gi"
     db_spec.setdefault("image", {})["tag"] = parameters.database_image_tag
-    storage_spec = values_content.setdefault("storage", {})
-    storage_spec["enabled"] = True
-    storage_persistence = storage_spec.setdefault("persistence", {})
-    storage_persistence["enabled"] = True
-    storage_persistence["size"] = f"{bytes_to_gib(parameters.storage_size)}Gi"
+    namespace = deployment_namespace(id_, branch)
 
     # todo: create an storage class with the given IOPS
     values_content["provisioning"] = {"iops": parameters.iops}
-    with (
-        tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as temp_values,
-        tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as modified_compose,
-    ):
-        yaml.safe_dump(compose_file, modified_compose, default_flow_style=False)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as temp_values:
         yaml.safe_dump(values_content, temp_values, default_flow_style=False)
-        modified_compose.flush()
-        temp_values.flush()
 
         try:
             await check_output(
@@ -209,9 +133,7 @@ async def create_vela_config(
                     namespace,
                     "--create-namespace",
                     "--set-file",
-                    f"composeYaml={modified_compose.name}",
-                    "--set-file",
-                    f"vectorYaml={vector_file}",
+                    f"composeYaml={compose_file}",
                     "-f",
                     temp_values.name,
                 ],
@@ -229,29 +151,55 @@ async def create_vela_config(
             raise
 
 
-async def get_deployment_status(branch_id: Identifier) -> DeploymentStatus:
+def _pods_with_status(statuses: dict[str, str], target_status: str) -> set[str]:
+    return {name for name, status in statuses.items() if status == target_status}
+
+
+async def get_deployment_status(id_: Identifier, branch: Slug) -> DeploymentStatus:
     status: StatusType
+
     try:
-        namespace, vmi_name = get_db_vmi_identity(branch_id)
-        status = await get_virtualmachine_status(namespace, vmi_name)
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"Failed to get deployment status (returning UNKNOWN): {e}")
-        status = "Unknown"
-    return DeploymentStatus(status=status)
+        k8s_statuses = await kube_service.check_namespace_status(deployment_namespace(id_, branch))
+
+        if failed := _pods_with_status(k8s_statuses, "Failed"):
+            status = "ACTIVE_UNHEALTHY"
+            message = "Deployment has failed pods: " + ", ".join(failed)
+        elif pending := _pods_with_status(k8s_statuses, "Pending"):
+            status = "COMING_UP"
+            message = "Deployment has pending pods: " + ", ".join(pending)
+        elif succeeded := _pods_with_status(k8s_statuses, "Succeeded"):
+            # succeeded implies a container is stopped, they should be running
+            status = "INACTIVE"
+            message = "Deployment has stopped pods: " + ", ".join(succeeded)
+        elif all(status == "Running" for status in k8s_statuses.values()):
+            status = "ACTIVE_HEALTHY"
+            message = "All good :)"
+        else:
+            raise RuntimeError(
+                "Unexpected status reported by kubernetes: "
+                + "\n".join(f"{key}: {value}" for key, value in k8s_statuses.items())
+            )
+
+    except (ApiException, KeyError, ClientError) as e:
+        k8s_statuses = {}
+        status = "UNKNOWN"
+        message = str(e)
+
+    return DeploymentStatus(status=status, pods=k8s_statuses, message=message)
 
 
-async def delete_deployment(branch_id: Identifier) -> None:
-    namespace, _ = get_db_vmi_identity(branch_id)
-    try:
-        await kube_service.delete_namespace(namespace)
-    except ApiException as exc:
-        if exc.status == 404:
-            logger.info("Namespace %s not found", namespace)
-            return
-        raise
+async def delete_deployment(id_: Identifier, branch: Slug) -> None:
+    namespace = deployment_namespace(id_, branch)
+    release = _release_name(namespace)
+    await asyncio.to_thread(
+        subprocess.check_call,
+        ["helm", "uninstall", release, "-n", namespace, "--wait"],
+    )
+
+    await kube_service.delete_namespace(namespace)
 
 
-def get_db_vmi_identity(branch_id: Identifier) -> tuple[str, str]:
+def get_db_vmi_identity(id_: Identifier, branch: Slug) -> tuple[str, str]:
     """
     Return the (namespace, vmi_name) for the project's database VirtualMachineInstance.
 
@@ -260,17 +208,16 @@ def get_db_vmi_identity(branch_id: Identifier) -> tuple[str, str]:
     "supabase") and chart name "supabase", the VMI resolves to
     f"{_release_name(namespace)}-supabase-db".
     """
-    namespace = deployment_namespace(branch_id)
+    namespace = deployment_namespace(id_, branch)
     vmi_name = f"{_release_name(namespace)}-supabase-db"
     return namespace, vmi_name
 
 
 class ResizeParameters(BaseModel):
-    database_size: Annotated[int, Field(**DATABASE_SIZE_CONSTRAINTS)] | None
-    storage_size: Annotated[int, Field(**STORAGE_SIZE_CONSTRAINTS)] | None
+    database_size: Annotated[int | None, Field(gt=0, multiple_of=GIB)] = None
 
 
-def resize_deployment(branch_id: Identifier, parameters: ResizeParameters):
+def resize_deployment(id_: Identifier, name: str, parameters: ResizeParameters):
     """Perform an in-place Helm upgrade to disk. Only parameters provided will be updated.
     others are preserved using --reuse-values.
     """
@@ -280,16 +227,8 @@ def resize_deployment(branch_id: Identifier, parameters: ResizeParameters):
     db_spec = values_content.setdefault("db", {})
     if parameters.database_size is not None:
         db_spec.setdefault("persistence", {})["size"] = f"{bytes_to_gib(parameters.database_size)}Gi"
-    if parameters.storage_size is not None:
-        storage_size_gi = f"{bytes_to_gib(parameters.storage_size)}Gi"
-        db_spec.setdefault("storagePersistence", {})["size"] = storage_size_gi
-        storage_spec = values_content.setdefault("storage", {})
-        storage_spec["enabled"] = True
-        storage_persistence = storage_spec.setdefault("persistence", {})
-        storage_persistence["enabled"] = True
-        storage_persistence["size"] = storage_size_gi
 
-    namespace = deployment_namespace(branch_id)
+    namespace = deployment_namespace(id_, name)
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as temp_values:
         yaml.dump(values_content, temp_values, default_flow_style=False)
         subprocess.check_call(
@@ -307,6 +246,10 @@ def resize_deployment(branch_id: Identifier, parameters: ResizeParameters):
         )
 
 
+class BranchEndpointError(VelaError):
+    """Raised when provisioning branch endpoints fails."""
+
+
 class CloudflareConfig(BaseModel):
     api_token: str
     zone_id: str
@@ -316,8 +259,8 @@ class CloudflareConfig(BaseModel):
 
 class KubeGatewayConfig(BaseModel):
     namespace: str = ""
-    gateway_name: str = settings.gateway_name
-    gateway_namespace: str = settings.gateway_namespace
+    gateway_name: str = DEFAULT_GATEWAY_NAME
+    gateway_namespace: str = DEFAULT_GATEWAY_NAMESPACE
 
     def for_namespace(self, namespace: str) -> "KubeGatewayConfig":
         return self.model_copy(update={"namespace": namespace})
@@ -331,12 +274,10 @@ class HTTPRouteSpec(BaseModel):
     service_port: int
     path_prefix: str
     route_suffix: str
-    plugins: list[str] = Field(default_factory=lambda: ["realtime-cors"])
 
 
 class BranchEndpointProvisionSpec(BaseModel):
     project_id: Identifier
-    branch_id: Identifier
     branch_slug: str
 
 
@@ -357,27 +298,23 @@ async def _create_dns_record(cf: CloudflareConfig, domain: str) -> None:
                 proxied=False,
             )
     except CloudflareError as exc:
-        raise VelaCloudflareError(f"Cloudflare API error: {exc}") from exc
+        raise BranchEndpointError(f"Cloudflare API error: {exc}") from exc
     except Exception as exc:  # pragma: no cover - surfaced to caller
-        raise VelaCloudflareError(f"Cloudflare request failed: {exc}") from exc
+        raise BranchEndpointError(f"Cloudflare request failed: {exc}") from exc
 
     logger.info("Created DNS CNAME record %s -> %s", domain, cf.branch_ref_cname)
 
 
 def _build_http_route(cfg: KubeGatewayConfig, spec: HTTPRouteSpec) -> dict[str, Any]:
-    annotations = {
-        "konghq.com/strip-path": "true",
-    }
-    if spec.plugins:
-        annotations["konghq.com/plugins"] = ",".join(spec.plugins)
-
     return {
         "apiVersion": "gateway.networking.k8s.io/v1",
         "kind": "HTTPRoute",
         "metadata": {
             "name": f"{spec.ref}-{spec.route_suffix}",
             "namespace": spec.namespace,
-            "annotations": annotations,
+            "annotations": {
+                "konghq.com/strip-path": "true",
+            },
         },
         "spec": {
             "parentRefs": [
@@ -454,17 +391,15 @@ def _realtime_route_specs(ref: str, domain: str, namespace: str) -> list[HTTPRou
 def _pgmeta_route_specs(ref: str, domain: str, namespace: str) -> list[HTTPRouteSpec]:
     """HTTPRoute definitions that expose the Postgres Meta service for a branch."""
 
-    path = f"/platform/pgmeta/{ref}"
     return [
         HTTPRouteSpec(
             ref=ref,
-            domain=domain,  # TODO: change domain to api.
+            domain=domain,
             namespace=namespace,
             service_name="supabase-supabase-meta",
             service_port=8080,
-            path_prefix=path,
+            path_prefix="/meta",
             route_suffix="pgmeta-route",
-            plugins=["realtime-cors", CHECK_ENCRYPTED_HEADER_PLUGIN_NAME],
         ),
     ]
 
@@ -474,65 +409,7 @@ async def _apply_http_routes(namespace: str, routes: list[dict[str, Any]]) -> No
     try:
         await kube_service.apply_http_routes(namespace, routes)
     except Exception as exc:  # pragma: no cover - surfaced to caller
-        raise VelaKubernetesError(f"Failed to apply HTTPRoute: {exc}") from exc
-
-
-def _build_kong_plugins(namespace: str) -> list[dict[str, Any]]:
-    return [
-        _build_realtime_cors_plugin(namespace),
-        _build_check_encrypted_header_plugin(namespace),
-    ]
-
-
-def _build_realtime_cors_plugin(namespace: str) -> dict[str, Any]:
-    return {
-        "apiVersion": "configuration.konghq.com/v1",
-        "kind": "KongPlugin",
-        "metadata": {
-            "name": "realtime-cors",
-            "namespace": namespace,
-        },
-        "config": {
-            "origins": ["*"],  # todo: restrict this
-            "methods": ["GET", "POST", "OPTIONS", "PUT", "DELETE"],
-            "headers": ["*"],
-            "exposed_headers": ["*"],
-            "credentials": True,
-        },
-        "plugin": "cors",
-    }
-
-
-def _build_check_encrypted_header_plugin(namespace: str) -> dict[str, Any]:
-    lua_script = textwrap.dedent(
-        """
-        local hdr = kong.request.get_header("x-connection-encrypted")
-        if not hdr then
-            return kong.response.exit(403, { message = "Missing x-connection-encrypted" })
-        end
-        """
-    ).strip()
-
-    return {
-        "apiVersion": "configuration.konghq.com/v1",
-        "kind": "KongPlugin",
-        "metadata": {
-            "name": CHECK_ENCRYPTED_HEADER_PLUGIN_NAME,
-            "namespace": namespace,
-        },
-        "config": {
-            "access": [lua_script],
-        },
-        "plugin": "pre-function",
-    }
-
-
-async def _apply_kong_plugin(namespace: str, plugin: dict[str, Any]) -> None:
-    """Apply KongPlugin manifest without blocking the event loop."""
-    try:
-        await kube_service.apply_kong_plugin(namespace, plugin)
-    except Exception as exc:  # pragma: no cover - surfaced to caller
-        raise VelaKubernetesError(f"Failed to apply KongPlugin: {exc}") from exc
+        raise BranchEndpointError(f"Failed to apply HTTPRoute: {exc}") from exc
 
 
 async def provision_branch_endpoints(
@@ -549,23 +426,17 @@ async def provision_branch_endpoints(
         domain_suffix=settings.cloudflare_domain_suffix,
     )
 
-    gateway_cfg = KubeGatewayConfig().for_namespace(deployment_namespace(spec.branch_id))
+    gateway_cfg = KubeGatewayConfig().for_namespace(deployment_namespace(spec.project_id, spec.branch_slug))
 
     domain = f"{ref}.{cf_cfg.domain_suffix}".lower()
     logger.info(
-        "Provisioning endpoints for project_id=%s branch_id=%s branch_slug=%s domain=%s",
+        "Provisioning endpoints for project_id=%s branch=%s domain=%s",
         spec.project_id,
-        spec.branch_id,
         spec.branch_slug,
         domain,
     )
 
     await _create_dns_record(cf_cfg, domain)
-
-    # Apply the KongPlugins required for the branch routes
-    kong_plugins = _build_kong_plugins(gateway_cfg.namespace)
-    for plugin in kong_plugins:
-        await _apply_kong_plugin(gateway_cfg.namespace, plugin)
 
     route_specs = (
         _postgrest_route_specs(ref, domain, gateway_cfg.namespace)
@@ -585,29 +456,14 @@ async def deploy_branch_environment(
     branch_id: Identifier,
     branch_slug: Slug,
     parameters: DeploymentParameters,
-    jwt_secret: str,
-    anon_key: str,
-    service_key: str,
 ) -> None:
     """Background task: provision infra for a branch and persist the resulting endpoint."""
 
     # Create the main deployment (database etc)
-    await create_vela_config(
-        branch_id=branch_id,
-        parameters=parameters,
-        branch=branch_slug,
-        jwt_secret=jwt_secret,
-        anon_key=anon_key,
-        service_key=service_key,
-    )
+    await create_vela_config(project_id, parameters, branch_slug)
 
     # Provision DNS + HTTPRoute resources
     ref = branch_dns_label(branch_id)
     await provision_branch_endpoints(
-        spec=BranchEndpointProvisionSpec(
-            project_id=project_id,
-            branch_id=branch_id,
-            branch_slug=branch_slug,
-        ),
-        ref=ref,
+        spec=BranchEndpointProvisionSpec(project_id=project_id, branch_slug=branch_slug), ref=ref
     )
