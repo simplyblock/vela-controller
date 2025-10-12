@@ -190,9 +190,15 @@ async def create(
 ) -> JSONResponse:
     # TODO implement cloning logic
     source = await lookup_branch(session, project, parameters.source)
+    if parameters.env_type is None:
+       env_type=""
+    else:
+       env_type=parameters.env_type
     entity = Branch(
         name=parameters.name,
+        env_type=env_type,
         project_id=project.id,
+        organization_id=organization.id,
         parent_id=source.id,
         database=source.database,
         database_user=source.database_user,

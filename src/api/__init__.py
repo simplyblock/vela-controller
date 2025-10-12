@@ -2,7 +2,6 @@ import json
 import re
 from importlib.resources import files
 from typing import Any, Literal
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute, APIRouter

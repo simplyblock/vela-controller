@@ -15,11 +15,6 @@ SessionDep = Annotated[AsyncSession, Depends(get_db)]
 from ._util import Model, Name
 from .membership import Membership
 
-if TYPE_CHECKING:
-    from .project import Project
-    from .role import Role
-    from .user import User
-
 class Organization(AsyncAttrs, Model, table=True):
     name: Name = Field(unique=True)
     locked: bool = False

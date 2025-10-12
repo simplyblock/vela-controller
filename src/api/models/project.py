@@ -7,7 +7,8 @@ from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Relationship, select
 
-from ..._util import Identifier, StatusType
+from ..._util import Identifier
+from ...deployment import StatusType
 from ...deployment import DeploymentParameters
 from ..db import get_db
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -15,9 +16,6 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 SessionDep = Annotated[AsyncSession, Depends(get_db)]
 from ._util import Model, Name
 from .organization import Organization, OrganizationDep
-
-if TYPE_CHECKING:
-    from .branch import Branch
 
 class Project(AsyncAttrs, Model, table=True):
     name: Name

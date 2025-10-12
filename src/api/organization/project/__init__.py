@@ -24,13 +24,10 @@ from ...models.branch import Branch
 from ...models.organization import OrganizationDep
 from ...models.project import Project, ProjectCreate, ProjectDep, ProjectPublic, ProjectUpdate
 from .. import instance_api
-from . import branch as branch_module
 
 from ...db import get_db
 from sqlmodel.ext.asyncio.session import AsyncSession
 SessionDep = Annotated[AsyncSession, Depends(get_db)]
-
-
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +35,6 @@ api=APIRouter()
 project_api=APIRouter()
 api.include_router(instance_api,prefix="/projects")
 project_api.include_router(instance_api,prefix="/projects/{project_id}")
-
 
 async def _deploy_branch_environment_task(
     *,

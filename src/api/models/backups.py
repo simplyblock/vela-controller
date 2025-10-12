@@ -7,7 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import SQLModel, Field, Relationship
 from ._util import Model
 from ..._util import Identifier
-from .branch import Branch
 from .organization import Organization, OrganizationDep
 
 
