@@ -83,7 +83,9 @@ async def create_folder(folder_name: str, parent_uid: str | None = None) -> str:
             if parent_uid:
                 payload["parentUid"] = parent_uid
 
-            response = await client.post(f"{settings.grafana_url}/api/folders", auth=auth, headers=headers, json=payload)
+            response = await client.post(
+                f"{settings.grafana_url}/api/folders", auth=auth, headers=headers, json=payload
+            )
             response.raise_for_status()
             logger.info(f"Folder '{folder_name}' created successfully.")
             return response.json()["uid"]
@@ -218,7 +220,9 @@ async def remove_team(team_id: int):
 async def remove_folder(folder_uid: str):
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.delete(f"{settings.grafana_url}/api/folders/{folder_uid}", auth=auth, headers=headers)
+            response = await client.delete(
+                f"{settings.grafana_url}/api/folders/{folder_uid}", auth=auth, headers=headers
+            )
             if response.status_code == 200:
                 logger.info(f"Folder {folder_uid} removed.")
             elif response.status_code == 404:
