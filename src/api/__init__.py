@@ -2,18 +2,34 @@ import json
 import re
 from importlib.resources import files
 from typing import Any, Literal
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.routing import APIRoute
+from fastapi.routing import APIRoute, APIRouter
 from pydantic import BaseModel
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import SQLModel
-
 from .db import engine
 from .organization import api as organization_api
 from .settings import settings
 from .user import api as user_api
+from .roles_access_rights import router as roles_api
+from .backup import router as backup_router
+from .organization import instance_api
+from .organization.project.branch import branch_api
+from .organization.project import projects_api
+from .ressources import router as ressources_router
+from .backupmonitor import *
+from .ressources import monitor_resources
+import logging
+import signal
+from threading import Thread, Event
 
+from pydantic import BaseModel
+
+
+from .db import engine
+from sqlmodel import SQLModel
 
 class _FastAPI(FastAPI):
     def openapi(self) -> dict[str, Any]:
@@ -112,8 +128,9 @@ async def _create_db_and_tables():
     from . import models  # Ensure models are registered # noqa
 
     async with engine.begin() as conn:
+        await conn.execute(text("SET search_path TO public"))
+        await conn.execute(text("CREATE SCHEMA IF NOT EXISTS public"))
         await conn.run_sync(SQLModel.metadata.create_all)
-
 
 def _use_route_names_as_operation_ids(app: FastAPI) -> None:
     """
@@ -127,6 +144,8 @@ def _use_route_names_as_operation_ids(app: FastAPI) -> None:
             route.operation_id = route.name
 
 
+app = FastAPI(root_path=settings.root_path)
+
 _tags = [
     {"name": "user"},
     {"name": "organization"},
@@ -138,33 +157,50 @@ _tags = [
 
 app = FastAPI(openapi_tags=_tags, root_path=settings.root_path)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],
-)
+router = APIRouter()
 
+@router.get("/health")
+async def health():
+    return {
+        "status": "ok",
+        "service": "vela"
+    }
+
+app.include_router(router)
+app.include_router(organization_api)
+app.include_router(user_api, prefix="/users")
+app.include_router(roles_api)
+app.include_router(backup_router)
+app.include_router(ressources_router, prefix="/resources")
+app.include_router(instance_api)
+app.include_router(projects_api)
+app.include_router(branch_api)
+
+#_use_route_names_as_operation_ids(app)
 
 @app.on_event("startup")
 async def on_startup():
     await _create_db_and_tables()
 
-
 class Status(BaseModel):
     service: Literal["vela"] = "vela"
 
-
-@app.get("/health", response_model=Status)
-def health():
-    return Status()
-
-
-app.include_router(organization_api, prefix="/organizations")
-app.include_router(user_api, prefix="/users")
-_use_route_names_as_operation_ids(app)
-
-
 __all__ = ["app"]
+
+# Setup logging
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+
+import asyncio
+
+@app.on_event("startup")
+async def on_startup():
+    # create tables
+    from . import models
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
+
+    # start async background monitor
+    asyncio.create_task(run_monitor())
+    asyncio.create_task(monitor_resources(60))
+

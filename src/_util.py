@@ -1,43 +1,15 @@
 import asyncio
 import subprocess
-from typing import Annotated, Any, Final, Literal
+from typing import Annotated, Any, Final
 
 from pydantic import BeforeValidator, Field, PlainSerializer, StringConstraints, WithJsonSchema
 from ulid import ULID
 
 _MAX_LENGTH = 50
 
-KB: Final[int] = 1000
-MB: Final[int] = KB * 1000
-GB: Final[int] = MB * 1000
-TB: Final[int] = GB * 1000
-
-
-VCPU_MILLIS_MIN = 1000  # in milli vCPU
-VCPU_MILLIS_MAX = 64000
-VCPU_MILLIS_STEP = 100
-
-MEMORY_MIN = 500 * MB
-MEMORY_MAX = 256 * GB
-MEMORY_STEP = 100 * MB
-
-DB_SIZE_MIN = 1 * GB
-DB_SIZE_MAX = 100 * TB
-DB_SIZE_STEP = GB
-
-STORAGE_SIZE_MIN = 500 * MB
-STORAGE_SIZE_MAX = 1 * TB
-STORAGE_SIZE_STEP = GB
-
-IOPS_MIN = 100
-IOPS_MAX = 2**31 - 1
-
-
-CPU_CONSTRAINTS = {"ge": VCPU_MILLIS_MIN, "le": VCPU_MILLIS_MAX, "multiple_of": VCPU_MILLIS_STEP}
-MEMORY_CONSTRAINTS = {"ge": MEMORY_MIN, "le": MEMORY_MAX, "multiple_of": MEMORY_STEP}
-DATABASE_SIZE_CONSTRAINTS = {"ge": DB_SIZE_MIN, "le": DB_SIZE_MAX, "multiple_of": DB_SIZE_STEP}
-STORAGE_SIZE_CONSTRAINTS = {"ge": STORAGE_SIZE_MIN, "le": STORAGE_SIZE_MAX, "multiple_of": STORAGE_SIZE_STEP}
-IOPS_CONSTRAINTS = {"ge": IOPS_MIN, "le": IOPS_MAX}
+KIB: Final[int] = 1024
+MIB: Final[int] = KIB * 1024
+GIB: Final[int] = MIB * 1024
 
 Slug = Annotated[
     str,
@@ -46,29 +18,6 @@ Slug = Annotated[
         min_length=1,
         max_length=_MAX_LENGTH,
     ),
-]
-
-# Represents the state of Kubevirt VM
-# https://github.com/kubevirt/kubevirt/blob/main/staging/src/kubevirt.io/api/core/v1/types.go#L1897-L1942
-StatusType = Literal[
-    "Stopped",
-    "Provisioning",
-    "Starting",
-    "Running",
-    "Paused",
-    "Stopping",
-    "Terminating",
-    "CrashLoopBackOff",
-    "Migrating",
-    "Unknown",
-    "ErrorUnschedulable",
-    "ErrImagePull",
-    "ImagePullBackOff",
-    "ErrorPvcNotFound",
-    "DataVolumeError",
-    "WaitingForVolumeBinding",
-    "WaitingForReceiver",
-    "UNKNOWN",
 ]
 
 
@@ -145,28 +94,34 @@ Identifier = Annotated[
 def bytes_to_kib(value: int) -> int:
     """Convert a byte count to the nearest whole KiB using floor division."""
 
-    return value // KB
+    return value // KIB
 
 
 def bytes_to_mib(value: int) -> int:
     """Convert a byte count to the nearest whole MiB using floor division."""
 
-    return value // MB
+    return value // MIB
 
 
 def bytes_to_gib(value: int) -> int:
     """Convert a byte count to the nearest whole GiB using floor division."""
 
-    return value // GB
+    return value // GIB
 
 
 def kib_to_bytes(value: int) -> int:
     """Convert a KiB count to bytes."""
 
-    return value * KB
+    return value * KIB
 
 
 def mib_to_bytes(value: int) -> int:
     """Convert a MiB count to bytes."""
 
-    return value * MB
+    return value * MIB
+
+
+def gib_to_bytes(value: int) -> int:
+    """Convert a GiB count to bytes."""
+
+    return value * GIB

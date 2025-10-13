@@ -1,8 +1,8 @@
 from collections.abc import Sequence
-from typing import Literal
+from typing import Literal, Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, HTTPException, Request, Response, Depends
 from fastapi.responses import JSONResponse
 from sqlmodel import and_
 from sqlmodel import delete as dbdelete
@@ -10,7 +10,10 @@ from sqlmodel import delete as dbdelete
 from ..._util import Identifier
 from .._util import Forbidden, NotFound, Unauthenticated, url_path_for
 from ..auth import UserDep, user_lookup
-from ..db import SessionDep
+from ..db import get_db
+from sqlmodel.ext.asyncio.session import AsyncSession
+
+SessionDep = Annotated[AsyncSession, Depends(get_db)]
 from ..models.organization import OrganizationDep
 from ..models.role import Role, RoleDep, RoleUserLink
 from ..models.user import UserPublic
@@ -131,7 +134,6 @@ async def list_users(
 ) -> Sequence[UUID | UserPublic]:
     return await public_user_list(await role.awaitable_attrs.users, response)
 
-
 @instance_api.post(
     "/users/",
     name="organizations:roles:users:add",
@@ -143,7 +145,6 @@ async def add_user(session: SessionDep, role: RoleDep, user_id: UUID) -> Respons
     role.users.append(user)
     await session.commit()
     return Response("", status_code=201)
-
 
 @instance_api.delete(
     "/users/{user_id}/",

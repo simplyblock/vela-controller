@@ -1,44 +1,40 @@
 import asyncio
 import logging
-import secrets
 from collections.abc import Sequence
-from datetime import UTC, datetime, timedelta
-from typing import Literal
+from typing import Literal, Annotated
 
-import jwt
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, HTTPException, Request, Response, Depends
 from fastapi.responses import JSONResponse
-from keycloak.exceptions import KeycloakError
 from kubernetes_asyncio.client.exceptions import ApiException
 from sqlalchemy.exc import IntegrityError
 
+from ....exceptions import VelaError
 from ...._util import Identifier
 from ....deployment import (
     DeploymentParameters,
     delete_deployment,
     deploy_branch_environment,
     get_db_vmi_identity,
+    get_deployment_status,
 )
-from ....deployment.kubernetes.kubevirt import call_kubevirt_subresource
-from ....exceptions import VelaError
+from ....deployment.kubevirt import call_kubevirt_subresource
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
-from ...db import SessionDep
-from ...keycloak import realm_admin
+
 from ...models.branch import Branch
 from ...models.organization import OrganizationDep
-from ...models.project import (
-    Project,
-    ProjectCreate,
-    ProjectDep,
-    ProjectPublic,
-    ProjectUpdate,
-)
-from . import branch as branch_module
+from ...models.project import Project, ProjectCreate, ProjectDep, ProjectPublic, ProjectUpdate
+from .. import instance_api
+
+from ...db import get_db
+from sqlmodel.ext.asyncio.session import AsyncSession
+SessionDep = Annotated[AsyncSession, Depends(get_db)]
 
 logger = logging.getLogger(__name__)
 
-api = APIRouter(tags=["project"])
-
+projects_api = APIRouter(
+    prefix="/organizations/{organization_id}/projects",
+    tags=["projects"],
+)
 
 async def _deploy_branch_environment_task(
     *,
@@ -46,9 +42,6 @@ async def _deploy_branch_environment_task(
     branch_id: Identifier,
     branch_slug: str,
     parameters: DeploymentParameters,
-    jwt_secret: str,
-    anon_key: str,
-    service_key: str,
 ) -> None:
     try:
         await deploy_branch_environment(
@@ -56,9 +49,6 @@ async def _deploy_branch_environment_task(
             branch_id=branch_id,
             branch_slug=branch_slug,
             parameters=parameters,
-            jwt_secret=jwt_secret,
-            anon_key=anon_key,
-            service_key=service_key,
         )
     except VelaError:
         logger.exception(
@@ -70,14 +60,20 @@ async def _deploy_branch_environment_task(
 
 
 async def _public(project: Project) -> ProjectPublic:
+    #status = await get_deployment_status(project.id, Branch.DEFAULT_SLUG)
+    branch_status = {
+        "main": "UNKNOWN"
+    }
     return ProjectPublic(
-        organization_id=await project.awaitable_attrs.organization_id,
-        id=await project.awaitable_attrs.id,
-        name=await project.awaitable_attrs.name,
+        organization_id=project.organization_id,
+        max_backups=project.max_backups,
+        id=project.id,
+        name=project.name,
+        branch_status=branch_status,
     )
 
 
-@api.get(
+@projects_api.get(
     "/",
     name="organizations:projects:list",
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
@@ -104,7 +100,7 @@ _links = {
 }
 
 
-@api.post(
+@projects_api.post(
     "/",
     name="organizations:projects:create",
     status_code=201,
@@ -134,61 +130,47 @@ async def create(
 ) -> JSONResponse:
     entity = Project(
         organization=organization,
+        max_backups=parameters.max_backups,
         name=parameters.name,
     )
     session.add(entity)
+    try:
+        await session.commit()
+    except IntegrityError as e:
+        error = str(e)
+        if ("asyncpg.exceptions.UniqueViolationError" not in error) or ("unique_project_name" not in error):
+            raise
+        raise HTTPException(409, f"Organization already has project named {parameters.name}") from e
+    await session.refresh(entity)
+    # Ensure default branch exists
     main_branch = Branch(
         name=Branch.DEFAULT_SLUG,
         project=entity,
+        env_type=parameters.env_type,
+        organization_id=organization.id,
         parent=None,
         database=parameters.deployment.database,
         database_user=parameters.deployment.database_user,
         database_password=parameters.deployment.database_password,
         database_size=parameters.deployment.database_size,
-        storage_size=parameters.deployment.storage_size,
-        milli_vcpu=parameters.deployment.milli_vcpu,
-        memory=parameters.deployment.memory_bytes,
+        vcpu=parameters.deployment.vcpu,
+        memory=parameters.deployment.memory,
         iops=parameters.deployment.iops,
         database_image_tag=parameters.deployment.database_image_tag,
     )
     session.add(main_branch)
-    try:
-        await realm_admin("master").a_create_realm({"realm": str(main_branch.id)})
-        await realm_admin(str(main_branch.id)).a_create_client({"clientId": "application-client"})
-        await session.commit()
-    except IntegrityError as exc:
-        await session.rollback()
-        error = str(exc)
-        if ("asyncpg.exceptions.UniqueViolationError" in error) and ("unique_project_name" in error):
-            raise HTTPException(409, f"Organization already has project named {parameters.name}") from exc
-        raise
-    except KeycloakError:
-        await session.rollback()
-        logging.exception("Failed to connect to keycloak")
-        raise
-
-    await session.refresh(entity)
+    await session.commit()
     await session.refresh(main_branch)
-    project_id = entity.id
+    await session.refresh(entity)
     branch_slug = main_branch.name
     branch_dbid = main_branch.id
 
-    # Generate keys and store keys
-    jwt_secret, anon_key, service_key = _generate_keys(branch_dbid.__str__())
-    main_branch.jwt_secret = jwt_secret
-    main_branch.anon_key = anon_key
-    main_branch.service_key = service_key
-    await session.commit()
-
     asyncio.create_task(
         _deploy_branch_environment_task(
-            project_id=project_id,
+            project_id=entity.id,
             branch_id=branch_dbid,
             branch_slug=branch_slug,
             parameters=parameters.deployment,
-            jwt_secret=jwt_secret,
-            anon_key=anon_key,
-            service_key=service_key,
         )
     )
     await session.refresh(organization)
@@ -196,7 +178,7 @@ async def create(
         request,
         "organizations:projects:detail",
         organization_id=organization.id,
-        project_id=project_id,
+        project_id=entity.id,
     )
     payload = (await _public(entity)).model_dump() if response == "full" else None
 
@@ -206,13 +188,8 @@ async def create(
         headers={"Location": entity_url},
     )
 
-
-instance_api = APIRouter(prefix="/{project_id}", tags=["project"])
-instance_api.include_router(branch_module.api, prefix="/branches")
-
-
-@instance_api.get(
-    "/",
+@projects_api.get(
+    "/{project_id}",
     name="organizations:projects:detail",
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
@@ -220,8 +197,8 @@ async def detail(_organization: OrganizationDep, project: ProjectDep) -> Project
     return await _public(project)
 
 
-@instance_api.put(
-    "/",
+@projects_api.put(
+    "/{project_id}",
     name="organizations:projects:update",
     status_code=204,
     responses={
@@ -269,9 +246,8 @@ async def update(
         },
     )
 
-
-@instance_api.delete(
-    "/",
+@projects_api.delete(
+    "/{project_id}/",
     name="organizations:projects:delete",
     status_code=204,
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
@@ -279,102 +255,43 @@ async def update(
 async def delete(session: SessionDep, _organization: OrganizationDep, project: ProjectDep):
     await session.refresh(project, ["branches"])
     branches = await project.awaitable_attrs.branches
-    for branch in branches:
-        await delete_deployment(branch.id)
+    #for branch in branches:
+    #    await delete_deployment(project.id, branch.name)
     await session.delete(project)
     await session.commit()
     return Response(status_code=204)
 
 
-@instance_api.post(
-    "/suspend",
-    name="organizations:projects:suspend",
+@projects_api.post(
+    "/{project_id}/pause",
+    name="organizations:projects:pause",
     status_code=204,
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
-async def suspend(_organization: OrganizationDep, project: ProjectDep):
-    # get all the branches and stop their VM
-    branches = await project.awaitable_attrs.branches
-    errors = []
-
-    for branch in branches:
-        namespace, vmi_name = get_db_vmi_identity(branch.id)
-        try:
-            # a paused VM will still consume resources, so we stop it instead
-            # https://kubevirt.io/user-guide/user_workloads/lifecycle/#pausing-and-unpausing-a-virtual-machine
-            await call_kubevirt_subresource(namespace, vmi_name, "stop")
-        except ApiException as e:
-            errors.append(f"{vmi_name}: {e.status}")
-
-    if errors:
-        raise HTTPException(status_code=400, detail={"failed": errors})
-
-    return Response(status_code=204)
+async def pause(_organization: OrganizationDep, project: ProjectDep):
+    namespace, vmi_name = get_db_vmi_identity(project.id, Branch.DEFAULT_SLUG)
+    try:
+        await call_kubevirt_subresource(namespace, vmi_name, "pause")
+        return Response(status_code=204)
+    except ApiException as e:
+        status = 404 if e.status == 404 else 400
+        raise HTTPException(status_code=status, detail=e.body or str(e)) from e
 
 
-@instance_api.post(
-    "/resume",
+@projects_api.post(
+    "/{project_id}/resume",
     name="organizations:projects:resume",
     status_code=204,
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def resume(_organization: OrganizationDep, project: ProjectDep):
-    # get all the branches and start their VM
-    branches = await project.awaitable_attrs.branches
-    errors = []
-
-    for branch in branches:
-        namespace, vmi_name = get_db_vmi_identity(branch.id)
-        try:
-            await call_kubevirt_subresource(namespace, vmi_name, "start")
-        except ApiException as e:
-            errors.append(f"{vmi_name}: {e.status}")
-
-    if errors:
-        raise HTTPException(status_code=400, detail={"failed": errors})
-
-    return Response(status_code=204)
+    namespace, vmi_name = get_db_vmi_identity(project.id, Branch.DEFAULT_SLUG)
+    try:
+        await call_kubevirt_subresource(namespace, vmi_name, "unpause")
+        return Response(status_code=204)
+    except ApiException as e:
+        status = 404 if e.status == 404 else 400
+        raise HTTPException(status_code=status, detail=e.body or str(e)) from e
 
 
-api.include_router(instance_api)
 
-
-def _generate_keys(branch_id: str) -> tuple[str, str, str]:
-    """Generates JWT secret, anon key, and service role key"""
-    jwt_secret = secrets.token_urlsafe(32)
-
-    iat = int(datetime.now(UTC).timestamp())
-    # 10 years expiration
-    exp = int((datetime.now(UTC) + timedelta(days=365 * 10)).timestamp())
-
-    anon_payload = {
-        "iss": "supabase",
-        "ref": branch_id,
-        "role": "anon",
-        "iat": iat,
-        "exp": exp,
-    }
-
-    service_role_payload = {
-        "iss": "supabase",
-        "ref": branch_id,
-        "role": "service_role",
-        "iat": iat,
-        "exp": exp,
-    }
-
-    anon_key = jwt.encode(
-        payload=anon_payload,
-        key=jwt_secret,
-        algorithm="HS256",
-        headers={"alg": "HS256", "typ": "JWT"},
-    )
-
-    service_key = jwt.encode(
-        payload=service_role_payload,
-        key=jwt_secret,
-        algorithm="HS256",
-        headers={"alg": "HS256", "typ": "JWT"},
-    )
-
-    return jwt_secret, anon_key, service_key

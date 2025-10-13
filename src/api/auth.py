@@ -9,10 +9,13 @@ from jwt.exceptions import PyJWTError
 from pydantic import ValidationError
 from sqlmodel import select
 
-from .db import SessionDep
 from .models.organization import OrganizationDep
 from .models.user import JWT, User
 from .settings import settings
+
+from .db import get_db
+from sqlmodel.ext.asyncio.session import AsyncSession
+SessionDep = Annotated[AsyncSession, Depends(get_db)]
 
 # HTTPBearer returns 403 instead of 401. Avoid this by raising the error manually
 security = HTTPBearer(auto_error=False)
@@ -35,7 +38,7 @@ def _decode(token: str):
 
 async def user_by_id(session: SessionDep, id_: UUID):
     query = select(User).where(User.id == id_)
-    db_user = (await session.exec(query)).unique().one_or_none()
+    db_user = (await session.execute(query)).unique().scalars().one_or_none()
     return db_user if db_user is not None else User(id=id_)
 
 
@@ -66,7 +69,7 @@ AuthUserDep = Annotated[User, Depends(authenticated_user)]
 
 async def user_lookup(session: SessionDep, user_id: UUID) -> User:
     query = select(User).where(User.id == user_id)
-    user = (await session.exec(query)).one_or_none()
+    user = (await session.execute(query)).scalars().one_or_none()
     if user is None:
         raise HTTPException(404, f"User {user_id} not found")
     return user
