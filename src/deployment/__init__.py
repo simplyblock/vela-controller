@@ -16,8 +16,6 @@ from pydantic import BaseModel, Field, model_validator
 from .._util import (
     CPU_CONSTRAINTS,
     DATABASE_SIZE_CONSTRAINTS,
-    DEFAULT_DB_NAME,
-    DEFAULT_DB_USER,
     IOPS_CONSTRAINTS,
     MEMORY_CONSTRAINTS,
     STORAGE_SIZE_CONSTRAINTS,
@@ -105,8 +103,6 @@ def inject_branch_env(compose: dict[str, Any], branch_id: Identifier) -> dict[st
 
 
 class DeploymentParameters(BaseModel):
-    database: dbstr = DEFAULT_DB_NAME  # deprecated;
-    database_user: dbstr = DEFAULT_DB_USER  # deprecated;
     database_password: dbstr
     database_size: Annotated[int, Field(**DATABASE_SIZE_CONSTRAINTS)]
     storage_size: Annotated[int, Field(**STORAGE_SIZE_CONSTRAINTS)]
