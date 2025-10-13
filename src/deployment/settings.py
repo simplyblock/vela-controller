@@ -19,10 +19,11 @@ class Settings(BaseSettings):
         str,
         Field(..., description="Private access token for authenticating with the Logflare API."),
     ]
+
     logflare_url: Annotated[
         HttpUrl,
-        Field(..., description="Base URL of the Logflare API (e.g. http://localhost:4000"),
-    ] = "http://localhost:4000"
+        Field(default="http://localhost:4000", description="Base URL of the Logflare API (e.g. http://localhost:4000)"),
+    ]
     deployment_release_name: str = "supabase"
     deployment_host: str = "localhost"
     pgmeta_crypto_key: str
