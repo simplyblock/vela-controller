@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     ] = "vela"
     logflare_private_access_token: Annotated[
         str,
-        Field(..., description="Private access token for authenticating with the Logflare API."),
+        Field(default="", description="Private access token for authenticating with the Logflare API."),
     ]
 
     logflare_url: Annotated[
