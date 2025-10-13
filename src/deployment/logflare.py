@@ -126,7 +126,7 @@ async def create_logflare_objects(branch_id: Identifier):
     """
     logger.info(f"Creating Logflare objects for branch_id={branch_id}")
 
-    source_id = await create_source(str(branch_id), "source")
+    source_id = await create_sources(str(branch_id))
     endpoint_id = await create_endpoint(str(branch_id), "endpoint")
 
     logger.info(f"Created Logflare source {source_id} and endpoint {endpoint_id} for branch {branch_id}.")
