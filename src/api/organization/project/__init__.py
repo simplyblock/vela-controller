@@ -186,7 +186,7 @@ async def create(
     main_branch.jwt_secret = jwt_secret
     main_branch.anon_key = anon_key
     main_branch.service_key = service_key
-    credential=credentials.credentials
+    credential = credentials.credentials
     await session.commit()
 
     asyncio.create_task(
