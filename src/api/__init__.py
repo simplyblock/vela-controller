@@ -169,7 +169,7 @@ async def health():
 app.include_router(router)
 app.include_router(organization_api)
 app.include_router(user_api, prefix="/users")
-app.include_router(roles_api, prefix="/roles")
+app.include_router(roles_api)
 app.include_router(backup_router)
 app.include_router(ressources_router, prefix="/resources")
 app.include_router(instance_api)

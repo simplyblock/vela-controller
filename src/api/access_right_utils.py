@@ -41,6 +41,7 @@ async def get_user_rights(session: AsyncSession, user_id, entity_context) -> Lis
         select(AccessRight.entry)
         .join(RoleAccessRight, AccessRight.id == RoleAccessRight.access_right_id)
         .join(Role, Role.id == RoleAccessRight.role_id)
+        .join(Role, Role.organization_id == RoleAccessRight.organization_id)
         .join(RoleUserLink, RoleUserLink.role_id == Role.id)
         .where(
             Role.is_active == True,

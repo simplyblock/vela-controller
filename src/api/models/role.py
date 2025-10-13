@@ -27,24 +27,23 @@ class RoleType(PyEnum):
     branch = 3
 
 class RoleAccessRight(AsyncAttrs, Model, table=True):
+    organization_id: Identifier = Model.foreign_key_field("organization", nullable=False, primary_key=True)
     role_id: Identifier = Model.foreign_key_field("role", nullable=False, primary_key=True)
     access_right_id: Identifier = Model.foreign_key_field("accessright", nullable=False, primary_key=True)
 
 class RoleUserLink(AsyncAttrs, Model, table=True):
-    role_id: int | None = Model.foreign_key_field("role", nullable=True, primary_key=True)
+    organization_id: Identifier = Model.foreign_key_field("organization", nullable=False, primary_key=True)
+    role_id: Identifier = Model.foreign_key_field("role", nullable=False, primary_key=True)
     user_id: UUID = Field(foreign_key="user.id", primary_key=True)
     environment_entity: str = Field(nullable=True)
     project_entity: Identifier | None = Model.foreign_key_field("project", nullable=True)
     branch_entity: Identifier | None = Model.foreign_key_field("branch", nullable=True)
-
-
 
 class Role(AsyncAttrs, Model, table=True):
     organization_id: Identifier | None = Model.foreign_key_field("organization", nullable=True)
     organization: Organization | None = Relationship(back_populates="roles")
     role_type: RoleType
     is_active: bool
-
 
 class AccessRight(AsyncAttrs, Model, table=True):
     entry: str
