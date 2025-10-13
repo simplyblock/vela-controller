@@ -8,6 +8,7 @@
 # docker-compose payload injected via helm --set-file composeYaml
 composeYaml: ""
 vectorYaml: ""
+pgHbaConf: ""
 
 secret:
   # jwt will be used to reference secret in multiple services:
@@ -22,13 +23,6 @@ secret:
   # these fields must be provided even if using external database
   db:
     password: ""
-    # specify existing secret, which takes precedence over variables above
-    secretRef: ""
-    # override secret keys for existing secret refs
-    secretRefKey:
-      username: username
-      password: password
-      database: database
   # analytics Logflare API key
   analytics:
     apiKey: your-super-secret-and-long-logflare-key

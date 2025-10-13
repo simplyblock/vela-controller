@@ -9,7 +9,7 @@ services:
       JWT_EXP: '3600'
     volumes:
     - /mnt/postgres_data/pgdata:/var/lib/postgresql/data
-    - /docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
+    - ./pg_hba.conf:/etc/postgresql/pg_hba.conf:ro,z
     networks:
     - supabase
     ports:
@@ -153,3 +153,7 @@ services:
 networks:
   supabase:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 10.89.0.0/24
+          gateway: 10.89.0.1
