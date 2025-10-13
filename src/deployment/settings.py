@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from pydantic import StringConstraints, HttpUrl, Field
+from pydantic import Field, HttpUrl, StringConstraints
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 

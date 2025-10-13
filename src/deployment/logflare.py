@@ -1,14 +1,12 @@
 import logging
-from typing import List
+
 import httpx
 
 from .._util import Identifier
-from ..exceptions import VelaLogflareError
 from .settings import settings
 
 logger = logging.getLogger(__name__)
 
-LOGFLARE_URL = settings.logflare_url
 LOGFLARE_API_KEY = settings.logflare_private_access_token
 
 headers = {
@@ -19,7 +17,7 @@ headers = {
 
 
 # --- SOURCE CREATION ---
-async def create_sources(branch_id: str) -> List[str]:
+async def create_sources(branch_id: str) -> list[str]:
     """
     Create multiple Logflare sources for the given branch.
     Returns a list of successfully created source names.
@@ -40,7 +38,7 @@ async def create_sources(branch_id: str) -> List[str]:
             payload = {"name": full_name}
 
             try:
-                response = await client.post(f"{LOGFLARE_URL}/api/sources", headers=headers, json=payload)
+                response = await client.post(f"{settings.logflare_url}/api/sources", headers=headers, json=payload)
                 response.raise_for_status()
                 logger.info(f"Logflare source '{full_name}' created successfully.")
                 created_sources.append(full_name)
@@ -53,6 +51,7 @@ async def create_sources(branch_id: str) -> List[str]:
                 logger.error(f"Request error while creating source '{full_name}': {exc}")
 
     return created_sources
+
 
 # --- ENDPOINT CREATION ---
 async def create_all_logs_endpoint(branch_id: str) -> str:
@@ -116,7 +115,7 @@ async def create_all_logs_endpoint(branch_id: str) -> str:
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post(
-                f"{LOGFLARE_URL}/api/endpoints",
+                f"{settings.logflare_url}/api/endpoints",
                 headers=headers,
                 json=payload,
                 timeout=60,
@@ -125,10 +124,9 @@ async def create_all_logs_endpoint(branch_id: str) -> str:
             logger.info(f"Created Logflare endpoint '{endpoint_name}' for branch {branch_id}")
             return response.json().get("id") or response.json().get("endpoint_id")
         except httpx.HTTPStatusError as exc:
-            logger.error(
-                f"Failed to create Logflare endpoint '{endpoint_name}': {exc.response.text}"
-            )
+            logger.error(f"Failed to create Logflare endpoint '{endpoint_name}': {exc.response.text}")
             raise
+
 
 # --- LOG QUERY ---
 async def get_logs_from_endpoint(branch_id: str, source: str, limit: int = 100):
@@ -145,7 +143,7 @@ async def get_logs_from_endpoint(branch_id: str, source: str, limit: int = 100):
 
     endpoint_name = f"{branch_id}.logs.all"
 
-    url = f"{LOGFLARE_URL}/api/endpoints/query/{endpoint_name}"
+    url = f"{settings.logflare_url}/api/endpoints/query/{endpoint_name}"
 
     async with httpx.AsyncClient(timeout=30) as client:
         try:
@@ -173,4 +171,4 @@ async def create_logflare_objects(branch_id: Identifier):
     endpoint_id = await create_all_logs_endpoint(branch_id)
 
     logger.info(f"Created Logflare source {source_id} and endpoint {endpoint_id} for branch {branch_id}.")
-    #return {"source_id": source_id, "endpoint_id": endpoint_id}
+    # return {"source_id": source_id, "endpoint_id": endpoint_id}
