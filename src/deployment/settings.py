@@ -20,6 +20,11 @@ class Settings(BaseSettings):
         Field(default="", description="Private access token for authenticating with the Logflare API."),
     ]
 
+    logflare_public_access_token: Annotated[
+        str,
+        Field(default="", description="Public access token for authenticating with the Logflare API."),
+    ]
+
     logflare_url: Annotated[
         HttpUrl,
         Field(default="http://localhost:4000", description="Base URL of the Logflare API (e.g. http://localhost:4000)"),

@@ -17,7 +17,7 @@ headers = {
 
 
 # --- SOURCE CREATION ---
-async def create_sources(branch_id: str) -> list[str]:
+async def create_sources(branch_id: str, default: bool = False) -> list[str]:
     """
     Create multiple Logflare sources for the given branch.
     Returns a list of successfully created source names.
@@ -29,6 +29,15 @@ async def create_sources(branch_id: str) -> list[str]:
         "deno-relay-logs",
         "storage.logs.prod.2",
     ]
+
+    if default:
+        source_names = [
+            "auth.logs.vela",
+            "controller.logs.vela",
+            "studio.logs.vela",
+            "db.logs.vela",
+            "kong.logs.vela",
+        ]
 
     created_sources = []
 

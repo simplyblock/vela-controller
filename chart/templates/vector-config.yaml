@@ -152,7 +152,7 @@ data:
           retry_max_duration_secs: 10
           headers:
             x-api-key: ${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
-        uri: 'http://vela-logflare:4000/api/logs?source_name=auth.logs.vela'
+        uri: 'http://vela-logflare:4000/api/logs?source_name=default.auth.logs.vela'
       logflare_controller:
         type: 'http'
         inputs:
@@ -164,7 +164,7 @@ data:
           retry_max_duration_secs: 10
           headers:
             x-api-key: ${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
-        uri: 'http://vela-logflare:4000/api/logs?source_name=controller.logs.vela'
+        uri: 'http://vela-logflare:4000/api/logs?source_name=default.controller.logs.vela'
       logflare_studio:
         type: 'http'
         inputs:
@@ -176,7 +176,7 @@ data:
           retry_max_duration_secs: 10
           headers:
             x-api-key: ${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
-        uri: 'http://vela-logflare:4000/api/logs?source_name=studio.logs.vela'
+        uri: 'http://vela-logflare:4000/api/logs?source_name=default.studio.logs.vela'
       logflare_db:
         type: 'http'
         inputs:
@@ -188,7 +188,7 @@ data:
           retry_max_duration_secs: 10
           headers:
             x-api-key: ${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
-        uri: 'http://vela-logflare:4000/api/logs?source_name=db.logs.vela'
+        uri: 'http://vela-logflare:4000/api/logs?source_name=default.db.logs.vela'
       logflare_kong:
         type: 'http'
         inputs:
@@ -201,4 +201,4 @@ data:
           retry_max_duration_secs: 10
           headers:
             x-api-key: ${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
-        uri: 'http://vela-logflare:4000/api/logs?source_name=kong.logs.vela'
+        uri: 'http://vela-logflare:4000/api/logs?source_name=default.kong.logs.vela'
