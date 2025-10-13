@@ -11,7 +11,7 @@ from typing import Annotated, Any, Literal
 import yaml
 from cloudflare import AsyncCloudflare, CloudflareError
 from kubernetes_asyncio.client.exceptions import ApiException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from .._util import (
     CPU_CONSTRAINTS,
@@ -265,13 +265,20 @@ def get_db_vmi_identity(branch_id: Identifier) -> tuple[str, str]:
 
 
 class ResizeParameters(BaseModel):
-    database_size: Annotated[int, Field(**DATABASE_SIZE_CONSTRAINTS)] | None
-    storage_size: Annotated[int, Field(**STORAGE_SIZE_CONSTRAINTS)] | None
+    database_size: Annotated[int, Field(**DATABASE_SIZE_CONSTRAINTS)] | None = None
+    storage_size: Annotated[int, Field(**STORAGE_SIZE_CONSTRAINTS)] | None = None
+    memory_bytes: Annotated[int, Field(**MEMORY_CONSTRAINTS)] | None = None
+
+    @model_validator(mode="after")
+    def ensure_at_least_one(self) -> "ResizeParameters":
+        if self.database_size is None and self.storage_size is None and self.memory_bytes is None:
+            raise ValueError("Specify at least one of database_size, storage_size, or memory_bytes")
+        return self
 
 
 def resize_deployment(branch_id: Identifier, parameters: ResizeParameters):
-    """Perform an in-place Helm upgrade to disk. Only parameters provided will be updated.
-    others are preserved using --reuse-values.
+    """Perform an in-place Helm upgrade for resize operations. Only parameters provided will be
+    updated; others are preserved using --reuse-values.
     """
     chart = resources.files(__package__) / "charts" / "supabase"
     # Minimal values file with only overrides
@@ -287,6 +294,15 @@ def resize_deployment(branch_id: Identifier, parameters: ResizeParameters):
         storage_persistence = storage_spec.setdefault("persistence", {})
         storage_persistence["enabled"] = True
         storage_persistence["size"] = storage_size_gi
+    if parameters.memory_bytes is not None:
+        memory_limit_mib = f"{bytes_to_mib(parameters.memory_bytes)}Mi"
+        resources_spec = db_spec.setdefault("resources", {})
+        limits_spec = resources_spec.setdefault("limits", {})
+        limits_spec["memory"] = memory_limit_mib
+        requests_spec = resources_spec.setdefault("requests", {})
+        memory_request_fraction = 0.90
+        memory_request_bytes = math.floor(parameters.memory_bytes * memory_request_fraction)
+        requests_spec["memory"] = f"{bytes_to_mib(memory_request_bytes)}Mi"
 
     namespace = deployment_namespace(branch_id)
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as temp_values:

@@ -12,12 +12,13 @@ MB: Final[int] = KB * 1000
 GB: Final[int] = MB * 1000
 TB: Final[int] = GB * 1000
 
-
-VCPU_MILLIS_MIN = 1000  # in milli vCPU
+# FIXME: Increasing to have faster boot times.
+# Reduce min vcpu and memory when when the image is optimised and boot time is improved.
+VCPU_MILLIS_MIN = 2000  # in milli vCPU
 VCPU_MILLIS_MAX = 64000
 VCPU_MILLIS_STEP = 100
 
-MEMORY_MIN = 500 * MB
+MEMORY_MIN = 4 * GB
 MEMORY_MAX = 256 * GB
 MEMORY_STEP = 100 * MB
 

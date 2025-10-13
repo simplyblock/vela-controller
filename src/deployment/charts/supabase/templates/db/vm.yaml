@@ -23,7 +23,7 @@ spec:
           sockets: 2
           threads: 1
         memory:
-          guest: 256Gi
+          guest: {{ .Values.db.resources.limits.memory }}
         devices:
           disks:
             - name: rootdisk
@@ -59,9 +59,7 @@ spec:
         resources:
           limits:
             cpu: {{ .Values.db.resources.limits.cpu }}
-            memory: {{ .Values.db.resources.limits.memory }}
           requests:
-            memory: {{ .Values.db.resources.requests.memory }}
             cpu: {{ .Values.db.resources.requests.cpu }}
       networks:
       - name: default
