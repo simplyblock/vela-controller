@@ -3,14 +3,14 @@ import base64
 import hashlib
 import logging
 from collections.abc import Sequence
-from typing import Any, Literal, Annotated, cast
+from typing import Annotated, Any, Literal, cast
 
 from Crypto.Cipher import AES
 from Crypto.Hash import MD5
 from Crypto.Random import get_random_bytes
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials
 from keycloak.exceptions import KeycloakError
 from kubernetes_asyncio.client.exceptions import ApiException
 from sqlalchemy.exc import IntegrityError
@@ -35,9 +35,9 @@ from .....deployment.kubernetes.kubevirt import (
 from .....deployment.settings import settings as deployment_settings
 from .....exceptions import VelaDeploymentError, VelaError
 from ...._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
+from ....auth import security
 from ....db import SessionDep
 from ....keycloak import realm_admin
-from ....auth import security
 from ....models.branch import (
     ApiKeyDetails,
     Branch,

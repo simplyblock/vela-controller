@@ -10,7 +10,6 @@ from typing import Annotated, Any, Literal
 
 import yaml
 from cloudflare import AsyncCloudflare, CloudflareError
-from fastapi import Request
 from kubernetes_asyncio.client.exceptions import ApiException
 from pydantic import BaseModel, Field
 

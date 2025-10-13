@@ -1,7 +1,6 @@
 import logging
 
 import httpx
-from fastapi import HTTPException, Request, status
 
 from .._util import Identifier
 from ..exceptions import VelaGrafanaError
