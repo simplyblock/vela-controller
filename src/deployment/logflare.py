@@ -150,9 +150,7 @@ async def get_logs_from_endpoint(branch_id: str, source: str, limit: int = 100):
             response = await client.get(
                 url,
                 headers=headers,
-                params={
-                    "pg_sql": pg_sql_query,
-                    "project": branch_id},
+                params={"pg_sql": pg_sql_query, "project": branch_id},
             )
             response.raise_for_status()
             data = response.json()
