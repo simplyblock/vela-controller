@@ -3,10 +3,11 @@ import logging
 import secrets
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
-from typing import Literal
+from typing import Literal, Annotated
 
 import jwt
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse
 from keycloak.exceptions import KeycloakError
 from kubernetes_asyncio.client.exceptions import ApiException
@@ -24,6 +25,7 @@ from ....exceptions import VelaError
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ...db import SessionDep
 from ...keycloak import realm_admin
+from ...auth import security
 from ...models.branch import Branch
 from ...models.organization import OrganizationDep
 from ...models.project import (
@@ -46,7 +48,7 @@ async def _deploy_branch_environment_task(
     project_id: Identifier,
     branch_id: Identifier,
     branch_slug: str,
-    request: Request,
+    credential: str | None,
     parameters: DeploymentParameters,
     jwt_secret: str,
     anon_key: str,
@@ -58,7 +60,7 @@ async def _deploy_branch_environment_task(
             project_id=project_id,
             branch_id=branch_id,
             branch_slug=branch_slug,
-            request=request,
+            credential=credential,
             parameters=parameters,
             jwt_secret=jwt_secret,
             anon_key=anon_key,
@@ -132,6 +134,7 @@ _links = {
 async def create(
     session: SessionDep,
     request: Request,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
     organization: OrganizationDep,
     parameters: ProjectCreate,
     response: Literal["empty", "full"] = "empty",
@@ -183,12 +186,13 @@ async def create(
     main_branch.jwt_secret = jwt_secret
     main_branch.anon_key = anon_key
     main_branch.service_key = service_key
+    credential=credentials.credentials
     await session.commit()
 
     asyncio.create_task(
         _deploy_branch_environment_task(
             organization_id=organization_id,
-            request=request,
+            credential=credential,
             project_id=project_id,
             branch_id=branch_dbid,
             branch_slug=branch_slug,

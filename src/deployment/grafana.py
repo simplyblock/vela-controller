@@ -13,7 +13,7 @@ headers = {"Content-Type": "application/json"}
 logger = logging.getLogger(__name__)
 
 
-async def create_vela_grafana_obj(organization_id: Identifier, branch_id: Identifier, request: Request):
+async def create_vela_grafana_obj(organization_id: Identifier, branch_id: Identifier, credential):
     logger.info(f"Creating Grafana object for organization={organization_id}, branch={branch_id}")
 
     team_id = await create_team(str(branch_id))
@@ -23,22 +23,9 @@ async def create_vela_grafana_obj(organization_id: Identifier, branch_id: Identi
     folder_id = await create_folder(str(branch_id), parent_uid=parent_folder_id)
     await set_folder_permissions(folder_id, team_id)
 
-    token = get_token_from_request(request)
-    user_id = await get_user_via_jwt(token)
+    user_id = await get_user_via_jwt(credential)
     await add_user_to_team(team_id, user_id)
     await create_dashboard(str(organization_id), folder_id, str(branch_id))
-
-
-def get_token_from_request(request: Request) -> str:
-    auth_header = request.headers.get("authorization")
-
-    if not auth_header:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing Authorization header")
-
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Authorization header format")
-
-    return auth_header.split("Bearer ")[1]
 
 
 # --- TEAM CREATION ---

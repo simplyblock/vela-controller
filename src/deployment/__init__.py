@@ -586,7 +586,7 @@ async def deploy_branch_environment(
     project_id: Identifier,
     branch_id: Identifier,
     branch_slug: Slug,
-    request: Request,
+    credential: str | None,
     parameters: DeploymentParameters,
     jwt_secret: str,
     anon_key: str,
@@ -595,7 +595,7 @@ async def deploy_branch_environment(
     """Background task: provision infra for a branch and persist the resulting endpoint."""
 
     # Create grafana objects for vela
-    await create_vela_grafana_obj(organization_id, branch_id, request)
+    await create_vela_grafana_obj(organization_id, branch_id, credential)
 
     # Create the main deployment (database etc)
     await create_vela_config(
