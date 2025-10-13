@@ -15,6 +15,7 @@ headers = {
     "Authorization": f"Bearer {LOGFLARE_API_KEY}",
 }
 
+
 # --- SOURCE CREATION ---
 async def create_sources(branch_id: str) -> list[str]:
     """
@@ -167,7 +168,7 @@ async def create_logflare_objects(branch_id: Identifier):
     logger.info(f"Creating Logflare objects for branch_id={branch_id}")
 
     source_id = await create_sources(str(branch_id))
-    endpoint_id = await create_all_logs_endpoint(branch_id)
+    endpoint_id = await create_all_logs_endpoint(str(branch_id))
 
     logger.info(f"Created Logflare source {source_id} and endpoint {endpoint_id} for branch {branch_id}.")
     # return {"source_id": source_id, "endpoint_id": endpoint_id}
