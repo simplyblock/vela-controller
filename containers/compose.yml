@@ -35,7 +35,8 @@ services:
       VELA_CLOUDFLARE_BRANCH_REF_CNAME: 'branch-ref.staging.vela.run'
       VELA_CLOUDFLARE_DOMAIN_SUFFIX: 'example.com'
       VELA_DEPLOYMENT_NAMESPACE_PREFIX: 'vela'
-      LOGFLARE_PUBLIC_ACCESS_TOKEN: 'my-super-secret-api-key'
+      VELA_LOGFLARE_PRIVATE_ACCESS_TOKEN: 'your-super-secret-and-long-logflare-key-private'
+      VELA_LOGFLARE_URL: 'http://logflare:4000'
     depends_on:
       database:
         condition: service_healthy
@@ -88,8 +89,7 @@ services:
       retries: 3
     restart: unless-stopped
 
-  analytics:
-    container_name: supabase-analytics
+  logflare:
     image: supabase/logflare:1.22.6
     restart: unless-stopped
     ports:

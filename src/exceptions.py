@@ -12,3 +12,7 @@ class VelaKubernetesError(VelaDeploymentError):
 
 class VelaCloudflareError(VelaDeploymentError):
     """Error interacting with Cloudflare"""
+
+
+class VelaLogflareError(VelaDeploymentError):
+    """Error interacting with Logflare"""

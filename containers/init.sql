@@ -9,5 +9,4 @@ GRANT ALL PRIVILEGES ON DATABASE logflare TO logflare;
 ALTER ROLE logflare SET search_path TO logflare,public;
 
 \c logflare
-CREATE SCHEMA IF NOT EXISTS _analytics;
-ALTER SCHEMA _analytics OWNER TO :logflare;
+CREATE SCHEMA IF NOT EXISTS _analytics AUTHORIZATION logflare;

@@ -9,7 +9,7 @@ from .settings import settings
 logger = logging.getLogger(__name__)
 
 LOGFLARE_URL = settings.logflare_url
-LOGFLARE_API_KEY = settings.logflare_public_access_token
+LOGFLARE_API_KEY = settings.logflare_private_access_token
 
 headers = {
     "Content-Type": "application/json",
@@ -35,7 +35,6 @@ async def create_source(branch_id: Identifier, source_name: str) -> str:
 
             if status_code == 409:
                 logger.warning(f"Source '{branch_id}_{source_name}' already exists.")
-                # Optionally fetch existing sources here if needed
             else:
                 logger.error(f"Failed to create Logflare source '{source_name}': {exc}")
 
@@ -54,7 +53,7 @@ async def create_endpoint(branch_id: Identifier, endpoint_name: str, enable_auth
                 "description": f"endpoint for branch {branch_id}",
                 "enable_auth": enable_auth,
                 "name": f"{branch_id}_{endpoint_name}",
-                "query": "",
+                "query": f"select id, event_message, timestamp from `{branch_id}_source`",
                 "sandboxable": True,
             }
 
@@ -63,7 +62,7 @@ async def create_endpoint(branch_id: Identifier, endpoint_name: str, enable_auth
 
             logger.info(f"Logflare endpoint '{payload['name']}' created successfully.")
             return response.json().get("id") or response.json().get("endpoint_id")
-
+            
         except httpx.HTTPStatusError as exc:
             response = getattr(exc, "response", None)
             status_code = getattr(response, "status_code", None)
@@ -111,14 +110,14 @@ async def get_logs(branch_id: Identifier, endpoint_name: str, pg_sql_query: str)
 
 
 # --- COMPOSITE CREATION ---
-async def create_logflare_objects(branch_id: Identifier, request: Request):
+async def create_logflare_objects(branch_id: Identifier):
     """
     Creates a Logflare source and endpoint for a given branch.
     """
     logger.info(f"Creating Logflare objects for branch_id={branch_id}")
 
-    source_id = await create_source(branch_id, "source")
-    endpoint_id = await create_endpoint(branch_id, "endpoint")
+    source_id = await create_source(str(branch_id), "source")
+    endpoint_id = await create_endpoint(str(branch_id), "endpoint")
 
     logger.info(f"Created Logflare source {source_id} and endpoint {endpoint_id} for branch {branch_id}.")
-    return {"source_id": source_id, "endpoint_id": endpoint_id}
+    #return {"source_id": source_id, "endpoint_id": endpoint_id}

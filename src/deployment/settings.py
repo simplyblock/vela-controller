@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     cloudflare_domain_suffix: str
     gateway_name: str = "vela-public-gateway"
     gateway_namespace: str = "kong-system"
+    logflare_private_access_token: str = ""
+    logflare_url: str = "http://localhost:4000"
 
 
 settings = Settings()  # type: ignore[call-arg]

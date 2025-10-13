@@ -28,6 +28,7 @@ from .._util import (
     dbstr,
 )
 from ..exceptions import VelaCloudflareError, VelaKubernetesError
+from .logflare import create_logflare_objects
 from .kubernetes import KubernetesService
 from .kubernetes.kubevirt import get_virtualmachine_status
 from .settings import settings
@@ -589,6 +590,9 @@ async def deploy_branch_environment(
     service_key: str,
 ) -> None:
     """Background task: provision infra for a branch and persist the resulting endpoint."""
+
+    # Create logflare objects for vela 
+    await create_logflare_objects(branch_id=branch_id)
 
     # Create the main deployment (database etc)
     await create_vela_config(
