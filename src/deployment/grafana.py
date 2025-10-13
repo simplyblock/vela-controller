@@ -7,10 +7,7 @@ from .._util import Identifier
 from ..exceptions import VelaGrafanaError
 from .settings import settings
 
-GRAFANA_USER = settings.grafana_security_admin_user
-GRAFANA_PASSWORD = settings.grafana_security_admin_password
-
-auth = (GRAFANA_USER, GRAFANA_PASSWORD)
+auth = (settings.grafana_security_admin_user, settings.grafana_security_admin_password)
 headers = {"Content-Type": "application/json"}
 
 logger = logging.getLogger(__name__)
