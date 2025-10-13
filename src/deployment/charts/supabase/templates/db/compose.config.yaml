@@ -10,4 +10,6 @@ data:
 {{- .Values.vectorYaml | nindent 4 }}
   docker-compose.yml: |
 {{- .Values.composeYaml | nindent 4 }}
+  pg_hba.conf: |-
+{{- .Values.pgHbaConf | nindent 4 }}
 {{- end }}

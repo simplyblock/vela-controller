@@ -21,7 +21,7 @@ PostgREST connects to the `postgres` database and exposes the `public`, `storage
 Read data from the `todos` table (ensure the table exists):
 
 ```sh
-curl -X GET "https://01k612e965yy5dy4vh27dtjt8r.staging.vela.run/pgrest/todos" \
+curl -X GET "https://01k612e965yy5dy4vh27dtjt8r.staging.vela.run/rest/todos" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -29,7 +29,7 @@ Insert a row into the `todos` table:
 
 ```sh
 export TOKEN=anonKey
-curl -X POST "https://01k612e965yy5dy4vh27dtjt8r.staging.vela.run/pgrest/todos" \
+curl -X POST "https://01k612e965yy5dy4vh27dtjt8r.staging.vela.run/rest/todos" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -H "Prefer: return=representation" \
@@ -49,7 +49,7 @@ List all schemas:
 
 ```sh
 export ENCRYPTED_CONNECTION_STRING='U2FsdGVkX19oQDMfZ/1CLHjEU1T4T4p34tUYlIAgLkZ0KoHrW7c23FFygmZ/XjQL5FFT/1k/UaVl0rQjl09X5wt1Q9E/+Vt29p8J7Y1lHKY='
-curl -X GET https://01k6mpdwnay4jf91j9pd916ngf.staging.vela.run/meta/schemas \
+curl -X GET https://01k6mpdwnay4jf91j9pd916ngf.staging.vela.run/platform/01k6mpdwnay4jf91j9pd916ngf/pgmeta/schemas \
   -H "x-connection-encrypted: $ENCRYPTED_CONNECTION_STRING"
 ```
 
@@ -78,7 +78,7 @@ TODO
 
 This service hosts https://github.com/supabase/storage. Export the token fetched from the `/apikeys` endpoint into the `TOKEN` environment variable before running the commands below.
 
-Create a bucket:
+Create a bucket: (needs serviceRole API Key)
 
 ```sh
 curl -X POST 'https://01k6mpdwnay4jf91j9pd916ngf.staging.vela.run/storage/bucket' \
@@ -90,7 +90,7 @@ curl -X POST 'https://01k6mpdwnay4jf91j9pd916ngf.staging.vela.run/storage/bucket
       }'
 ```
 
-Upload a file to a bucket:
+Upload a file to a bucket: (needs serviceRole API Key)
 
 ```sh
 curl -X POST "https://01k6mpdwnay4jf91j9pd916ngf.staging.vela.run/storage/object/my_bucket/asdf.txt" \
@@ -98,7 +98,7 @@ curl -X POST "https://01k6mpdwnay4jf91j9pd916ngf.staging.vela.run/storage/object
   --data-binary @asdf.txt
 ```
 
-List objects:
+List objects: (needs serviceRole API Key. TODO: make this work with anonKey)
 
 ```sh
 curl -X POST \
@@ -108,7 +108,7 @@ curl -X POST \
   -d '{"prefix": ""}' | jq .
 ```
 
-Retrieve the file and store it locally:
+Retrieve the file and store it locally: (needs serviceRole API Key. TODO: make this work with anonKey)
 
 ```sh
 curl -X GET "https://01k6mpdwnay4jf91j9pd916ngf.staging.vela.run/storage/object/my_bucket/asdf.txt" \

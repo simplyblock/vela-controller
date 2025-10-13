@@ -16,6 +16,8 @@ from pydantic import BaseModel, Field, model_validator
 from .._util import (
     CPU_CONSTRAINTS,
     DATABASE_SIZE_CONSTRAINTS,
+    DEFAULT_DB_NAME,
+    DEFAULT_DB_USER,
     IOPS_CONSTRAINTS,
     MEMORY_CONSTRAINTS,
     STORAGE_SIZE_CONSTRAINTS,
@@ -103,8 +105,8 @@ def inject_branch_env(compose: dict[str, Any], branch_id: Identifier) -> dict[st
 
 
 class DeploymentParameters(BaseModel):
-    database: dbstr  # deprecated;
-    database_user: dbstr  # deprecated;
+    database: dbstr = DEFAULT_DB_NAME  # deprecated;
+    database_user: dbstr = DEFAULT_DB_USER  # deprecated;
     database_password: dbstr
     database_size: Annotated[int, Field(**DATABASE_SIZE_CONSTRAINTS)]
     storage_size: Annotated[int, Field(**STORAGE_SIZE_CONSTRAINTS)]
@@ -145,20 +147,26 @@ async def create_vela_config(
     vector_file = Path(__file__).with_name("vector.yml")
     if not vector_file.exists():
         raise FileNotFoundError(f"vector config file not found at {vector_file}")
+
+    pb_hba_conf = Path(__file__).with_name("pg_hba.conf")
+    if not pb_hba_conf.exists():
+        raise FileNotFoundError(f"pg_hba.conf file not found at {pb_hba_conf}")
+
     values_content = yaml.safe_load((chart / "values.yaml").read_text())
 
     # Override defaults
-    values_content.setdefault("secret", {}).setdefault("jwt", {}).update(
+    secrets = values_content.setdefault("secret", {})
+    secrets.setdefault("jwt", {}).update(
         secret=jwt_secret,
         anonKey=anon_key,
         serviceKey=service_key,
     )
-
-    db_credentials = values_content.setdefault("db", {})
-    db_credentials["password"] = parameters.database_password
-
-    db_secrets = values_content.setdefault("db", {}).setdefault("credentials", {})
-    db_secrets["pgmeta_crypto_key"] = settings.pgmeta_crypto_key
+    secrets.update(
+        pgmeta_crypto_key=settings.pgmeta_crypto_key,
+    )
+    secrets.setdefault("db", {}).update(
+        password=parameters.database_password,
+    )
 
     db_spec = values_content.setdefault("db", {})
     resource_cfg = db_spec.setdefault("resources", {})
@@ -209,6 +217,8 @@ async def create_vela_config(
                     f"composeYaml={modified_compose.name}",
                     "--set-file",
                     f"vectorYaml={vector_file}",
+                    "--set-file",
+                    f"pgHbaConf={pb_hba_conf}",
                     "-f",
                     temp_values.name,
                 ],
