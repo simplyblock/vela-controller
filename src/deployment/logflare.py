@@ -1,7 +1,6 @@
 import logging
 from typing import List
 import httpx
-from fastapi import HTTPException, Request, status
 
 from .._util import Identifier
 from ..exceptions import VelaLogflareError
