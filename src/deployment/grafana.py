@@ -7,7 +7,6 @@ from .._util import Identifier
 from ..exceptions import VelaGrafanaError
 from .settings import settings
 
-GRAFANA_URL = settings.grafana_url
 GRAFANA_USER = settings.grafana_security_admin_user
 GRAFANA_PASSWORD = settings.grafana_security_admin_password
 
@@ -50,19 +49,19 @@ async def create_team(team_name: str):
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post(
-                f"{GRAFANA_URL}/api/teams", auth=auth, headers=headers, json={"name": team_name}
+                f"{settings.grafana_url}/api/teams", auth=auth, headers=headers, json={"name": team_name}
             )
             response.raise_for_status()
             logger.info(f"Team '{team_name}' created successfully.")
             return response.json().get("teamId")
 
         except httpx.HTTPStatusError as exc:
-            status_code = getattr(exc.response, "status_code", None)
+            status_code = exc.response.status_code
             if status_code == 409:
                 logger.warning(f"Team '{team_name}' already exists. Fetching existing team ID...")
                 try:
                     res = await client.get(
-                        f"{GRAFANA_URL}/api/teams/search?name={team_name}", auth=auth, headers=headers
+                        f"{settings.grafana_url}/api/teams/search?name={team_name}", auth=auth, headers=headers
                     )
                     res.raise_for_status()
                     team_id = res.json()["teams"][0]["id"]
@@ -84,17 +83,17 @@ async def create_folder(folder_name: str, parent_uid: str | None = None) -> str:
             if parent_uid:
                 payload["parentUid"] = parent_uid
 
-            response = await client.post(f"{GRAFANA_URL}/api/folders", auth=auth, headers=headers, json=payload)
+            response = await client.post(f"{settings.grafana_url}/api/folders", auth=auth, headers=headers, json=payload)
             response.raise_for_status()
             logger.info(f"Folder '{folder_name}' created successfully.")
             return response.json()["uid"]
 
         except httpx.HTTPStatusError as exc:
-            status_code = getattr(exc.response, "status_code", None)
+            status_code = exc.response.status_code
             if status_code == 412:
                 logger.warning(f"Folder '{folder_name}' already exists. Fetching existing UID...")
                 try:
-                    res = await client.get(f"{GRAFANA_URL}/api/folders", auth=auth, headers=headers)
+                    res = await client.get(f"{settings.grafana_url}/api/folders", auth=auth, headers=headers)
                     res.raise_for_status()
                     for f in res.json():
                         if f["title"] == folder_name:
@@ -114,7 +113,7 @@ async def set_folder_permissions(folder_uid: str, team_id: int):
         try:
             payload = {"items": [{"teamId": team_id, "permission": 1}]}
             response = await client.post(
-                f"{GRAFANA_URL}/api/folders/{folder_uid}/permissions",
+                f"{settings.grafana_url}/api/folders/{folder_uid}/permissions",
                 auth=auth,
                 headers=headers,
                 json=payload,
@@ -123,7 +122,7 @@ async def set_folder_permissions(folder_uid: str, team_id: int):
             logger.info(f"Permissions set for team {team_id} on folder {folder_uid}.")
 
         except httpx.HTTPStatusError as exc:
-            status_code = getattr(exc.response, "status_code", None)
+            status_code = exc.response.status_code
             if status_code == 404:
                 logger.warning(f"Folder {folder_uid} not found while setting permissions.")
             elif status_code == 403:
@@ -132,7 +131,7 @@ async def set_folder_permissions(folder_uid: str, team_id: int):
                 logger.error(f"HTTP error while setting permissions for {folder_uid}: {exc}")
             raise VelaGrafanaError(f"Failed to set folder permissions for {folder_uid}: {exc}") from exc
 
-        except Exception as exc:
+        except httpx.HTTPError as exc:
             logger.exception(f"Unexpected error setting folder permissions for {folder_uid}")
             raise VelaGrafanaError(f"Unexpected error setting folder permissions: {exc}") from exc
 
@@ -142,14 +141,14 @@ async def get_user_via_jwt(jwt_token: str):
     async with httpx.AsyncClient() as client:
         try:
             jwt_headers = {"Authorization": f"Bearer {jwt_token}"}
-            response = await client.get(f"{GRAFANA_URL}/api/user", headers=jwt_headers)
+            response = await client.get(f"{settings.grafana_url}/api/user", headers=jwt_headers)
             response.raise_for_status()
             user_info = response.json()
             logger.info(f"Authenticated as '{user_info['login']}' ({user_info['email']})")
             return user_info["id"]
 
         except httpx.HTTPStatusError as exc:
-            status_code = getattr(exc.response, "status_code", None)
+            status_code = exc.response.status_code
             if status_code == 401:
                 logger.warning("Invalid or expired JWT token.")
             elif status_code == 403:
@@ -158,7 +157,7 @@ async def get_user_via_jwt(jwt_token: str):
                 logger.error(f"HTTP error during JWT authentication: {exc}")
             raise VelaGrafanaError(f"Failed to authenticate via JWT: {exc}") from exc
 
-        except Exception as exc:
+        except httpx.HTTPError as exc:
             logger.exception("Unexpected error during JWT authentication.")
             raise VelaGrafanaError(f"Unexpected error authenticating user: {exc}") from exc
 
@@ -167,7 +166,7 @@ async def add_user_to_team(team_id: int, user_id: int):
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post(
-                f"{GRAFANA_URL}/api/teams/{team_id}/members",
+                f"{settings.grafana_url}/api/teams/{team_id}/members",
                 auth=auth,
                 headers=headers,
                 json={"userId": user_id},
@@ -180,14 +179,14 @@ async def add_user_to_team(team_id: int, user_id: int):
                 response.raise_for_status()
 
         except httpx.HTTPStatusError as exc:
-            status_code = getattr(exc.response, "status_code", None)
+            status_code = exc.response.status_code
             if status_code == 404:
                 logger.warning(f"Team {team_id} not found when adding user {user_id}.")
             else:
                 logger.error(f"HTTP error adding user {user_id} to team {team_id}: {exc}")
             raise VelaGrafanaError(f"Failed to add user to team: {exc}") from exc
 
-        except Exception as exc:
+        except httpx.HTTPError as exc:
             logger.exception(f"Unexpected error adding user {user_id} to team {team_id}.")
             raise VelaGrafanaError(f"Unexpected error adding user to team: {exc}") from exc
 
@@ -195,7 +194,7 @@ async def add_user_to_team(team_id: int, user_id: int):
 async def remove_team(team_id: int):
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.delete(f"{GRAFANA_URL}/api/teams/{team_id}", auth=auth, headers=headers)
+            response = await client.delete(f"{settings.grafana_url}/api/teams/{team_id}", auth=auth, headers=headers)
             if response.status_code == 200:
                 logger.info(f"Team {team_id} removed.")
             elif response.status_code == 404:
@@ -204,14 +203,14 @@ async def remove_team(team_id: int):
                 response.raise_for_status()
 
         except httpx.HTTPStatusError as exc:
-            status_code = getattr(exc.response, "status_code", None)
+            status_code = exc.response.status_code
             if status_code == 403:
                 logger.warning(f"Permission denied when removing team {team_id}.")
             else:
                 logger.error(f"HTTP error removing team {team_id}: {exc}")
             raise VelaGrafanaError(f"Failed to remove team {team_id}: {exc}") from exc
 
-        except Exception as exc:
+        except httpx.HTTPError as exc:
             logger.exception(f"Unexpected error removing team {team_id}.")
             raise VelaGrafanaError(f"Unexpected error removing team: {exc}") from exc
 
@@ -219,7 +218,7 @@ async def remove_team(team_id: int):
 async def remove_folder(folder_uid: str):
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.delete(f"{GRAFANA_URL}/api/folders/{folder_uid}", auth=auth, headers=headers)
+            response = await client.delete(f"{settings.grafana_url}/api/folders/{folder_uid}", auth=auth, headers=headers)
             if response.status_code == 200:
                 logger.info(f"Folder {folder_uid} removed.")
             elif response.status_code == 404:
@@ -228,14 +227,14 @@ async def remove_folder(folder_uid: str):
                 response.raise_for_status()
 
         except httpx.HTTPStatusError as exc:
-            status_code = getattr(exc.response, "status_code", None)
+            status_code = exc.response.status_code
             if status_code == 403:
                 logger.warning(f"Permission denied when removing folder {folder_uid}.")
             else:
                 logger.error(f"HTTP error removing folder {folder_uid}: {exc}")
             raise VelaGrafanaError(f"Failed to remove folder {folder_uid}: {exc}") from exc
 
-        except Exception as exc:
+        except httpx.HTTPError as exc:
             logger.exception(f"Unexpected error removing folder {folder_uid}.")
             raise VelaGrafanaError(f"Unexpected error removing folder: {exc}") from exc
 
@@ -244,7 +243,7 @@ async def remove_user_from_team(team_id: int, user_id: int):
     async with httpx.AsyncClient() as client:
         try:
             response = await client.delete(
-                f"{GRAFANA_URL}/api/teams/{team_id}/members/{user_id}", auth=auth, headers=headers
+                f"{settings.grafana_url}/api/teams/{team_id}/members/{user_id}", auth=auth, headers=headers
             )
             if response.status_code == 200:
                 logger.info(f"User {user_id} removed from team {team_id}.")
@@ -254,14 +253,14 @@ async def remove_user_from_team(team_id: int, user_id: int):
                 response.raise_for_status()
 
         except httpx.HTTPStatusError as exc:
-            status_code = getattr(exc.response, "status_code", None)
+            status_code = exc.response.status_code
             if status_code == 403:
                 logger.warning(f"Permission denied when removing user {user_id} from team {team_id}.")
             else:
                 logger.error(f"HTTP error removing user {user_id} from team {team_id}: {exc}")
             raise VelaGrafanaError(f"Failed to remove user from team: {exc}") from exc
 
-        except Exception as exc:
+        except httpx.HTTPError as exc:
             logger.exception(f"Unexpected error removing user {user_id} from team {team_id}.")
             raise VelaGrafanaError(f"Unexpected error removing user from team: {exc}") from exc
 
@@ -318,10 +317,10 @@ async def create_dashboard(org_name: str, folder_uid: str, folder_name: str):
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post(
-                f"{GRAFANA_URL}/api/dashboards/db", auth=auth, headers=headers, json=dashboard_payload
+                f"{settings.grafana_url}/api/dashboards/db", auth=auth, headers=headers, json=dashboard_payload
             )
             response.raise_for_status()
             logger.info(f"Dashboard created successfully in folder '{folder_name}'.")
-        except Exception as exc:
+        except httpx.HTTPError as exc:
             logger.error(f"Failed to create dashboard for folder '{folder_name}': {exc}")
             raise VelaGrafanaError(f"Failed to create dashboard: {exc}") from exc
