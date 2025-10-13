@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from pydantic import StringConstraints
+from pydantic import StringConstraints, HttpUrl, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,6 +15,20 @@ class Settings(BaseSettings):
             pattern=r"^[a-z][a-z0-9._-]*[a-z0-9]$",
         ),
     ] = "vela"
+    logflare_private_access_token: Annotated[
+        str,
+        Field(
+            ...,
+            description="Private access token for authenticating with the Logflare API."
+        ),
+    ]
+    logflare_url: Annotated[
+        HttpUrl,
+        Field(
+            ...,
+            description="Base URL of the Logflare API (e.g. http://localhost:4000"
+        ),
+    ] = "http://localhost:4000"
     deployment_release_name: str = "supabase"
     deployment_host: str = "localhost"
     pgmeta_crypto_key: str
@@ -24,8 +38,6 @@ class Settings(BaseSettings):
     cloudflare_domain_suffix: str
     gateway_name: str = "vela-public-gateway"
     gateway_namespace: str = "kong-system"
-    logflare_private_access_token: str = ""
-    logflare_url: str = "http://localhost:4000"
 
 
 settings = Settings()  # type: ignore[call-arg]

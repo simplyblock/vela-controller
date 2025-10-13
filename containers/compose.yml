@@ -118,7 +118,7 @@ services:
       LOGFLARE_PUBLIC_ACCESS_TOKEN: 'my-super-secret-api-key'
       LOGFLARE_PRIVATE_ACCESS_TOKEN: 'your-super-secret-and-long-logflare-key-private'
       LOGFLARE_SINGLE_TENANT: true
-      LOGFLARE_SUPABASE_MODE: true
+      LOGFLARE_SUPABASE_MODE: false
       LOGFLARE_MIN_CLUSTER_SIZE: 1
 
       POSTGRES_BACKEND_URL: postgresql://logflare:logflare@database:5432/logflare
