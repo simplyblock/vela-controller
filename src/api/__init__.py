@@ -136,7 +136,7 @@ _tags = [
 ]
 
 
-app = FastAPI(openapi_tags=_tags, root_path=settings.root_path)
+app = _FastAPI(openapi_tags=_tags, root_path=settings.root_path)
 
 app.add_middleware(
     CORSMiddleware,
