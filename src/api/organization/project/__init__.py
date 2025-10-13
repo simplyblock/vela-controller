@@ -48,7 +48,7 @@ async def _deploy_branch_environment_task(
     project_id: Identifier,
     branch_id: Identifier,
     branch_slug: str,
-    credential: str | None,
+    credential: str,
     parameters: DeploymentParameters,
     jwt_secret: str,
     anon_key: str,
@@ -134,7 +134,7 @@ _links = {
 async def create(
     session: SessionDep,
     request: Request,
-    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
     organization: OrganizationDep,
     parameters: ProjectCreate,
     response: Literal["empty", "full"] = "empty",

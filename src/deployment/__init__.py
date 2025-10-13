@@ -585,7 +585,7 @@ async def deploy_branch_environment(
     project_id: Identifier,
     branch_id: Identifier,
     branch_slug: Slug,
-    credential: str | None,
+    credential: str,
     parameters: DeploymentParameters,
     jwt_secret: str,
     anon_key: str,

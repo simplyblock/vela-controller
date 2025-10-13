@@ -65,7 +65,7 @@ async def _deploy_branch_environment_task(
     *,
     organization_id: Identifier,
     project_id: Identifier,
-    credential: str | None,
+    credential: str,
     branch_id: Identifier,
     branch_slug: str,
     parameters: DeploymentParameters,
@@ -250,7 +250,7 @@ _links = {
 async def create(
     session: SessionDep,
     request: Request,
-    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
     organization: OrganizationDep,
     project: ProjectDep,
     parameters: BranchCreate,
