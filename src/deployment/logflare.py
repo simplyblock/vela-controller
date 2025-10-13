@@ -56,70 +56,114 @@ async def create_sources(branch_id: str) -> List[str]:
     return created_sources
 
 # --- ENDPOINT CREATION ---
-async def create_endpoint(branch_id: Identifier, endpoint_name: str, enable_auth: bool = True) -> str:
+async def create_all_logs_endpoint(branch_id: str) -> str:
+    """
+    Creates a single endpoint aggregating all branch sources into one query.
+    """
+    endpoint_name = f"{branch_id}.logs.all"
+
+    sql_query = f"""
+    WITH realtime_logs AS (
+      SELECT t.timestamp, t.id, t.event_message, t.metadata
+      FROM `{branch_id}.realtime.logs.prod` AS t
+      CROSS JOIN UNNEST(t.metadata) AS m
+      WHERE m.project = @project
+    ),
+    postgrest_logs AS (
+      SELECT t.timestamp, t.id, t.event_message, t.metadata
+      FROM `{branch_id}.postgREST.logs.prod` AS t
+      CROSS JOIN UNNEST(t.metadata) AS m
+      WHERE t.project = @project
+    ),
+    postgres_logs AS (
+      SELECT t.timestamp, t.id, t.event_message, t.metadata
+      FROM `{branch_id}.postgres.logs` AS t
+      WHERE t.project = @project
+    ),
+    deno_logs AS (
+      SELECT t.timestamp, t.id, t.event_message, t.metadata
+      FROM `{branch_id}.deno-relay-logs` AS t
+      CROSS JOIN UNNEST(t.metadata) AS m
+      WHERE m.project_ref = @project
+    ),
+    storage_logs AS (
+      SELECT t.timestamp, t.id, t.event_message, t.metadata
+      FROM `{branch_id}.storage.logs.prod.2` AS t
+      CROSS JOIN UNNEST(t.metadata) AS m
+      WHERE m.project = @project
+    )
+    SELECT id, timestamp, event_message, metadata
+    FROM realtime_logs
+    UNION ALL
+    SELECT id, timestamp, event_message, metadata FROM postgrest_logs
+    UNION ALL
+    SELECT id, timestamp, event_message, metadata FROM postgres_logs
+    UNION ALL
+    SELECT id, timestamp, event_message, metadata FROM deno_logs
+    UNION ALL
+    SELECT id, timestamp, event_message, metadata FROM storage_logs
+    ORDER BY CAST(timestamp AS timestamp) DESC
+    LIMIT 100;
+    """
+
+    payload = {
+        "name": endpoint_name,
+        "description": f"Aggregated all logs endpoint for branch {branch_id}",
+        "enable_auth": True,
+        "sandboxable": True,
+        "query": sql_query.strip(),
+    }
+
     async with httpx.AsyncClient() as client:
         try:
-            payload = {
-                "description": f"endpoint for branch {branch_id}",
-                "enable_auth": enable_auth,
-                "name": f"{branch_id}_{endpoint_name}",
-                "query": f"select id, event_message, timestamp from `{branch_id}_source`",
-                "sandboxable": True,
-            }
-
-            response = await client.post(f"{LOGFLARE_URL}/api/endpoints", headers=headers, json=payload)
+            response = await client.post(
+                f"{LOGFLARE_URL}/api/endpoints",
+                headers=headers,
+                json=payload,
+                timeout=60,
+            )
             response.raise_for_status()
-
-            logger.info(f"Logflare endpoint '{payload['name']}' created successfully.")
+            logger.info(f"Created Logflare endpoint '{endpoint_name}' for branch {branch_id}")
             return response.json().get("id") or response.json().get("endpoint_id")
-            
         except httpx.HTTPStatusError as exc:
-            response = getattr(exc, "response", None)
-            status_code = getattr(response, "status_code", None)
-
-            if status_code == 409:
-                logger.warning(f"Endpoint '{branch_id}_{endpoint_name}' already exists.")
-            else:
-                logger.error(f"Failed to create Logflare endpoint '{endpoint_name}': {exc}")
-
-            raise VelaLogflareError(f"Failed to create Logflare endpoint '{endpoint_name}': {exc}") from exc
-
-        except Exception as exc:
-            logger.exception(f"Unexpected error creating Logflare endpoint '{endpoint_name}'.")
-            raise VelaLogflareError(f"Unexpected error creating Logflare endpoint: {exc}") from exc
-
+            logger.error(
+                f"Failed to create Logflare endpoint '{endpoint_name}': {exc.response.text}"
+            )
+            raise
 
 # --- LOG QUERY ---
-async def get_logs(branch_id: Identifier, endpoint_name: str, pg_sql_query: str):
-    async with httpx.AsyncClient() as client:
+async def get_logs_from_endpoint(branch_id: str, source: str, limit: int = 100):
+    """
+    Query logs for a specific source using the branch endpoint.
+    Example source: 'postgres.logs' or 'realtime.logs.prod'
+    """
+    pg_sql_query = f"""
+    SELECT timestamp, id, event_message, metadata
+    FROM "{branch_id}.{source}"
+    ORDER BY CAST(timestamp AS timestamp) DESC
+    LIMIT {limit};
+    """
+
+    endpoint_name = f"{branch_id}.logs.all"
+
+    url = f"{LOGFLARE_URL}/api/endpoints/query/{endpoint_name}"
+
+    async with httpx.AsyncClient(timeout=30) as client:
         try:
-            url = f"{LOGFLARE_URL}/api/endpoints/query/{branch_id}_{endpoint_name}"
-            params = {"pg_sql": pg_sql_query}
-            response = await client.get(url, headers=headers, params=params)
+            response = await client.get(
+                url,
+                headers=headers,
+                params={"pg_sql": pg_sql_query},
+            )
             response.raise_for_status()
-
-            logger.info(f"Fetched logs for endpoint '{branch_id}_{endpoint_name}'.")
-            return response.json()
-
+            data = response.json()
+            logger.info(f"Retrieved {len(data)} logs from {source} via endpoint '{endpoint_name}'")
+            return data
         except httpx.HTTPStatusError as exc:
-            response = getattr(exc, "response", None)
-            status_code = getattr(response, "status_code", None)
-
-            if status_code == 404:
-                logger.warning(f"Logs endpoint '{branch_id}_{endpoint_name}' not found.")
-            elif status_code == 401:
-                logger.warning("Unauthorized Logflare query request.")
-            else:
-                logger.error(f"HTTP error fetching logs for '{endpoint_name}': {exc}")
-
-            raise VelaLogflareError(f"Failed to fetch logs for '{endpoint_name}': {exc}") from exc
-
-        except Exception as exc:
-            logger.exception(f"Unexpected error fetching logs for endpoint '{endpoint_name}'.")
-            raise VelaLogflareError(f"Unexpected error fetching logs: {exc}") from exc
+            logger.error(f"Failed to fetch logs for '{source}': {exc.response.text}")
+            raise
 
 
-# --- COMPOSITE CREATION ---
 async def create_logflare_objects(branch_id: Identifier):
     """
     Creates a Logflare source and endpoint for a given branch.
@@ -127,7 +171,7 @@ async def create_logflare_objects(branch_id: Identifier):
     logger.info(f"Creating Logflare objects for branch_id={branch_id}")
 
     source_id = await create_sources(str(branch_id))
-    endpoint_id = await create_endpoint(str(branch_id), "endpoint")
+    endpoint_id = await create_all_logs_endpoint(branch_id)
 
     logger.info(f"Created Logflare source {source_id} and endpoint {endpoint_id} for branch {branch_id}.")
     #return {"source_id": source_id, "endpoint_id": endpoint_id}
