@@ -1,4 +1,5 @@
 import logging
+from typing import List
 import httpx
 from fastapi import HTTPException, Request, status
 
@@ -19,31 +20,40 @@ headers = {
 
 
 # --- SOURCE CREATION ---
-async def create_source(branch_id: Identifier, source_name: str) -> str:
-    async with httpx.AsyncClient() as client:
-        try:
-            payload = {"name": f"{branch_id}_{source_name}"}
-            response = await client.post(f"{LOGFLARE_URL}/api/sources", headers=headers, json=payload)
-            response.raise_for_status()
+async def create_sources(branch_id: str) -> List[str]:
+    """
+    Create multiple Logflare sources for the given branch.
+    Returns a list of successfully created source names.
+    """
+    source_names = [
+        "realtime.logs.prod",
+        "postgREST.logs.prod",
+        "postgres.logs",
+        "deno-relay-logs",
+        "storage.logs.prod.2",
+    ]
 
-            logger.info(f"Logflare source '{payload['name']}' created successfully.")
-            return response.json().get("id") or response.json().get("source_id")
+    created_sources = []
 
-        except httpx.HTTPStatusError as exc:
-            response = getattr(exc, "response", None)
-            status_code = getattr(response, "status_code", None)
+    async with httpx.AsyncClient(timeout=10) as client:
+        for name in source_names:
+            full_name = f"{branch_id}.{name}"
+            payload = {"name": full_name}
 
-            if status_code == 409:
-                logger.warning(f"Source '{branch_id}_{source_name}' already exists.")
-            else:
-                logger.error(f"Failed to create Logflare source '{source_name}': {exc}")
+            try:
+                response = await client.post(f"{LOGFLARE_URL}/api/sources", headers=headers, json=payload)
+                response.raise_for_status()
+                logger.info(f"Logflare source '{full_name}' created successfully.")
+                created_sources.append(full_name)
+            except httpx.HTTPStatusError as exc:
+                logger.error(
+                    f"Failed to create Logflare source '{full_name}': "
+                    f"{exc.response.status_code} {exc.response.reason_phrase} | {exc.response.text}"
+                )
+            except httpx.RequestError as exc:
+                logger.error(f"Request error while creating source '{full_name}': {exc}")
 
-            raise VelaLogflareError(f"Failed to create Logflare source '{source_name}': {exc}") from exc
-
-        except Exception as exc:
-            logger.exception(f"Unexpected error creating Logflare source '{source_name}'.")
-            raise VelaLogflareError(f"Unexpected error creating Logflare source: {exc}") from exc
-
+    return created_sources
 
 # --- ENDPOINT CREATION ---
 async def create_endpoint(branch_id: Identifier, endpoint_name: str, enable_auth: bool = True) -> str:
