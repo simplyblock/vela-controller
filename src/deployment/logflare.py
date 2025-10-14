@@ -170,6 +170,74 @@ async def get_logs_from_endpoint(branch_id: str, source: str, limit: int = 100):
             raise
 
 
+# --- SOURCE DELETION ---
+async def delete_sources(branch_id: str) -> None:
+    """
+    Delete all Logflare sources for the given branch.
+    """
+    async with httpx.AsyncClient(timeout=10) as client:
+        try:
+            list_resp = await client.get(f"{settings.logflare_url}/api/sources", headers=headers)
+            list_resp.raise_for_status()
+            sources = list_resp.json()
+
+            branch_sources = [s for s in sources if s["name"].startswith(f"{branch_id}.")]
+
+            if not branch_sources:
+                logger.info(f"No sources found for branch {branch_id}")
+                return
+
+            for src in branch_sources:
+                src_id = src.get("id")
+                src_name = src.get("name")
+                if not src_id:
+                    logger.warning(f"Skipping source '{src_name}' without ID.")
+                    continue
+
+                delete_url = f"{settings.logflare_url}/api/sources/{src_id}"
+                try:
+                    del_resp = await client.delete(delete_url, headers=headers)
+                    del_resp.raise_for_status()
+                    logger.info(f"Deleted Logflare source '{src_name}' (id={src_id})")
+                except httpx.HTTPStatusError as exc:
+                    logger.error(f"Failed to delete source '{src_name}': {exc.response.text}")
+
+        except httpx.RequestError as exc:
+            logger.error(f"Request error while deleting sources for branch '{branch_id}': {exc}")
+        except httpx.HTTPStatusError as exc:
+            logger.error(f"Failed to list sources for branch '{branch_id}': {exc.response.text}")
+
+# --- ENDPOINT DELETION ---
+async def delete_endpoint(branch_id: str) -> None:
+    """
+    Delete the aggregated endpoint for a given branch.
+    """
+    endpoint_name = f"{branch_id}.logs.all"
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        try:
+            # List all endpoints to find the ID
+            list_resp = await client.get(f"{settings.logflare_url}/api/endpoints", headers=headers)
+            list_resp.raise_for_status()
+            endpoints = list_resp.json()
+
+            endpoint = next((e for e in endpoints if e["name"] == endpoint_name), None)
+            if not endpoint:
+                logger.info(f"No endpoint found for branch {branch_id}")
+                return
+                
+            endpoint_id = endpoint.get("id")
+            delete_url = f"{settings.logflare_url}/api/endpoints/{endpoint_id}"
+
+            del_resp = await client.delete(delete_url, headers=headers)
+            del_resp.raise_for_status()
+            logger.info(f"Deleted Logflare endpoint '{endpoint_name}' (id={endpoint_id})")
+
+        except httpx.RequestError as exc:
+            logger.error(f"Request error while deleting endpoint for branch '{branch_id}': {exc}")
+        except httpx.HTTPStatusError as exc:
+            logger.error(f"Failed to delete endpoint for branch '{branch_id}': {exc.response.text}")
+
 async def create_logflare_objects(branch_id: Identifier):
     """
     Creates a Logflare source and endpoint for a given branch.
