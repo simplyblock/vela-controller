@@ -104,9 +104,9 @@ async def _public(branch: Branch) -> BranchPublic:
         db_host = deployment_settings.deployment_host
     port = 5432
 
-    connection_string = "postgresql://{user}:{password}@{host}:{port}/{database}".format(  # noqa: UP032
+    # pg-meta and pg are in the same network. So password is not required in connection string.
+    connection_string = "postgresql://{user}@{host}:{port}/{database}".format(  # noqa: UP032
         user=branch.database_user,
-        password=branch.database_password,  # TODO: handle situation where password is changed
         host="db",
         port=port,
         database="postgres",
