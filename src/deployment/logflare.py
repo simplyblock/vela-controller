@@ -16,38 +16,23 @@ headers = {
 }
 
 
-# --- SOURCE CREATION ---
-async def create_sources(branch_id: str, *, create_default_sources: bool = False) -> list[str]:
+# --- INTERNAL HELPER ---
+async def _create_sources(sources: list[str], prefix: str | None = None) -> list[str]:
     """
-    Create multiple Logflare sources for the given branch.
-    Returns a list of successfully created source names.
+    Internal helper for creating Logflare sources.
+    If a prefix (branch_id) is provided, it prefixes each source name.
     """
-    source_names = [
-        "realtime.logs.prod",
-        "postgREST.logs.prod",
-        "postgres.logs",
-        "deno-relay-logs",
-        "storage.logs.prod.2",
-    ]
-
-    if create_default_sources:
-        source_names = [
-            "auth.logs.vela",
-            "controller.logs.vela",
-            "studio.logs.vela",
-            "db.logs.vela",
-            "kong.logs.vela",
-        ]
-
     created_sources = []
-
     async with httpx.AsyncClient(timeout=10) as client:
-        for name in source_names:
-            full_name = f"{branch_id}.{name}"
+        for name in sources:
+            full_name = f"{prefix}.{name}" if prefix else name
             payload = {"name": full_name}
-
             try:
-                response = await client.post(f"{settings.logflare_url}/api/sources", headers=headers, json=payload)
+                response = await client.post(
+                    f"{settings.logflare_url}/api/sources",
+                    headers=headers,
+                    json=payload,
+                )
                 response.raise_for_status()
                 logger.info(f"Logflare source '{full_name}' created successfully.")
                 created_sources.append(full_name)
@@ -58,14 +43,77 @@ async def create_sources(branch_id: str, *, create_default_sources: bool = False
                 )
             except httpx.RequestError as exc:
                 logger.error(f"Request error while creating source '{full_name}': {exc}")
-
     return created_sources
 
 
-# --- ENDPOINT CREATION ---
-async def create_all_logs_endpoint(branch_id: str) -> str:
+# --- BRANCH SOURCES ---
+async def create_branch_sources(branch_id: str) -> list[str]:
     """
-    Creates a single endpoint aggregating all branch sources into one query.
+    Create branch-specific Logflare sources.
+    Example: "main.realtime.logs.prod"
+    """
+    branch_sources = [
+        "realtime.logs.prod",
+        "postgREST.logs.prod",
+        "postgres.logs",
+        "deno-relay-logs",
+        "storage.logs.prod.2",
+    ]
+    return await _create_sources(branch_sources, prefix=branch_id)
+
+
+# --- GLOBAL SOURCES ---
+async def create_global_sources() -> list[str]:
+    """
+    Create global (default) Logflare sources shared across all branches.
+    Example: "auth.logs.vela"
+    """
+    global_sources = [
+        "global.auth.logs.vela",
+        "global.controller.logs.vela",
+        "global.studio.logs.vela",
+        "global.db.logs.vela",
+        "global.kong.logs.vela",
+    ]
+    return await _create_sources(global_sources)
+
+
+# --- ENDPOINT CREATION ---
+async def _create_endpoint(
+    name: str,
+    description: str,
+    sql_query: str,
+) -> str:
+    """Internal helper to create a Logflare endpoint."""
+    payload = {
+        "name": name,
+        "description": description,
+        "enable_auth": True,
+        "sandboxable": True,
+        "query": sql_query.strip(),
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                f"{settings.logflare_url}/api/endpoints",
+                headers=headers,
+                json=payload,
+                timeout=60,
+            )
+            response.raise_for_status()
+            logger.info(f"Created Logflare endpoint '{name}' successfully.")
+            data = response.json()
+            return data.get("id") or data.get("endpoint_id")
+        except httpx.HTTPStatusError as exc:
+            logger.error(f"Failed to create Logflare endpoint '{name}': {exc.response.text}")
+            raise
+
+
+# --- BRANCH ENDPOINT ---
+async def create_branch_endpoint(branch_id: str) -> str:
+    """
+    Creates a single endpoint aggregating all branch-specific sources into one query.
     """
     endpoint_name = f"{branch_id}.logs.all"
 
@@ -113,28 +161,54 @@ async def create_all_logs_endpoint(branch_id: str) -> str:
     LIMIT 100;
     """
 
-    payload = {
-        "name": endpoint_name,
-        "description": f"Aggregated all logs endpoint for branch {branch_id}",
-        "enable_auth": True,
-        "sandboxable": True,
-        "query": sql_query.strip(),
-    }
+    description = f"Aggregated all logs endpoint for branch {branch_id}"
+    return await _create_endpoint(endpoint_name, description, sql_query)
 
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(
-                f"{settings.logflare_url}/api/endpoints",
-                headers=headers,
-                json=payload,
-                timeout=60,
-            )
-            response.raise_for_status()
-            logger.info(f"Created Logflare endpoint '{endpoint_name}' for branch {branch_id}")
-            return response.json().get("id") or response.json().get("endpoint_id")
-        except httpx.HTTPStatusError as exc:
-            logger.error(f"Failed to create Logflare endpoint '{endpoint_name}': {exc.response.text}")
-            raise
+
+# --- GLOBAL ENDPOINT ---
+async def create_global_endpoint() -> str:
+    """
+    Creates a global endpoint aggregating default Logflare sources (not tied to any branch).
+    """
+    endpoint_name = "global.logs.all"
+
+    sql_query = """
+    WITH auth_logs AS (
+      SELECT t.timestamp, t.id, t.event_message, t.metadata
+      FROM `global.auth.logs.vela` AS t
+    ),
+    controller_logs AS (
+      SELECT t.timestamp, t.id, t.event_message, t.metadata
+      FROM `global.controller.logs.vela` AS t
+    ),
+    studio_logs AS (
+      SELECT t.timestamp, t.id, t.event_message, t.metadata
+      FROM `global.studio.logs.vela` AS t
+    ),
+    db_logs AS (
+      SELECT t.timestamp, t.id, t.event_message, t.metadata
+      FROM `global.db.logs.vela` AS t
+    ),
+    kong_logs AS (
+      SELECT t.timestamp, t.id, t.event_message, t.metadata
+      FROM `global.kong.logs.vela` AS t
+    )
+    SELECT id, timestamp, event_message, metadata
+    FROM auth_logs
+    UNION ALL
+    SELECT id, timestamp, event_message, metadata FROM controller_logs
+    UNION ALL
+    SELECT id, timestamp, event_message, metadata FROM studio_logs
+    UNION ALL
+    SELECT id, timestamp, event_message, metadata FROM db_logs
+    UNION ALL
+    SELECT id, timestamp, event_message, metadata FROM kong_logs
+    ORDER BY CAST(timestamp AS timestamp) DESC
+    LIMIT 100;
+    """
+
+    description = "Aggregated global logs endpoint for system-wide visibility"
+    return await _create_endpoint(endpoint_name, description, sql_query)
 
 
 # --- LOG QUERY ---
@@ -171,9 +245,25 @@ async def get_logs_from_endpoint(branch_id: str, source: str, limit: int = 100):
 
 
 # --- SOURCE DELETION ---
-async def delete_sources(branch_id: str) -> None:
+async def delete_branch_sources(branch_id: str) -> None:
     """
-    Delete all Logflare sources for the given branch.
+    Delete all Logflare sources for a specific branch.
+    """
+    await _delete_sources(prefix=f"{branch_id}.")
+
+
+# --- DELETE GLOBAL SOURCES ---
+async def delete_global_sources() -> None:
+    """
+    Delete all global Logflare sources.
+    """
+    await _delete_sources(prefix="global.")
+
+
+# --- INTERNAL SHARED FUNCTION ---
+async def _delete_sources(prefix: str) -> None:
+    """
+    Shared helper to delete sources with a given name prefix.
     """
     async with httpx.AsyncClient(timeout=10) as client:
         try:
@@ -181,13 +271,13 @@ async def delete_sources(branch_id: str) -> None:
             list_resp.raise_for_status()
             sources = list_resp.json()
 
-            branch_sources = [s for s in sources if s["name"].startswith(f"{branch_id}.")]
+            filtered_sources = [s for s in sources if s["name"].startswith(prefix)]
 
-            if not branch_sources:
-                logger.info(f"No sources found for branch {branch_id}")
+            if not filtered_sources:
+                logger.info(f"No sources found with prefix '{prefix}'")
                 return
 
-            for src in branch_sources:
+            for src in filtered_sources:
                 src_id = src.get("id")
                 src_name = src.get("name")
                 if not src_id:
@@ -203,18 +293,34 @@ async def delete_sources(branch_id: str) -> None:
                     logger.error(f"Failed to delete source '{src_name}': {exc.response.text}")
 
         except httpx.RequestError as exc:
-            logger.error(f"Request error while deleting sources for branch '{branch_id}': {exc}")
+            logger.error(f"Request error while deleting sources with prefix '{prefix}': {exc}")
         except httpx.HTTPStatusError as exc:
-            logger.error(f"Failed to list sources for branch '{branch_id}': {exc.response.text}")
+            logger.error(f"Failed to list sources for prefix '{prefix}': {exc.response.text}")
 
 
 # --- ENDPOINT DELETION ---
-async def delete_endpoint(branch_id: str) -> None:
+async def delete_branch_endpoint(branch_id: str) -> None:
     """
-    Delete the aggregated endpoint for a given branch.
+    Delete the aggregated Logflare endpoint for a specific branch.
     """
     endpoint_name = f"{branch_id}.logs.all"
+    await _delete_endpoint_by_name(endpoint_name)
 
+
+# --- DELETE GLOBAL ENDPOINT ---
+async def delete_global_endpoint() -> None:
+    """
+    Delete the global aggregated Logflare endpoint (no branch).
+    """
+    endpoint_name = "global.logs.all"
+    await _delete_endpoint_by_name(endpoint_name)
+
+
+# --- INTERNAL SHARED FUNCTION ---
+async def _delete_endpoint_by_name(endpoint_name: str) -> None:
+    """
+    Shared helper to delete an endpoint by name.
+    """
     async with httpx.AsyncClient(timeout=10) as client:
         try:
             list_resp = await client.get(f"{settings.logflare_url}/api/endpoints", headers=headers)
@@ -223,29 +329,45 @@ async def delete_endpoint(branch_id: str) -> None:
 
             endpoint = next((e for e in endpoints if e["name"] == endpoint_name), None)
             if not endpoint:
-                logger.info(f"No endpoint found for branch {branch_id}")
+                logger.info(f"No endpoint found with name '{endpoint_name}'")
                 return
 
             endpoint_id = endpoint.get("id")
-            delete_url = f"{settings.logflare_url}/api/endpoints/{endpoint_id}"
+            if not endpoint_id:
+                logger.warning(f"Endpoint '{endpoint_name}' has no ID, skipping deletion.")
+                return
 
+            delete_url = f"{settings.logflare_url}/api/endpoints/{endpoint_id}"
             del_resp = await client.delete(delete_url, headers=headers)
             del_resp.raise_for_status()
+
             logger.info(f"Deleted Logflare endpoint '{endpoint_name}' (id={endpoint_id})")
 
         except httpx.RequestError as exc:
-            logger.error(f"Request error while deleting endpoint for branch '{branch_id}': {exc}")
+            logger.error(f"Request error while deleting endpoint '{endpoint_name}': {exc}")
         except httpx.HTTPStatusError as exc:
-            logger.error(f"Failed to delete endpoint for branch '{branch_id}': {exc.response.text}")
+            logger.error(f"Failed to delete endpoint '{endpoint_name}': {exc.response.text}")
 
 
-async def create_logflare_objects(branch_id: Identifier):
+async def create_branch_logflare_objects(branch_id: Identifier):
     """
     Creates a Logflare source and endpoint for a given branch.
     """
     logger.info(f"Creating Logflare objects for branch_id={branch_id}")
 
-    source_id = await create_sources(str(branch_id))
-    endpoint_id = await create_all_logs_endpoint(str(branch_id))
+    source_id = await create_branch_sources(str(branch_id))
+    endpoint_id = await create_branch_endpoint(str(branch_id))
 
     logger.info(f"Created Logflare source {source_id} and endpoint {endpoint_id} for branch {branch_id}.")
+
+
+async def create_global_logflare_objects():
+    """
+    Creates global Logflare sources and endpoint (not tied to any branch).
+    """
+    logger.info("Creating global Logflare sources and endpoint...")
+
+    sources = await create_global_sources()
+    endpoint_id = await create_global_endpoint()
+
+    logger.info(f"Created {len(sources)} global sources and endpoint {endpoint_id}.")

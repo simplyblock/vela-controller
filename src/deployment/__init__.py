@@ -30,7 +30,7 @@ from ..exceptions import VelaCloudflareError, VelaKubernetesError
 from .grafana import create_vela_grafana_obj
 from .kubernetes import KubernetesService
 from .kubernetes.kubevirt import get_virtualmachine_status
-from .logflare import create_logflare_objects
+from .logflare import create_branch_logflare_objects
 from .settings import settings
 
 logger = logging.getLogger(__name__)
@@ -614,7 +614,7 @@ async def deploy_branch_environment(
     """Background task: provision infra for a branch and persist the resulting endpoint."""
 
     # Create logflare objects for vela
-    await create_logflare_objects(branch_id=branch_id)
+    await create_branch_logflare_objects(branch_id=branch_id)
 
     # Create grafana objects for vela
     await create_vela_grafana_obj(organization_id, branch_id, credential)
