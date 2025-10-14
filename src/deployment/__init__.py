@@ -8,6 +8,7 @@ from importlib import resources
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
+import asyncpg
 import yaml
 from cloudflare import AsyncCloudflare, CloudflareError
 from kubernetes_asyncio.client.exceptions import ApiException
@@ -325,6 +326,36 @@ def resize_deployment(branch_id: Identifier, parameters: ResizeParameters):
                 temp_values.name,
             ]
         )
+
+
+async def update_branch_database_password(
+    *,
+    branch_id: Identifier,
+    database: str,
+    username: str,
+    current_password: str,
+    new_password: str,
+    ssl: Any | None = None,
+) -> None:
+    """Rotate the admin credentials for a branch by connecting directly to the database."""
+
+    connection: asyncpg.Connection | None = None
+    host: str = f"supabase-supabase-db.{branch_id}.svc.cluster.local"
+    try:
+        connection = await asyncpg.connect(
+            user=username,
+            password=current_password,
+            database=database,
+            host=host,
+            port=5432,
+            ssl=ssl,
+            server_settings={"application_name": "vela-password-rotation"},
+            command_timeout=10,
+        )
+        await connection.execute(f"ALTER ROLE {username} WITH PASSWORD $1", new_password)
+    finally:
+        if connection is not None:
+            await connection.close()
 
 
 class CloudflareConfig(BaseModel):
