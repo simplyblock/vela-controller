@@ -28,6 +28,7 @@ from .._util import (
     dbstr,
 )
 from ..exceptions import VelaCloudflareError, VelaKubernetesError
+from .grafana import create_vela_grafana_obj
 from .kubernetes import KubernetesService
 from .kubernetes.kubevirt import get_virtualmachine_status
 from .settings import settings
@@ -600,15 +601,20 @@ async def provision_branch_endpoints(
 
 async def deploy_branch_environment(
     *,
+    organization_id: Identifier,
     project_id: Identifier,
     branch_id: Identifier,
     branch_slug: Slug,
+    credential: str,
     parameters: DeploymentParameters,
     jwt_secret: str,
     anon_key: str,
     service_key: str,
 ) -> None:
     """Background task: provision infra for a branch and persist the resulting endpoint."""
+
+    # Create grafana objects for vela
+    await create_vela_grafana_obj(organization_id, branch_id, credential)
 
     # Create the main deployment (database etc)
     await create_vela_config(

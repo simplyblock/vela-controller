@@ -28,11 +28,21 @@ spec:
             - configMapRef:
                 name: vela-controller-config
           env:
-            - name: LOGFLARE_PUBLIC_ACCESS_TOKEN
+            - name: VELA_LOGFLARE_PUBLIC_ACCESS_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: vela-logflare-secret
                   key: LOGFLARE_PUBLIC_ACCESS_TOKEN
+            - name: VELA_GRAFANA_SECURITY_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: vela-grafana-secret
+                  key: VELA_GRAFANA_SECURITY_ADMIN_USER
+            - name: VELA_GRAFANA_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: vela-grafana-secret
+                  key: VELA_GRAFANA_SECURITY_ADMIN_PASSWORD
             - name: DB_USER
               valueFrom:
                 secretKeyRef:
@@ -55,6 +65,8 @@ spec:
               value: 'admin'
             - name: VELA_KEYCLOAK_ADMIN_SECRET
               value: 'admin'
+            - name: VELA_GRAFANA_URL
+              value: "http://vela-grafana:3000"
               
           livenessProbe:
             httpGet:
