@@ -104,12 +104,14 @@ DATABASE BACKUPS
       curl -X GET "http://localhost:8000/vela/backup/branches/01K7D3Y9ZVKYEPE6AX2K237BM2/schedule"
       curl -X GET "http://localhost:8000/vela/backup/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/schedule"   
       curl -X DELETE "http://localhost:8000/vela/backup/schedule/01K7GZXS2G3CRDM36WCS33DY2D/"
-      
+
+        curl -X GET "http://localhost:8000/vela/backup/organization/01K7D3Y9ZVKYEPE6AX2K237BM2/"
+      curl -X GET "http://localhost:8000/vela/backup/branches/01K7D3Y9ZVKYEPE6AX2K237BM2/"
  
       curl -X POST "http://localhost:8000/vela/backup/branches/01K7D3Y9ZVKYEPE6AX2K237BM2/"
       curl -X DELETE "http://localhost:8000/vela/backup/01K7H17ETVFY07YWZT5EW4GY4G"
       
-
+curl -X GET "http://localhost:8000/vela/backup/branches/01K7D3Y9ZVKYEPE6AX2K237BM2/info"
 
 -----------------------------------------------------------------------------------------------------------------------
 RESOURCE LIMITS AND CONSUMPTION

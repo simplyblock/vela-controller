@@ -268,6 +268,8 @@ async def list_backups(
         stmt = select(BackupEntry).join(Branch).where(Branch.organization_id == org_ref)
         if env_type is not None:
             stmt = stmt.where(Branch.env_type == env_type)
+        stmt = select(BackupEntry).join(Branch).where(Branch.organization_id == org_ref)
+
     elif branch_ref:
         stmt = select(BackupEntry).where(BackupEntry.branch_id == branch_ref)
     else:
@@ -365,3 +367,75 @@ async def delete_backup(backup_ref: Identifier, db: AsyncSession = Depends(get_d
     db.add(log)
     await db.commit()
     return {"status": "backup deleted"}
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+from datetime import datetime
+
+router = APIRouter()
+
+@router.get("/backup/branches/{branch_id}/info")
+async def get_branch_backup_info(
+    branch_id: Identifier,
+    db: AsyncSession = Depends(get_db),
+):
+    # 1️⃣ Find the BackupSchedule that applies to this branch
+    # (first look for branch-level, then environment/org fallback if applicable)
+    stmt = (
+        select(BackupSchedule)
+        .where(BackupSchedule.branch_id == branch_id)
+    )
+
+    result = await db.execute(stmt)
+    schedule = result.scalars().first()
+    level = "branch"
+    nb = None
+    # Optionally, if no branch-level schedule found, fall back to org/env-level
+    if not schedule:
+        # Find branch’s organization and environment (if such relation exists)
+        branch_stmt = select(Branch).where(Branch.id == branch_id)
+        branch_result = await db.execute(branch_stmt)
+        branch = branch_result.scalar_one_or_none()
+
+        if not branch:
+            raise HTTPException(status_code=404, detail="Branch not found")
+
+        # Try environment-level schedule
+        if branch.environment_type:
+            stmt = (
+                select(BackupSchedule)
+                .where(BackupSchedule.environment_type == branch.environment_type,
+                       BackupSchedule.organization_id == branch.organization_id)
+
+            )
+            level="environment"
+        else:
+            stmt = (
+                select(BackupSchedule)
+                .where(BackupSchedule.organization_id == branch.organization_id)
+
+            )
+            level="organization"
+        result = await db.execute(stmt)
+        schedule = result.scalars().first()
+
+    stmt = (
+        select(NextBackup)
+        .where(NextBackup.branch_id == branch_id,
+                   NextBackup.schedule_id == schedule.id)
+    ).order_by(NextBackup.next_at.asc()).limit(1)
+    result = await db.execute(stmt)
+    nb = result.scalars().first()
+
+    # 2️⃣ If still no schedule → no backup config
+    if not schedule:
+        raise HTTPException(status_code=404, detail="No backup schedule found for this branch")
+
+    return {
+        "branch_id": str(branch_id),
+        "schedule_id": str(schedule.id),
+        "level": level,
+        "next_backup": str(nb.next_at)
+    }
