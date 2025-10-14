@@ -3,16 +3,17 @@ import logging
 import secrets
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
-from typing import Literal
+from typing import Annotated, Literal
 
 import jwt
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials
 from keycloak.exceptions import KeycloakError
 from kubernetes_asyncio.client.exceptions import ApiException
 from sqlalchemy.exc import IntegrityError
 
-from ...._util import Identifier
+from ...._util import DEFAULT_DB_NAME, DEFAULT_DB_USER, Identifier
 from ....deployment import (
     DeploymentParameters,
     delete_deployment,
@@ -22,6 +23,7 @@ from ....deployment import (
 from ....deployment.kubernetes.kubevirt import call_kubevirt_subresource
 from ....exceptions import VelaError
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
+from ...auth import security
 from ...db import SessionDep
 from ...keycloak import realm_admin
 from ...models.branch import Branch
@@ -42,9 +44,11 @@ api = APIRouter(tags=["project"])
 
 async def _deploy_branch_environment_task(
     *,
+    organization_id: Identifier,
     project_id: Identifier,
     branch_id: Identifier,
     branch_slug: str,
+    credential: str,
     parameters: DeploymentParameters,
     jwt_secret: str,
     anon_key: str,
@@ -52,9 +56,11 @@ async def _deploy_branch_environment_task(
 ) -> None:
     try:
         await deploy_branch_environment(
+            organization_id=organization_id,
             project_id=project_id,
             branch_id=branch_id,
             branch_slug=branch_slug,
+            credential=credential,
             parameters=parameters,
             jwt_secret=jwt_secret,
             anon_key=anon_key,
@@ -128,6 +134,7 @@ _links = {
 async def create(
     session: SessionDep,
     request: Request,
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
     organization: OrganizationDep,
     parameters: ProjectCreate,
     response: Literal["empty", "full"] = "empty",
@@ -141,8 +148,8 @@ async def create(
         name=Branch.DEFAULT_SLUG,
         project=entity,
         parent=None,
-        database=parameters.deployment.database,
-        database_user=parameters.deployment.database_user,
+        database=DEFAULT_DB_NAME,
+        database_user=DEFAULT_DB_USER,
         database_password=parameters.deployment.database_password,
         database_size=parameters.deployment.database_size,
         storage_size=parameters.deployment.storage_size,
@@ -169,6 +176,7 @@ async def create(
 
     await session.refresh(entity)
     await session.refresh(main_branch)
+    organization_id = entity.organization_id
     project_id = entity.id
     branch_slug = main_branch.name
     branch_dbid = main_branch.id
@@ -178,10 +186,13 @@ async def create(
     main_branch.jwt_secret = jwt_secret
     main_branch.anon_key = anon_key
     main_branch.service_key = service_key
+    credential = credentials.credentials
     await session.commit()
 
     asyncio.create_task(
         _deploy_branch_environment_task(
+            organization_id=organization_id,
+            credential=credential,
             project_id=project_id,
             branch_id=branch_dbid,
             branch_slug=branch_slug,

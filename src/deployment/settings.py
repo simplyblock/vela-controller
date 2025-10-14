@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     cloudflare_domain_suffix: str
     gateway_name: str = "vela-public-gateway"
     gateway_namespace: str = "kong-system"
+    logflare_public_access_token: str = ""
+    grafana_url: str = "http://localhost:3000"
+    grafana_security_admin_user: str = "admin"
+    grafana_security_admin_password: str = "password"
 
 
 settings = Settings()  # type: ignore[call-arg]

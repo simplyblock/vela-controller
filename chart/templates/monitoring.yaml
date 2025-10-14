@@ -1,5 +1,15 @@
 ---
 apiVersion: v1
+kind: Secret
+metadata:
+  name: vela-grafana-secret
+  namespace: {{ .Release.Namespace }}
+type: Opaque
+stringData:
+  VELA_GRAFANA_SECURITY_ADMIN_USER: "{{ .Values.monitoring.VELA_GRAFANA_SECURITY_ADMIN_USER }}"
+  VELA_GRAFANA_SECURITY_ADMIN_PASSWORD: "{{ .Values.monitoring.VELA_GRAFANA_SECURITY_ADMIN_PASSWORD }}"
+---
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: vela-grafana-datasource
@@ -39,12 +49,18 @@ spec:
           - 0
       containers:
         - name: grafana
-          image: grafana/grafana:10.0.12
+          image: grafana/grafana:latest
           env:
             - name: GF_SECURITY_ADMIN_USER
-              value: "admin"
+              valueFrom:
+                secretKeyRef:
+                  name: vela-grafana-secret
+                  key: VELA_GRAFANA_SECURITY_ADMIN_USER
             - name: GF_SECURITY_ADMIN_PASSWORD
-              value: "password"
+              valueFrom:
+                secretKeyRef:
+                  name: vela-grafana-secret
+                  key: VELA_GRAFANA_SECURITY_ADMIN_PASSWORD
             - name: GF_ALERTING_ENABLED
               value: "true"
             - name: GF_PATHS_PROVISIONING
@@ -54,7 +70,7 @@ spec:
             - name: GF_AUTH_JWT_ENABLED
               value: "true"
             - name: "GF_AUTH_JWT_HEADER_NAME"
-              value: "X-JWT-Assertion"
+              value: "Authorization"
             - name: "GF_AUTH_JWT_USERNAME_CLAIM" 
               value: "sub"
             - name: "GF_AUTH_JWT_EMAIL_CLAIM"

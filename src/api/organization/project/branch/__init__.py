@@ -3,18 +3,19 @@ import base64
 import hashlib
 import logging
 from collections.abc import Sequence
-from typing import Any, Literal, cast
+from typing import Annotated, Any, Literal, cast
 
 from Crypto.Cipher import AES
 from Crypto.Hash import MD5
 from Crypto.Random import get_random_bytes
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials
 from keycloak.exceptions import KeycloakError
 from kubernetes_asyncio.client.exceptions import ApiException
 from sqlalchemy.exc import IntegrityError
 
-from ....._util import Identifier
+from ....._util import DEFAULT_DB_NAME, DEFAULT_DB_USER, Identifier
 from .....deployment import (
     DeploymentParameters,
     ResizeParameters,
@@ -34,6 +35,7 @@ from .....deployment.kubernetes.kubevirt import (
 from .....deployment.settings import settings as deployment_settings
 from .....exceptions import VelaDeploymentError, VelaError
 from ...._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
+from ....auth import security
 from ....db import SessionDep
 from ....keycloak import realm_admin
 from ....models.branch import (
@@ -61,7 +63,9 @@ api = APIRouter(tags=["branch"])
 
 async def _deploy_branch_environment_task(
     *,
+    organization_id: Identifier,
     project_id: Identifier,
+    credential: str,
     branch_id: Identifier,
     branch_slug: str,
     parameters: DeploymentParameters,
@@ -71,9 +75,11 @@ async def _deploy_branch_environment_task(
 ) -> None:
     try:
         await deploy_branch_environment(
+            organization_id=organization_id,
             project_id=project_id,
             branch_id=branch_id,
             branch_slug=branch_slug,
+            credential=credential,
             parameters=parameters,
             jwt_secret=jwt_secret,
             anon_key=anon_key,
@@ -244,6 +250,7 @@ _links = {
 async def create(
     session: SessionDep,
     request: Request,
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
     organization: OrganizationDep,
     project: ProjectDep,
     parameters: BranchCreate,
@@ -255,8 +262,8 @@ async def create(
             name=parameters.name,
             project_id=project.id,
             parent_id=source.id,
-            database=source.database,
-            database_user=source.database_user,
+            database=DEFAULT_DB_NAME,
+            database_user=DEFAULT_DB_USER,
             database_password=source.database_password,
             database_size=source.database_size,
             storage_size=source.storage_size,
@@ -271,8 +278,8 @@ async def create(
             name=parameters.name,
             project_id=project.id,
             parent=None,
-            database=deployment_params.database,
-            database_user=deployment_params.database_user,
+            database=DEFAULT_DB_NAME,
+            database_user=DEFAULT_DB_USER,
             database_password=deployment_params.database_password,
             database_size=deployment_params.database_size,
             storage_size=deployment_params.storage_size,
@@ -309,7 +316,9 @@ async def create(
     if parameters.deployment is not None:
         asyncio.create_task(
             _deploy_branch_environment_task(
+                organization_id=organization.id,
                 project_id=project.id,
+                credential=credentials.credentials,
                 branch_id=entity.id,
                 branch_slug=entity.name,
                 parameters=parameters.deployment,

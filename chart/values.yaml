@@ -34,3 +34,7 @@ analytics:
   LOGFLARE_PUBLIC_ACCESS_TOKEN: my-super-secret-api-key
   LOGFLARE_PRIVATE_ACCESS_TOKEN: your-super-secret-and-long-logflare-key-private
  
+monitoring:
+  VELA_GRAFANA_SECURITY_ADMIN_USER: admin
+  VELA_GRAFANA_SECURITY_ADMIN_PASSWORD: password
+  

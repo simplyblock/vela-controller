@@ -10,7 +10,7 @@ from typing import Annotated, Any, Literal
 import yaml
 from cloudflare import AsyncCloudflare, CloudflareError
 from kubernetes_asyncio.client.exceptions import ApiException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from .._util import (
     CPU_CONSTRAINTS,
@@ -27,6 +27,7 @@ from .._util import (
     dbstr,
 )
 from ..exceptions import VelaCloudflareError, VelaKubernetesError
+from .grafana import create_vela_grafana_obj
 from .kubernetes import KubernetesService
 from .kubernetes.kubevirt import get_virtualmachine_status
 from .logflare import create_logflare_objects
@@ -103,8 +104,6 @@ def inject_branch_env(compose: dict[str, Any], branch_id: Identifier) -> dict[st
 
 
 class DeploymentParameters(BaseModel):
-    database: dbstr
-    database_user: dbstr
     database_password: dbstr
     database_size: Annotated[int, Field(**DATABASE_SIZE_CONSTRAINTS)]
     storage_size: Annotated[int, Field(**STORAGE_SIZE_CONSTRAINTS)]
@@ -128,10 +127,8 @@ async def create_vela_config(
 ):
     namespace = deployment_namespace(branch_id)
     logging.info(
-        "Creating Vela configuration for namespace: %s (database %s, user %s, branch %s, branch_id=%s)",
+        "Creating Vela configuration for namespace: %s (branch %s, branch_id=%s)",
         namespace,
-        parameters.database,
-        parameters.database_user,
         branch,
         branch_id,
     )
@@ -147,20 +144,26 @@ async def create_vela_config(
     vector_file = Path(__file__).with_name("vector.yml")
     if not vector_file.exists():
         raise FileNotFoundError(f"vector config file not found at {vector_file}")
+
+    pb_hba_conf = Path(__file__).with_name("pg_hba.conf")
+    if not pb_hba_conf.exists():
+        raise FileNotFoundError(f"pg_hba.conf file not found at {pb_hba_conf}")
+
     values_content = yaml.safe_load((chart / "values.yaml").read_text())
 
     # Override defaults
-    values_content.setdefault("secret", {}).setdefault("jwt", {}).update(
+    secrets = values_content.setdefault("secret", {})
+    secrets.setdefault("jwt", {}).update(
         secret=jwt_secret,
         anonKey=anon_key,
         serviceKey=service_key,
     )
-
-    db_secrets = values_content.setdefault("db", {}).setdefault("credentials", {})
-    db_secrets["adminusername"] = parameters.database_user
-    db_secrets["adminpassword"] = parameters.database_password
-    db_secrets["admindb"] = parameters.database
-    db_secrets["pgmeta_crypto_key"] = settings.pgmeta_crypto_key
+    secrets.update(
+        pgmeta_crypto_key=settings.pgmeta_crypto_key,
+    )
+    secrets.setdefault("db", {}).update(
+        password=parameters.database_password,
+    )
 
     db_spec = values_content.setdefault("db", {})
     resource_cfg = db_spec.setdefault("resources", {})
@@ -211,6 +214,8 @@ async def create_vela_config(
                     f"composeYaml={modified_compose.name}",
                     "--set-file",
                     f"vectorYaml={vector_file}",
+                    "--set-file",
+                    f"pgHbaConf={pb_hba_conf}",
                     "-f",
                     temp_values.name,
                 ],
@@ -265,13 +270,20 @@ def get_db_vmi_identity(branch_id: Identifier) -> tuple[str, str]:
 
 
 class ResizeParameters(BaseModel):
-    database_size: Annotated[int, Field(**DATABASE_SIZE_CONSTRAINTS)] | None
-    storage_size: Annotated[int, Field(**STORAGE_SIZE_CONSTRAINTS)] | None
+    database_size: Annotated[int, Field(**DATABASE_SIZE_CONSTRAINTS)] | None = None
+    storage_size: Annotated[int, Field(**STORAGE_SIZE_CONSTRAINTS)] | None = None
+    memory_bytes: Annotated[int, Field(**MEMORY_CONSTRAINTS)] | None = None
+
+    @model_validator(mode="after")
+    def ensure_at_least_one(self) -> "ResizeParameters":
+        if self.database_size is None and self.storage_size is None and self.memory_bytes is None:
+            raise ValueError("Specify at least one of database_size, storage_size, or memory_bytes")
+        return self
 
 
 def resize_deployment(branch_id: Identifier, parameters: ResizeParameters):
-    """Perform an in-place Helm upgrade to disk. Only parameters provided will be updated.
-    others are preserved using --reuse-values.
+    """Perform an in-place Helm upgrade for resize operations. Only parameters provided will be
+    updated; others are preserved using --reuse-values.
     """
     chart = resources.files(__package__) / "charts" / "supabase"
     # Minimal values file with only overrides
@@ -287,6 +299,15 @@ def resize_deployment(branch_id: Identifier, parameters: ResizeParameters):
         storage_persistence = storage_spec.setdefault("persistence", {})
         storage_persistence["enabled"] = True
         storage_persistence["size"] = storage_size_gi
+    if parameters.memory_bytes is not None:
+        memory_limit_mib = f"{bytes_to_mib(parameters.memory_bytes)}Mi"
+        resources_spec = db_spec.setdefault("resources", {})
+        limits_spec = resources_spec.setdefault("limits", {})
+        limits_spec["memory"] = memory_limit_mib
+        requests_spec = resources_spec.setdefault("requests", {})
+        memory_request_fraction = 0.90
+        memory_request_bytes = math.floor(parameters.memory_bytes * memory_request_fraction)
+        requests_spec["memory"] = f"{bytes_to_mib(memory_request_bytes)}Mi"
 
     namespace = deployment_namespace(branch_id)
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as temp_values:
@@ -580,9 +601,11 @@ async def provision_branch_endpoints(
 
 async def deploy_branch_environment(
     *,
+    organization_id: Identifier,
     project_id: Identifier,
     branch_id: Identifier,
     branch_slug: Slug,
+    credential: str,
     parameters: DeploymentParameters,
     jwt_secret: str,
     anon_key: str,
@@ -592,6 +615,9 @@ async def deploy_branch_environment(
 
     # Create logflare objects for vela
     await create_logflare_objects(branch_id=branch_id)
+    
+    # Create grafana objects for vela
+    await create_vela_grafana_obj(organization_id, branch_id, credential)
 
     # Create the main deployment (database etc)
     await create_vela_config(

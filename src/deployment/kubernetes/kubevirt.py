@@ -40,7 +40,7 @@ async def get_virtualmachine_status(namespace: str, name: str) -> StatusType:
                 plural="virtualmachines",
                 name=name,
             )
-        except (client.ApiException, ClientError) as e:
+        except (client.ApiException, ClientError, TimeoutError) as e:
             raise VelaKubernetesError("Failed to query virtual machine status") from e
 
     # KubeVirt exposes status.printableStatus as a human readable state

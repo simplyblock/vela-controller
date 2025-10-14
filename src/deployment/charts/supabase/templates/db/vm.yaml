@@ -23,30 +23,24 @@ spec:
           sockets: 2
           threads: 1
         memory:
-          guest: 256Gi
+          guest: {{ .Values.db.resources.limits.memory }}
         devices:
           disks:
             - name: rootdisk
               disk:
                 bus: virtio
-            - name: datadisk
+            - name: datadisk # /vdb
               disk:
                 bus: virtio
-            - name: storage-disk
+            - name: storage-disk # /vdc
               disk:
                 bus: virtio
-            - name: initdb-scripts-data
+            - name: db-secrets # /vdd
               disk:
                 bus: virtio
-            - name: migrations-data
+            - name: compose-config # /vde
               disk:
-                bus: virtio
-            - name: db-secrets
-              disk:
-                bus: virtio
-            - name: compose-config
-              disk:
-                bus: virtio
+                bus: virtio # /vdf
             - name: jwt-secrets
               disk:
                 bus: virtio
@@ -59,9 +53,7 @@ spec:
         resources:
           limits:
             cpu: {{ .Values.db.resources.limits.cpu }}
-            memory: {{ .Values.db.resources.limits.memory }}
           requests:
-            memory: {{ .Values.db.resources.requests.memory }}
             cpu: {{ .Values.db.resources.requests.cpu }}
       networks:
       - name: default
@@ -70,25 +62,19 @@ spec:
         - name: rootdisk
           containerDisk:
             image: manoharbrm/kubevirt:alpine-{{ .Values.db.image.tag }}-compose
-        - name: datadisk
+        - name: datadisk # vdb
           persistentVolumeClaim:
             claimName: {{ include "supabase.db.fullname" . }}-pvc
-        - name: storage-disk
+        - name: storage-disk # vdc
           persistentVolumeClaim:
             claimName: {{ include "supabase.db.fullname" . }}-storage-pvc
-        - name: initdb-scripts-data
-          configMap:
-            name: {{ include "supabase.db.fullname" . }}-initdb
-        - name: migrations-data
-          configMap:
-            name: {{ include "supabase.db.fullname" . }}-migrations
-        - name: db-secrets
+        - name: db-secrets # vdd
           secret:
             secretName: {{ include "supabase.secret.db" . }}
-        - name: compose-config
+        - name: compose-config # vde
           configMap:
             name: {{ include "supabase.db.fullname" . }}-compose
-        - name: jwt-secrets
+        - name: jwt-secrets # vdf
           secret:
             secretName: {{ include "supabase.secret.jwt" . }}
         - name: cloudinitdisk
