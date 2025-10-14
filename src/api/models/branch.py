@@ -17,6 +17,7 @@ from ..._util import (
     STORAGE_SIZE_CONSTRAINTS,
     Identifier,
     Slug,
+    dbstr,
 )
 from ...deployment import DeploymentParameters
 from ..db import SessionDep
@@ -83,6 +84,10 @@ class BranchCreate(BaseModel):
 
 class BranchUpdate(BaseModel):
     name: Name | None = None
+
+
+class BranchPasswordReset(BaseModel):
+    new_password: dbstr
 
 
 BranchServiceStatus = Literal[

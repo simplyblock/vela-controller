@@ -5,6 +5,7 @@ import logging
 from collections.abc import Sequence
 from typing import Annotated, Any, Literal, cast
 
+from asyncpg import exceptions as asyncpg_exceptions
 from Crypto.Cipher import AES
 from Crypto.Hash import MD5
 from Crypto.Random import get_random_bytes
@@ -26,6 +27,7 @@ from .....deployment import (
     deploy_branch_environment,
     get_db_vmi_identity,
     resize_deployment,
+    update_branch_database_password,
 )
 from .....deployment.kubernetes.kubevirt import (
     KubevirtSubresourceAction,
@@ -44,6 +46,7 @@ from ....models.branch import (
     BranchApiKeys,
     BranchCreate,
     BranchDep,
+    BranchPasswordReset,
     BranchPublic,
     BranchStatus,
     BranchUpdate,
@@ -403,6 +406,49 @@ async def delete(
     await delete_deployment(branch.id)
     await realm_admin("master").a_delete_realm(str(branch.id))
     await session.delete(branch)
+    await session.commit()
+    return Response(status_code=204)
+
+
+@instance_api.post(
+    "/reset-password",
+    name="organizations:projects:branch:reset-password",
+    status_code=204,
+    responses={
+        401: Unauthenticated,
+        403: Forbidden,
+        404: NotFound,
+        500: {"description": "Failed to rotate branch database password."},
+    },
+)
+async def reset_password(
+    session: SessionDep,
+    _organization: OrganizationDep,
+    _project: ProjectDep,
+    branch: BranchDep,
+    parameters: BranchPasswordReset,
+) -> Response:
+    current_password = branch.database_password
+    db_host = branch.endpoint_domain or branch_domain(branch.id)
+    if not db_host:
+        db_host = deployment_settings.deployment_host
+    if not db_host:
+        logging.error("Database host unavailable for branch %s", branch.id)
+        raise HTTPException(status_code=500, detail="Branch database host is not configured.")
+
+    try:
+        await update_branch_database_password(
+            branch_id=branch.id,
+            database=branch.database,
+            username=branch.database_user,
+            current_password=current_password,
+            new_password=parameters.new_password,
+        )
+    except (asyncpg_exceptions.PostgresError, OSError) as exc:
+        logging.exception("Failed to rotate database password for branch %s", branch.id)
+        raise HTTPException(status_code=500, detail="Failed to rotate branch database password.") from exc
+
+    branch.database_password = parameters.new_password
     await session.commit()
     return Response(status_code=204)
 
