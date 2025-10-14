@@ -40,23 +40,28 @@ monitoring:
   
 studio:
   env:
-    STUDIO_PG_META_URL: http://meta:8080
-    POSTGRES_PASSWORD: ""
-    OPENAI_API_KEY: ""
-    SUPABASE_URL: http://kong:8000
-    SUPABASE_SERVICE_KEY: ""
-    LOGFLARE_URL: http://analytics:4000
-    NEXT_PUBLIC_ENABLE_LOGS: "true"
-    NEXT_ANALYTICS_BACKEND_PROVIDER: postgres
-    NEXT_PUBLIC_API_URL: ""
-    NEXT_PUBLIC_GOTRUE_URL: 'http://vela-auth-service:8080'
-    NEXT_PUBLIC_IS_PLATFORM: 'true'
-    PUBLIC_PLATFORM: 'vela'
-    VELA_PLATFORM_GOTRUE_URL: 'http://vela-auth-service:8080'
-    VELA_PLATFORM_URL: 'http://vela-controller-service:8000'
-    PLATFORM_PG_META_URL: 'http://localhost:8080/meta'
+    PLATFORM_PG_META_URL: 'http://meta:8080'
+    SUPABASE_URL: 'http://kong:8000'
+
+    SUPABASE_ANON_KEY: "UpNVntn3cDxHJpq99YMc1T1AQgQpc8kfYTuRgBiYa15BLrx8etQoXz3gZv1/u2oq"
+    SUPABASE_SERVICE_KEY: "" # TODO
+    OPENAI_API_KEY: "" # TODO Will eventually be removed
     AUTH_JWT_SECRET: 'secret'  # TODO
-    SUPABASE_ANON_KEY: 'UpNVntn3cDxHJpq99YMc1T1AQgQpc8kfYTuRgBiYa15BLrx8etQoXz3gZv1/u2oq'
-    SUPABASE_PUBLIC_URL: 'http://staging.vela.run'
-    LOGFLARE_PRIVATE_ACCESS_TOKEN: 'your-super-secret-and-long-logflare-key-private'
-    IS_THROTTLED: 'false'
+    NEXTAUTH_SECRET: 'super-long-random-nextauth-secret' # TODO
+
+    LOGFLARE_URL: 'http://analytics:4000'
+    LOGFLARE_PRIVATE_ACCESS_TOKEN: 'your-super-secret-and-long-logflare-key-private' # TODO same as in analytics
+
+    VELA_PLATFORM_KEYCLOAK_ISSUER: 'http://staging.vela.run/auth/realms/vela'
+    VELA_PLATFORM_KEYCLOAK_CLIENT_ID: 'frontend'
+    VELA_PLATFORM_KEYCLOAK_CLIENT_SECRET: 'super-long-random-keycloak-secret'
+    VELA_PLATFORM_KEYCLOAK_AUTHORIZATION_ENDPOINT: 'http://staging.vela.run/auth/realms/vela/protocol/openid-connect/auth'
+    VELA_PLATFORM_KEYCLOAK_TOKEN_ENDPOINT: 'http://auth:8080/auth/realms/vela/protocol/openid-connect/token'
+    VELA_PLATFORM_KEYCLOAK_USERINFO_ENDPOINT: 'http://auth:8080/auth/realms/vela/protocol/openid-connect/userinfo'
+    VELA_PLATFORM_KEYCLOAK_LOGOUT_ENDPOINT: 'http://auth:8080/auth/protocol/openid-connect/logout'
+    VELA_PLATFORM_KEYCLOAK_JWKS_ENDPOINT: 'http://auth:8080/auth/realms/vela/protocol/openid-connect/certs'
+    VELA_PLATFORM_EXT_SIGN_IN_URL: 'http://staging.vela.run/sign-in'
+    VELA_PLATFORM_EXT_BASE_URL: 'http://staging.vela.run/'
+    VELA_PLATFORM_EXT_API_SERVICE_URL: 'http://staging.vela.run/api'
+
+    VELA_PLATFORM_URL: 'http://vela-controller-service:8000'
