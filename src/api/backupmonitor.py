@@ -91,7 +91,8 @@ class BackupMonitor:
         logger.info("Found %d branches", len(branches))
 
         for branch in branches:
-            if (str(get_branch_status(branch))=="ACTIVE_HEALTHY"):
+            status = await get_branch_status(branch)
+            if (status=="ACTIVE_HEALTHY"):
               try:
                 await self.process_branch(db, branch, now)
               except Exception:

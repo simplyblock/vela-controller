@@ -410,6 +410,7 @@ async def branch_effective_limit(
 
 from datetime import datetime
 from sqlmodel import select
+from ..check_branch_status import get_branch_status
 
 async def monitor_resources(interval_seconds: int = 60):
     while True:
@@ -424,23 +425,25 @@ async def monitor_resources(interval_seconds: int = 60):
                 logger.info("Found %d active branches", len(branches))
 
                 for branch in branches:
-                    prov_result = await db.execute(
-                        select(BranchProvisioning).where(
+                    status = await get_branch_status(branch)
+                    if (status == "ACTIVE_HEALTHY"):
+                       prov_result = await db.execute(
+                         select(BranchProvisioning).where(
                             BranchProvisioning.branch_id == branch.id
-                        )
-                    )
-                    provisionings = prov_result.scalars().all()
+                         )
+                       )
+                       provisionings = prov_result.scalars().all()
 
-                    for p in provisionings:
-                        usage = ResourceUsageMinute(
+                       for p in provisionings:
+                          usage = ResourceUsageMinute(
                             ts_minute=ts_minute,
                             org_id=branch.organization_id,
                             project_id=branch.project_id,
                             branch_id=branch.id,
                             resource=p.resource,
                             amount=p.amount
-                        )
-                        db.add(usage)
+                          )
+                          db.add(usage)
 
                 await db.commit()
         except Exception:

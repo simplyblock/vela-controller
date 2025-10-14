@@ -1,3 +1,7 @@
+
+export TOKEN=$(curl -s http://localhost:8000/auth/realms/vela/protocol/openid-connect/token   -H "Content-Type: application/x-www-form-urlencoded"   -d "username=testuser"   -d "password=testpassword"    -d "grant_type=password"   -d "client_id=frontend" -d "client_secret=client-secret" | jq -r '.access_token')
+echo $TOKEN
+
 -------------------------------------------------------------------------------------------------------------------------
 ORG, PROJECT, BRANCH
 -------------------------------------------------------------------------------------------------------------------------
@@ -41,7 +45,7 @@ curl -X POST "http://localhost:8000/vela/organizations/01K7CVGXTSC8ZT76V4G2WVJG5
 
 curl -X GET "http://localhost:8000/vela/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/projects/"
 curl -X DELETE "http://localhost:8000/vela/organizations/01K7CV4DWA0VC9K6HFTZRKPZ1K/projects/01K7D15M3CF6H5AHXREEX198VQ/"
-curl -X GET "http://localhost:8000/vela/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/projects/01K7D3Z1HRTJF1DW66X1V8TK07/branches/"
+curl -X GET "http://localhost:8000/vela/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/projects/01K7D3Z1HRTJF1DW66X1V8TK07/branches/01K7D3Z1JBGX93TWHDR7B0ZF90/"
 curl -X DELETE "http://localhost:8000/vela/organizations/01K7CV4DWA0VC9K6HFTZRKPZ1K/" -H "Authorization: Bearer $TOKEN"
 
 -----------------------------------------------------------------------------------------------------------------------
@@ -58,17 +62,17 @@ DATABASE BACKUPS
 5. WHEN RETRIEVING SCHEDULES FOR AN ORGANIZATION, ALL SCHEDULES FOR ALL ENV TYPES ARE RETRIEVED AS WELL.
 6. THERE IS AN OPTION TO DELETE INDIVIDUAL BACKUPS AND TO CREATE AD-HOC BACKUPS. THIS MUST BE AVAILABLE IN THE UI TOO.
      
-     curl -X POST "http://localhost:8000/vela/backup/organizations/01K71RXH98EP0WSCCJ169RV4QR/schedule" \   
-  -H "Content-Type: application/json" \
-  -d '{
+     curl -X POST "http://localhost:8000/vela/backup/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/schedule" \
+           -H "Content-Type: application/json" \
+           -d '{
         "rows": [
           {"row_index": 0, "interval": 1, "unit": "minute", "retention": 1},
           {"row_index": 1, "interval": 10, "unit": "minute", "retention": 5}]}'
           
-           curl -X POST "http://localhost:8000/vela/backup/organizations/01K71RXH98EP0WSCCJ169RV4QR/schedule" \
+           curl -X POST "http://localhost:8000/vela/backup/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/schedule" \
   -H "Content-Type: application/json" \
   -d '{
-        "env_type": "qa",
+        "env_type": "dev",
         "rows": [
           {"row_index": 0, "interval": 1, "unit": "minute", "retention": 2},
           {"row_index": 1, "interval": 8, "unit": "minute", "retention": 2},
@@ -79,28 +83,31 @@ DATABASE BACKUPS
       }'
 
        
-      curl -X POST "http://localhost:8000/vela/backup/branches/01K729MMKXJJHD1TTV1AEGCGJP/schedule" \
+      curl -X POST "http://localhost:8000/vela/backup/branches/01K7D3Y9ZVKYEPE6AX2K237BM2/schedule" \
   -H "Content-Type: application/json" \
   -d '{
         "rows": [
-          {"row_index": 0, "interval": 1, "unit": "minute", "retention": 2}
-          {"row_index": 1, "interval": 15, "unit": "minute", "retention": 5}
-          {"row_index": 2, "interval": 6, "unit": "hour", "retention": 8}
+          {"row_index": 0, "interval": 1, "unit": "minute", "retention": 2},
+          {"row_index": 1, "interval": 15, "unit": "minute", "retention": 2},
+          {"row_index": 2, "interval": 6, "unit": "hour", "retention": 3}
         ]
       }'
       
-      curl -X PUT "http://localhost:8000/vela/backup/branches/01K729MMKXJJHD1TTV1AEGCGJP/schedule" \
+      curl -X PUT "http://localhost:8000/vela/backup/branches/01K7D3Y9ZVKYEPE6AX2K237BM2/schedule" \
   -H "Content-Type: application/json" \
   -d '{
         "rows": [
           {"row_index": 0, "interval": 1, "unit": "minute", "retention": 8}
         ]
       }'
-             
-      curl -X DELETE "http://localhost:8000/vela/backup/branches/01K729MMKXJJHD1TTV1AEGCGJP/schedule"
-      curl -X DELETE "http://localhost:8000/vela/backup/organization/01K71RXH98EP0WSCCJ169RV4QR/schedule"
-      curl -X POST "http://localhost:8000/vela/backup/branches/01K729MMKXJJHD1TTV1AEGCGJP/"
-      curl -X DELETE "http://localhost:8000/vela/backup/01K75BQYSFG6AF2C39PW7DTSVJ/"
+      
+      curl -X GET "http://localhost:8000/vela/backup/branches/01K7D3Y9ZVKYEPE6AX2K237BM2/schedule"
+      curl -X GET "http://localhost:8000/vela/backup/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/schedule"   
+      curl -X DELETE "http://localhost:8000/vela/backup/schedule/01K7GZXS2G3CRDM36WCS33DY2D/"
+      
+ 
+      curl -X POST "http://localhost:8000/vela/backup/branches/01K7D3Y9ZVKYEPE6AX2K237BM2/"
+      curl -X DELETE "http://localhost:8000/vela/backup/01K7H17ETVFY07YWZT5EW4GY4G"
       
 
 
@@ -359,3 +366,25 @@ curl -X POST "http://localhost:8000/vela/roles/organizations/01K7CVGXTSC8ZT76V4G
 curl -X GET "http://localhost:8000/vela/roles/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/role-assignments/"
 
 curl -X POST "http://localhost:8000/vela/roles/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/01K7FDZCD48PK32MCXP9XWCSYN/unassign/c4a2b899-f8f3-4b2e-a4c5-472bc87fa619/"
+
+
+
+01K7FE81DED7QP7MAEY44SJ2HZ env-type (1)
+01K7FE4NNN3R5DN7FEF6484ZSQ org-type (0)
+01K7FE330RZ26PNV5V0PDVFV12 proj-type (2)
+01K7FDZCD48PK32MCXP9XWCSYN branch-type (3)
+
+projects: 01K7D3XMSVZY7AY71CX50CBWXV, 01K7D3Y9Z6Z9JPRESQMB1R57ME, 01K7D3Z1HRTJF1DW66X1V8TK07
+environments: dev, prod, qa, staging
+
+branches:
+01K7D3Z1JBGX93TWHDR7B0ZF90 dev
+01K7D3Y9ZVKYEPE6AX2K237BM2
+01K7D3Z1JBGX93TWHDR7B0ZF90
+
+c92fdc65-ab01-4ff4-8f67-68c608973c18
+ 6f71a87b-43d4-4a7f-b58f-5a893da2eb9e
+ a1e4d4cd-c3e8-40c8-8a0a-02c6e6cf05d7
+ b3b7b2f1-bb0a-4e29-932f-8bb1d17a5b21
+ c4a2b899-f8f3-4b2e-a4c5-472bc87fa619
+ f1e34b9a-cb1c-4ad2-8d53-0b3e29a6b8c4

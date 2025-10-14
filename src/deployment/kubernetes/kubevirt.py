@@ -6,7 +6,7 @@ from kubernetes_asyncio import client
 
 from .. import StatusType
 from ...exceptions import VelaKubernetesError
-from ..kubevirt import api_client, custom_api_client
+from ._util import api_client, custom_api_client
 
 KubevirtSubresourceAction = Literal["pause", "unpause", "start", "stop"]
 

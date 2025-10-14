@@ -292,23 +292,13 @@ async def list_backups(
 # ---------------------------
 # Delete Schedule
 # ---------------------------
-@router.delete("/backup/organizations/{org_ref}/schedule")
-@router.delete("/backup/branches/{branch_ref}/schedule")
+@router.delete("/backup/schedule/{schedule_ref}/")
 async def delete_schedule(
-    org_ref: Optional[Identifier] = None,
-    branch_ref: Optional[Identifier] = None,
-    env_type: Optional[str] = None,
+    schedule_ref: Optional[Identifier] = None,
     db: AsyncSession = Depends(get_db),
 ):
     stmt = select(BackupSchedule)
-    if org_ref:
-        stmt = stmt.where(BackupSchedule.organization_id == org_ref,BackupSchedule.env_type.is_(None))
-        if env_type is not None:
-            stmt = stmt.where(BackupSchedule.env_type == env_type)
-    elif branch_ref:
-        stmt = stmt.where(BackupSchedule.branch_id == branch_ref)
-    else:
-        raise HTTPException(status_code=400, detail="Either org-ref or branch-ref needed.")
+    stmt = stmt.where(BackupSchedule.id == schedule_ref)
 
     result = await db.execute(stmt)
     schedule = result.scalars().first()

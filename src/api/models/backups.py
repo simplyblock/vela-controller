@@ -9,15 +9,12 @@ from ._util import Model
 from ..._util import Identifier
 from .organization import Organization, OrganizationDep
 
-
-
-
 class BackupSchedule(AsyncAttrs, Model, table=True):
     organization_id: Identifier = Model.foreign_key_field("organization", nullable=True)
     #organization: Organization = Relationship(back_populates="backup_schedules")
     branch_id: Identifier = Model.foreign_key_field("branch", nullable=True)
     #branch: Branch = Relationship(back_populates="backup_schedules")
-    env_type: Optional[str] = Field(default=None)
+    env_type: Optional[str] = Field(default=None, nullable=True)
     #rows: List["BackupScheduleRow"] = Relationship(back_populates="backup_schedule", cascade_delete=True)
 
 
