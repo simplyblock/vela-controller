@@ -207,6 +207,7 @@ async def delete_sources(branch_id: str) -> None:
         except httpx.HTTPStatusError as exc:
             logger.error(f"Failed to list sources for branch '{branch_id}': {exc.response.text}")
 
+
 # --- ENDPOINT DELETION ---
 async def delete_endpoint(branch_id: str) -> None:
     """
@@ -236,6 +237,7 @@ async def delete_endpoint(branch_id: str) -> None:
             logger.error(f"Request error while deleting endpoint for branch '{branch_id}': {exc}")
         except httpx.HTTPStatusError as exc:
             logger.error(f"Failed to delete endpoint for branch '{branch_id}': {exc.response.text}")
+
 
 async def create_logflare_objects(branch_id: Identifier):
     """
