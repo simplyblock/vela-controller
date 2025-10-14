@@ -109,6 +109,9 @@ async def main():
         os.environ["VELA_KEYCLOAK_CLIENT_ID"] = ""
         os.environ["VELA_KEYCLOAK_CLIENT_SECRET"] = ""
         os.environ["VELA_DEPLOYMENT_NAMESPACE_PREFIX"] = "vela-test"
+        os.environ["VELA_LOGFLARE_PUBLIC_ACCESS_TOKEN"] = ""
+        os.environ["VELA_LOGFLARE_PRIVATE_ACCESS_TOKEN"] = ""
+        os.environ["VELA_LOGFLARE_URL"] = "http://example.com"
 
         from simplyblock.vela.api import app
         from simplyblock.vela.deployment import DeploymentStatus

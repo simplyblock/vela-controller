@@ -72,6 +72,8 @@ spec:
               value: 'admin'
             - name: VELA_GRAFANA_URL
               value: "http://vela-grafana:3000"
+            - name: VELA_LOGFLARE_URL
+              value: "http://vela-logflare:4000"
               
           livenessProbe:
             httpGet:
