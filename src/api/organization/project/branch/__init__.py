@@ -1,14 +1,10 @@
 import asyncio
-import base64
 import hashlib
 import logging
 from collections.abc import Sequence
 from typing import Annotated, Any, Literal, cast
 
 from asyncpg import exceptions as asyncpg_exceptions
-from Crypto.Cipher import AES
-from Crypto.Hash import MD5
-from Crypto.Random import get_random_bytes
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials
@@ -40,6 +36,7 @@ from .....deployment.settings import settings as deployment_settings
 from .....exceptions import VelaDeploymentError, VelaError
 from ...._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ....auth import security
+from ....crypto import encrypt_with_passphrase
 from ....db import SessionDep
 from ....keycloak import realm_admin
 from ....models.branch import (
@@ -133,7 +130,7 @@ async def _public(branch: Branch) -> BranchPublic:
         port=port,
         username=branch.database_user,
         name=branch.database,
-        encrypted_connection_string=_encrypt(connection_string, settings.pgmeta_crypto_key),
+        encrypted_connection_string=encrypt_with_passphrase(connection_string, settings.pgmeta_crypto_key),
         service_endpoint_uri=service_endpoint,
         version=branch.database_image_tag,
         has_replicas=False,
@@ -269,7 +266,6 @@ async def create(
             parent_id=source.id,
             database=DEFAULT_DB_NAME,
             database_user=DEFAULT_DB_USER,
-            database_password=source.database_password,
             database_size=source.database_size,
             storage_size=source.storage_size,
             milli_vcpu=source.milli_vcpu,
@@ -277,6 +273,7 @@ async def create(
             iops=source.iops,
             database_image_tag=source.database_image_tag,
         )
+        entity.database_password = source.database_password
     else:
         deployment_params = cast("DeploymentParameters", parameters.deployment)
         entity = Branch(
@@ -285,7 +282,6 @@ async def create(
             parent=None,
             database=DEFAULT_DB_NAME,
             database_user=DEFAULT_DB_USER,
-            database_password=deployment_params.database_password,
             database_size=deployment_params.database_size,
             storage_size=deployment_params.storage_size,
             milli_vcpu=deployment_params.milli_vcpu,
@@ -293,6 +289,8 @@ async def create(
             iops=deployment_params.iops,
             database_image_tag=deployment_params.database_image_tag,
         )
+        if deployment_params.database_password:
+            entity.database_password = deployment_params.database_password
     session.add(entity)
     try:
         await realm_admin("master").a_create_realm({"realm": str(entity.id)})
@@ -570,27 +568,3 @@ async def get_apikeys(
 
 
 api.include_router(instance_api)
-
-
-def _evp_bytes_to_key(passphrase: str, salt: bytes) -> tuple[bytes, bytes]:
-    derived = b""
-    block = b""
-    key_len = 32
-    iv_len = 16
-
-    while len(derived) < key_len + iv_len:
-        block = MD5.new(block + passphrase.encode("utf-8") + salt).digest()
-        derived += block
-
-    return derived[:key_len], derived[key_len : key_len + iv_len]
-
-
-def _encrypt(plaintext: str, passphrase: str) -> str:
-    salt = get_random_bytes(8)
-    key, iv = _evp_bytes_to_key(passphrase, salt)
-    cipher = AES.new(key, AES.MODE_CBC, iv)
-    encoded = plaintext.encode("utf-8")
-    padding = 16 - (len(encoded) % 16)
-    padded = encoded + bytes([padding]) * padding
-    payload = cipher.encrypt(padded)
-    return base64.b64encode(b"Salted__" + salt + payload).decode("utf-8")

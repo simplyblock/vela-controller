@@ -150,7 +150,6 @@ async def create(
         parent=None,
         database=DEFAULT_DB_NAME,
         database_user=DEFAULT_DB_USER,
-        database_password=parameters.deployment.database_password,
         database_size=parameters.deployment.database_size,
         storage_size=parameters.deployment.storage_size,
         milli_vcpu=parameters.deployment.milli_vcpu,
@@ -158,6 +157,7 @@ async def create(
         iops=parameters.deployment.iops,
         database_image_tag=parameters.deployment.database_image_tag,
     )
+    main_branch.database_password = parameters.deployment.database_password
     session.add(main_branch)
     try:
         await realm_admin("master").a_create_realm({"realm": str(main_branch.id)})

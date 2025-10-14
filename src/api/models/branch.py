@@ -20,6 +20,7 @@ from ..._util import (
     dbstr,
 )
 from ...deployment import DeploymentParameters
+from ..crypto import decrypt_with_base64_key, decrypt_with_passphrase, encrypt_with_random_passphrase
 from ..db import SessionDep
 from ._util import Model, Name
 from .project import Project, ProjectDep
@@ -38,7 +39,11 @@ class Branch(AsyncAttrs, Model, table=True):
     # Deployment parameters specific to this branch
     database: Annotated[str, Field(sa_column=Column(String(255)))]
     database_user: Annotated[str, Field(sa_column=Column(String(255)))]
-    database_password: Annotated[str, Field(sa_column=Column(String(255)))]
+
+    # base64-encoded encrypted password and encryption key
+    encrypted_database_password: Annotated[str, Field(default="", sa_column=Column(Text, nullable=False))]
+    encryption_key: Annotated[str, Field(default="", sa_column=Column(String(255), nullable=False))]
+
     database_size: Annotated[int, Field(**DATABASE_SIZE_CONSTRAINTS, sa_column=Column(BigInteger))]
     milli_vcpu: Annotated[int, Field(**CPU_CONSTRAINTS, sa_column=Column(BigInteger))]  # units of milli vCPU
     memory: Annotated[int, Field(**MEMORY_CONSTRAINTS, sa_column=Column(BigInteger))]
@@ -61,6 +66,24 @@ class Branch(AsyncAttrs, Model, table=True):
             iops=self.iops,
             storage_bytes=self.storage_size,
         )
+
+    @property
+    def database_password(self) -> str:
+        if not self.encrypted_database_password or not self.encryption_key:
+            raise ValueError("Branch database password is not configured.")
+        try:
+            return decrypt_with_passphrase(self.encrypted_database_password, self.encryption_key)
+        except ValueError:
+            plaintext = decrypt_with_base64_key(self.encrypted_database_password, self.encryption_key)
+            # Re-encrypt using the new passphrase-based scheme so we eventually migrate all rows.
+            self.database_password = plaintext
+            return plaintext
+
+    @database_password.setter
+    def database_password(self, password: str) -> None:
+        encrypted, key = encrypt_with_random_passphrase(password)
+        self.encrypted_database_password = encrypted
+        self.encryption_key = key
 
 
 class BranchSourceParameters(BaseModel):
