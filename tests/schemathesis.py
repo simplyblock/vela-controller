@@ -79,6 +79,10 @@ async def main():
             "simplyblock.vela.deployment.delete_deployment",
             new_callable=unittest.mock.AsyncMock,
         ),
+        unittest.mock.patch(
+            "simplyblock.vela.deployment.logflare.create_global_logflare_objects",
+            new_callable=unittest.mock.AsyncMock,
+        ),
         unittest.mock.patch("keycloak.KeycloakAdmin") as mock_keycloak_admin,
     ):
         mock_load_incluster.return_value = None
@@ -109,9 +113,6 @@ async def main():
         os.environ["VELA_KEYCLOAK_CLIENT_ID"] = ""
         os.environ["VELA_KEYCLOAK_CLIENT_SECRET"] = ""
         os.environ["VELA_DEPLOYMENT_NAMESPACE_PREFIX"] = "vela-test"
-        os.environ["VELA_LOGFLARE_PUBLIC_ACCESS_TOKEN"] = ""
-        os.environ["VELA_LOGFLARE_PRIVATE_ACCESS_TOKEN"] = ""
-        os.environ["VELA_LOGFLARE_URL"] = "http://example.com"
 
         from simplyblock.vela.api import app
         from simplyblock.vela.deployment import DeploymentStatus
