@@ -40,6 +40,7 @@ kube_service = KubernetesService()
 
 DEFAULT_DATABASE_VM_NAME = "supabase-supabase-db"
 CHECK_ENCRYPTED_HEADER_PLUGIN_NAME = "check-x-connection-encrypted"
+CPU_REQUEST_FRACTION = 0.25  # request = 25% of limit
 
 
 def deployment_namespace(branch_id: Identifier) -> str:
@@ -169,15 +170,15 @@ async def create_vela_config(
     db_spec = values_content.setdefault("db", {})
     resource_cfg = db_spec.setdefault("resources", {})
 
-    cpu_provisioning_factor = 0.25  # request = 25% of limit
     memory_request_fraction = 0.90  # request = 90% of limit
+    cpu_limit, cpu_request = calculate_cpu_resources(parameters.milli_vcpu)
 
     resource_cfg["limits"] = {
-        "cpu": f"{parameters.milli_vcpu}m",
+        "cpu": cpu_limit,
         "memory": f"{bytes_to_mib(parameters.memory_bytes)}Mi",
     }
     resource_cfg["requests"] = {
-        "cpu": f"{int(parameters.milli_vcpu * cpu_provisioning_factor)}m",
+        "cpu": cpu_request,
         "memory": f"{bytes_to_mib(math.floor(parameters.memory_bytes * memory_request_fraction))}Mi",
     }
 
@@ -270,15 +271,30 @@ def get_db_vmi_identity(branch_id: Identifier) -> tuple[str, str]:
     return namespace, vmi_name
 
 
+def calculate_cpu_resources(milli_vcpu: int) -> tuple[str, str]:
+    """Return (limit, request) CPU quantities formatted for Kubernetes."""
+
+    cpu_limit = f"{milli_vcpu}m"
+    cpu_request_milli = max(1, int(milli_vcpu * CPU_REQUEST_FRACTION))
+    cpu_request = f"{cpu_request_milli}m"
+    return cpu_limit, cpu_request
+
+
 class ResizeParameters(BaseModel):
     database_size: Annotated[int, Field(**DATABASE_SIZE_CONSTRAINTS)] | None = None
     storage_size: Annotated[int, Field(**STORAGE_SIZE_CONSTRAINTS)] | None = None
     memory_bytes: Annotated[int, Field(**MEMORY_CONSTRAINTS)] | None = None
+    milli_vcpu: Annotated[int, Field(**CPU_CONSTRAINTS)] | None = None
 
     @model_validator(mode="after")
     def ensure_at_least_one(self) -> "ResizeParameters":
-        if self.database_size is None and self.storage_size is None and self.memory_bytes is None:
-            raise ValueError("Specify at least one of database_size, storage_size, or memory_bytes")
+        if (
+            self.database_size is None
+            and self.storage_size is None
+            and self.memory_bytes is None
+            and self.milli_vcpu is None
+        ):
+            raise ValueError("Specify at least one of database_size, storage_size, memory_bytes, or milli_vcpu")
         return self
 
 
@@ -300,6 +316,13 @@ def resize_deployment(branch_id: Identifier, parameters: ResizeParameters):
         storage_persistence = storage_spec.setdefault("persistence", {})
         storage_persistence["enabled"] = True
         storage_persistence["size"] = storage_size_gi
+    if parameters.milli_vcpu is not None:
+        cpu_limit, cpu_request = calculate_cpu_resources(parameters.milli_vcpu)
+        resources_spec = db_spec.setdefault("resources", {})
+        limits_spec = resources_spec.setdefault("limits", {})
+        limits_spec["cpu"] = cpu_limit
+        requests_spec = resources_spec.setdefault("requests", {})
+        requests_spec["cpu"] = cpu_request
     if parameters.memory_bytes is not None:
         memory_limit_mib = f"{bytes_to_mib(parameters.memory_bytes)}Mi"
         resources_spec = db_spec.setdefault("resources", {})

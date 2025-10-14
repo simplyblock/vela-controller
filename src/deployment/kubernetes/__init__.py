@@ -3,6 +3,7 @@ from typing import Any
 
 from kubernetes_asyncio import client
 
+from ...exceptions import VelaKubernetesError
 from ._util import core_v1_client, custom_api_client
 
 # Configure logging
@@ -98,3 +99,80 @@ class KubernetesService:
                     )
                 else:
                     raise
+
+    async def get_vm_pod_name(self, namespace: str, vm_name: str) -> str:
+        """
+        Resolve the virt-launcher pod name backing the supplied KubeVirt VirtualMachine.
+
+        The lookup relies on the `vm.kubevirt.io/name` label set by KubeVirt on the
+        launcher pod. Returns the first pod that is not terminating and still has a
+        valid metadata.name.
+        """
+        label_selector = f"vm.kubevirt.io/name={vm_name}"
+        async with core_v1_client() as core_v1:
+            try:
+                pods = await core_v1.list_namespaced_pod(namespace=namespace, label_selector=label_selector)
+            except client.exceptions.ApiException as exc:
+                raise VelaKubernetesError(
+                    f"Failed to list pods backing VM {vm_name!r} in namespace {namespace!r}"
+                ) from exc
+
+        if not pods.items:
+            raise VelaKubernetesError(f"No pods found for VM {vm_name!r} in namespace {namespace!r}")
+
+        for pod in pods.items:
+            metadata = pod.metadata
+            if metadata and metadata.name and not metadata.deletion_timestamp:
+                logger.debug("Resolved VM %s pod to %s", vm_name, metadata.name)
+                return metadata.name
+
+        first_pod = pods.items[0].metadata.name if pods.items[0].metadata else None
+        if first_pod:
+            logger.debug("Using first available pod %s for VM %s despite termination status", first_pod, vm_name)
+            return first_pod
+
+        raise VelaKubernetesError(f"Unable to resolve a pod name for VM {vm_name!r} in namespace {namespace!r}")
+
+    async def resize_vm_compute_cpu(self, namespace: str, vm_name: str, *, cpu_request: str, cpu_limit: str) -> None:
+        """
+        Patch the virt-launcher pod backing a VirtualMachine using the resize subresource
+        so that the `compute` container reflects the requested CPU request/limit values.
+        """
+        pod_name = await self.get_vm_pod_name(namespace, vm_name)
+        body = {
+            "spec": {
+                "containers": [
+                    {
+                        "name": "compute",
+                        "resources": {
+                            "requests": {"cpu": cpu_request},
+                            "limits": {"cpu": cpu_limit},
+                        },
+                    }
+                ]
+            }
+        }
+
+        async with core_v1_client() as core_v1:
+            try:
+                await core_v1.api_client.call_api(
+                    "/api/v1/namespaces/{namespace}/pods/{name}/resize",
+                    "PATCH",
+                    path_params={"namespace": namespace, "name": pod_name},
+                    header_params={"Content-Type": "application/strategic-merge-patch+json"},
+                    body=body,
+                    auth_settings=["BearerToken"],
+                    response_type="object",
+                )
+                logger.info(
+                    "Patched compute container CPU for pod %s (VM %s) in %s: request=%s limit=%s",
+                    pod_name,
+                    vm_name,
+                    namespace,
+                    cpu_request,
+                    cpu_limit,
+                )
+            except client.exceptions.ApiException as exc:
+                raise VelaKubernetesError(
+                    f"Failed to resize pod {pod_name!r} backing VM {vm_name!r} in namespace {namespace!r}"
+                ) from exc

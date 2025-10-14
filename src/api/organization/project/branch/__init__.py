@@ -23,9 +23,11 @@ from .....deployment import (
     branch_api_domain,
     branch_domain,
     branch_rest_endpoint,
+    calculate_cpu_resources,
     delete_deployment,
     deploy_branch_environment,
     get_db_vmi_identity,
+    kube_service,
     resize_deployment,
     update_branch_database_password,
 )
@@ -462,7 +464,20 @@ async def reset_password(
 )
 async def resize(_organization: OrganizationDep, _project: ProjectDep, parameters: ResizeParameters, branch: BranchDep):
     # Trigger helm upgrade with provided parameters; returns 202 Accepted
+    cpu_limit = cpu_request = None
+    if parameters.milli_vcpu is not None:
+        cpu_limit, cpu_request = calculate_cpu_resources(parameters.milli_vcpu)
+
     resize_deployment(branch.id, parameters)
+
+    if cpu_limit is not None and cpu_request is not None:
+        namespace, vm_name = get_db_vmi_identity(branch.id)
+        await kube_service.resize_vm_compute_cpu(
+            namespace,
+            vm_name,
+            cpu_request=cpu_request,
+            cpu_limit=cpu_limit,
+        )
     return Response(status_code=202)
 
 
