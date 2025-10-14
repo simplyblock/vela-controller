@@ -216,7 +216,6 @@ async def delete_endpoint(branch_id: str) -> None:
 
     async with httpx.AsyncClient(timeout=10) as client:
         try:
-            # List all endpoints to find the ID
             list_resp = await client.get(f"{settings.logflare_url}/api/endpoints", headers=headers)
             list_resp.raise_for_status()
             endpoints = list_resp.json()
@@ -225,7 +224,7 @@ async def delete_endpoint(branch_id: str) -> None:
             if not endpoint:
                 logger.info(f"No endpoint found for branch {branch_id}")
                 return
-                
+
             endpoint_id = endpoint.get("id")
             delete_url = f"{settings.logflare_url}/api/endpoints/{endpoint_id}"
 
