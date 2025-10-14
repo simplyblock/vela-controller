@@ -4,9 +4,9 @@ from aiohttp.client_exceptions import ClientError
 from fastapi import HTTPException
 from kubernetes_asyncio import client
 
-from ..._util import StatusType
+from .. import StatusType
 from ...exceptions import VelaKubernetesError
-from ._util import api_client, custom_api_client
+from ..kubevirt import api_client, custom_api_client
 
 KubevirtSubresourceAction = Literal["pause", "unpause", "start", "stop"]
 
@@ -46,7 +46,7 @@ async def get_virtualmachine_status(namespace: str, name: str) -> StatusType:
     # KubeVirt exposes status.printableStatus as a human readable state
     try:
         status = vm["status"]["printableStatus"]
-        return cast("StatusType", status)
+        return StatusType(status)
     except KeyError:
         pass  # Fall back to condition-based status check
 
@@ -56,4 +56,4 @@ async def get_virtualmachine_status(namespace: str, name: str) -> StatusType:
         if cond.get("type") == "Ready" and cond.get("status") == "True":
             return cast("StatusType", "Running")
 
-    return cast("StatusType", "UNKNOWN")
+    return  StatusType(status, "UNKNOWN")

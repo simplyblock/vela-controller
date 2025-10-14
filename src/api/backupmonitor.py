@@ -19,6 +19,7 @@ from .models.backups import (
     NextBackup,
 )
 from .settings import settings
+from ..check_branch_status import get_branch_status
 
 # ---------------------------
 # Config
@@ -87,12 +88,13 @@ class BackupMonitor:
 
         result = await db.execute(select(Branch))
         branches = result.scalars().all()
-        logger.info("Found %d active branches", len(branches))
+        logger.info("Found %d branches", len(branches))
 
         for branch in branches:
-            try:
+            if (str(get_branch_status(branch))=="ACTIVE_HEALTHY"):
+              try:
                 await self.process_branch(db, branch, now)
-            except Exception:
+              except Exception:
                 logger.exception("Error processing branch %s", branch.id)
 
     async def process_branch(self, db: AsyncSession, branch: Branch, now: datetime):
