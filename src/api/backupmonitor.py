@@ -5,6 +5,8 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Dict
+from .models.project import Project
+from .models.organization import Organization
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlmodel import SQLModel, select
@@ -69,6 +71,8 @@ async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
 
+
+from sqlalchemy import asc
 # ---------------------------
 # Backup Monitor
 # ---------------------------
@@ -160,6 +164,29 @@ class BackupMonitor:
                         "Skipping snapshot for %s row %d because another worker holds lock",
                         branch_local.id, nb.row_index
                     )
+        stmt1 = select(Project).where(Project.id == branch.project_id)
+        entries = await db.execute(stmt1)
+        proj = entries.scalars().first()
+
+        stmt2 = select(Organization).where(Organization.id == branch.organization_id)
+        entries = await db.execute(stmt2)
+        org = entries.scalars().first()
+
+        max_backups = min(proj.max_backups, org.max_backups)
+
+        stmt = select(BackupEntry).where(BackupEntry.branch_id == branch.id).order_by(asc(BackupEntry.created_at))
+        entries = await db.execute(stmt)
+        entry_rows = entries.scalars().all()
+        num_rows = len(entry_rows)
+
+        if num_rows > max_backups:
+            # select the oldest rows to delete
+            to_delete = entry_rows[: num_rows - max_backups]  # first (num_rows - max_backup) rows
+        else:
+            to_delete = []
+        for row in to_delete:
+            await db.delete(row)  # async delete
+        await db.commit()
 
     async def resolve_schedule(self, db: AsyncSession, branch: Branch) -> BackupSchedule:
         stmt = select(BackupSchedule).where(BackupSchedule.branch_id == branch.id)
@@ -210,6 +237,7 @@ class BackupMonitor:
         await db.commit()
 
         await self.prune_backups(db, branch, row)
+
         logger.info("Backup created %s for branch %s row %d", be.id, branch.id, row.row_index)
 
     async def prune_backups(self, db: AsyncSession, branch: Branch, row: BackupScheduleRow):

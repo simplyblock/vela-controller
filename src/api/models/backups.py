@@ -17,7 +17,6 @@ class BackupSchedule(AsyncAttrs, Model, table=True):
     env_type: Optional[str] = Field(default=None, nullable=True)
     #rows: List["BackupScheduleRow"] = Relationship(back_populates="backup_schedule", cascade_delete=True)
 
-
 class BackupScheduleRow(AsyncAttrs, Model, table=True):
     schedule_id: Identifier = Model.foreign_key_field("backupschedule")
     #schedule: BackupSchedule = Relationship(back_populates="backup_schedule_rows")

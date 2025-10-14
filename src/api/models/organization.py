@@ -32,6 +32,7 @@ class OrganizationCreate(BaseModel):
     max_backups: int
     envs: str
 
+
 class OrganizationUpdate(BaseModel):
     name: Name | None = None
     locked: StrictBool | None = None
