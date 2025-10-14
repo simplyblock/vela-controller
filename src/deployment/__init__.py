@@ -615,7 +615,7 @@ async def deploy_branch_environment(
 
     # Create logflare objects for vela
     await create_logflare_objects(branch_id=branch_id)
-    
+
     # Create grafana objects for vela
     await create_vela_grafana_obj(organization_id, branch_id, credential)
 

@@ -15,6 +15,6 @@ class VelaCloudflareError(VelaDeploymentError):
 
 class VelaLogflareError(VelaDeploymentError):
     """Error interacting with Logflare"""
-    
+
 class VelaGrafanaError(VelaDeploymentError):
     """Error interacting with Grafana"""
