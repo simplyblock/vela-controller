@@ -50,7 +50,6 @@ studio:
     NEXTAUTH_SECRET: 'super-long-random-nextauth-secret' # TODO
 
     LOGFLARE_URL: 'http://analytics:4000'
-    LOGFLARE_PRIVATE_ACCESS_TOKEN: 'your-super-secret-and-long-logflare-key-private' # TODO same as in analytics
 
     VELA_PLATFORM_KEYCLOAK_ISSUER: 'http://staging.vela.run/auth/realms/vela'
     VELA_PLATFORM_KEYCLOAK_CLIENT_ID: 'frontend'

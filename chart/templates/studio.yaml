@@ -53,6 +53,9 @@ kind: ConfigMap
 metadata:
   name: vela-studio-config
 data:
+{{- with .Values.analytics.LOGFLARE_PRIVATE_ACCESS_TOKEN }}
+  LOGFLARE_PRIVATE_ACCESS_TOKEN: {{ . | quote }}
+{{- end }}
 {{- range $key, $value := $env }}
   {{ $key }}: {{ $value | quote }}
 {{- end }}
