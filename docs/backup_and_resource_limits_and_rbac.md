@@ -234,6 +234,14 @@ curl -X POST "http://localhost:8000/vela/resources/branches/01K729MMKXJJHD1TTV1A
   }
 }'
 
+curl -X GET "http://localhost:8000/vela/resources/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/usage" \
+ -H "Content-Type: application/json" \
+     -d ' 
+{
+  "cycle_start": "2025-10-14T10:00:00Z",
+  "cycle_end": "2025-10-15T18:30:00Z"
+}'
+
 ----------------------------------------------------------------
 RBAC
 ----------------------------------------------------------------
