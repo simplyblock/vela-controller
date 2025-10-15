@@ -1,26 +1,29 @@
-# api/backups_async.py
 import logging
 import os
-from typing import List, Optional
 from datetime import datetime
+from typing import List, Optional
 
-from uuid import UUID
-
-from fastapi import APIRouter, Depends, HTTPException, logger, Request
+from fastapi import APIRouter, Depends, logger, Request, HTTPException
 from pydantic import BaseModel, validator
 from sqlmodel import select
 from sqlalchemy import delete
-from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .db import get_db
 from .models._util import Identifier
 from .models.backups import (
     BackupSchedule,
+    BackupSchedulePublic,
+    BackupScheduleCreatePublic,
+    BackupScheduleDeletePublic,
     BackupScheduleRow,
+    BackupScheduleRowPublic,
     BackupEntry,
+    BackupPublic,
+    BackupCreatePublic,
+    BackupDeletePublic,
     BackupLog,
-    NextBackup,
+    NextBackup, BackupInfoPublic,
 )
 from .models.branch import Branch
 from .models.organization import Organization
@@ -76,17 +79,17 @@ logger = logging.getLogger("backup-monitor")
 # ---------------------------
 # Create/Update Schedule
 # ---------------------------
-@router.post("/backup/organizations/{org_ref}/schedule", response_model=None)
-@router.put("/backup/organizations/{org_ref}/schedule", response_model=None)
-@router.post("/backup/branches/{branch_ref}/schedule", response_model=None)
-@router.put("/backup/branches/{branch_ref}/schedule", response_model=None)
+@router.post("/backup/organizations/{org_ref}/schedule")
+@router.put("/backup/organizations/{org_ref}/schedule")
+@router.post("/backup/branches/{branch_ref}/schedule")
+@router.put("/backup/branches/{branch_ref}/schedule")
 async def add_or_replace_backup_schedule(
     payload: SchedulePayload,
     org_ref: Optional[Identifier] = None,
     branch_ref: Optional[Identifier] = None,
     db: AsyncSession = Depends(get_db),
     request: Request = None,
-):
+) -> BackupScheduleCreatePublic:
 
     if not payload.rows:
         raise HTTPException(status_code=400, detail="No rows provided")
@@ -202,7 +205,7 @@ async def add_or_replace_backup_schedule(
 
     await db.commit()
     await db.refresh(schedule)
-    return {"status": "ok", "schedule_id": str(schedule.id)}
+    return BackupScheduleCreatePublic(status="ok", schedule_id=str(schedule.id))
 
 # ---------------------------
 # List Schedules
@@ -214,7 +217,7 @@ async def list_schedules(
     branch_ref: Optional[Identifier] = None,
     env_type: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-):
+) -> list[BackupSchedulePublic]:
     stmt = select(BackupSchedule)
     if org_ref:
         stmt = stmt.where(BackupSchedule.organization_id == org_ref)
@@ -228,28 +231,28 @@ async def list_schedules(
     if not schedules:
         raise HTTPException(status_code=404, detail="No schedules found.")
 
-    out = []
+    out: list[BackupSchedulePublic] = []
     for s in schedules:
         stmt = select(BackupScheduleRow)
         stmt = stmt.where(BackupScheduleRow.schedule_id==s.id)
         result = await db.execute(stmt)
         rows = result.scalars().all()
         out.append(
-            {
-                "ref": str(s.id),
-                "organization_id": str(s.organization_id) if s.organization_id else None,
-                "branch_id": str(s.branch_id) if s.branch_id else None,
-                "env_type": s.env_type,
-                "rows": [
-                    {
-                        "row_index": r.row_index,
-                        "interval": r.interval,
-                        "unit": r.unit,
-                        "retention": r.retention,
-                    }
+            BackupSchedulePublic(
+                ref=str(s.id),
+                organization_id=str(s.organization_id) if s.organization_id else None,
+                branch_id=str(s.branch_id) if s.branch_id else None,
+                env_type=s.env_type,
+                rows=[
+                    BackupScheduleRowPublic(
+                        row_index=r.row_index,
+                        interval=r.interval,
+                        unit=r.unit,
+                        retention=r.retention,
+                    )
                     for r in rows
                 ],
-            }
+            )
         )
     return out
 
@@ -263,7 +266,7 @@ async def list_backups(
     branch_ref: Optional[Identifier] = None,
     env_type: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-):
+) -> list[BackupPublic]:
     if org_ref:
         stmt = select(BackupEntry).join(Branch).where(Branch.organization_id == org_ref)
         if env_type is not None:
@@ -280,16 +283,15 @@ async def list_backups(
     if not backups:
         raise HTTPException(status_code=404, detail="No backups found.")
 
-    out = [
-        {
-            "branch_id": str(b.branch_id),
-            "backup_uuid": str(b.id),
-            "row_index": b.row_index,
-            "created_at": b.created_at.isoformat() if isinstance(b.created_at, datetime) else b.created_at,
-        }
+    return [
+        BackupPublic(
+            id=str(b.id),
+            branch_id=str(b.branch_id),
+            row_index=b.row_index,
+            created_at=b.created_at,
+        )
         for b in backups
     ]
-    return out
 
 # ---------------------------
 # Delete Schedule
@@ -298,7 +300,7 @@ async def list_backups(
 async def delete_schedule(
     schedule_ref: Optional[Identifier] = None,
     db: AsyncSession = Depends(get_db),
-):
+) -> BackupScheduleDeletePublic:
     stmt = select(BackupSchedule)
     stmt = stmt.where(BackupSchedule.id == schedule_ref)
 
@@ -312,13 +314,13 @@ async def delete_schedule(
     await db.delete(schedule)
     await db.commit()
 
-    return {"status": "success", "message": "Schedule and related data deleted successfully"}
+    return BackupScheduleDeletePublic(status="success", message="Schedule and related data deleted successfully")
 
 # ---------------------------
 # Manual Backup
 # ---------------------------
 @router.post("/backup/branches/{branch_ref}/")
-async def manual_backup(branch_ref: Identifier, db: AsyncSession = Depends(get_db)):
+async def manual_backup(branch_ref: Identifier, db: AsyncSession = Depends(get_db)) -> BackupCreatePublic:
     result = await db.execute(select(Branch).where(Branch.id == branch_ref))
     branch = result.scalars().first()
     if not branch:
@@ -343,13 +345,13 @@ async def manual_backup(branch_ref: Identifier, db: AsyncSession = Depends(get_d
     )
     db.add(log)
     await db.commit()
-    return {"status": "manual backup created", "backup_id": str(backup.id)}
+    return BackupCreatePublic(status="manual backup created", backup_id=str(backup.id))
 
 # ---------------------------
 # Delete Backup
 # ---------------------------
 @router.delete("/backup/{backup_ref}")
-async def delete_backup(backup_ref: Identifier, db: AsyncSession = Depends(get_db)):
+async def delete_backup(backup_ref: Identifier, db: AsyncSession = Depends(get_db)) -> BackupDeletePublic:
     result = await db.execute(select(BackupEntry).where(BackupEntry.id == backup_ref))
     backup = result.scalars().first()
     if not backup:
@@ -366,21 +368,14 @@ async def delete_backup(backup_ref: Identifier, db: AsyncSession = Depends(get_d
     )
     db.add(log)
     await db.commit()
-    return {"status": "backup deleted"}
+    return BackupDeletePublic(status="backup deleted")
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
-from datetime import datetime
-
-router = APIRouter()
 
 @router.get("/backup/branches/{branch_id}/info")
 async def get_branch_backup_info(
     branch_id: Identifier,
     db: AsyncSession = Depends(get_db),
-):
+) -> BackupInfoPublic:
     # 1️⃣ Find the BackupSchedule that applies to this branch
     # (first look for branch-level, then environment/org fallback if applicable)
     stmt = (
@@ -433,9 +428,9 @@ async def get_branch_backup_info(
     if not schedule:
         raise HTTPException(status_code=404, detail="No backup schedule found for this branch")
 
-    return {
-        "branch_id": str(branch_id),
-        "schedule_id": str(schedule.id),
-        "level": level,
-        "next_backup": str(nb.next_at)
-    }
+    return BackupInfoPublic(
+        branch_id=str(branch_id),
+        schedule_id=str(schedule.id),
+        level=level,
+        next_backup=nb.next_at
+    )
