@@ -152,11 +152,11 @@ async def _public(branch: Branch) -> BranchPublic:
         status = await get_virtualmachine_status(namespace, vmi_name)
         # TODO: replace with real service health status once available
         _service_health = BranchStatus(
-            database="ACTIVE_HEALTHY" if status == "Running" else "STOPPED",
-            realtime="ACTIVE_HEALTHY" if status == "Running" else "STOPPED",
-            storage="ACTIVE_HEALTHY" if status == "Running" else "STOPPED",
-            meta="ACTIVE_HEALTHY" if status == "Running" else "STOPPED",
-            rest="ACTIVE_HEALTHY" if status == "Running" else "STOPPED",
+            database="ACTIVE_HEALTHY" if status in ["Running", "Migrating"] else "STOPPED",
+            realtime="ACTIVE_HEALTHY" if status in ["Running", "Migrating"] else "STOPPED",
+            storage="ACTIVE_HEALTHY" if status in ["Running", "Migrating"] else "STOPPED",
+            meta="ACTIVE_HEALTHY" if status in ["Running", "Migrating"] else "STOPPED",
+            rest="ACTIVE_HEALTHY" if status in ["Running", "Migrating"] else "STOPPED",
         )
     except VelaDeploymentError:
         logging.exception("Failed to query VM status")
