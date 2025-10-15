@@ -1,0 +1,113 @@
+from __future__ import annotations
+from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncAttrs
+from sqlmodel import Field
+from ._util import Model
+from ..._util import Identifier
+
+class BackupSchedule(AsyncAttrs, Model, table=True):
+    organization_id: Identifier = Model.foreign_key_field("organization", nullable=True)
+    #organization: Organization = Relationship(back_populates="backup_schedules")
+    branch_id: Identifier = Model.foreign_key_field("branch", nullable=True)
+    #branch: Branch = Relationship(back_populates="backup_schedules")
+    env_type: Optional[str] = Field(default=None, nullable=True)
+    #rows: List["BackupScheduleRow"] = Relationship(back_populates="backup_schedule", cascade_delete=True)
+
+
+class BackupScheduleRow(AsyncAttrs, Model, table=True):
+    schedule_id: Identifier = Model.foreign_key_field("backupschedule")
+    #schedule: BackupSchedule = Relationship(back_populates="backup_schedule_rows")
+    row_index: int
+    interval: int
+    unit: str
+    retention: int
+
+
+class NextBackup(AsyncAttrs, Model,  table=True):
+    branch_id: Identifier = Model.foreign_key_field("branch")
+    #branch: Branch = Relationship(back_populates="branches")
+    schedule_id: Identifier = Model.foreign_key_field("backupschedule")
+    #schedule: BackupSchedule = Relationship(back_populates="next_backups")
+    row_index: int
+    next_at: datetime
+
+
+class BackupEntry(AsyncAttrs, Model, table=True):
+    branch_id: Identifier = Model.foreign_key_field("branch")
+    #branch: Branch = Relationship(back_populates="branches")
+    row_index: int
+    created_at: datetime
+    size_bytes: int
+
+
+class BackupLog(AsyncAttrs, Model,  table=True):
+    branch_id: Identifier = Model.foreign_key_field("branch")
+    #branch: Branch = Relationship(back_populates="branches")
+    backup_uuid: str
+    #backup: BackupEntry = Relationship(back_populates="backup_entries")
+    action: str
+    ts: datetime
+
+
+class BackupLogCreate(BaseModel):
+    backup_uuid: str
+    action: str
+    ts: datetime
+
+
+class BackupLogUpdate(BaseModel):
+    backup_uuid: str
+    action: str
+    ts: datetime
+
+
+class BackupPublic(BaseModel):
+    id: Identifier
+    branch_id: Identifier
+    row_index: int
+    created_at: datetime
+
+
+class BackupScheduleRowPublic(BaseModel):
+    row_index: int
+    interval: int
+    unit: str
+    retention: int
+
+
+class BackupSchedulePublic(BaseModel):
+    id: Identifier
+    organization_id: Identifier
+    branch_id: Identifier
+    env_type: str
+    rows: list[BackupScheduleRowPublic]
+
+
+class BackupScheduleCreatePublic(BaseModel):
+    status: str
+    schedule_id: Identifier
+
+
+class BackupScheduleDeletePublic(BaseModel):
+    status: str
+    message: str
+
+
+class BackupCreatePublic(BaseModel):
+    status: str
+    backup_id: Identifier
+
+
+class BackupDeletePublic(BaseModel):
+    status: str
+    message: Optional[str]
+
+
+class BackupInfoPublic(BaseModel):
+    schedule_id: Identifier
+    branch_id: Identifier
+    level: str
+    next_backup: datetime
