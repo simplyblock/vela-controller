@@ -167,15 +167,15 @@ app.include_router(backup_router)
 app.include_router(roles_api)
 _use_route_names_as_operation_ids(app)
 
-# start async background monitor
-asyncio.create_task(run_monitor())
-asyncio.create_task(monitor_resources(60))
-
 
 @app.on_event("startup")
 async def on_startup():
     await _create_db_and_tables()
-    await create_global_logflare_objects()
+    #await create_global_logflare_objects()
+
+    # start async background monitor
+    asyncio.create_task(run_monitor())
+    asyncio.create_task(monitor_resources(60))
 
 
 __all__ = ["app"]
