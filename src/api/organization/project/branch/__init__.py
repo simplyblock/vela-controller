@@ -35,8 +35,8 @@ from .....deployment.kubernetes.kubevirt import (
 from .....deployment.settings import settings as deployment_settings
 from .....exceptions import VelaDeploymentError, VelaError
 from ...._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
+from ...._util.crypto import encrypt_with_passphrase
 from ....auth import security
-from ....crypto import encrypt_with_passphrase
 from ....db import SessionDep
 from ....keycloak import realm_admin
 from ....models.branch import (
@@ -289,8 +289,7 @@ async def create(
             iops=deployment_params.iops,
             database_image_tag=deployment_params.database_image_tag,
         )
-        if deployment_params.database_password:
-            entity.database_password = deployment_params.database_password
+        entity.database_password = deployment_params.database_password
     session.add(entity)
     try:
         await realm_admin("master").a_create_realm({"realm": str(entity.id)})

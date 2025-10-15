@@ -19,13 +19,13 @@ from .._util import (
     IOPS_CONSTRAINTS,
     MEMORY_CONSTRAINTS,
     STORAGE_SIZE_CONSTRAINTS,
+    DBPassword,
     Identifier,
     Slug,
     StatusType,
     bytes_to_gib,
     bytes_to_mib,
     check_output,
-    dbstr,
 )
 from ..exceptions import VelaCloudflareError, VelaKubernetesError
 from .grafana import create_vela_grafana_obj
@@ -106,7 +106,7 @@ def inject_branch_env(compose: dict[str, Any], branch_id: Identifier) -> dict[st
 
 
 class DeploymentParameters(BaseModel):
-    database_password: dbstr
+    database_password: DBPassword
     database_size: Annotated[int, Field(**DATABASE_SIZE_CONSTRAINTS)]
     storage_size: Annotated[int, Field(**STORAGE_SIZE_CONSTRAINTS)]
     milli_vcpu: Annotated[int, Field(**CPU_CONSTRAINTS)]  # units of milli vCPU
