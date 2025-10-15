@@ -170,10 +170,6 @@ app.include_router(backup_router)
 app.include_router(roles_api)
 _use_route_names_as_operation_ids(app)
 
-# start async background monitor
-asyncio.create_task(run_monitor())
-asyncio.create_task(monitor_resources(60))
-
 
 @app.on_event("startup")
 async def on_startup():
@@ -184,6 +180,9 @@ async def on_startup():
         if not isinstance(exc.__cause__, TimeoutException):
             raise
         logging.error("Timeout while creating global logflare entities")
+    # start async background monitor
+    asyncio.create_task(run_monitor())
+    asyncio.create_task(monitor_resources(60))
 
 
 __all__ = ["app"]
