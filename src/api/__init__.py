@@ -171,7 +171,7 @@ _use_route_names_as_operation_ids(app)
 @app.on_event("startup")
 async def on_startup():
     await _create_db_and_tables()
-    #await create_global_logflare_objects()
+    #await create_global_logflare_objects() # TODO @noctarius reactive
 
     # start async background monitor
     asyncio.create_task(run_monitor())
