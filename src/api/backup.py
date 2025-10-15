@@ -81,12 +81,28 @@ logger = logging.getLogger("backup-monitor")
 # ---------------------------
 @router.post("/backup/organizations/{organization_id}/schedule")
 @router.put("/backup/organizations/{organization_id}/schedule")
+async def add_or_replace_org_backup_schedule(
+        payload: SchedulePayload,
+        organization_id: Identifier,
+        db: AsyncSession = Depends(get_db),
+        request: Request = None,
+) -> BackupScheduleCreatePublic:
+    return await add_or_replace_backup_schedule(payload, organization_id, None, db, request)
+
 @router.post("/backup/branches/{branch_id}/schedule")
 @router.put("/backup/branches/{branch_id}/schedule")
+async def add_or_replace_branch_backup_schedule(
+        payload: SchedulePayload,
+        branch_id: Identifier,
+        db: AsyncSession = Depends(get_db),
+        request: Request = None,
+) -> BackupScheduleCreatePublic:
+    return await add_or_replace_backup_schedule(payload, None, branch_id, db, request)
+
 async def add_or_replace_backup_schedule(
         payload: SchedulePayload,
-        organization_id: Identifier | None = None,
-        branch_id: Identifier | None = None,
+        organization_id: Identifier | None,
+        branch_id: Identifier | None,
         db: AsyncSession = Depends(get_db),
         request: Request = None,
 ) -> BackupScheduleCreatePublic:
@@ -208,11 +224,25 @@ async def add_or_replace_backup_schedule(
 # List Schedules
 # ---------------------------
 @router.get("/backup/organizations/{organization_id}/schedule")
-@router.get("/backup/branches/{branch_id}/schedule")
-async def list_schedules(
-        organization_id: Identifier | None = None,
-        branch_id: Identifier | None = None,
+async def list_org_schedules(
+        organization_id: Identifier,
         env_type: str | None = None,
+        db: AsyncSession = Depends(get_db),
+) -> list[BackupSchedulePublic]:
+    return await list_schedules(organization_id, None, env_type, db)
+
+@router.get("/backup/branches/{branch_id}/schedule")
+async def list_branch_schedules(
+        branch_id: Identifier,
+        env_type: str | None = None,
+        db: AsyncSession = Depends(get_db),
+) -> list[BackupSchedulePublic]:
+    return await list_schedules(None, branch_id, env_type, db)
+
+async def list_schedules(
+        organization_id: Identifier | None,
+        branch_id: Identifier | None,
+        env_type: str | None,
         db: AsyncSession = Depends(get_db),
 ) -> list[BackupSchedulePublic]:
     stmt = select(BackupSchedule)
@@ -257,7 +287,21 @@ async def list_schedules(
 # List Backups
 # ---------------------------
 @router.get("/backup/organizations/{organization_id}/")
+async def list_org_backups(
+        organization_id: Identifier | None,
+        env_type: str | None = None,
+        db: AsyncSession = Depends(get_db),
+) -> list[BackupPublic]:
+    return await list_backups(organization_id, None, env_type, db)
+
 @router.get("/backup/branches/{branch_id}/")
+async def list_branch_backups(
+        branch_id: Identifier | None,
+        env_type: str | None = None,
+        db: AsyncSession = Depends(get_db),
+) -> list[BackupPublic]:
+    return await list_backups(None, branch_id, env_type, db)
+
 async def list_backups(
         organization_id: Identifier | None = None,
         branch_id: Identifier | None = None,
