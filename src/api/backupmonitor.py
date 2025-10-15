@@ -168,7 +168,7 @@ class BackupMonitor:
         entries = await db.execute(stmt1)
         proj = entries.scalars().first()
 
-        stmt2 = select(Organization).where(Organization.id == branch.organization_id)
+        stmt2 = select(Organization).where(Organization.id == (await branch.awaitable_attrs.project).organization_id)
         entries = await db.execute(stmt2)
         org = entries.scalars().first()
 
@@ -196,7 +196,7 @@ class BackupMonitor:
             return schedule
 
         stmt = select(BackupSchedule).where(
-            BackupSchedule.organization_id == branch.organization_id,
+            BackupSchedule.organization_id == (await branch.awaitable_attrs.project).organization_id,
             BackupSchedule.env_type == branch.env_type,
             BackupSchedule.branch_id.is_(None)
         )
@@ -206,7 +206,7 @@ class BackupMonitor:
             return schedule
 
         stmt = select(BackupSchedule).where(
-            BackupSchedule.organization_id == branch.organization_id,
+            BackupSchedule.organization_id == (await branch.awaitable_attrs.project).organization_id,
             BackupSchedule.branch_id.is_(None),
             BackupSchedule.env_type.is_(None)
         )

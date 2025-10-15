@@ -11,14 +11,13 @@ from .access_right_utils import check_access
 router = APIRouter(prefix="/roles")
 
 from pydantic import BaseModel
-from typing import Optional
 from uuid import UUID
 
 class AccessCheckRequest(BaseModel):
     access: str  # e.g., "project:settings:update"
-    project_id: Optional[Identifier] = None
-    branch_id: Optional[Identifier] = None
-    environment_id: Optional[Identifier] = None
+    project_id: Identifier | None = None
+    branch_id: Identifier | None = None
+    environment_id: Identifier | None = None
 
 from typing import List
 
@@ -27,18 +26,18 @@ class RolePayload(BaseModel):
     role_id : str
     role_type: str
     is_active: bool = True
-    access_rights: Optional[List[str]] = []
+    access_rights: List[str] | None = []
 
 class RolePayloadUpdate(BaseModel):
     role_type: str
     is_active: bool = True
-    access_rights: Optional[List[str]] = []
+    access_rights: List[str] | None = []
 
 class RoleAssignmentPayload(BaseModel):
     # Single or multiple projects/branches/environments
-    project_ids: Optional[List[Identifier]] = None
-    branch_ids: Optional[List[Identifier]] = None
-    environment_ids: Optional[List[str]] = None
+    project_ids: List[Identifier] | None = None
+    branch_ids: List[Identifier] | None = None
+    environment_ids: List[str] | None = None
 
 # ----------------------
 # Create role
@@ -201,7 +200,7 @@ async def unassign_role(
         role_id: Identifier,
         org_id: Identifier,
         user_id: UUID,
-        context: Optional[Dict[str, UUID]] = None,
+        context: Dict[str, UUID] | None = None,
         session: AsyncSession = Depends(get_db)
 ):
     """
@@ -301,12 +300,10 @@ async def list_roles(org_id: Identifier, session: AsyncSession = Depends(get_db)
         ))
     return role_list
 
-from typing import Optional
-
 @router.get("/organizations/{org_id}/role-assignments/")
 async def list_role_assignments(
         org_id: Identifier,
-        user_id: Optional[UUID] = None,
+        user_id: UUID | None = None,
         session: AsyncSession = Depends(get_db)
 ):
     """

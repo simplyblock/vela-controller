@@ -1,4 +1,4 @@
-from typing import Optional, Annotated, Dict
+from typing import Annotated, Dict
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, logger, Request
 from pydantic import BaseModel
@@ -15,8 +15,10 @@ from .models.resources import (
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlmodel import SQLModel, select
 from .settings import settings
-SessionDep = Annotated[AsyncSession, Depends(get_db)]
 import logging
+
+SessionDep = Annotated[AsyncSession, Depends(get_db)]
+
 logger = logging.getLogger("resource-monitor")
 router = APIRouter()
 
@@ -114,7 +116,7 @@ async def log_provisioning(
         resource: ResourceType,
         amount: int,
         action: str,
-        reason: Optional[str] = None
+        reason: str | None = None
 ):
     log = ProvisioningLog(
         branch_id=branch_id,
@@ -131,8 +133,8 @@ class RessourcesPayload(BaseModel):
     ressources: Dict[str, int]
 
 class ToFromPayload(BaseModel):
-    cycle_start: Optional[datetime] = None
-    cycle_end: Optional[datetime] = None
+    cycle_start: datetime | None = None
+    cycle_end: datetime | None = None
 
 class ProvLimitPayload(BaseModel):
     resource: ResourceType

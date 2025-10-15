@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
 class Project(AsyncAttrs, Model, table=True):
     name: Name
+    max_backups: int
     organization_id: Identifier = Model.foreign_key_field("organization")
     organization: Organization = Relationship(back_populates="projects")
     branches: list["Branch"] = Relationship(back_populates="project", cascade_delete=True)
@@ -30,7 +31,7 @@ class ProjectCreate(BaseModel):
     name: Name
     deployment: DeploymentParameters
     max_backups: int
-    envs: str
+    env_type: str
 
 
 class ProjectUpdate(BaseModel):

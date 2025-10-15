@@ -30,6 +30,7 @@ class Branch(AsyncAttrs, Model, table=True):
     DEFAULT_SLUG: ClassVar[Slug] = "main"
 
     name: Slug
+    env_type: str | None  = Field(default=None, sa_column=Column(String(255), nullable=True))
     project_id: Identifier = Model.foreign_key_field("project")
     project: Project | None = Relationship(back_populates="branches")
     parent_id: Identifier | None = Model.foreign_key_field("branch", nullable=True)
