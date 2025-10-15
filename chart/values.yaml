@@ -17,6 +17,11 @@ domaincertsecret: vela-run-staging-wildcard-cert  # TODO: use cert manager
 keycloak:
   realmFile: files/realm.json
 
+controller: 
+  image:
+    repository: simplyblock/vela-controller
+    tag: latest
+
 secret:
   pgmeta_crypto_key: "secret"
 

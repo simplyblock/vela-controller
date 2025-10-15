@@ -146,31 +146,31 @@ Identifier = Annotated[
 ]
 
 
-def bytes_to_kib(value: int) -> int:
-    """Convert a byte count to the nearest whole KiB using floor division."""
+def bytes_to_kb(value: int) -> int:
+    """Convert a byte count to the nearest whole KB using floor division."""
 
     return value // KB
 
 
-def bytes_to_mib(value: int) -> int:
-    """Convert a byte count to the nearest whole MiB using floor division."""
+def bytes_to_mb(value: int) -> int:
+    """Convert a byte count to the nearest whole MB using floor division."""
 
     return value // MB
 
 
-def bytes_to_gib(value: int) -> int:
-    """Convert a byte count to the nearest whole GiB using floor division."""
+def bytes_to_gb(value: int) -> int:
+    """Convert a byte count to the nearest whole GB using floor division."""
 
     return value // GB
 
 
-def kib_to_bytes(value: int) -> int:
-    """Convert a KiB count to bytes."""
+def kb_to_bytes(value: int) -> int:
+    """Convert a KB count to bytes."""
 
     return value * KB
 
 
-def mib_to_bytes(value: int) -> int:
-    """Convert a MiB count to bytes."""
+def mb_to_bytes(value: int) -> int:
+    """Convert a MB count to bytes."""
 
     return value * MB

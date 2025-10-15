@@ -23,7 +23,7 @@ spec:
           sockets: 2
           threads: 1
         memory:
-          guest: {{ .Values.db.resources.limits.memory }}
+          guest: {{ .Values.db.resources.guestMemory }}
         devices:
           disks:
             - name: rootdisk

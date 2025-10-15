@@ -1,5 +1,4 @@
 import logging
-import math
 import subprocess
 import tempfile
 import textwrap
@@ -22,8 +21,8 @@ from .._util import (
     Identifier,
     Slug,
     StatusType,
-    bytes_to_gib,
-    bytes_to_mib,
+    bytes_to_gb,
+    bytes_to_mb,
     check_output,
     dbstr,
 )
@@ -153,7 +152,11 @@ async def create_vela_config(
 
     values_content = yaml.safe_load((chart / "values.yaml").read_text())
 
-    # Override defaults
+    # Set image tag
+    db_spec = values_content.setdefault("db", {})
+    db_spec.setdefault("image", {})["tag"] = parameters.database_image_tag
+
+    # Set JWT and anon keys
     secrets = values_content.setdefault("secret", {})
     secrets.setdefault("jwt", {}).update(
         secret=jwt_secret,
@@ -163,33 +166,32 @@ async def create_vela_config(
     secrets.update(
         pgmeta_crypto_key=settings.pgmeta_crypto_key,
     )
+
+    # Set database password
     secrets.setdefault("db", {}).update(
         password=parameters.database_password,
     )
 
-    db_spec = values_content.setdefault("db", {})
+    # Set CPU and memory resources
     resource_cfg = db_spec.setdefault("resources", {})
+    resource_cfg["guestMemory"] = f"{bytes_to_mb(parameters.memory_bytes)}M"
 
-    memory_request_fraction = 0.90  # request = 90% of limit
+    # Calculate and set CPU resources
     cpu_limit, cpu_request = calculate_cpu_resources(parameters.milli_vcpu)
-
     resource_cfg["limits"] = {
         "cpu": cpu_limit,
-        "memory": f"{bytes_to_mib(parameters.memory_bytes)}Mi",
     }
     resource_cfg["requests"] = {
         "cpu": cpu_request,
-        "memory": f"{bytes_to_mib(math.floor(parameters.memory_bytes * memory_request_fraction))}Mi",
     }
 
-    db_spec.setdefault("persistence", {})["size"] = f"{bytes_to_gib(parameters.database_size)}Gi"
-    db_spec.setdefault("storagePersistence", {})["size"] = f"{bytes_to_gib(parameters.storage_size)}Gi"
-    db_spec.setdefault("image", {})["tag"] = parameters.database_image_tag
+    # Set database volume size
+    db_spec.setdefault("persistence", {})["size"] = f"{bytes_to_gb(parameters.database_size)}G"
+
+    # Set storage volume size
     storage_spec = values_content.setdefault("storage", {})
-    storage_spec["enabled"] = True
     storage_persistence = storage_spec.setdefault("persistence", {})
-    storage_persistence["enabled"] = True
-    storage_persistence["size"] = f"{bytes_to_gib(parameters.storage_size)}Gi"
+    storage_persistence["size"] = f"{bytes_to_gb(parameters.storage_size)}G"
 
     # todo: create an storage class with the given IOPS
     values_content["provisioning"] = {"iops": parameters.iops}
@@ -306,32 +308,31 @@ def resize_deployment(branch_id: Identifier, parameters: ResizeParameters):
     # Minimal values file with only overrides
     values_content: dict = {}
     db_spec = values_content.setdefault("db", {})
+
+    # resize database volume
     if parameters.database_size is not None:
-        db_spec.setdefault("persistence", {})["size"] = f"{bytes_to_gib(parameters.database_size)}Gi"
+        db_spec.setdefault("persistence", {})["size"] = f"{bytes_to_gb(parameters.database_size)}G"
+
+    # resize storage volume
     if parameters.storage_size is not None:
-        storage_size_gi = f"{bytes_to_gib(parameters.storage_size)}Gi"
-        db_spec.setdefault("storagePersistence", {})["size"] = storage_size_gi
-        storage_spec = values_content.setdefault("storage", {})
-        storage_spec["enabled"] = True
-        storage_persistence = storage_spec.setdefault("persistence", {})
-        storage_persistence["enabled"] = True
-        storage_persistence["size"] = storage_size_gi
+        storage_size_gb = f"{bytes_to_gb(parameters.storage_size)}G"
+        values_content.setdefault("storage", {}).setdefault("persistence", {})["size"] = storage_size_gb
+
+    # resize CPU resources
+    resource_cfg = db_spec.setdefault("resources", {})
+
     if parameters.milli_vcpu is not None:
         cpu_limit, cpu_request = calculate_cpu_resources(parameters.milli_vcpu)
-        resources_spec = db_spec.setdefault("resources", {})
-        limits_spec = resources_spec.setdefault("limits", {})
-        limits_spec["cpu"] = cpu_limit
-        requests_spec = resources_spec.setdefault("requests", {})
-        requests_spec["cpu"] = cpu_request
+        resource_cfg["limits"] = {
+            "cpu": cpu_limit,
+        }
+        resource_cfg["requests"] = {
+            "cpu": cpu_request,
+        }
+
+    # resize memory
     if parameters.memory_bytes is not None:
-        memory_limit_mib = f"{bytes_to_mib(parameters.memory_bytes)}Mi"
-        resources_spec = db_spec.setdefault("resources", {})
-        limits_spec = resources_spec.setdefault("limits", {})
-        limits_spec["memory"] = memory_limit_mib
-        requests_spec = resources_spec.setdefault("requests", {})
-        memory_request_fraction = 0.90
-        memory_request_bytes = math.floor(parameters.memory_bytes * memory_request_fraction)
-        requests_spec["memory"] = f"{bytes_to_mib(memory_request_bytes)}Mi"
+        resource_cfg["guestMemory"] = f"{bytes_to_mb(parameters.memory_bytes)}M"
 
     namespace = deployment_namespace(branch_id)
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as temp_values:

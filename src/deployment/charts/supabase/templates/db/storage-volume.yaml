@@ -4,20 +4,20 @@ metadata:
   name: {{ include "supabase.db.fullname" . }}-storage-pvc
   labels:
     {{- include "supabase.labels" . | nindent 4 }}
-  {{- with .Values.db.storagePersistence.annotations }}
+  {{- with .Values.storage.persistence.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  {{- with .Values.db.storagePersistence.storageClassName }}
+  {{- with .Values.storage.persistence.storageClassName }}
   storageClassName: {{ . | quote }}
   {{- end }}
-  {{- with .Values.db.storagePersistence.volumeMode }}
+  {{- with .Values.storage.persistence.volumeMode }}
   {{- end }}
   accessModes:
-  {{- range .Values.db.storagePersistence.accessModes }}
+  {{- range .Values.storage.persistence.accessModes }}
     - {{ . | quote }}
   {{- end }}
   resources:
     requests:
-      storage: {{ .Values.db.storagePersistence.size | quote }}
+      storage: {{ .Values.storage.persistence.size | quote }}
