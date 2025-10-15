@@ -15,11 +15,11 @@ class BackupSchedule(AsyncAttrs, Model, table=True):
         name="unique_backup_schedule",
         postgresql_nulls_not_distinct=True,
     ),)
-    organization_id: Identifier = Model.foreign_key_field("organization", nullable=True)
+    organization_id: Identifier | None = Model.foreign_key_field("organization")
     #organization: Organization = Relationship(back_populates="backup_schedules")
-    branch_id: Identifier | None = Model.foreign_key_field("branch", nullable=True)
+    branch_id: Identifier | None = Model.foreign_key_field("branch")
     #branch: Branch = Relationship(back_populates="backup_schedules")
-    env_type: str | None = Field(default=None, nullable=True)
+    env_type: str | None = Field(default=None)
     #rows: List["BackupScheduleRow"] = Relationship(back_populates="backup_schedule", cascade_delete=True)
 
 
