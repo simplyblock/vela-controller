@@ -4,9 +4,10 @@ from datetime import datetime
 from pydantic import BaseModel
 from sqlalchemy import UniqueConstraint
 from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlmodel import Field
+from sqlmodel import Field, Relationship
 from ._util import Model
 from ..._util import Identifier
+from .branch import Branch
 
 class BackupSchedule(AsyncAttrs, Model, table=True):
     __table_args__ = (UniqueConstraint(
@@ -43,7 +44,7 @@ class NextBackup(AsyncAttrs, Model,  table=True):
 
 class BackupEntry(AsyncAttrs, Model, table=True):
     branch_id: Identifier = Model.foreign_key_field("branch")
-    #branch: Branch = Relationship(back_populates="branches")
+    branch: Branch = Relationship()
     row_index: int
     created_at: datetime
     size_bytes: int
@@ -72,6 +73,8 @@ class BackupLogUpdate(BaseModel):
 
 class BackupPublic(BaseModel):
     id: Identifier
+    organization_id: Identifier
+    project_id: Identifier
     branch_id: Identifier
     row_index: int
     created_at: datetime
