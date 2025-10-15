@@ -1,6 +1,5 @@
 from enum import Enum as PyEnum
 from datetime import datetime
-from typing import List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field
@@ -30,9 +29,9 @@ class EntityType(PyEnum):
 class ResourceLimit(AsyncAttrs, Model,  table=True):
     entity_type: EntityType
     resource: ResourceType
-    org_id: Optional[Identifier] = Model.foreign_key_field("organization", nullable=True)
-    env_type: Optional[str] = Field(default=None, nullable=True)
-    project_id: Optional[Identifier] = Model.foreign_key_field("project", nullable=True)
+    org_id: Identifier | None = Model.foreign_key_field("organization", nullable=True)
+    env_type: str | None = Field(default=None, nullable=True)
+    project_id: Identifier | None = Model.foreign_key_field("project", nullable=True)
     max_total: int
     max_per_branch: int
 
@@ -49,7 +48,7 @@ class ProvisioningLog(AsyncAttrs, Model,  table=True):
     resource: ResourceType
     amount: int
     action: str
-    reason: Optional[str] = None
+    reason: str | None = None
     ts: datetime
 
 
@@ -64,7 +63,7 @@ class ResourceUsageMinute(AsyncAttrs, Model,  table=True):
 
 class ResourceConsumptionLimit(AsyncAttrs, Model,  table=True):
     entity_type: EntityType
-    org_id: Optional[Identifier] = Model.foreign_key_field("organization", nullable=True)
-    project_id: Optional[Identifier] = Model.foreign_key_field("project", nullable=True)
+    org_id: Identifier | None = Model.foreign_key_field("organization", nullable=True)
+    project_id: Identifier | None = Model.foreign_key_field("project", nullable=True)
     resource: ResourceType
     max_total_minutes: int

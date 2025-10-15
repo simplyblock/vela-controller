@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Annotated, Optional
+from typing import TYPE_CHECKING, Annotated
 from uuid import UUID
 from enum import Enum as PyEnum
 
@@ -34,13 +34,13 @@ class RoleUserLink(AsyncAttrs, SQLModel, table=True):
     role_id: Identifier = Model.foreign_key_field("role", nullable=False, primary_key=True)
     user_id: UUID = Field(foreign_key="user.id", primary_key=True)
     environment_entity: str = Field(nullable=True)
-    project_entity: Optional[Identifier] = Model.foreign_key_field("project", nullable=True)
-    branch_entity: Optional[Identifier] = Model.foreign_key_field("branch", nullable=True)
+    project_entity: Identifier | None = Model.foreign_key_field("project", nullable=True)
+    branch_entity: Identifier | None = Model.foreign_key_field("branch", nullable=True)
 
 
 class Role(AsyncAttrs, Model, table=True):
-    organization_id: Optional[int] = Model.foreign_key_field("organization", nullable=True)
-    organization: Optional[Organization] = Relationship(back_populates="roles")
+    organization_id: int | None = Model.foreign_key_field("organization", nullable=True)
+    organization: Organization | None = Relationship(back_populates="roles")
     users: list["User"] = Relationship(back_populates="roles", link_model=RoleUserLink)
     role_type: RoleType
     is_active: bool

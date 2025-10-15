@@ -80,6 +80,7 @@ async def _public(project: Project) -> ProjectPublic:
         organization_id=await project.awaitable_attrs.organization_id,
         id=await project.awaitable_attrs.id,
         name=await project.awaitable_attrs.name,
+        max_backups=await project.awaitable_attrs.max_backups,
     )
 
 
@@ -142,6 +143,7 @@ async def create(
     entity = Project(
         organization=organization,
         name=parameters.name,
+        max_backups=parameters.max_backups,
     )
     session.add(entity)
     main_branch = Branch(
@@ -157,6 +159,7 @@ async def create(
         memory=parameters.deployment.memory_bytes,
         iops=parameters.deployment.iops,
         database_image_tag=parameters.deployment.database_image_tag,
+        env_type=parameters.env_type,
     )
     session.add(main_branch)
     try:

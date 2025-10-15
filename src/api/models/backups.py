@@ -1,6 +1,5 @@
 from __future__ import annotations
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncAttrs
@@ -13,7 +12,7 @@ class BackupSchedule(AsyncAttrs, Model, table=True):
     #organization: Organization = Relationship(back_populates="backup_schedules")
     branch_id: Identifier = Model.foreign_key_field("branch", nullable=True)
     #branch: Branch = Relationship(back_populates="backup_schedules")
-    env_type: Optional[str] = Field(default=None, nullable=True)
+    env_type: str | None = Field(default=None, nullable=True)
     #rows: List["BackupScheduleRow"] = Relationship(back_populates="backup_schedule", cascade_delete=True)
 
 
@@ -103,7 +102,7 @@ class BackupCreatePublic(BaseModel):
 
 class BackupDeletePublic(BaseModel):
     status: str
-    message: Optional[str]
+    message: str | None
 
 
 class BackupInfoPublic(BaseModel):

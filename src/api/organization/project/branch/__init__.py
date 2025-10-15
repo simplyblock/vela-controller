@@ -177,6 +177,7 @@ async def _public(branch: Branch) -> BranchPublic:
         project_id=branch.project_id,
         organization_id=project.organization_id,
         database=database_info,
+        env_type=branch.env_type,
         max_resources=max_resources,
         assigned_labels=[],
         used_resources=used_resources,
@@ -263,6 +264,10 @@ async def create(
 ) -> JSONResponse:
     if parameters.source is not None:
         source = await lookup_branch(session, project, parameters.source.branch_id)
+        if parameters.env_type is None:
+            env_type=""
+        else:
+            env_type=parameters.env_type
         entity = Branch(
             name=parameters.name,
             project_id=project.id,
@@ -276,6 +281,7 @@ async def create(
             memory=source.memory,
             iops=source.iops,
             database_image_tag=source.database_image_tag,
+            env_type=env_type,
         )
     else:
         deployment_params = cast("DeploymentParameters", parameters.deployment)
