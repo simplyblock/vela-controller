@@ -34,8 +34,7 @@ async def _create_sources(sources: list[str], prefix: str | None = None) -> list
             list_resp.raise_for_status()
             existing_sources = {s["name"] for s in list_resp.json()}
 
-        except Exception as exc:
-            logger.error(f"Failed to list existing Logflare sources: {exc}")
+        except httpx.HTTPError as exc:
             raise VelaLogflareError("Failed to list existing Logflare sources") from exc
 
         for name in sources:
@@ -58,19 +57,8 @@ async def _create_sources(sources: list[str], prefix: str | None = None) -> list
                 logger.info(f"Logflare source '{full_name}' created successfully.")
                 created_sources.append(full_name)
 
-            except httpx.HTTPStatusError as exc:
-                status_code = exc.response.status_code
-                logger.error(
-                    f"Failed to create Logflare source '{full_name}': "
-                    f"{status_code} {exc.response.reason_phrase} | {exc.response.text}"
-                )
-                raise VelaLogflareError(
-                    f"Failed to create Logflare source '{full_name}': {status_code} {exc.response.reason_phrase}"
-                ) from exc
-
-            except httpx.RequestError as exc:
-                logger.error(f"Request error while creating Logflare source '{full_name}': {exc}")
-                raise VelaLogflareError(f"Request error while creating Logflare source '{full_name}'") from exc
+            except httpx.HTTPError as exc:
+                raise VelaLogflareError(f"Failed to create Logflare source '{full_name}'") from exc
 
     return created_sources
 
@@ -150,19 +138,8 @@ async def _create_endpoint(
             logger.info(f"Created Logflare endpoint '{name}' successfully (id={endpoint_id}).")
             return endpoint_id
 
-        except httpx.RequestError as exc:
-            logger.error(f"Request error while communicating with Logflare: {exc}")
-            raise VelaLogflareError("Network error while communicating with Logflare") from exc
-
-        except httpx.HTTPStatusError as exc:
-            logger.error(
-                f"Logflare API returned error for endpoint '{name}': "
-                f"{exc.response.status_code} {exc.response.reason_phrase} | {exc.response.text}"
-            )
-            raise VelaLogflareError(
-                f"Failed to create or fetch Logflare endpoint '{name}': "
-                f"{exc.response.status_code} {exc.response.reason_phrase}"
-            ) from exc
+        except httpx.HTTPError as exc:
+            raise VelaLogflareError(f"Failed to create or fetch Logflare endpoint '{name}'") from exc
 
 
 # --- BRANCH ENDPOINT ---
@@ -295,32 +272,8 @@ async def get_logs_from_endpoint(branch_id: str, source: str, limit: int = 100):
             logger.info(f"Retrieved {len(data)} logs from '{source}' via endpoint '{endpoint_name}'.")
             return data
 
-        except httpx.HTTPStatusError as exc:
-            status_code = exc.response.status_code
-            reason = exc.response.reason_phrase
-            body = exc.response.text
-
-            logger.error(
-                f"Failed to fetch logs for '{source}' via endpoint '{endpoint_name}': {status_code} {reason} | {body}"
-            )
-
-            raise VelaLogflareError(
-                f"Failed to fetch logs for '{source}' via endpoint '{endpoint_name}': {status_code} {reason}"
-            ) from exc
-
-        except httpx.RequestError as exc:
-            logger.error(f"Request error while fetching logs from '{source}': {exc}")
-            raise VelaLogflareError(
-                f"Request error while fetching logs from '{source}' via endpoint '{endpoint_name}'"
-            ) from exc
-
-        except ValueError as exc:
-            # Handle invalid JSON response
-            logger.error(f"Invalid JSON response while fetching logs from '{source}' via '{endpoint_name}': {exc}")
-            raise VelaLogflareError(
-                f"Invalid JSON response while fetching logs for '{source}' via endpoint '{endpoint_name}'"
-            ) from exc
-            raise
+        except (httpx.HTTPError, ValueError) as exc:
+            raise VelaLogflareError(f"Failed to fetch logs for '{source}' via endpoint '{endpoint_name}'") from exc
 
 
 # --- SOURCE DELETION ---
@@ -350,52 +303,28 @@ async def _delete_sources(prefix: str) -> None:
             list_resp = await client.get(f"{settings.logflare_url}/api/sources", headers=headers)
             list_resp.raise_for_status()
             sources = list_resp.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise VelaLogflareError(f"Failed to list Logflare sources with prefix '{prefix}'") from exc
 
-            filtered_sources = [s for s in sources if s.get("name", "").startswith(prefix)]
-            if not filtered_sources:
-                logger.info(f"No sources found with prefix '{prefix}'.")
-                return
+        filtered_sources = [s for s in sources if s.get("name", "").startswith(prefix)]
+        if not filtered_sources:
+            logger.info(f"No sources found with prefix '{prefix}'.")
+            return
 
-            for src in filtered_sources:
-                src_id = src.get("id")
-                src_name = src.get("name")
+        for src in filtered_sources:
+            src_id = src.get("id")
+            src_name = src.get("name")
 
-                if not src_id:
-                    logger.warning(f"Skipping source '{src_name}' without ID.")
-                    continue
+            if not src_id:
+                logger.warning(f"Skipping source '{src_name}' without ID.")
+                continue
 
-                delete_url = f"{settings.logflare_url}/api/sources/{src_id}"
-                try:
-                    del_resp = await client.delete(delete_url, headers=headers)
-                    del_resp.raise_for_status()
-                    logger.info(f"Deleted Logflare source '{src_name}' (id={src_id}).")
-                except httpx.HTTPStatusError as exc:
-                    status_code = exc.response.status_code
-                    reason = exc.response.reason_phrase
-                    body = exc.response.text
-
-                    logger.error(f"Failed to delete Logflare source '{src_name}': {status_code} {reason} | {body}")
-                    raise VelaLogflareError(
-                        f"Failed to delete Logflare source '{src_name}': {status_code} {reason}"
-                    ) from exc
-
-        except httpx.HTTPStatusError as exc:
-            status_code = exc.response.status_code
-            reason = exc.response.reason_phrase
-            body = exc.response.text
-
-            logger.error(f"Failed to list Logflare sources with prefix '{prefix}': {status_code} {reason} | {body}")
-            raise VelaLogflareError(
-                f"Failed to list Logflare sources with prefix '{prefix}': {status_code} {reason}"
-            ) from exc
-
-        except httpx.RequestError as exc:
-            logger.error(f"Request error while deleting Logflare sources with prefix '{prefix}': {exc}")
-            raise VelaLogflareError(f"Request error while deleting Logflare sources with prefix '{prefix}'") from exc
-
-        except ValueError as exc:
-            logger.error(f"Invalid JSON while listing Logflare sources with prefix '{prefix}': {exc}")
-            raise VelaLogflareError(f"Invalid JSON while listing Logflare sources with prefix '{prefix}'") from exc
+            delete_url = f"{settings.logflare_url}/api/sources/{src_id}"
+            try:
+                del_resp = await client.delete(delete_url, headers=headers)
+                del_resp.raise_for_status()
+            except httpx.HTTPError as exc:
+                raise VelaLogflareError(f"Failed to delete Logflare source with prefix '{prefix}'") from exc
 
 
 # --- ENDPOINT DELETION ---
@@ -425,53 +354,30 @@ async def _delete_endpoint_by_name(endpoint_name: str) -> None:
         try:
             list_resp = await client.get(f"{settings.logflare_url}/api/endpoints", headers=headers)
             list_resp.raise_for_status()
-            endpoints = list_resp.json()
 
-            endpoint = next((e for e in endpoints if e.get("name") == endpoint_name), None)
-            if not endpoint:
-                logger.info(f"No endpoint found with name '{endpoint_name}'.")
-                return
+        except (httpx.HTTPError, ValueError) as exc:
+            raise VelaLogflareError("Failed to list Logflare endpoints") from exc
 
-            endpoint_id = endpoint.get("id")
-            if not endpoint_id:
-                logger.warning(f"Endpoint '{endpoint_name}' has no ID; skipping deletion.")
-                return
+        endpoints = list_resp.json()
 
-            delete_url = f"{settings.logflare_url}/api/endpoints/{endpoint_id}"
-            try:
-                del_resp = await client.delete(delete_url, headers=headers)
-                del_resp.raise_for_status()
-                logger.info(f"Deleted Logflare endpoint '{endpoint_name}' (id={endpoint_id}).")
+        endpoint = next((e for e in endpoints if e.get("name") == endpoint_name), None)
+        if not endpoint:
+            logger.info(f"No endpoint found with name '{endpoint_name}'.")
+            return
 
-            except httpx.HTTPStatusError as exc:
-                status_code = exc.response.status_code
-                reason = exc.response.reason_phrase
-                body = exc.response.text
+        endpoint_id = endpoint.get("id")
+        if not endpoint_id:
+            logger.warning(f"Endpoint '{endpoint_name}' has no ID; skipping deletion.")
+            return
 
-                logger.error(f"Failed to delete Logflare endpoint '{endpoint_name}': {status_code} {reason} | {body}")
-                raise VelaLogflareError(
-                    f"Failed to delete Logflare endpoint '{endpoint_name}': {status_code} {reason}"
-                ) from exc
+        delete_url = f"{settings.logflare_url}/api/endpoints/{endpoint_id}"
+        try:
+            del_resp = await client.delete(delete_url, headers=headers)
+            del_resp.raise_for_status()
+            logger.info(f"Deleted Logflare endpoint '{endpoint_name}' (id={endpoint_id}).")
 
-        except httpx.HTTPStatusError as exc:
-            status_code = exc.response.status_code
-            reason = exc.response.reason_phrase
-            body = exc.response.text
-
-            logger.error(
-                f"Failed to list Logflare endpoints while deleting '{endpoint_name}': {status_code} {reason} | {body}"
-            )
-            raise VelaLogflareError(
-                f"Failed to list Logflare endpoints while deleting '{endpoint_name}': {status_code} {reason}"
-            ) from exc
-
-        except httpx.RequestError as exc:
-            logger.error(f"Request error while deleting endpoint '{endpoint_name}': {exc}")
-            raise VelaLogflareError(f"Request error while deleting endpoint '{endpoint_name}'") from exc
-
-        except ValueError as exc:
-            logger.error(f"Invalid JSON while listing endpoints for deletion '{endpoint_name}': {exc}")
-            raise VelaLogflareError(f"Invalid JSON while listing endpoints for deletion '{endpoint_name}'") from exc
+        except httpx.HTTPError as exc:
+            raise VelaLogflareError(f"Failed to delete Logflare endpoint '{endpoint_name}'") from exc
 
 
 async def create_branch_logflare_objects(branch_id: Identifier):
