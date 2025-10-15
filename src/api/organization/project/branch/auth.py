@@ -37,7 +37,7 @@ async def proxy_keycloak_admin(
 
     try:
         if request.method == "GET":
-            response = await realm.connection.a_raw_get(api_path)  # type: ignore[arg-type]
+            response = await realm.connection.a_raw_get(api_path, **request.query_params)  # type: ignore[arg-type]
         elif request.method == "POST":
             response = await realm.connection.a_raw_post(api_path, data=await request.body())  # type: ignore[arg-type]
         elif request.method == "PUT":
