@@ -363,7 +363,8 @@ async def update_branch_database_password(
     """Rotate the admin credentials for a branch by connecting directly to the database."""
 
     connection: asyncpg.Connection | None = None
-    host: str = f"supabase-supabase-db.{branch_id}.svc.cluster.local"
+    namespace = deployment_namespace(branch_id)
+    host: str = f"supabase-supabase-db.{namespace}.svc.cluster.local"
     try:
         connection = await asyncpg.connect(
             user=username,
