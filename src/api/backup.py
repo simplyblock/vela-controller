@@ -1,7 +1,7 @@
 import logging
 import os
 from datetime import datetime
-from typing import List, Optional
+from typing import List
 
 from fastapi import APIRouter, Depends, logger, Request, HTTPException
 from pydantic import BaseModel, validator
@@ -68,7 +68,7 @@ class ScheduleRow(BaseModel):
 
 class SchedulePayload(BaseModel):
     rows: List[ScheduleRow]
-    env_type: Optional[str] = None
+    env_type: str | None = None
 
 logging.basicConfig(
     level=os.environ.get("LOG_LEVEL", "INFO"),
@@ -85,8 +85,8 @@ logger = logging.getLogger("backup-monitor")
 @router.put("/backup/branches/{branch_ref}/schedule")
 async def add_or_replace_backup_schedule(
         payload: SchedulePayload,
-        org_ref: Optional[Identifier] = None,
-        branch_ref: Optional[Identifier] = None,
+        org_ref: Identifier | None = None,
+        branch_ref: Identifier | None = None,
         db: AsyncSession = Depends(get_db),
         request: Request = None,
 ) -> BackupScheduleCreatePublic:
@@ -213,9 +213,9 @@ async def add_or_replace_backup_schedule(
 @router.get("/backup/organizations/{org_ref}/schedule")
 @router.get("/backup/branches/{branch_ref}/schedule")
 async def list_schedules(
-        org_ref: Optional[Identifier] = None,
-        branch_ref: Optional[Identifier] = None,
-        env_type: Optional[str] = None,
+        org_ref: Identifier | None = None,
+        branch_ref: Identifier | None = None,
+        env_type: str | None = None,
         db: AsyncSession = Depends(get_db),
 ) -> list[BackupSchedulePublic]:
     stmt = select(BackupSchedule)
@@ -262,9 +262,9 @@ async def list_schedules(
 @router.get("/backup/organizations/{org_ref}/")
 @router.get("/backup/branches/{branch_ref}/")
 async def list_backups(
-        org_ref: Optional[Identifier] = None,
-        branch_ref: Optional[Identifier] = None,
-        env_type: Optional[str] = None,
+        org_ref: Identifier | None = None,
+        branch_ref: Identifier | None = None,
+        env_type: str | None = None,
         db: AsyncSession = Depends(get_db),
 ) -> list[BackupPublic]:
     if org_ref:
@@ -298,7 +298,7 @@ async def list_backups(
 # ---------------------------
 @router.delete("/backup/schedule/{schedule_ref}/")
 async def delete_schedule(
-        schedule_ref: Optional[Identifier] = None,
+        schedule_ref: Identifier | None = None,
         db: AsyncSession = Depends(get_db),
 ) -> BackupScheduleDeletePublic:
     stmt = select(BackupSchedule)
