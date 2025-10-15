@@ -8,16 +8,20 @@ from .settings import settings
 
 logger = logging.getLogger(__name__)
 
-LOGFLARE_API_KEY = settings.logflare_private_access_token
 
-headers = {
-    "Content-Type": "application/json",
-    "Accept": "application/json",
-    "Authorization": f"Bearer {LOGFLARE_API_KEY}",
-}
+async def _client(timeout: int = 10):
+    async with httpx.AsyncClient(
+        base_url=f"{settings.logflare_url}/api",
+        timeout=timeout,
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "Authorization": f"Bearer {settings.logflare_private_access_token}",
+        },
+    ) as client:
+        yield client
 
 
-# --- INTERNAL HELPER ---
 async def _create_sources(sources: list[str], prefix: str | None = None) -> list[str]:
     """
     Internal helper for creating Logflare sources.
@@ -27,10 +31,10 @@ async def _create_sources(sources: list[str], prefix: str | None = None) -> list
     """
     created_sources = []
 
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with _client() as client:
         try:
             # Fetch existing sources once to avoid repeated calls
-            list_resp = await client.get(f"{settings.logflare_url}/api/sources", headers=headers)
+            list_resp = await client.get("/api/sources")
             list_resp.raise_for_status()
             existing_sources = {s["name"] for s in list_resp.json()}
 
@@ -48,11 +52,7 @@ async def _create_sources(sources: list[str], prefix: str | None = None) -> list
 
             payload = {"name": full_name}
             try:
-                response = await client.post(
-                    f"{settings.logflare_url}/api/sources",
-                    headers=headers,
-                    json=payload,
-                )
+                response = await client.post("/sources", json=payload)
                 response.raise_for_status()
                 logger.info(f"Logflare source '{full_name}' created successfully.")
                 created_sources.append(full_name)
@@ -107,9 +107,9 @@ async def _create_endpoint(
     If it exists, returns its existing ID.
     Raises VelaLogflareError on any unrecoverable failure.
     """
-    async with httpx.AsyncClient(timeout=60) as client:
+    async with _client(timeout=60) as client:
         try:
-            res = await client.get(f"{settings.logflare_url}/api/endpoints", headers=headers)
+            res = await client.get("/endpoints")
             res.raise_for_status()
             endpoints = res.json()
 
@@ -127,11 +127,7 @@ async def _create_endpoint(
                 "query": sql_query.strip(),
             }
 
-            response = await client.post(
-                f"{settings.logflare_url}/api/endpoints",
-                headers=headers,
-                json=payload,
-            )
+            response = await client.post("/endpoints", json=payload)
             response.raise_for_status()
             data = response.json()
             endpoint_id = data.get("id") or data.get("endpoint_id")
@@ -258,13 +254,11 @@ async def get_logs_from_endpoint(branch_id: str, source: str, limit: int = 100):
     """
 
     endpoint_name = f"{branch_id}.logs.all"
-    url = f"{settings.logflare_url}/api/endpoints/query/{endpoint_name}"
 
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with _client(timeout=30) as client:
         try:
             response = await client.get(
-                url,
-                headers=headers,
+                f"/endpoints/query/{endpoint_name}",
                 params={"pg_sql": pg_sql_query, "project": branch_id},
             )
             response.raise_for_status()
@@ -276,7 +270,6 @@ async def get_logs_from_endpoint(branch_id: str, source: str, limit: int = 100):
             raise VelaLogflareError(f"Failed to fetch logs for '{source}' via endpoint '{endpoint_name}'") from exc
 
 
-# --- SOURCE DELETION ---
 async def delete_branch_sources(branch_id: str) -> None:
     """
     Delete all Logflare sources for a specific branch.
@@ -284,7 +277,6 @@ async def delete_branch_sources(branch_id: str) -> None:
     await _delete_sources(prefix=f"{branch_id}.")
 
 
-# --- DELETE GLOBAL SOURCES ---
 async def delete_global_sources() -> None:
     """
     Delete all global Logflare sources.
@@ -292,15 +284,14 @@ async def delete_global_sources() -> None:
     await _delete_sources(prefix="global.")
 
 
-# --- SOURCE DELETION ---
 async def _delete_sources(prefix: str) -> None:
     """
     Shared helper to delete all Logflare sources whose names start with the given prefix.
     Raises VelaLogflareError on failure.
     """
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with _client() as client:
         try:
-            list_resp = await client.get(f"{settings.logflare_url}/api/sources", headers=headers)
+            list_resp = await client.get("/api/sources")
             list_resp.raise_for_status()
             sources = list_resp.json()
         except (httpx.HTTPError, ValueError) as exc:
@@ -319,15 +310,13 @@ async def _delete_sources(prefix: str) -> None:
                 logger.warning(f"Skipping source '{src_name}' without ID.")
                 continue
 
-            delete_url = f"{settings.logflare_url}/api/sources/{src_id}"
             try:
-                del_resp = await client.delete(delete_url, headers=headers)
+                del_resp = await client.delete("/sources/{src_id}")
                 del_resp.raise_for_status()
             except httpx.HTTPError as exc:
                 raise VelaLogflareError(f"Failed to delete Logflare source with prefix '{prefix}'") from exc
 
 
-# --- ENDPOINT DELETION ---
 async def delete_branch_endpoint(branch_id: str) -> None:
     """
     Delete the aggregated Logflare endpoint for a specific branch.
@@ -336,7 +325,6 @@ async def delete_branch_endpoint(branch_id: str) -> None:
     await _delete_endpoint_by_name(endpoint_name)
 
 
-# --- DELETE GLOBAL ENDPOINT ---
 async def delete_global_endpoint() -> None:
     """
     Delete the global aggregated Logflare endpoint (no branch).
@@ -350,9 +338,9 @@ async def _delete_endpoint_by_name(endpoint_name: str) -> None:
     Shared helper to delete a Logflare endpoint by its name.
     Raises VelaLogflareError on failure.
     """
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with _client() as client:
         try:
-            list_resp = await client.get(f"{settings.logflare_url}/api/endpoints", headers=headers)
+            list_resp = await client.get("/endpoints")
             list_resp.raise_for_status()
 
         except (httpx.HTTPError, ValueError) as exc:
@@ -370,9 +358,8 @@ async def _delete_endpoint_by_name(endpoint_name: str) -> None:
             logger.warning(f"Endpoint '{endpoint_name}' has no ID; skipping deletion.")
             return
 
-        delete_url = f"{settings.logflare_url}/api/endpoints/{endpoint_id}"
         try:
-            del_resp = await client.delete(delete_url, headers=headers)
+            del_resp = await client.delete(f"/endpoints/{endpoint_id}")
             del_resp.raise_for_status()
             logger.info(f"Deleted Logflare endpoint '{endpoint_name}' (id={endpoint_id}).")
 
