@@ -35,7 +35,7 @@ def _decode(token: str):
 
 async def user_by_id(session: SessionDep, id_: UUID):
     query = select(User).where(User.id == id_)
-    db_user = (await session.exec(query)).unique().one_or_none()
+    db_user = (await session.execute(query)).unique().scalars().one_or_none()
     return db_user if db_user is not None else User(id=id_)
 
 
@@ -66,7 +66,7 @@ AuthUserDep = Annotated[User, Depends(authenticated_user)]
 
 async def user_lookup(session: SessionDep, user_id: UUID) -> User:
     query = select(User).where(User.id == user_id)
-    user = (await session.exec(query)).one_or_none()
+    user = (await session.execute(query)).scalars().one_or_none()
     if user is None:
         raise HTTPException(404, f"User {user_id} not found")
     return user

@@ -29,22 +29,26 @@ class Project(AsyncAttrs, Model, table=True):
 class ProjectCreate(BaseModel):
     name: Name
     deployment: DeploymentParameters
+    max_backups: int
+    envs: str
 
 
 class ProjectUpdate(BaseModel):
     name: Name | None = None
+    max_backups: int | None = None
 
 
 class ProjectPublic(BaseModel):
     organization_id: Identifier
     id: Identifier
     name: Name
+    max_backups: int
 
 
 async def _lookup(session: SessionDep, organization: OrganizationDep, project_id: Identifier) -> Project:
     try:
         query = select(Project).where(Project.organization_id == organization.id, Project.id == project_id)
-        return (await session.exec(query)).one()
+        return (await session.execute(query)).scalars().one()
     except NoResultFound as e:
         raise HTTPException(404, f"Project {project_id} not found") from e
 

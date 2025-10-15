@@ -1,7 +1,7 @@
-from typing import Annotated
+from typing import Annotated, AsyncGenerator
 
 from fastapi import Depends
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from .settings import settings
@@ -11,6 +11,7 @@ from .settings import settings
 # and transparently reopen them before handing out a session.
 engine = create_async_engine(
     str(settings.postgres_url),
+    echo=True,
     pool_pre_ping=True,
     pool_recycle=3600,
 )
@@ -22,3 +23,9 @@ async def _get_session():
 
 
 SessionDep = Annotated[AsyncSession, Depends(_get_session)]
+
+AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    async with AsyncSessionLocal() as session:
+        yield session
