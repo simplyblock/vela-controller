@@ -23,7 +23,7 @@ data:
         inputs:
           - kubernetes_host
         source: |-
-          .project = "default"
+          .project = "global"
           .event_message = del(.message)
           .appname = del(.kubernetes.container_name)
           del(.file)
@@ -124,7 +124,7 @@ data:
         inputs:
           - router.db
         source: |-
-          .metadata.host = "db-default"
+          .metadata.host = "db-global"
           .metadata.parsed.timestamp = .timestamp
           
           parsed, err = parse_regex(.event_message, r'.*(?P<level>INFO|NOTICE|WARNING|ERROR|LOG|FATAL|PANIC?):.*', numeric_groups: true)
@@ -152,7 +152,7 @@ data:
           retry_max_duration_secs: 10
           headers:
             x-api-key: ${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
-        uri: 'http://vela-logflare:4000/api/logs?source_name=auth.logs.vela'
+        uri: 'http://vela-logflare:4000/api/logs?source_name=global.auth.logs.vela'
       logflare_controller:
         type: 'http'
         inputs:
@@ -164,7 +164,7 @@ data:
           retry_max_duration_secs: 10
           headers:
             x-api-key: ${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
-        uri: 'http://vela-logflare:4000/api/logs?source_name=controller.logs.vela'
+        uri: 'http://vela-logflare:4000/api/logs?source_name=global.controller.logs.vela'
       logflare_studio:
         type: 'http'
         inputs:
@@ -176,7 +176,7 @@ data:
           retry_max_duration_secs: 10
           headers:
             x-api-key: ${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
-        uri: 'http://vela-logflare:4000/api/logs?source_name=studio.logs.vela'
+        uri: 'http://vela-logflare:4000/api/logs?source_name=global.studio.logs.vela'
       logflare_db:
         type: 'http'
         inputs:
@@ -188,7 +188,7 @@ data:
           retry_max_duration_secs: 10
           headers:
             x-api-key: ${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
-        uri: 'http://vela-logflare:4000/api/logs?source_name=db.logs.vela'
+        uri: 'http://vela-logflare:4000/api/logs?source_name=global.db.logs.vela'
       logflare_kong:
         type: 'http'
         inputs:
@@ -201,4 +201,4 @@ data:
           retry_max_duration_secs: 10
           headers:
             x-api-key: ${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
-        uri: 'http://vela-logflare:4000/api/logs?source_name=kong.logs.vela'
+        uri: 'http://vela-logflare:4000/api/logs?source_name=global.kong.logs.vela'

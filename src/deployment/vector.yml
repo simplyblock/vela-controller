@@ -31,68 +31,11 @@ transforms:
     inputs:
       - project_logs
     route:
-      kong: '.appname == "vela-kong"'
-      auth: '.appname == "vela-auth"'
       rest: '.appname == "vela-rest"'
       realtime: '.appname == "vela-realtime"'
       storage: '.appname == "vela-storage"'
       functions: '.appname == "vela-functions"'
       db: '.appname == "vela-db"'
-  # Ignores non nginx errors since they are related with kong booting up
-  kong_logs:
-    type: remap
-    inputs:
-      - router.kong
-    source: |-
-      req, err = parse_nginx_log(.event_message, "combined")
-      if err == null {
-          .timestamp = req.timestamp
-          .metadata.request.headers.referer = req.referer
-          .metadata.request.headers.user_agent = req.agent
-          .metadata.request.headers.cf_connecting_ip = req.client
-          .metadata.request.method = req.method
-          .metadata.request.path = req.path
-          .metadata.request.protocol = req.protocol
-          .metadata.response.status_code = req.status
-      }
-      if err != null {
-        abort
-      }
-  # Ignores non nginx errors since they are related with kong booting up
-  kong_err:
-    type: remap
-    inputs:
-      - router.kong
-    source: |-
-      .metadata.request.method = "GET"
-      .metadata.response.status_code = 200
-      parsed, err = parse_nginx_log(.event_message, "error")
-      if err == null {
-          .timestamp = parsed.timestamp
-          .severity = parsed.severity
-          .metadata.request.host = parsed.host
-          .metadata.request.headers.cf_connecting_ip = parsed.client
-          url, err = split(parsed.request, " ")
-          if err == null {
-              .metadata.request.method = url[0]
-              .metadata.request.path = url[1]
-              .metadata.request.protocol = url[2]
-          }
-      }
-      if err != null {
-        abort
-      }
-  # Gotrue logs are structured json strings which frontend parses directly. But we keep metadata for consistency.
-  auth_logs:
-    type: remap
-    inputs:
-      - router.auth
-    source: |-
-      parsed, err = parse_json(.event_message)
-      if err == null {
-          .metadata.timestamp = parsed.time
-          .metadata = merge!(.metadata, parsed)
-      }
   # PostgREST logs are structured so we separate timestamp from message using regex
   rest_logs:
     type: remap
@@ -157,18 +100,6 @@ transforms:
       .metadata.parsed.error_severity = upcase!(.metadata.parsed.error_severity)
 
 sinks:
-  logflare_auth:
-    type: 'http'
-    inputs:
-      - auth_logs
-    encoding:
-      codec: 'json'
-    method: 'post'
-    request:
-      retry_max_duration_secs: 30
-      headers:
-        x-api-key: "${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}"
-    uri: 'http://vela-logflare.${NAMESPACE}.svc.cluster.local:4000/api/logs?source_name=gotrue.logs.prod'
   logflare_realtime:
     type: 'http'
     inputs:
@@ -180,7 +111,7 @@ sinks:
       retry_max_duration_secs: 30
       headers:
         x-api-key: "${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}"
-    uri: 'http://vela-logflare.${NAMESPACE}.svc.cluster.local:4000/api/logs?source_name=realtime.logs.prod'
+    uri: 'http://vela-logflare.${NAMESPACE}.svc.cluster.local:4000/api/logs?source_name=${VELA_BRANCH}.realtime.logs.prod'
   logflare_rest:
     type: 'http'
     inputs:
@@ -192,7 +123,7 @@ sinks:
       retry_max_duration_secs: 30
       headers:
         x-api-key: "${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}"
-    uri: 'http://vela-logflare.${NAMESPACE}.svc.cluster.local:4000/api/logs?source_name=postgREST.logs.prod'
+    uri: 'http://vela-logflare.${NAMESPACE}.svc.cluster.local:4000/api/logs?source_name=${VELA_BRANCH}.postgREST.logs.prod'
   logflare_db:
     type: 'http'
     inputs:
@@ -204,7 +135,7 @@ sinks:
       retry_max_duration_secs: 30
       headers:
         x-api-key: "${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}"
-    uri: 'http://vela-logflare.${NAMESPACE}.svc.cluster.local:4000/api/logs?source_name=postgres.logs'
+    uri: 'http://vela-logflare.${NAMESPACE}.svc.cluster.local:4000/api/logs?source_name=${VELA_BRANCH}.postgres.logs'
   logflare_functions:
     type: 'http'
     inputs:
@@ -216,7 +147,7 @@ sinks:
       retry_max_duration_secs: 30
       headers:
         x-api-key: "${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}"
-    uri: 'http://vela-logflare.${NAMESPACE}.svc.cluster.local:4000/api/logs?source_name=deno-relay-logs'
+    uri: 'http://vela-logflare.${NAMESPACE}.svc.cluster.local:4000/api/logs?source_name=${VELA_BRANCH}.deno-relay-logs'
   logflare_storage:
     type: 'http'
     inputs:
@@ -228,17 +159,4 @@ sinks:
       retry_max_duration_secs: 30
       headers:
         x-api-key: "${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}"
-    uri: 'http://vela-logflare.${NAMESPACE}.svc.cluster.local:4000/api/logs?source_name=storage.logs.prod.2'
-  logflare_kong:
-    type: 'http'
-    inputs:
-      - kong_logs
-      - kong_err
-    encoding:
-      codec: 'json'
-    method: 'post'
-    request:
-      retry_max_duration_secs: 30
-      headers:
-        x-api-key: "${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}"
-    uri: 'http://vela-logflare.${NAMESPACE}.svc.cluster.local:4000/api/logs?source_name=cloudflare.logs.prod'
+    uri: 'http://vela-logflare.${NAMESPACE}.svc.cluster.local:4000/api/logs?source_name=${VELA_BRANCH}.storage.logs.prod.2'

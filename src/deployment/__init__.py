@@ -1,6 +1,5 @@
 import logging
 import math
-import os
 import subprocess
 import tempfile
 import textwrap
@@ -32,6 +31,7 @@ from ..exceptions import VelaCloudflareError, VelaKubernetesError
 from .grafana import create_vela_grafana_obj
 from .kubernetes import KubernetesService
 from .kubernetes.kubevirt import get_virtualmachine_status
+from .logflare import create_branch_logflare_objects
 from .settings import settings
 
 logger = logging.getLogger(__name__)
@@ -98,8 +98,8 @@ def inject_branch_env(compose: dict[str, Any], branch_id: Identifier) -> dict[st
         raise RuntimeError("Failed to inject branch env into compose file: missing services.vector") from e
 
     vector_env = vector_service.setdefault("environment", {})
-    vector_env["LOGFLARE_PUBLIC_ACCESS_TOKEN"] = os.environ.get("LOGFLARE_PUBLIC_ACCESS_TOKEN", "")
-    vector_env["NAMESPACE"] = os.environ.get("VELA_DEPLOYMENT_NAMESPACE_PREFIX", "")
+    vector_env["LOGFLARE_PUBLIC_ACCESS_TOKEN"] = settings.logflare_public_access_token
+    vector_env["NAMESPACE"] = settings.deployment_namespace_prefix
     vector_env["VELA_BRANCH"] = str(branch_id).lower()
 
     return compose
@@ -666,6 +666,9 @@ async def deploy_branch_environment(
     service_key: str,
 ) -> None:
     """Background task: provision infra for a branch and persist the resulting endpoint."""
+
+    # Create logflare objects for vela
+    await create_branch_logflare_objects(branch_id=branch_id)
 
     # Create grafana objects for vela
     await create_vela_grafana_obj(organization_id, branch_id, credential)

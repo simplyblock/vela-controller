@@ -79,6 +79,10 @@ async def main():
             "simplyblock.vela.deployment.delete_deployment",
             new_callable=unittest.mock.AsyncMock,
         ),
+        unittest.mock.patch(
+            "simplyblock.vela.deployment.logflare.create_global_logflare_objects",
+            new_callable=unittest.mock.AsyncMock,
+        ),
         unittest.mock.patch("keycloak.KeycloakAdmin") as mock_keycloak_admin,
     ):
         mock_load_incluster.return_value = None

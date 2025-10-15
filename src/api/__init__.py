@@ -9,6 +9,7 @@ from fastapi.routing import APIRoute
 from pydantic import BaseModel
 from sqlmodel import SQLModel
 
+from ..deployment.logflare import create_global_logflare_objects
 from .db import engine
 from .organization import api as organization_api
 from .settings import settings
@@ -151,6 +152,7 @@ app.add_middleware(
 @app.on_event("startup")
 async def on_startup():
     await _create_db_and_tables()
+    await create_global_logflare_objects()
 
 
 class Status(BaseModel):

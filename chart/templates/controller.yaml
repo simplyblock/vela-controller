@@ -33,6 +33,11 @@ spec:
                 secretKeyRef:
                   name: vela-logflare-secret
                   key: LOGFLARE_PUBLIC_ACCESS_TOKEN
+            - name: VELA_LOGFLARE_PRIVATE_ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: vela-logflare-secret
+                  key: LOGFLARE_PRIVATE_ACCESS_TOKEN
             - name: VELA_GRAFANA_SECURITY_ADMIN_USER
               valueFrom:
                 secretKeyRef:
@@ -67,6 +72,8 @@ spec:
               value: 'admin'
             - name: VELA_GRAFANA_URL
               value: "http://vela-grafana:3000"
+            - name: VELA_LOGFLARE_URL
+              value: "http://vela-logflare:4000"
               
           livenessProbe:
             httpGet:
