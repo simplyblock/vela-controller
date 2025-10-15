@@ -47,6 +47,7 @@ from ....models.branch import (
     BranchDep,
     BranchPasswordReset,
     BranchPublic,
+    BranchServiceStatus,
     BranchStatus,
     BranchUpdate,
     DatabaseInformation,
@@ -61,6 +62,67 @@ from ....settings import settings
 from .auth import api as auth_api
 
 api = APIRouter(tags=["branch"])
+
+logger = logging.getLogger(__name__)
+
+_SERVICE_PROBE_TIMEOUT_SECONDS = 2
+_BRANCH_SERVICE_ENDPOINTS: dict[str, tuple[str, int]] = {
+    "database": ("supabase-supabase-db", 5432),
+    "realtime": ("supabase-supabase-realtime", 4000),
+    "storage": ("supabase-supabase-storage", 5000),
+    "meta": ("supabase-supabase-meta", 8080),
+    "rest": ("supabase-supabase-rest", 3000),
+}
+
+
+async def _probe_service_socket(host: str, port: int, *, label: str) -> BranchServiceStatus:
+    try:
+        _reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(host=host, port=port),
+            timeout=_SERVICE_PROBE_TIMEOUT_SECONDS,
+        )
+    except (TimeoutError, OSError):
+        logger.debug("Service %s unavailable at %s:%s", label, host, port)
+        return "STOPPED"
+    except Exception:  # pragma: no cover - defensive guard
+        logger.exception("Unexpected error probing service %s", label)
+        return "UNKNOWN"
+
+    writer.close()
+    try:
+        await writer.wait_closed()
+    except OSError:  # pragma: no cover - best effort socket cleanup
+        logger.debug("Failed to close probe socket for %s", label, exc_info=True)
+    return "ACTIVE_HEALTHY"
+
+
+async def _collect_branch_service_health(namespace: str) -> BranchStatus:
+    probes = {
+        label: asyncio.create_task(
+            _probe_service_socket(
+                host=f"{service_name}.{namespace}.svc.cluster.local",
+                port=port,
+                label=label,
+            )
+        )
+        for label, (service_name, port) in _BRANCH_SERVICE_ENDPOINTS.items()
+    }
+
+    results: dict[str, BranchServiceStatus] = {}
+    for label, task in probes.items():
+        try:
+            results[label] = await task
+        except Exception:  # pragma: no cover - unexpected failures
+            logger.exception("Service health probe failed for %s", label)
+            results[label] = "UNKNOWN"
+
+    return BranchStatus(
+        database=results["database"],
+        storage=results["storage"],
+        realtime=results["realtime"],
+        meta=results["meta"],
+        rest=results["rest"],
+    )
 
 
 async def _deploy_branch_environment_task(
@@ -145,19 +207,16 @@ async def _public(branch: Branch) -> BranchPublic:
         storage_bytes=None,
     )
     namespace, vmi_name = get_db_vmi_identity(branch.id)
+    status = "UNKNOWN"
     try:
         status = await get_virtualmachine_status(namespace, vmi_name)
-        # TODO: replace with real service health status once available
-        _service_health = BranchStatus(
-            database="ACTIVE_HEALTHY" if status == "Running" else "STOPPED",
-            realtime="ACTIVE_HEALTHY" if status == "Running" else "STOPPED",
-            storage="ACTIVE_HEALTHY" if status == "Running" else "STOPPED",
-            meta="ACTIVE_HEALTHY" if status == "Running" else "STOPPED",
-            rest="ACTIVE_HEALTHY" if status == "Running" else "STOPPED",
-        )
     except VelaDeploymentError:
         logging.exception("Failed to query VM status")
-        status = "UNKNOWN"
+
+    try:
+        _service_health = await _collect_branch_service_health(namespace)
+    except Exception:
+        logging.exception("Failed to determine service health via socket probes")
         _service_health = BranchStatus(
             database="UNKNOWN",
             realtime="UNKNOWN",
