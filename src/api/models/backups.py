@@ -2,15 +2,22 @@ from __future__ import annotations
 from datetime import datetime
 
 from pydantic import BaseModel
+from sqlalchemy import UniqueConstraint
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field
 from ._util import Model
 from ..._util import Identifier
 
 class BackupSchedule(AsyncAttrs, Model, table=True):
+    __table_args__ = (UniqueConstraint(
+        "organization_id",
+        "branch_id", "env_type",
+        name="unique_backup_schedule",
+        postgresql_nulls_not_distinct=True,
+    ),)
     organization_id: Identifier = Model.foreign_key_field("organization", nullable=True)
     #organization: Organization = Relationship(back_populates="backup_schedules")
-    branch_id: Identifier = Model.foreign_key_field("branch", nullable=True)
+    branch_id: Identifier | None = Model.foreign_key_field("branch", nullable=True)
     #branch: Branch = Relationship(back_populates="backup_schedules")
     env_type: str | None = Field(default=None, nullable=True)
     #rows: List["BackupScheduleRow"] = Relationship(back_populates="backup_schedule", cascade_delete=True)
