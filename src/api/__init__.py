@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from importlib.resources import files
 from typing import Any, Literal
@@ -6,10 +7,12 @@ from typing import Any, Literal
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
+from httpx import TimeoutException
 from pydantic import BaseModel
 from sqlmodel import SQLModel
 
 from ..deployment.logflare import create_global_logflare_objects
+from ..exceptions import VelaLogflareError
 from .db import engine
 from .organization import api as organization_api
 from .settings import settings
@@ -152,7 +155,12 @@ app.add_middleware(
 @app.on_event("startup")
 async def on_startup():
     await _create_db_and_tables()
-    await create_global_logflare_objects()
+    try:
+        await create_global_logflare_objects()
+    except VelaLogflareError as exc:
+        if not isinstance(exc.__cause__, TimeoutException):
+            raise
+        logging.error("Timeout while creating global logflare entities")
 
 
 class Status(BaseModel):
