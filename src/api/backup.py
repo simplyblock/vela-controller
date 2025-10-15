@@ -90,7 +90,7 @@ async def add_or_replace_backup_schedule(
         db: AsyncSession = Depends(get_db),
         request: Request = None,
 ) -> BackupScheduleCreatePublic:
-
+# TODO: @mxsrc will currently throw an HTTP 500 if the unique constraint fails. Please adjust to 409 Conflict.
     if not payload.rows:
         raise HTTPException(status_code=400, detail="No rows provided")
     if len(payload.rows) > 10:
