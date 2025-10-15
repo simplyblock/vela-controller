@@ -79,14 +79,14 @@ logger = logging.getLogger("backup-monitor")
 # ---------------------------
 # Create/Update Schedule
 # ---------------------------
-@router.post("/backup/organizations/{org_ref}/schedule")
-@router.put("/backup/organizations/{org_ref}/schedule")
-@router.post("/backup/branches/{branch_ref}/schedule")
-@router.put("/backup/branches/{branch_ref}/schedule")
+@router.post("/backup/organizations/{organization_id}/schedule")
+@router.put("/backup/organizations/{organization_id}/schedule")
+@router.post("/backup/branches/{branch_id}/schedule")
+@router.put("/backup/branches/{branch_id}/schedule")
 async def add_or_replace_backup_schedule(
         payload: SchedulePayload,
-        org_ref: Identifier | None = None,
-        branch_ref: Identifier | None = None,
+        organization_id: Identifier | None = None,
+        branch_id: Identifier | None = None,
         db: AsyncSession = Depends(get_db),
         request: Request = None,
 ) -> BackupScheduleCreatePublic:
@@ -98,19 +98,16 @@ async def add_or_replace_backup_schedule(
 
     # Resolve organization or branch
     org = branch = project = None
-    org_id = branch_id = None
 
-    if org_ref:
-        result = await db.execute(select(Organization).where(Organization.id == org_ref))
+    if organization_id:
+        result = await db.execute(select(Organization).where(Organization.id == organization_id))
         org = result.scalars().first()
         if org:
-            org_id = org.id
-            logger.info("org-level backup:",str(org_id))
-    elif branch_ref:
-        result = await db.execute(select(Branch).where(Branch.id == branch_ref))
+            logger.info("org-level backup:",str(organization_id))
+    elif branch_id:
+        result = await db.execute(select(Branch).where(Branch.id == branch_id))
         branch = result.scalars().first()
         if branch:
-            branch_id = branch.id
             result = await db.execute(select(Project).where(Project.id == branch.project_id))
             project = result.scalars().first()
             logger.info("branch-level backup:",str(branch_id))
@@ -126,7 +123,7 @@ async def add_or_replace_backup_schedule(
             stmt = (
                 select(BackupSchedule)
                 .where(
-                    BackupSchedule.organization_id == org_id,
+                    BackupSchedule.organization_id == organization_id,
                     BackupSchedule.branch_id == branch_id,
                     BackupSchedule.env_type == payload.env_type
                 )
@@ -135,7 +132,7 @@ async def add_or_replace_backup_schedule(
             stmt = (
                 select(BackupSchedule)
                 .where(
-                    BackupSchedule.organization_id == org_id,
+                    BackupSchedule.organization_id == organization_id,
                     BackupSchedule.branch_id == branch_id
                 )
             )
@@ -161,7 +158,7 @@ async def add_or_replace_backup_schedule(
     max_allowed = org.max_backups if org else getattr(project, "max_backups", 0)
     if total_retention > max_allowed:
         entity_type = "Organization" if org else "Branch"
-        entity_ref = org_ref if org else branch_ref
+        entity_ref = organization_id if org else branch_id
         raise HTTPException(
             status_code=422,
             detail=f"Max Backups {max_allowed} of {entity_type} {entity_ref} exceeded: {total_retention}",
@@ -173,8 +170,8 @@ async def add_or_replace_backup_schedule(
         await db.execute(delete(NextBackup).where(NextBackup.schedule_id == schedule.id))
         await db.commit()
     else:
-        if branch_ref:
-            await db.execute(delete(NextBackup).where(NextBackup.branch_id == branch_ref))
+        if branch_id:
+            await db.execute(delete(NextBackup).where(NextBackup.branch_id == branch_id))
         elif env_type is not None:
             stmt = delete(NextBackup).where(
                 NextBackup.branch_id.in_(
@@ -184,7 +181,7 @@ async def add_or_replace_backup_schedule(
             await db.execute(stmt)
             await db.commit()
         schedule = BackupSchedule(
-            organization_id=org_id,
+            organization_id=organization_id,
             branch_id=branch_id,
             env_type=payload.env_type,
         )
@@ -210,19 +207,19 @@ async def add_or_replace_backup_schedule(
 # ---------------------------
 # List Schedules
 # ---------------------------
-@router.get("/backup/organizations/{org_ref}/schedule")
-@router.get("/backup/branches/{branch_ref}/schedule")
+@router.get("/backup/organizations/{organization_id}/schedule")
+@router.get("/backup/branches/{branch_id}/schedule")
 async def list_schedules(
-        org_ref: Identifier | None = None,
-        branch_ref: Identifier | None = None,
+        organization_id: Identifier | None = None,
+        branch_id: Identifier | None = None,
         env_type: str | None = None,
         db: AsyncSession = Depends(get_db),
 ) -> list[BackupSchedulePublic]:
     stmt = select(BackupSchedule)
-    if org_ref:
-        stmt = stmt.where(BackupSchedule.organization_id == org_ref)
-    if branch_ref:
-        stmt = stmt.where(BackupSchedule.branch_id == branch_ref)
+    if organization_id:
+        stmt = stmt.where(BackupSchedule.organization_id == organization_id)
+    if branch_id:
+        stmt = stmt.where(BackupSchedule.branch_id == branch_id)
     if env_type is not None:
         stmt = stmt.where(BackupSchedule.env_type == env_type)
 
@@ -259,22 +256,23 @@ async def list_schedules(
 # ---------------------------
 # List Backups
 # ---------------------------
-@router.get("/backup/organizations/{org_ref}/")
-@router.get("/backup/branches/{branch_ref}/")
+@router.get("/backup/organizations/{organization_id}/")
+@router.get("/backup/branches/{branch_id}/")
 async def list_backups(
-        org_ref: Identifier | None = None,
-        branch_ref: Identifier | None = None,
+        organization_id: Identifier | None = None,
+        branch_id: Identifier | None = None,
         env_type: str | None = None,
         db: AsyncSession = Depends(get_db),
 ) -> list[BackupPublic]:
-    if org_ref:
-        stmt = select(BackupEntry).join(Branch).where(Branch.organization_id == org_ref)
+    if organization_id:
+        stmt = (select(BackupEntry)
+                .join(Branch, isouter=True).where(Branch.project_id == Project.id)
+                .join(Project, isouter=True).where(Project.organization_id == organization_id))
         if env_type is not None:
             stmt = stmt.where(Branch.env_type == env_type)
-        stmt = select(BackupEntry).join(Branch).where(Branch.organization_id == org_ref)
 
-    elif branch_ref:
-        stmt = select(BackupEntry).where(BackupEntry.branch_id == branch_ref)
+    elif branch_id:
+        stmt = select(BackupEntry).where(BackupEntry.branch_id == branch_id)
     else:
         raise HTTPException(status_code=400, detail="Either org-ref or branch-ref needed.")
 
@@ -296,13 +294,13 @@ async def list_backups(
 # ---------------------------
 # Delete Schedule
 # ---------------------------
-@router.delete("/backup/schedule/{schedule_ref}/")
+@router.delete("/backup/schedule/{schedule_id}/")
 async def delete_schedule(
-        schedule_ref: Identifier | None = None,
+        schedule_id: Identifier | None = None,
         db: AsyncSession = Depends(get_db),
 ) -> BackupScheduleDeletePublic:
     stmt = select(BackupSchedule)
-    stmt = stmt.where(BackupSchedule.id == schedule_ref)
+    stmt = stmt.where(BackupSchedule.id == schedule_id)
 
     result = await db.execute(stmt)
     schedule = result.scalars().first()
@@ -319,9 +317,9 @@ async def delete_schedule(
 # ---------------------------
 # Manual Backup
 # ---------------------------
-@router.post("/backup/branches/{branch_ref}/")
-async def manual_backup(branch_ref: Identifier, db: AsyncSession = Depends(get_db)) -> BackupCreatePublic:
-    result = await db.execute(select(Branch).where(Branch.id == branch_ref))
+@router.post("/backup/branches/{branch_id}/")
+async def manual_backup(branch_id: Identifier, db: AsyncSession = Depends(get_db)) -> BackupCreatePublic:
+    result = await db.execute(select(Branch).where(Branch.id == branch_id))
     branch = result.scalars().first()
     if not branch:
         raise HTTPException(status_code=404, detail="Branch not found")
@@ -350,9 +348,9 @@ async def manual_backup(branch_ref: Identifier, db: AsyncSession = Depends(get_d
 # ---------------------------
 # Delete Backup
 # ---------------------------
-@router.delete("/backup/{backup_ref}")
-async def delete_backup(backup_ref: Identifier, db: AsyncSession = Depends(get_db)) -> BackupDeletePublic:
-    result = await db.execute(select(BackupEntry).where(BackupEntry.id == backup_ref))
+@router.delete("/backup/{backup_id}")
+async def delete_backup(backup_id: Identifier, db: AsyncSession = Depends(get_db)) -> BackupDeletePublic:
+    result = await db.execute(select(BackupEntry).where(BackupEntry.id == backup_id))
     backup = result.scalars().first()
     if not backup:
         raise HTTPException(status_code=404, detail="Backup not found")
