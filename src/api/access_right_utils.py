@@ -1,4 +1,7 @@
 from typing import List
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import select
+from .models.role import RoleUserLink, RoleAccessRight, AccessRight, Role
 
 # Wildcard matcher
 def match_access(required: str, rights: List[str]) -> bool:
@@ -19,10 +22,6 @@ def match_access(required: str, rights: List[str]) -> bool:
         return True
     return False
 
-from typing import List
-
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import select
 
 async def get_user_rights(session: AsyncSession, user_id, entity_context) -> List[str]:
     """
@@ -30,7 +29,6 @@ async def get_user_rights(session: AsyncSession, user_id, entity_context) -> Lis
     entity_context is a dict like:
     {'organization_id': id, 'project_id': id, 'branch_id': id}
     """
-    from .models.role import RoleUserLink, RoleAccessRight, AccessRight, Role
 
     # Query all active roles assigned to user in the context
     stmt = (
