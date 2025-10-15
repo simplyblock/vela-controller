@@ -18,6 +18,11 @@ async def _client(timeout: int = 10):
             "Accept": "application/json",
             "Authorization": f"Bearer {settings.logflare_private_access_token}",
         },
+        event_hooks={
+            "response": [
+                lambda r, *_, **__: r.raise_for_status(),
+            ]
+        },
     ) as client:
         yield client
 
@@ -34,9 +39,7 @@ async def _create_sources(sources: list[str], prefix: str | None = None) -> list
     async with _client() as client:
         try:
             # Fetch existing sources once to avoid repeated calls
-            list_resp = await client.get("/api/sources")
-            list_resp.raise_for_status()
-            existing_sources = {s["name"] for s in list_resp.json()}
+            existing_sources = {s["name"] for s in (await client.get("/api/sources")).json()}
 
         except httpx.HTTPError as exc:
             raise VelaLogflareError("Failed to list existing Logflare sources") from exc
@@ -52,8 +55,7 @@ async def _create_sources(sources: list[str], prefix: str | None = None) -> list
 
             payload = {"name": full_name}
             try:
-                response = await client.post("/sources", json=payload)
-                response.raise_for_status()
+                await client.post("/sources", json=payload)
                 logger.info(f"Logflare source '{full_name}' created successfully.")
                 created_sources.append(full_name)
 
@@ -76,27 +78,26 @@ async def _create_endpoint(
     """
     async with _client(timeout=60) as client:
         try:
-            res = await client.get("/endpoints")
-            res.raise_for_status()
-            endpoints = res.json()
+            endpoints = (await client.get("/endpoints")).json()
 
-            for e in endpoints:
-                if e.get("name") == name:
-                    endpoint_id = e.get("id")
-                    logger.info(f"Endpoint '{name}' already exists (id={endpoint_id}). Skipping creation.")
-                    return endpoint_id
+            if (
+                endpoint_id := next((endpoint["id"] for endpoint in endpoints if endpoint.get("name") == name), None)
+            ) is not None:
+                logger.info(f"Endpoint '{name}' already exists (id={endpoint_id}). Skipping creation.")
+                return endpoint_id
 
-            payload = {
-                "name": name,
-                "description": description,
-                "enable_auth": True,
-                "sandboxable": True,
-                "query": sql_query.strip(),
-            }
-
-            response = await client.post("/endpoints", json=payload)
-            response.raise_for_status()
-            data = response.json()
+            data = (
+                await client.post(
+                    "/endpoints",
+                    json={
+                        "name": name,
+                        "description": description,
+                        "enable_auth": True,
+                        "sandboxable": True,
+                        "query": sql_query.strip(),
+                    },
+                )
+            ).json()
             endpoint_id = data.get("id") or data.get("endpoint_id")
             logger.info(f"Created Logflare endpoint '{name}' successfully (id={endpoint_id}).")
             return endpoint_id
@@ -122,12 +123,12 @@ async def get_logs_from_endpoint(branch_id: str, source: str, limit: int = 100):
 
     async with _client(timeout=30) as client:
         try:
-            response = await client.get(
-                f"/endpoints/query/{endpoint_name}",
-                params={"pg_sql": pg_sql_query, "project": branch_id},
-            )
-            response.raise_for_status()
-            data = response.json()
+            data = (
+                await client.get(
+                    f"/endpoints/query/{endpoint_name}",
+                    params={"pg_sql": pg_sql_query, "project": branch_id},
+                )
+            ).json()
             logger.info(f"Retrieved {len(data)} logs from '{source}' via endpoint '{endpoint_name}'.")
             return data
 
@@ -156,9 +157,7 @@ async def _delete_sources(prefix: str) -> None:
     """
     async with _client() as client:
         try:
-            list_resp = await client.get("/api/sources")
-            list_resp.raise_for_status()
-            sources = list_resp.json()
+            sources = (await client.get("/api/sources")).json()
         except (httpx.HTTPError, ValueError) as exc:
             raise VelaLogflareError(f"Failed to list Logflare sources with prefix '{prefix}'") from exc
 
@@ -176,8 +175,7 @@ async def _delete_sources(prefix: str) -> None:
                 continue
 
             try:
-                del_resp = await client.delete("/sources/{src_id}")
-                del_resp.raise_for_status()
+                await client.delete("/sources/{src_id}")
             except httpx.HTTPError as exc:
                 raise VelaLogflareError(f"Failed to delete Logflare source with prefix '{prefix}'") from exc
 
