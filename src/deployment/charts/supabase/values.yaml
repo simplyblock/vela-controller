@@ -79,25 +79,16 @@ db:
     POSTGRES_PORT: "5432"
     JWT_EXP: 3600
   resources: # Placeholder values. Actual values are filled by create_vela_config
+    guestMemory: 1G
     limits:
       cpu: 100m
-      memory: 128Mi
     requests:
       cpu: 100m
-      memory: 128Mi
   persistence:
     enabled: true
     storageClassName: "simplyblock-csi-sc"
     annotations: {}
     size: 10Gi
-    accessModes:
-      - ReadWriteMany
-    class: ""
-  storagePersistence:
-    enabled: false
-    storageClassName: "simplyblock-csi-sc"
-    annotations: {}
-    size: 50Gi
     accessModes:
       - ReadWriteMany
   autoscaling:

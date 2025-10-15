@@ -17,8 +17,9 @@ spec:
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
       containers:
+        # todo: mount kubeconfig
         - name: vela-controller
-          image: simplyblock/vela-controller:latest
+          image: "{{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag }}"
           imagePullPolicy: Always
           ports:
             - name: http

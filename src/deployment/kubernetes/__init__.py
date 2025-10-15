@@ -162,7 +162,6 @@ class KubernetesService:
                     header_params={"Content-Type": "application/strategic-merge-patch+json"},
                     body=body,
                     auth_settings=["BearerToken"],
-                    response_type="object",
                 )
                 logger.info(
                     "Patched compute container CPU for pod %s (VM %s) in %s: request=%s limit=%s",
