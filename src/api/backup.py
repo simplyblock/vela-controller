@@ -325,14 +325,20 @@ async def list_backups(
     if not backups:
         raise HTTPException(status_code=404, detail="No backups found.")
 
-    return [
-        BackupPublic(
-            id=str(b.id),
-            branch_id=str(b.branch_id),
-            row_index=b.row_index,
-            created_at=b.created_at,
+    async def backup_mapper(backup: BackupEntry):
+        branch = await backup.awaitable_attrs.branch
+        project = await branch.awaitable_attrs.project
+        return BackupPublic(
+            id=str(backup.id),
+            organization_id=project.organization_id,
+            project_id=project.id,
+            branch_id=backup.branch_id,
+            row_index=backup.row_index,
+            created_at=backup.created_at,
         )
-        for b in backups
+
+    return [
+        await backup_mapper(b) for b in backups
     ]
 
 # ---------------------------
