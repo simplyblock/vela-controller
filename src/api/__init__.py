@@ -7,13 +7,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
 from pydantic import BaseModel
-from sqlmodel import SQLModel
 
 from ..deployment.logflare import create_global_logflare_objects
 from .db import engine
 from .organization import api as organization_api
-from .settings import settings
+from .roles_access_rights import router as roles_api
+from .backup import router as backup_router
+from .resources import monitor_resources, router as resources_router
 from .user import api as user_api
+from .backupmonitor import *
 
 
 class _FastAPI(FastAPI):
@@ -149,12 +151,6 @@ app.add_middleware(
 )
 
 
-@app.on_event("startup")
-async def on_startup():
-    await _create_db_and_tables()
-    await create_global_logflare_objects()
-
-
 class Status(BaseModel):
     service: Literal["vela"] = "vela"
 
@@ -166,7 +162,20 @@ def health():
 
 app.include_router(organization_api, prefix="/organizations")
 app.include_router(user_api, prefix="/users")
+app.include_router(resources_router, prefix="/resources")
+app.include_router(backup_router)
+app.include_router(roles_api)
 _use_route_names_as_operation_ids(app)
+
+# start async background monitor
+asyncio.create_task(run_monitor())
+asyncio.create_task(monitor_resources(60))
+
+
+@app.on_event("startup")
+async def on_startup():
+    await _create_db_and_tables()
+    await create_global_logflare_objects()
 
 
 __all__ = ["app"]

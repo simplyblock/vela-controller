@@ -30,17 +30,21 @@ class OrganizationCreate(BaseModel):
     name: Name
     locked: StrictBool = False
     require_mfa: StrictBool = False
+    max_backups: int
+    envs: str
 
 
 class OrganizationUpdate(BaseModel):
     name: Name | None = None
     locked: StrictBool | None = None
     require_mfa: StrictBool | None = None
+    max_backups: int | None = None
+    envs: str | None = None
 
 
 async def _lookup(session: SessionDep, organization_id: Identifier) -> Organization:
     try:
-        return (await session.exec(select(Organization).where(Organization.id == organization_id))).one()
+        return (await session.execute(select(Organization).where(Organization.id == organization_id))).scalars().one()
     except NoResultFound as e:
         raise HTTPException(404, f"Organization {organization_id} not found") from e
 
