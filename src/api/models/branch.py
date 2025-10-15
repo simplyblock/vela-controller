@@ -15,12 +15,12 @@ from ..._util import (
     IOPS_CONSTRAINTS,
     MEMORY_CONSTRAINTS,
     STORAGE_SIZE_CONSTRAINTS,
+    DBPassword,
     Identifier,
     Slug,
-    dbstr,
 )
 from ...deployment import DeploymentParameters
-from ..crypto import decrypt_with_base64_key, decrypt_with_passphrase, encrypt_with_random_passphrase
+from .._util.crypto import decrypt_with_base64_key, decrypt_with_passphrase, encrypt_with_random_passphrase
 from ..db import SessionDep
 from ._util import Model, Name
 from .project import Project, ProjectDep
@@ -110,7 +110,7 @@ class BranchUpdate(BaseModel):
 
 
 class BranchPasswordReset(BaseModel):
-    new_password: dbstr
+    new_password: DBPassword
 
 
 BranchServiceStatus = Literal[
