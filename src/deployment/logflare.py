@@ -63,39 +63,6 @@ async def _create_sources(sources: list[str], prefix: str | None = None) -> list
     return created_sources
 
 
-# --- BRANCH SOURCES ---
-async def create_branch_sources(branch_id: str) -> list[str]:
-    """
-    Create branch-specific Logflare sources.
-    Example: "main.realtime.logs.prod"
-    """
-    branch_sources = [
-        "realtime.logs.prod",
-        "postgREST.logs.prod",
-        "postgres.logs",
-        "deno-relay-logs",
-        "storage.logs.prod.2",
-    ]
-    return await _create_sources(branch_sources, prefix=branch_id)
-
-
-# --- GLOBAL SOURCES ---
-async def create_global_sources() -> list[str]:
-    """
-    Create global (default) Logflare sources shared across all branches.
-    Example: "auth.logs.vela"
-    """
-    global_sources = [
-        "global.auth.logs.vela",
-        "global.controller.logs.vela",
-        "global.studio.logs.vela",
-        "global.db.logs.vela",
-        "global.kong.logs.vela",
-    ]
-    return await _create_sources(global_sources)
-
-
-# --- ENDPOINT CREATION ---
 async def _create_endpoint(
     name: str,
     description: str,
@@ -138,108 +105,6 @@ async def _create_endpoint(
             raise VelaLogflareError(f"Failed to create or fetch Logflare endpoint '{name}'") from exc
 
 
-# --- BRANCH ENDPOINT ---
-async def create_branch_endpoint(branch_id: str) -> str:
-    """
-    Creates a single endpoint aggregating all branch-specific sources into one query.
-    """
-    endpoint_name = f"{branch_id}.logs.all"
-
-    sql_query = f"""
-    WITH realtime_logs AS (
-      SELECT t.timestamp, t.id, t.event_message, t.metadata
-      FROM `{branch_id}.realtime.logs.prod` AS t
-      CROSS JOIN UNNEST(t.metadata) AS m
-      WHERE m.project = @project
-    ),
-    postgrest_logs AS (
-      SELECT t.timestamp, t.id, t.event_message, t.metadata
-      FROM `{branch_id}.postgREST.logs.prod` AS t
-      CROSS JOIN UNNEST(t.metadata) AS m
-      WHERE t.project = @project
-    ),
-    postgres_logs AS (
-      SELECT t.timestamp, t.id, t.event_message, t.metadata
-      FROM `{branch_id}.postgres.logs` AS t
-      WHERE t.project = @project
-    ),
-    deno_logs AS (
-      SELECT t.timestamp, t.id, t.event_message, t.metadata
-      FROM `{branch_id}.deno-relay-logs` AS t
-      CROSS JOIN UNNEST(t.metadata) AS m
-      WHERE m.project_ref = @project
-    ),
-    storage_logs AS (
-      SELECT t.timestamp, t.id, t.event_message, t.metadata
-      FROM `{branch_id}.storage.logs.prod.2` AS t
-      CROSS JOIN UNNEST(t.metadata) AS m
-      WHERE m.project = @project
-    )
-    SELECT id, timestamp, event_message, metadata
-    FROM realtime_logs
-    UNION ALL
-    SELECT id, timestamp, event_message, metadata FROM postgrest_logs
-    UNION ALL
-    SELECT id, timestamp, event_message, metadata FROM postgres_logs
-    UNION ALL
-    SELECT id, timestamp, event_message, metadata FROM deno_logs
-    UNION ALL
-    SELECT id, timestamp, event_message, metadata FROM storage_logs
-    ORDER BY CAST(timestamp AS timestamp) DESC
-    LIMIT 100;
-    """
-
-    description = f"Aggregated all logs endpoint for branch {branch_id}"
-    return await _create_endpoint(endpoint_name, description, sql_query)
-
-
-# --- GLOBAL ENDPOINT ---
-async def create_global_endpoint() -> str:
-    """
-    Creates a global endpoint aggregating default Logflare sources (not tied to any branch).
-    """
-    endpoint_name = "global.logs.all"
-
-    sql_query = """
-    WITH auth_logs AS (
-      SELECT t.timestamp, t.id, t.event_message, t.metadata
-      FROM `global.auth.logs.vela` AS t
-    ),
-    controller_logs AS (
-      SELECT t.timestamp, t.id, t.event_message, t.metadata
-      FROM `global.controller.logs.vela` AS t
-    ),
-    studio_logs AS (
-      SELECT t.timestamp, t.id, t.event_message, t.metadata
-      FROM `global.studio.logs.vela` AS t
-    ),
-    db_logs AS (
-      SELECT t.timestamp, t.id, t.event_message, t.metadata
-      FROM `global.db.logs.vela` AS t
-    ),
-    kong_logs AS (
-      SELECT t.timestamp, t.id, t.event_message, t.metadata
-      FROM `global.kong.logs.vela` AS t
-    )
-    SELECT id, timestamp, event_message, metadata
-    FROM auth_logs
-    UNION ALL
-    SELECT id, timestamp, event_message, metadata FROM controller_logs
-    UNION ALL
-    SELECT id, timestamp, event_message, metadata FROM studio_logs
-    UNION ALL
-    SELECT id, timestamp, event_message, metadata FROM db_logs
-    UNION ALL
-    SELECT id, timestamp, event_message, metadata FROM kong_logs
-    ORDER BY CAST(timestamp AS timestamp) DESC
-    LIMIT 100;
-    """
-
-    description = "Aggregated global logs endpoint for system-wide visibility"
-    return await _create_endpoint(endpoint_name, description, sql_query)
-
-
-# --- LOG QUERY ---
 async def get_logs_from_endpoint(branch_id: str, source: str, limit: int = 100):
     """
     Query logs for a specific source using the branch endpoint.
@@ -373,8 +238,64 @@ async def create_branch_logflare_objects(branch_id: Identifier):
     """
     logger.info(f"Creating Logflare objects for branch_id={branch_id}")
 
-    sources = await create_branch_sources(str(branch_id))
-    endpoint_id = await create_branch_endpoint(str(branch_id))
+    sources = await _create_sources(
+        [
+            "realtime.logs.prod",
+            "postgREST.logs.prod",
+            "postgres.logs",
+            "deno-relay-logs",
+            "storage.logs.prod.2",
+        ],
+        prefix=str(branch_id),
+    )
+    endpoint_name = f"{branch_id}.logs.all"
+
+    sql_query = f"""
+    WITH realtime_logs AS (
+      SELECT t.timestamp, t.id, t.event_message, t.metadata
+      FROM `{branch_id}.realtime.logs.prod` AS t
+      CROSS JOIN UNNEST(t.metadata) AS m
+      WHERE m.project = @project
+    ),
+    postgrest_logs AS (
+      SELECT t.timestamp, t.id, t.event_message, t.metadata
+      FROM `{branch_id}.postgREST.logs.prod` AS t
+      CROSS JOIN UNNEST(t.metadata) AS m
+      WHERE t.project = @project
+    ),
+    postgres_logs AS (
+      SELECT t.timestamp, t.id, t.event_message, t.metadata
+      FROM `{branch_id}.postgres.logs` AS t
+      WHERE t.project = @project
+    ),
+    deno_logs AS (
+      SELECT t.timestamp, t.id, t.event_message, t.metadata
+      FROM `{branch_id}.deno-relay-logs` AS t
+      CROSS JOIN UNNEST(t.metadata) AS m
+      WHERE m.project_ref = @project
+    ),
+    storage_logs AS (
+      SELECT t.timestamp, t.id, t.event_message, t.metadata
+      FROM `{branch_id}.storage.logs.prod.2` AS t
+      CROSS JOIN UNNEST(t.metadata) AS m
+      WHERE m.project = @project
+    )
+    SELECT id, timestamp, event_message, metadata
+    FROM realtime_logs
+    UNION ALL
+    SELECT id, timestamp, event_message, metadata FROM postgrest_logs
+    UNION ALL
+    SELECT id, timestamp, event_message, metadata FROM postgres_logs
+    UNION ALL
+    SELECT id, timestamp, event_message, metadata FROM deno_logs
+    UNION ALL
+    SELECT id, timestamp, event_message, metadata FROM storage_logs
+    ORDER BY CAST(timestamp AS timestamp) DESC
+    LIMIT 100;
+    """
+
+    description = f"Aggregated all logs endpoint for branch {branch_id}"
+    endpoint_id = await _create_endpoint(endpoint_name, description, sql_query)
 
     logger.info(f"Created {len(sources)} sources and endpoint {endpoint_id} for branch '{branch_id}'.")
 
@@ -385,7 +306,53 @@ async def create_global_logflare_objects():
     """
     logger.info("Creating global Logflare sources and endpoint...")
 
-    sources = await create_global_sources()
-    endpoint_id = await create_global_endpoint()
+    sources = await _create_sources(
+        [
+            "global.auth.logs.vela",
+            "global.controller.logs.vela",
+            "global.studio.logs.vela",
+            "global.db.logs.vela",
+            "global.kong.logs.vela",
+        ]
+    )
+    endpoint_name = "global.logs.all"
+
+    sql_query = """
+    WITH auth_logs AS (
+      SELECT t.timestamp, t.id, t.event_message, t.metadata
+      FROM `global.auth.logs.vela` AS t
+    ),
+    controller_logs AS (
+      SELECT t.timestamp, t.id, t.event_message, t.metadata
+      FROM `global.controller.logs.vela` AS t
+    ),
+    studio_logs AS (
+      SELECT t.timestamp, t.id, t.event_message, t.metadata
+      FROM `global.studio.logs.vela` AS t
+    ),
+    db_logs AS (
+      SELECT t.timestamp, t.id, t.event_message, t.metadata
+      FROM `global.db.logs.vela` AS t
+    ),
+    kong_logs AS (
+      SELECT t.timestamp, t.id, t.event_message, t.metadata
+      FROM `global.kong.logs.vela` AS t
+    )
+    SELECT id, timestamp, event_message, metadata
+    FROM auth_logs
+    UNION ALL
+    SELECT id, timestamp, event_message, metadata FROM controller_logs
+    UNION ALL
+    SELECT id, timestamp, event_message, metadata FROM studio_logs
+    UNION ALL
+    SELECT id, timestamp, event_message, metadata FROM db_logs
+    UNION ALL
+    SELECT id, timestamp, event_message, metadata FROM kong_logs
+    ORDER BY CAST(timestamp AS timestamp) DESC
+    LIMIT 100;
+    """
+
+    description = "Aggregated global logs endpoint for system-wide visibility"
+    endpoint_id = await _create_endpoint(endpoint_name, description, sql_query)
 
     logger.info(f"Created {len(sources)} global sources and endpoint {endpoint_id}.")
