@@ -24,6 +24,8 @@ class Organization(AsyncAttrs, Model, table=True):
     roles: list["Role"] = Relationship(back_populates="organization", cascade_delete=True)
     users: list["User"] = Relationship(back_populates="organizations", link_model=Membership)
     require_mfa: bool = False
+    max_backups: int
+    environments: str
 
 
 class OrganizationCreate(BaseModel):
@@ -31,7 +33,7 @@ class OrganizationCreate(BaseModel):
     locked: StrictBool = False
     require_mfa: StrictBool = False
     max_backups: int
-    envs: str
+    environments: str
 
 
 class OrganizationUpdate(BaseModel):
@@ -39,7 +41,7 @@ class OrganizationUpdate(BaseModel):
     locked: StrictBool | None = None
     require_mfa: StrictBool | None = None
     max_backups: int | None = None
-    envs: str | None = None
+    environments: str | None = None
 
 
 async def _lookup(session: SessionDep, organization_id: Identifier) -> Organization:

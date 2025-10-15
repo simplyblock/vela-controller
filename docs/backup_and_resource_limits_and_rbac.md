@@ -18,7 +18,7 @@ curl -X POST "http://localhost:8000/vela/organizations/?response=full" \
 "display_name": "VELA",
 "require_mfa": false,
 "max_backups": 20,
-"envs": "prod, staging, qa, analytics, dev"
+"environments": "prod, staging, qa, analytics, dev"
 }'
 
 curl -X GET "http://localhost:8000/vela/organizations/" -H "Authorization: Bearer $TOKEN"
