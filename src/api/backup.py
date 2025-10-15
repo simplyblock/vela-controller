@@ -239,7 +239,7 @@ async def list_schedules(
         rows = result.scalars().all()
         out.append(
             BackupSchedulePublic(
-                ref=str(s.id),
+                id=str(s.id),
                 organization_id=str(s.organization_id) if s.organization_id else None,
                 branch_id=str(s.branch_id) if s.branch_id else None,
                 env_type=s.env_type,

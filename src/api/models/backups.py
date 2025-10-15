@@ -86,9 +86,9 @@ class BackupScheduleRowPublic(BaseModel):
 
 class BackupSchedulePublic(BaseModel):
     id: Identifier
-    organization_id: Identifier
-    branch_id: Identifier
-    env_type: str
+    organization_id: Identifier | None
+    branch_id: Identifier | None
+    env_type: str | None
     rows: list[BackupScheduleRowPublic]
 
 
