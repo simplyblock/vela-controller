@@ -11,7 +11,6 @@ from .settings import settings
 # and transparently reopen them before handing out a session.
 engine = create_async_engine(
     str(settings.postgres_url),
-    echo=True,
     pool_pre_ping=True,
     pool_recycle=3600,
 )
