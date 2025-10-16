@@ -427,7 +427,7 @@ async def reset_password(
     branch: BranchDep,
     parameters: BranchPasswordReset,
 ) -> Response:
-    current_password = branch.database_password
+    admin_password = branch.database_password
     db_host = branch.endpoint_domain or branch_domain(branch.id)
     if not db_host:
         db_host = deployment_settings.deployment_host
@@ -440,14 +440,13 @@ async def reset_password(
             branch_id=branch.id,
             database=branch.database,
             username=branch.database_user,
-            current_password=current_password,
+            admin_password=admin_password,
             new_password=parameters.new_password,
         )
     except (asyncpg_exceptions.PostgresError, OSError) as exc:
         logging.exception("Failed to rotate database password for branch %s", branch.id)
         raise HTTPException(status_code=500, detail="Failed to rotate branch database password.") from exc
 
-    branch.database_password = parameters.new_password
     await session.commit()
     return Response(status_code=204)
 
