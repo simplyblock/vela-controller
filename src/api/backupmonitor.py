@@ -35,10 +35,18 @@ logging.basicConfig(
 logger = logging.getLogger("backup-monitor")
 
 UNIT_MULTIPLIER = {
-    "min": 60, "minute": 60, "minutes": 60,
-    "h": 3600, "hour": 3600, "hours": 3600,
-    "d": 86400, "day": 86400, "days": 86400,
-    "w": 604800, "week": 604800, "weeks": 604800,
+    "min": 60,
+    "minute": 60,
+    "minutes": 60,
+    "h": 3600,
+    "hour": 3600,
+    "hours": 3600,
+    "d": 86400,
+    "day": 86400,
+    "days": 86400,
+    "w": 604800,
+    "week": 604800,
+    "weeks": 604800,
 }
 
 
@@ -96,7 +104,7 @@ class BackupMonitor:
 
         for branch in branches:
             status = await get_branch_status(branch)
-            if (status == "ACTIVE_HEALTHY"):
+            if status == "ACTIVE_HEALTHY":
                 try:
                     await self.process_branch(db, branch, now)
                 except Exception:
@@ -114,16 +122,13 @@ class BackupMonitor:
             return
 
         # Load all schedule rows
-        result = await db.execute(
-            select(BackupScheduleRow).where(BackupScheduleRow.schedule_id == schedule.id)
-        )
+        result = await db.execute(select(BackupScheduleRow).where(BackupScheduleRow.schedule_id == schedule.id))
         rows = result.scalars().all()
 
         # Ensure NextBackup exists for all schedule rows
         for row in rows:
             stmt = select(NextBackup).where(
-                NextBackup.branch_id == branch_local.id,
-                NextBackup.row_index == row.row_index
+                NextBackup.branch_id == branch_local.id, NextBackup.row_index == row.row_index
             )
             res = await db.execute(stmt)
             nb = res.scalar_one_or_none()
@@ -132,23 +137,20 @@ class BackupMonitor:
                     branch_id=branch_local.id,
                     schedule_id=schedule.id,
                     row_index=row.row_index,
-                    next_at=now + timedelta(seconds=interval_seconds(row.interval, row.unit))
+                    next_at=now + timedelta(seconds=interval_seconds(row.interval, row.unit)),
                 )
                 db.add(nb)
         await db.commit()
         await db.refresh(branch_local)
 
         # Process due NextBackup entries
-        result = await db.execute(
-            select(NextBackup).where(NextBackup.branch_id == branch_local.id)
-        )
+        result = await db.execute(select(NextBackup).where(NextBackup.branch_id == branch_local.id))
         next_backups = result.scalars().all()
 
         for nb in next_backups:
             if nb.next_at <= now:
                 stmt_row = select(BackupScheduleRow).where(
-                    BackupScheduleRow.schedule_id == schedule.id,
-                    BackupScheduleRow.row_index == nb.row_index
+                    BackupScheduleRow.schedule_id == schedule.id, BackupScheduleRow.row_index == nb.row_index
                 )
                 row_res = await db.execute(stmt_row)
                 row = row_res.scalar_one_or_none()
@@ -162,7 +164,8 @@ class BackupMonitor:
                 else:
                     logger.debug(
                         "Skipping snapshot for %s row %d because another worker holds lock",
-                        branch_local.id, nb.row_index
+                        branch_local.id,
+                        nb.row_index,
                     )
         stmt1 = select(Project).where(Project.id == branch.project_id)
         entries = await db.execute(stmt1)
@@ -179,7 +182,7 @@ class BackupMonitor:
         entry_rows = entries.scalars().all()
         num_rows = len(entry_rows)
 
-        to_delete = entry_rows[:num_rows - max_backups] if num_rows > max_backups else []
+        to_delete = entry_rows[: num_rows - max_backups] if num_rows > max_backups else []
         for row in to_delete:
             await db.delete(row)  # async delete
         await db.commit()
@@ -194,7 +197,7 @@ class BackupMonitor:
         stmt = select(BackupSchedule).where(
             BackupSchedule.organization_id == (await branch.awaitable_attrs.project).organization_id,
             BackupSchedule.env_type == branch.env_type,
-            BackupSchedule.branch_id.is_(None)
+            BackupSchedule.branch_id.is_(None),
         )
         res = await db.execute(stmt)
         schedule = res.scalar_one_or_none()
@@ -204,28 +207,18 @@ class BackupMonitor:
         stmt = select(BackupSchedule).where(
             BackupSchedule.organization_id == (await branch.awaitable_attrs.project).organization_id,
             BackupSchedule.branch_id.is_(None),
-            BackupSchedule.env_type.is_(None)
+            BackupSchedule.env_type.is_(None),
         )
         res = await db.execute(stmt)
         return res.scalar_one_or_none()
 
     async def execute_backup(self, db: AsyncSession, branch: Branch, row: BackupScheduleRow, nb: NextBackup):
-        be = BackupEntry(
-            branch_id=branch.id,
-            row_index=row.row_index,
-            created_at=datetime.utcnow(),
-            size_bytes=0
-        )
+        be = BackupEntry(branch_id=branch.id, row_index=row.row_index, created_at=datetime.utcnow(), size_bytes=0)
         db.add(be)
         await db.commit()
         await db.refresh(be)
 
-        log_entry = BackupLog(
-            branch_id=branch.id,
-            backup_uuid=str(be.id),
-            action="taken",
-            ts=datetime.utcnow()
-        )
+        log_entry = BackupLog(branch_id=branch.id, backup_uuid=str(be.id), action="taken", ts=datetime.utcnow())
         db.add(log_entry)
 
         nb.next_at = nb.next_at + timedelta(seconds=interval_seconds(row.interval, row.unit))
@@ -246,14 +239,9 @@ class BackupMonitor:
         if len(backups) <= row.retention:
             return
 
-        to_delete = backups[:len(backups) - row.retention]
+        to_delete = backups[: len(backups) - row.retention]
         for b in to_delete:
-            log = BackupLog(
-                branch_id=branch.id,
-                backup_uuid=str(b.id),
-                action="delete",
-                ts=datetime.utcnow()
-            )
+            log = BackupLog(branch_id=branch.id, backup_uuid=str(b.id), action="delete", ts=datetime.utcnow())
             db.add(log)
             await db.delete(b)
         await db.commit()

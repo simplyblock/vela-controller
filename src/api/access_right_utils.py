@@ -38,10 +38,7 @@ async def get_user_rights(session: AsyncSession, user_id, entity_context) -> lis
         .join(Role, Role.id == RoleAccessRight.role_id)
         .join(Role, Role.organization_id == RoleAccessRight.organization_id)
         .join(RoleUserLink, RoleUserLink.role_id == Role.id)
-        .where(
-            Role.is_active,
-            RoleUserLink.user_id == user_id
-        )
+        .where(Role.is_active, RoleUserLink.user_id == user_id)
     )
 
     # Apply context filters if sub != "*" and sub != req_sub:

@@ -44,9 +44,9 @@ class RoleAssignmentPayload(BaseModel):
 # ----------------------
 @router.post("/organizations/{org_id}/")
 async def create_role(
-        session: SessionDep,
-        org_id: Identifier,
-        payload: RolePayload,
+    session: SessionDep,
+    org_id: Identifier,
+    payload: RolePayload,
 ):
     role = Role(role_type=payload.role_type, is_active=payload.is_active)
     role.organization_id = org_id
@@ -73,15 +73,12 @@ async def create_role(
 # ----------------------
 @router.put("/organizations/{org_id}/{role_id}/")
 async def modify_role(
-        session: SessionDep,
-        org_id: Identifier,
-        role_id: Identifier,
-        payload: RolePayloadUpdate,
+    session: SessionDep,
+    org_id: Identifier,
+    role_id: Identifier,
+    payload: RolePayloadUpdate,
 ):
-    stmt = select(Role).where(
-        Role.id == role_id,
-        Role.organization_id == org_id
-    )
+    stmt = select(Role).where(Role.id == role_id, Role.organization_id == org_id)
     result = await session.execute(stmt)
     role = result.scalar_one_or_none()
     if not role:
@@ -92,8 +89,9 @@ async def modify_role(
     if payload.access_rights is not None:
         # Clear existing access rights and add new ones
 
-        stmt = select(RoleAccessRight).where(RoleAccessRight.role_id == role.id,
-                                             RoleAccessRight.organization_id == org_id)
+        stmt = select(RoleAccessRight).where(
+            RoleAccessRight.role_id == role.id, RoleAccessRight.organization_id == org_id
+        )
         result = await session.execute(stmt)
         ar = result.scalars().all()
         if ar:
@@ -120,14 +118,11 @@ async def modify_role(
 # ----------------------
 @router.delete("/organizations/{org_id}/{role_id}/")
 async def delete_role(
-        session: SessionDep,
-        org_id: Identifier,
-        role_id: Identifier,
+    session: SessionDep,
+    org_id: Identifier,
+    role_id: Identifier,
 ):
-    stmt = select(Role).where(
-        Role.id == role_id,
-        Role.organization_id == org_id
-    )
+    stmt = select(Role).where(Role.id == role_id, Role.organization_id == org_id)
     result = await session.execute(stmt)
     role = result.scalar_one_or_none()
     if not role:
@@ -143,19 +138,16 @@ async def delete_role(
 # ----------------------
 @router.post("/organizations/{org_id}/{role_id}/assign/{user_id}/")
 async def assign_role(
-        session: SessionDep,
-        role_id: Identifier,
-        org_id: Identifier,
-        user_id: UUID,
-        payload: RoleAssignmentPayload,
+    session: SessionDep,
+    role_id: Identifier,
+    org_id: Identifier,
+    user_id: UUID,
+    payload: RoleAssignmentPayload,
 ):
     """
     Assign a role to a user in one or more contexts. The context is passed as JSON.
     """
-    stmt = select(Role).where(
-        Role.id == role_id,
-        Role.organization_id == org_id
-    )
+    stmt = select(Role).where(Role.id == role_id, Role.organization_id == org_id)
     result = await session.execute(stmt)
     role = result.scalar_one_or_none()
     if not role:
@@ -172,14 +164,19 @@ async def assign_role(
     def has_values(lst):
         return lst is not None and any(x is not None for x in lst)
 
-    if ((has_values(project_ids) and int(role.role_type.value) != 2) or (
-            has_values(env_ids) and int(role.role_type.value) != 1) or
-            (has_values(branch_ids) and int(role.role_type.value) != 3) or (not has_values(project_ids)
-                                                                            and not has_values(
-                        env_ids) and not has_values(branch_ids) and int(role.role_type.value) != 0)):
+    if (
+        (has_values(project_ids) and int(role.role_type.value) != 2)
+        or (has_values(env_ids) and int(role.role_type.value) != 1)
+        or (has_values(branch_ids) and int(role.role_type.value) != 3)
+        or (
+            not has_values(project_ids)
+            and not has_values(env_ids)
+            and not has_values(branch_ids)
+            and int(role.role_type.value) != 0
+        )
+    ):
         raise HTTPException(
-            422,
-            f"Role type {role.role_type.value} does not match entitites: {project_ids}, {branch_ids}, {env_ids} "
+            422, f"Role type {role.role_type.value} does not match entitites: {project_ids}, {branch_ids}, {env_ids} "
         )
 
     if project_ids:
@@ -214,11 +211,11 @@ async def assign_role(
 # ----------------------
 @router.post("/organizations/{org_id}/{role_id}/unassign/{user_id}/")
 async def unassign_role(
-        session: SessionDep,
-        role_id: Identifier,
-        org_id: Identifier,
-        user_id: UUID,
-        context: dict[str, UUID] | None = None,
+    session: SessionDep,
+    role_id: Identifier,
+    org_id: Identifier,
+    user_id: UUID,
+    context: dict[str, UUID] | None = None,
 ):
     """
     Remove a role assignment for a user in a specific context.
@@ -254,10 +251,10 @@ async def unassign_role(
 # ----------------------
 @router.post("/organizations/{org_id}/check_access/{user_id}/")
 async def api_check_access(
-        session: SessionDep,
-        org_id: Identifier,
-        user_id: UUID,
-        payload: AccessCheckRequest = Body(...),
+    session: SessionDep,
+    org_id: Identifier,
+    user_id: UUID,
+    payload: AccessCheckRequest = Body(...),
 ):
     """
     Example POST JSON:
@@ -287,8 +284,8 @@ async def api_check_access(
 
 @router.get("/organizations/{org_id}/roles/", response_model=list[RolePayload])
 async def list_roles(
-        session: SessionDep,
-        org_id: Identifier,
+    session: SessionDep,
+    org_id: Identifier,
 ):
     """
     List all roles and their access rights within an organization
@@ -304,27 +301,26 @@ async def list_roles(
             select(AccessRight.entry)
             .select_from(RoleAccessRight)  # <- explicitly say the left table
             .join(AccessRight, RoleAccessRight.access_right_id == AccessRight.id)
-            .where(
-                RoleAccessRight.organization_id == org_id,
-                RoleAccessRight.role_id == role.id
-            )
+            .where(RoleAccessRight.organization_id == org_id, RoleAccessRight.role_id == role.id)
         )
         result = await session.execute(stmt)
         rows = result.all()
-        role_list.append(RolePayload(
-            role_id=str(role.id),
-            role_type=str(role.role_type.value),
-            is_active=role.is_active,
-            access_rights=[ar[0] for ar in rows]
-        ))
+        role_list.append(
+            RolePayload(
+                role_id=str(role.id),
+                role_type=str(role.role_type.value),
+                is_active=role.is_active,
+                access_rights=[ar[0] for ar in rows],
+            )
+        )
     return role_list
 
 
 @router.get("/organizations/{org_id}/role-assignments/")
 async def list_role_assignments(
-        session: SessionDep,
-        org_id: Identifier,
-        user_id: UUID | None = None,
+    session: SessionDep,
+    org_id: Identifier,
+    user_id: UUID | None = None,
 ):
     """
     List role-user assignments within an organization.
@@ -349,20 +345,22 @@ async def list_role_assignments(
         if link.environment_entity:
             env_entity = str(link.environment_entity)
 
-        assignments.append({
-            "role_id": str(link.role_id),
-            "user_id": str(link.user_id),
-            "project_id": project_id,
-            "branch_id": branch_id,
-            "environment_id": env_entity
-        })
+        assignments.append(
+            {
+                "role_id": str(link.role_id),
+                "user_id": str(link.user_id),
+                "project_id": project_id,
+                "branch_id": branch_id,
+                "environment_id": env_entity,
+            }
+        )
 
     return {"count": len(assignments), "assignments": assignments}
 
 
 @router.get("/access-rights/", response_model=list[str])
 async def list_access_rights(
-        session: SessionDep,
+    session: SessionDep,
 ):
     """
     List all access rights defined in the system.
