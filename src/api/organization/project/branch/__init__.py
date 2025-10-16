@@ -264,10 +264,7 @@ async def create(
 ) -> JSONResponse:
     if parameters.source is not None:
         source = await lookup_branch(session, project, parameters.source.branch_id)
-        if parameters.env_type is None:
-            env_type=""
-        else:
-            env_type=parameters.env_type
+        env_type = parameters.env_type if parameters.env_type is not None else ""
         entity = Branch(
             name=parameters.name,
             project_id=project.id,
