@@ -356,7 +356,7 @@ async def update_branch_database_password(
     branch_id: Identifier,
     database: str,
     username: str,
-    current_password: str,
+    admin_password: str,
     new_password: str,
     ssl: Any | None = None,
 ) -> None:
@@ -366,8 +366,8 @@ async def update_branch_database_password(
     host: str = f"supabase-supabase-db.{branch_id}.svc.cluster.local"
     try:
         connection = await asyncpg.connect(
-            user=username,
-            password=current_password,
+            user="supabase_admin",  # superuser with permissions to change password
+            password=admin_password,
             database=database,
             host=host,
             port=5432,
@@ -375,7 +375,14 @@ async def update_branch_database_password(
             server_settings={"application_name": "vela-password-rotation"},
             command_timeout=10,
         )
-        await connection.execute(f"ALTER ROLE {username} WITH PASSWORD $1", new_password)
+        # Postgres does not accept parameter placeholders in ALTER ROLE PASSWORD, so
+        # generate a safely quoted statement via format().
+        alter_sql = await connection.fetchval(
+            "SELECT format('ALTER ROLE %I WITH PASSWORD %L', $1::text, $2::text)",
+            username,
+            new_password,
+        )
+        await connection.execute(alter_sql)
     finally:
         if connection is not None:
             await connection.close()
