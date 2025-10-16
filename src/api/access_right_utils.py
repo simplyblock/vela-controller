@@ -26,11 +26,7 @@ def match_access(required: str, rights: list[str]) -> bool:
     return False
 
 
-async def get_user_rights(
-        session: AsyncSession,
-        user_id: UUID,
-        context: PermissionCheckContextPublic
-) -> list[str]:
+async def get_user_rights(session: AsyncSession, user_id: UUID, context: PermissionCheckContextPublic) -> list[str]:
     """
     Fetch all access rights for a user in a specific entity context.
     context is a context class like:
@@ -61,7 +57,8 @@ async def get_user_rights(
     return list(result.scalars().all())
 
 
-async def check_access(session: AsyncSession, user_id, required_access: str,
-                       context: PermissionCheckContextPublic) -> bool:
+async def check_access(
+    session: AsyncSession, user_id, required_access: str, context: PermissionCheckContextPublic
+) -> bool:
     rights = await get_user_rights(session, user_id, context)
     return match_access(required_access, rights)
