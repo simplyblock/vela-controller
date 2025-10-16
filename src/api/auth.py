@@ -39,8 +39,8 @@ async def user_by_id(session: SessionDep, id_: UUID):
 
 
 async def authenticated_user(
-        session: SessionDep,
-        credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
+    session: SessionDep,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
 ) -> User:
     if credentials is None:
         raise HTTPException(

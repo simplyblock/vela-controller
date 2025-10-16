@@ -16,12 +16,15 @@ if TYPE_CHECKING:
 
 
 class BackupSchedule(AsyncAttrs, Model, table=True):
-    __table_args__ = (UniqueConstraint(
-        "organization_id",
-        "branch_id", "env_type",
-        name="unique_backup_schedule",
-        postgresql_nulls_not_distinct=True,
-    ),)
+    __table_args__ = (
+        UniqueConstraint(
+            "organization_id",
+            "branch_id",
+            "env_type",
+            name="unique_backup_schedule",
+            postgresql_nulls_not_distinct=True,
+        ),
+    )
     organization_id: Identifier | None = Model.foreign_key_field("organization")
     # organization: Organization = Relationship(back_populates="backup_schedules")
     branch_id: Identifier | None = Model.foreign_key_field("branch")
