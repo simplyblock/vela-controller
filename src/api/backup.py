@@ -1,32 +1,33 @@
 import logging
 import os
+from collections import Counter
 from datetime import datetime
 from typing import Self
 
-from fastapi import APIRouter, logger, Request, HTTPException
-from pydantic import BaseModel, validator, model_validator
+from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel, conlist, field_validator, model_validator
 from sqlalchemy import delete
-from sqlmodel import select, asc
+from sqlmodel import asc, select
 
 from .db import SessionDep
 from .models._util import Identifier
 from .models.backups import (
-    BackupSchedule,
-    BackupSchedulePublic,
-    BackupScheduleCreatePublic,
-    BackupScheduleDeletePublic,
-    BackupScheduleRow,
-    BackupScheduleRowPublic,
-    BackupEntry,
-    BackupPublic,
     BackupCreatePublic,
     BackupDeletePublic,
-    BackupLog,
-    NextBackup,
+    BackupEntry,
     BackupInfoPublic,
+    BackupLog,
+    BackupPublic,
+    BackupSchedule,
+    BackupScheduleCreatePublic,
+    BackupScheduleDeletePublic,
+    BackupSchedulePublic,
+    BackupScheduleRow,
+    BackupScheduleRowPublic,
+    NextBackup,
 )
-from .models.branch import Branch
-from .models.organization import Organization
+from .models.branch import Branch, BranchDep
+from .models.organization import Organization, OrganizationDep
 from .models.project import Project
 
 router = APIRouter()
@@ -76,16 +77,34 @@ class ScheduleRow(BaseModel):
     unit: str
     retention: int
 
-    @model_validator(mode="after")
-    def unit_must_be_valid(self) -> Self:
-        if self.unit not in UNIT_MULTIPLIER:
+    @field_validator("unit")
+    @classmethod
+    def valid_unit(cls, unit) -> Self:
+        if unit not in UNIT_MULTIPLIER:
             raise ValueError("Invalid unit")
+        return unit
+
+    @model_validator(mode="after")
+    def valid_interval(self):
+        if self.interval > INTERVAL_LIMITS.get(self.unit, 9999):
+            raise ValueError(f"Interval for {self.unit} cannot exceed {INTERVAL_LIMITS.get(self.unit)}")
         return self
 
 
+def _duplicates(xs):
+    return [x for x, count in Counter(xs).items() if count > 1]
+
+
 class SchedulePayload(BaseModel):
-    rows: list[ScheduleRow]
+    rows: conlist(ScheduleRow, min_length=1, max_length=10)
     env_type: str | None = None
+
+    @field_validator("rows")
+    @classmethod
+    def unique_rows(cls, rows):
+        if duplicates := _duplicates((row.interval, row.unit) for row in rows):
+            raise ValueError(f"Duplicate row found in schedule: {duplicates}")
+        return rows
 
 
 logging.basicConfig(
@@ -102,10 +121,10 @@ logging.basicConfig(
 async def add_or_replace_org_backup_schedule(
     session: SessionDep,
     payload: SchedulePayload,
-    organization_id: Identifier,
-    request: Request = None,
+    organization: OrganizationDep,
+    request: Request,
 ) -> BackupScheduleCreatePublic:
-    return await add_or_replace_backup_schedule(session, payload, organization_id, None, request)
+    return await add_or_replace_backup_schedule(session, payload, organization, None, request)
 
 
 @router.post("/backup/branches/{branch_id}/schedule")
@@ -113,42 +132,22 @@ async def add_or_replace_org_backup_schedule(
 async def add_or_replace_branch_backup_schedule(
     session: SessionDep,
     payload: SchedulePayload,
-    branch_id: Identifier,
-    request: Request = None,
+    branch: BranchDep,
+    request: Request,
 ) -> BackupScheduleCreatePublic:
-    return await add_or_replace_backup_schedule(session, payload, None, branch_id, request)
+    return await add_or_replace_backup_schedule(session, payload, None, branch, request)
 
 
 async def add_or_replace_backup_schedule(
     session: SessionDep,
     payload: SchedulePayload,
-    organization_id: Identifier | None,
-    branch_id: Identifier | None,
-    request: Request = None,
+    organization: Organization | None,
+    branch: Branch | None,
+    request: Request,
 ) -> BackupScheduleCreatePublic:
     # TODO: @mxsrc will currently throw an HTTP 500 if the unique constraint fails. Please adjust to 409 Conflict.
-    if not payload.rows:
-        raise HTTPException(status_code=400, detail="No rows provided")
-    if len(payload.rows) > 10:
-        raise HTTPException(status_code=422, detail="Too many rows in schedule. Max: 10")
 
-    # Resolve organization or branch
-    org = branch = project = None
-
-    if organization_id:
-        result = await session.execute(select(Organization).where(Organization.id == organization_id))
-        org = result.scalars().first()
-        if org:
-            logger.info("org-level backup:", str(organization_id))
-    elif branch_id:
-        result = await session.execute(select(Branch).where(Branch.id == branch_id))
-        branch = result.scalars().first()
-        if branch:
-            result = await session.execute(select(Project).where(Project.id == branch.project_id))
-            project = result.scalars().first()
-            logger.info("branch-level backup:", str(branch_id))
-
-    if not org and not branch:
+    if organization is None and branch is None:
         raise HTTPException(status_code=404, detail="Valid branch or organization required.")
 
     # Find existing schedule and eager-load rows
@@ -157,37 +156,22 @@ async def add_or_replace_backup_schedule(
     if request.method == "PUT":
         if env_type:
             stmt = select(BackupSchedule).where(
-                BackupSchedule.organization_id == organization_id,
-                BackupSchedule.branch_id == branch_id,
+                BackupSchedule.organization_id == organization.id,
+                BackupSchedule.branch_id == branch.id,
                 BackupSchedule.env_type == payload.env_type,
             )
         else:
             stmt = select(BackupSchedule).where(
-                BackupSchedule.organization_id == organization_id, BackupSchedule.branch_id == branch_id
+                BackupSchedule.organization_id == organization.id, BackupSchedule.branch_id == branch.id
             )
         result = await session.execute(stmt)
         schedule = result.scalars().first()
 
-    # Validate schedule rows
-    total_retention = 0
-    seen_keys = set()
-    for r in payload.rows:
-        key = (r.interval, r.unit)
-        if key in seen_keys:
-            raise HTTPException(status_code=422, detail="Duplicate row found in schedule")
-        seen_keys.add(key)
-        if r.interval > INTERVAL_LIMITS.get(r.unit, 9999):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Interval for {r.unit} cannot exceed {INTERVAL_LIMITS.get(r.unit)}",
-            )
-        total_retention += r.retention
-
     # Max backups validation
-    max_allowed = org.max_backups if org else getattr(project, "max_backups", 0)
-    if total_retention > max_allowed:
-        entity_type = "Organization" if org else "Branch"
-        entity_ref = organization_id if org else branch_id
+    max_allowed = organization.max_backups if organization is not None else branch.project.max_backups
+    if (total_retention := sum(row.retention for row in payload.rows)) > max_allowed:
+        entity_type = "Organization" if organization is not None else "Branch"
+        entity_ref = organization.id if organization is not None else branch.id
         raise HTTPException(
             status_code=422,
             detail=f"Max Backups {max_allowed} of {entity_type} {entity_ref} exceeded: {total_retention}",
@@ -199,8 +183,8 @@ async def add_or_replace_backup_schedule(
         await session.execute(delete(NextBackup).where(NextBackup.schedule_id == schedule.id))
         await session.commit()
     else:
-        if branch_id:
-            await session.execute(delete(NextBackup).where(NextBackup.branch_id == branch_id))
+        if branch.id:
+            await session.execute(delete(NextBackup).where(NextBackup.branch_id == branch.id))
         elif env_type is not None:
             stmt = delete(NextBackup).where(
                 NextBackup.branch_id.in_(select(Branch.id).where(Branch.env_type == env_type))
@@ -208,8 +192,8 @@ async def add_or_replace_backup_schedule(
             await session.execute(stmt)
             await session.commit()
         schedule = BackupSchedule(
-            organization_id=organization_id,
-            branch_id=branch_id,
+            organization_id=organization.id,
+            branch_id=branch.id,
             env_type=payload.env_type,
         )
         session.add(schedule)

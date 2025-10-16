@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
@@ -9,9 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship
 
 from ._util import Model
-from ..._util import Identifier
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
+    from ..._util import Identifier
     from .branch import Branch
 
 

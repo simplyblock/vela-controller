@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from .models.role import RoleUserLink, RoleAccessRight, AccessRight, Role
+from .models.role import AccessRight, Role, RoleAccessRight, RoleUserLink
 
 
 # Wildcard matcher
@@ -52,7 +52,7 @@ async def get_user_rights(session: AsyncSession, user_id, entity_context) -> lis
         stmt = stmt.where(RoleUserLink.environment_entity == entity_context["environment_id"])
 
     result = await session.execute(stmt)
-    return list(r for r in result.scalars().all())
+    return list(result.scalars().all())
 
 
 async def check_access(session: AsyncSession, user_id, required_access: str, entity_context) -> bool:
