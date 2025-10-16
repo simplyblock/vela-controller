@@ -1,6 +1,6 @@
 import asyncio
-from datetime import UTC, datetime
 import logging
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -45,6 +45,7 @@ AsyncSessionLocal = async_sessionmaker(
 
 
 logger = logging.getLogger(__name__)
+
 
 async def get_effective_branch_limits(db: AsyncSession, branch_id: Identifier) -> dict:
     result = await db.execute(select(Branch).where(Branch.id == branch_id))

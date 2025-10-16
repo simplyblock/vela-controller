@@ -8,9 +8,21 @@ from .access_right_utils import check_access
 from .db import SessionDep
 from .models._util import Identifier
 from .models.organization import OrganizationDep
-from .models.role import AccessRight, Role, RoleAccessRight, RoleAssignmentPublic, RoleAssignmentsPublic, \
-    RoleDeletePublic, RoleDep, RolePublic, RoleUserLink, RoleUnassignmentPublic, RoleUserLinkPublic, \
-    PermissionAccessCheckPublic, PermissionCheckContextPublic
+from .models.role import (
+    AccessRight,
+    PermissionAccessCheckPublic,
+    PermissionCheckContextPublic,
+    Role,
+    RoleAccessRight,
+    RoleAssignmentPublic,
+    RoleAssignmentsPublic,
+    RoleDeletePublic,
+    RoleDep,
+    RolePublic,
+    RoleUnassignmentPublic,
+    RoleUserLink,
+    RoleUserLinkPublic,
+)
 
 router = APIRouter()
 
@@ -189,17 +201,13 @@ async def assign_role(
 
     if env_types:
         for env_type in env_types:
-            link = RoleUserLink(
-                organization_id=organization.id, role_id=role.id, user_id=user_id, env_type=env_type
-            )
+            link = RoleUserLink(organization_id=organization.id, role_id=role.id, user_id=user_id, env_type=env_type)
             session.add(link)
             created_links.append(link)
 
     if branch_ids:
         for branch_id in branch_ids:
-            link = RoleUserLink(
-                organization_id=organization.id, role_id=role.id, user_id=user_id, branch_id=branch_id
-            )
+            link = RoleUserLink(organization_id=organization.id, role_id=role.id, user_id=user_id, branch_id=branch_id)
             session.add(link)
             created_links.append(link)
 
