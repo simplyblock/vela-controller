@@ -3,9 +3,8 @@ import logging
 import os
 from datetime import datetime, timedelta
 
-from sqlalchemy import asc
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlmodel import SQLModel, select
+from sqlmodel import SQLModel, asc, select
 
 from ..check_branch_status import get_branch_status
 from .models.backups import (

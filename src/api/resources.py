@@ -455,9 +455,10 @@ async def monitor_resources(interval_seconds: int = 60):
                         provisionings = prov_result.scalars().all()
 
                         for p in provisionings:
+                            project = await branch.awaitable_attrs.project
                             usage = ResourceUsageMinute(
                                 ts_minute=ts_minute,
-                                org_id=branch.organization_id,
+                                org_id=project.organization_id,
                                 project_id=branch.project_id,
                                 branch_id=branch.id,
                                 resource=p.resource,

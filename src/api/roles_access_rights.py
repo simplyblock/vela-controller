@@ -35,7 +35,7 @@ class AccessCheckRequest(BaseModel):
 
 
 class RolePayload(BaseModel):
-    role_id: str
+    role_id: Identifier
     name: str
     role_type: str
     is_active: bool = True
@@ -77,12 +77,20 @@ async def create_role(
             stmt = select(AccessRight).where(AccessRight.entry == ar_payload)
             result = await session.execute(stmt)
             ar = result.scalar_one_or_none()
-            role_access_right = RoleAccessRight(organization_id=organization_id, role_id=role.id, access_right_id=ar.id)
+            role_access_right = RoleAccessRight(
+                organization_id=organization_id, role_id=role.id, access_right_id=ar.id if ar is not None else None
+            )
             session.add(role_access_right)
         await session.commit()
         await session.refresh(role)
 
-    return role
+    return RolePublic(
+        id=role.id,
+        organization_id=role.organization_id,
+        name=role.name,
+        role_type=role.role_type,
+        is_active=role.is_active,
+    )
 
 
 # ----------------------
@@ -166,9 +174,9 @@ async def assign_role(
     Assign a role to a user in one or more contexts. The context is passed as JSON.
     """
     # Prepare combinations of context assignments
-    project_ids = payload.project_ids or [None]
-    branch_ids = payload.branch_ids or [None]
-    env_types = payload.env_types or [None]
+    project_ids = payload.project_ids or None
+    branch_ids = payload.branch_ids or None
+    env_types = payload.env_types or None
 
     created_links = []
 
@@ -329,8 +337,8 @@ async def list_roles(
         rows = result.all()
         role_list.append(
             RolePayload(
-                role_id=str(role.id),
-                role_type=str(role.role_type.value),
+                role_id=role.id,
+                role_type=role.role_type.value,
                 name=role.name,
                 is_active=role.is_active,
                 access_rights=[ar[0] for ar in rows],
