@@ -24,5 +24,6 @@ spec:
     name: {{ .Values.issuer }}
     kind: ClusterIssuer
     group: cert-manager.io
+  commonName: vela-auth-service.{{ .Release.Namespace }}.svc.cluster.local
   dnsNames:
     - vela-auth-service.{{ .Release.Namespace }}.svc.cluster.local

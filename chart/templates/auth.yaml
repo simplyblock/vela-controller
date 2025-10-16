@@ -21,14 +21,17 @@ spec:
           image: quay.io/keycloak/keycloak:26.4
           imagePullPolicy: IfNotPresent
           args:
-            - "start-dev"
+            - "start-dev" # TODO: use `start`` for prod
             - "--import-realm"
-            - "--https-port=8443"
-            - "--https-certificate-file=/etc/x509/https/tls.crt"
-            - "--https-certificate-key-file=/etc/x509/https/tls.key"
+            # - "--https-port=8443"
+            # - "--https-certificate-file=/etc/x509/https/tls.crt"
+            # - "--https-certificate-key-file=/etc/x509/https/tls.key"
           ports:
             - name: https
               containerPort: 8443
+              protocol: TCP
+            - name: http
+              containerPort: 8080
               protocol: TCP
           envFrom:
             - configMapRef:
@@ -52,18 +55,21 @@ spec:
             httpGet:
               path: /auth/health/started
               port: 9000
+              # scheme: HTTPS
             periodSeconds: 1
             failureThreshold: 600
           readinessProbe:
             httpGet:
               path: /auth/health/ready
               port: 9000
+              # scheme: HTTPS
             periodSeconds: 10
             failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /auth/health/live
               port: 9000
+              # scheme: HTTPS
             periodSeconds: 10
             failureThreshold: 3
           {{- with .Values.securityContext }}
@@ -71,6 +77,38 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
       initContainers:
+        - name: wait-for-database
+          image: postgres:{{ .Values.postgresVersion }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: DB_HOST
+              value: database
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: database
+                  key: superuser-username
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: database
+                  key: superuser-password
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo "Waiting for database..."
+              until pg_isready -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER"; do
+                sleep 2
+              done
+              echo "Database is ready"
+              
+              # Ensure postgres superuser can connect
+              until psql -h "$DB_HOST" -U "$DB_USER" -d postgres -c '\q' 2>/dev/null; do
+                echo "Waiting for Postgres superuser connection..."
+                sleep 2
+              done
         - name: init-vela-auth
           image: postgres:{{ .Values.postgresVersion }}
           command: ['psql']
@@ -146,9 +184,9 @@ data:
   KC_DB_USERNAME: keycloak
   KC_DB_PASSWORD: keycloak
   KC_PROXY: edge
-  KC_HOSTNAME: http://{{ .Values.host }}/auth
+  KC_HOSTNAME: https://{{ .Values.domain }}/auth
   KC_HTTP_RELATIVE_PATH: /auth
-  KC_HEALTH_ENABLED: 'true'
+  KC_HEALTH_ENABLED: "true"
   init.sql: |
     CREATE USER keycloak WITH PASSWORD 'keycloak';
     CREATE DATABASE keycloak OWNER keycloak;
@@ -169,6 +207,10 @@ spec:
     - name: https
       port: 8443
       targetPort: 8443
+      protocol: TCP
+    - name: http
+      port: 8080
+      targetPort: 8080
       protocol: TCP
 
 ---

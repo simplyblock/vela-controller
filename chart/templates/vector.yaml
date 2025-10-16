@@ -1,3 +1,4 @@
+{{- if and .Values.vector.enabled }}
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -78,3 +79,4 @@ spec:
       port: 9001
       targetPort: 9001
       protocol: TCP
+{{- end }}

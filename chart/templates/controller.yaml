@@ -1,3 +1,4 @@
+{{- $controllerEnv := default (dict) .Values.controller.env }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -16,6 +17,64 @@ spec:
         app.kubernetes.io/name: vela-controller
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
+      serviceAccountName: vela-controller
+      initContainers:
+        - name: wait-for-database
+          image: postgres:17-alpine
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: DB_HOST
+              value: database
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: database
+                  key: superuser-username
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: database
+                  key: superuser-password
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo "Waiting for database..."
+              until pg_isready -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER"; do
+                sleep 2
+              done
+              echo "Database is ready"
+
+              # Ensure postgres superuser can connect
+              until psql -h "$DB_HOST" -U "$DB_USER" -d postgres -c '\q' 2>/dev/null; do
+                echo "Waiting for Postgres superuser connection..."
+                sleep 2
+              done
+
+        - name: wait-for-logflare
+          image: curlimages/curl:8.11.1
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: LOGFLARE_URL
+              value: {{ default "http://vela-logflare:4000" $controllerEnv.VELA_LOGFLARE_URL | quote }}
+            - name: LOGFLARE_PRIVATE_ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: vela-logflare-secret
+                  key: LOGFLARE_PRIVATE_ACCESS_TOKEN
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo "Waiting for Logflare..."
+              CLEAN_URL="${LOGFLARE_URL%%/}"
+              AUTH_HEADER="Authorization: Bearer ${LOGFLARE_PRIVATE_ACCESS_TOKEN}"
+              until curl -fsS -H "${AUTH_HEADER}" "${CLEAN_URL}/api/endpoints" >/dev/null; do
+                echo "Logflare not ready yet. Sleeping..."
+                sleep 5
+              done
+              echo "Logflare is ready."
+
       containers:
         # todo: mount kubeconfig
         - name: vela-controller
@@ -59,14 +118,14 @@ spec:
                 secretKeyRef:
                   name: database
                   key: superuser-password
+            - name: DB_HOST
+              value: database
             - name: VELA_POSTGRES_URL
-              value: 'postgresql+asyncpg://$(DB_USER):$(DB_PASSWORD)@database:5432/postgres'
+              value: 'postgresql+asyncpg://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):5432/postgres'
             - name: VELA_DEPLOYMENT_NAMESPACE_PREFIX
               value: {{ .Release.Namespace }}
-            - name: VELA_DEPLOYMENT_HOST
-              value: {{ .Values.host }}
             - name: VELA_KEYCLOAK_URL
-              value: 'http://auth:8080/auth/'
+              value: 'http://vela-auth-service:8080/auth/'
             - name: VELA_KEYCLOAK_ADMIN_NAME
               value: 'admin'
             - name: VELA_KEYCLOAK_ADMIN_SECRET
@@ -102,11 +161,16 @@ kind: ConfigMap
 metadata:
   name: vela-controller-config
 data:
-  VELA_JWT_SECRET: 'https://vela-auth-service:8443/auth/realms/vela/protocol/openid-connect/certs'
-  VELA_ROOT_PATH: '/vela'
-  VELA_GATEWAY_NAME: {{ .Values.gateway.name }}
-  VELA_GATEWAY_NAMESPACE: {{ .Values.gateway.namespace }}
-  VELA_PGMETA_CRYPTO_KEY: {{ .Values.pgmeta_crypto_key | quote }}
+  VELA_JWT_SECRET: "http://vela-auth-service:8080/auth/realms/vela/protocol/openid-connect/certs"
+  VELA_ROOT_PATH: "/vela"
+  VELA_GATEWAY_NAME: {{ .Values.gateway.name | quote }}
+  VELA_GATEWAY_NAMESPACE: {{ .Values.gateway.namespace | quote }}
+  VELA_PGMETA_CRYPTO_KEY: {{ default "" .Values.secret.pgmeta_crypto_key | quote }}
+  VELA_CORS_ORIGINS: {{ default "" $controllerEnv.VELA_CORS_ORIGINS | quote }}
+  VELA_CLOUDFLARE_API_TOKEN: {{ default "" $controllerEnv.VELA_CLOUDFLARE_API_TOKEN | quote }}
+  VELA_CLOUDFLARE_ZONE_ID: {{ default "" $controllerEnv.VELA_CLOUDFLARE_ZONE_ID | quote }}
+  VELA_CLOUDFLARE_BRANCH_REF_CNAME: {{ default "" $controllerEnv.VELA_CLOUDFLARE_BRANCH_REF_CNAME | quote }}
+  VELA_CLOUDFLARE_DOMAIN_SUFFIX: {{ default "" $controllerEnv.VELA_CLOUDFLARE_DOMAIN_SUFFIX | quote }}
 ---
 apiVersion: v1
 kind: Service

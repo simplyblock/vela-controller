@@ -1,3 +1,4 @@
+{{- if and .Values.vector.enabled }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -33,3 +34,4 @@ roleRef:
   kind: ClusterRole
   name: vela-vector-reader
   apiGroup: rbac.authorization.k8s.io
+{{- end }}
