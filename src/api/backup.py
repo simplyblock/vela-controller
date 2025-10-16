@@ -488,4 +488,4 @@ async def get_branch_backup_info(
     if not schedule:
         raise HTTPException(status_code=404, detail="No backup schedule found for this branch")
 
-    return BackupInfoPublic(branch_id=str(branch_id), schedule_id=str(schedule.id), level=level, next_backup=nb.next_at)
+    return BackupInfoPublic(branch_id=branch_id, schedule_id=schedule.id, level=level, next_backup=nb.next_at)
