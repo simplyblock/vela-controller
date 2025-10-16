@@ -20,6 +20,11 @@ keycloak:
 secret:
   pgmeta_crypto_key: "secret"
 
+controller: 
+  image:
+    repository: simplyblock/vela-controller
+    tag: latest
+
 analytics:
   DB_HOST: database
   DB_DATABASE: logflare
