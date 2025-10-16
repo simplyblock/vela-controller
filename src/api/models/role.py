@@ -41,7 +41,7 @@ class RoleUserLink(AsyncAttrs, SQLModel, table=True):
 
 class Role(AsyncAttrs, Model, table=True):
     name: str
-    organization_id: int | None = Model.foreign_key_field("organization", nullable=True)
+    organization_id: Identifier | None = Model.foreign_key_field("organization", nullable=True)
     organization: Organization | None = Relationship(back_populates="roles")
     users: list["User"] = Relationship(back_populates="roles", link_model=RoleUserLink)
     role_type: RoleType
@@ -78,7 +78,7 @@ class RoleUserLinkPublic(BaseModel):
     project_id: Identifier | None
     branch_id: Identifier | None
     role_id: Identifier
-    user_id: Identifier
+    user_id: UUID
     env_type: str | None
 
 

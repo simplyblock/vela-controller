@@ -336,7 +336,7 @@ async def list_backups(
         branch = await backup.awaitable_attrs.branch
         project = await branch.awaitable_attrs.project
         return BackupPublic(
-            id=str(backup.id),
+            id=backup.id,
             organization_id=project.organization_id,
             project_id=project.id,
             branch_id=backup.branch_id,
@@ -399,7 +399,7 @@ async def manual_backup(session: SessionDep, branch_id: Identifier) -> BackupCre
     )
     session.add(log)
     await session.commit()
-    return BackupCreatePublic(status="manual backup created", backup_id=str(backup.id))
+    return BackupCreatePublic(status="manual backup created", backup_id=backup.id)
 
 
 # ---------------------------
