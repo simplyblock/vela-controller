@@ -1,19 +1,14 @@
-from __future__ import annotations
-
-from typing import TYPE_CHECKING
+from datetime import datetime
 
 from pydantic import BaseModel
 from sqlalchemy import UniqueConstraint
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship
 
+from ..._util import Identifier
 from ._util import Model
-
-if TYPE_CHECKING:
-    from datetime import datetime
-
-    from ..._util import Identifier
-    from .branch import Branch
+from .branch import Branch
+from .organization import Organization
 
 
 class BackupSchedule(AsyncAttrs, Model, table=True):
@@ -27,16 +22,17 @@ class BackupSchedule(AsyncAttrs, Model, table=True):
         ),
     )
     organization_id: Identifier | None = Model.foreign_key_field("organization")
-    # organization: Organization = Relationship(back_populates="backup_schedules")
+    organization: Organization | None = Relationship()
     branch_id: Identifier | None = Model.foreign_key_field("branch")
-    # branch: Branch = Relationship(back_populates="backup_schedules")
+    branch: Branch | None = Relationship()
     env_type: str | None = Field(default=None)
-    # rows: List["BackupScheduleRow"] = Relationship(back_populates="backup_schedule", cascade_delete=True)
+    rows: list["BackupScheduleRow"] = Relationship(back_populates="schedule", cascade_delete=True)
+    next_backups: list["NextBackup"] = Relationship(back_populates="schedule", cascade_delete=True)
 
 
 class BackupScheduleRow(AsyncAttrs, Model, table=True):
     schedule_id: Identifier = Model.foreign_key_field("backupschedule")
-    # schedule: BackupSchedule = Relationship(back_populates="backup_schedule_rows")
+    schedule: BackupSchedule = Relationship(back_populates="rows")
     row_index: int
     interval: int
     unit: str
@@ -45,9 +41,9 @@ class BackupScheduleRow(AsyncAttrs, Model, table=True):
 
 class NextBackup(AsyncAttrs, Model, table=True):
     branch_id: Identifier = Model.foreign_key_field("branch")
-    # branch: Branch = Relationship(back_populates="branches")
+    branch: Branch = Relationship()
     schedule_id: Identifier = Model.foreign_key_field("backupschedule")
-    # schedule: BackupSchedule = Relationship(back_populates="next_backups")
+    schedule: BackupSchedule = Relationship(back_populates="next_backups")
     row_index: int
     next_at: datetime
 
@@ -62,7 +58,7 @@ class BackupEntry(AsyncAttrs, Model, table=True):
 
 class BackupLog(AsyncAttrs, Model, table=True):
     branch_id: Identifier = Model.foreign_key_field("branch")
-    # branch: Branch = Relationship(back_populates="branches")
+    branch: Branch = Relationship()
     backup_uuid: str
     # backup: BackupEntry = Relationship(back_populates="backup_entries")
     action: str
