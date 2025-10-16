@@ -3,8 +3,8 @@ import os
 from datetime import datetime
 from typing import Self
 
-from fastapi import APIRouter, logger, Request, HTTPException
-from pydantic import BaseModel, validator, model_validator
+from fastapi import APIRouter, Request, HTTPException
+from pydantic import BaseModel, model_validator
 from sqlalchemy import delete
 from sqlmodel import select, asc
 
@@ -92,6 +92,8 @@ logging.basicConfig(
     level=os.environ.get("LOG_LEVEL", "INFO"),
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------
