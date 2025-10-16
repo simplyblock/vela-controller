@@ -72,6 +72,7 @@ class BranchSourceParameters(BaseModel):
 
 class BranchCreate(BaseModel):
     name: Name
+    env_type: str | None = None
     source: BranchSourceParameters | None = None
     deployment: DeploymentParameters | None = None
 
@@ -219,7 +220,7 @@ class BranchStatus(BaseModel):
 class BranchPublic(BaseModel):
     id: Identifier
     name: Slug
-    env_type: str
+    env_type: str | None
     project_id: Identifier
     organization_id: Identifier
     database: DatabaseInformation
