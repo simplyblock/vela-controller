@@ -53,8 +53,9 @@ async def get_effective_branch_limits(db: AsyncSession, branch_id: Identifier) -
     if not branch:
         raise HTTPException(404, f"Branch {branch_id} not found")
 
+    project = await branch.awaitable_attrs.project
     project_id = branch.project_id
-    org_id = branch.organization_id
+    org_id = project.organization_id
 
     effective_limits = {}
 

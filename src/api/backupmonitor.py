@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel, asc, select
+from ulid import ULID
 
 from ..check_branch_status import get_branch_status
 from .models.backups import (
@@ -86,9 +87,9 @@ async def init_db():
 # ---------------------------
 class BackupMonitor:
     def __init__(self):
-        self.branch_locks: dict[str, asyncio.Lock] = {}
+        self.branch_locks: dict[ULID, asyncio.Lock] = {}
 
-    def get_branch_lock(self, branch_id: str) -> asyncio.Lock:
+    def get_branch_lock(self, branch_id: ULID) -> asyncio.Lock:
         if branch_id not in self.branch_locks:
             self.branch_locks[branch_id] = asyncio.Lock()
         return self.branch_locks[branch_id]
