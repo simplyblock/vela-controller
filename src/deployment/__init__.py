@@ -29,6 +29,7 @@ from .._util import (
 )
 from ..exceptions import VelaCloudflareError, VelaDeployError, VelaKubernetesError
 from .grafana import create_vela_grafana_obj
+from ..exceptions import VelaCloudflareError, VelaKubernetesError
 from .kubernetes import KubernetesService
 from .kubernetes.kubevirt import get_virtualmachine_status
 from .logflare import create_branch_logflare_objects
@@ -700,6 +701,8 @@ async def deploy_branch_environment(
     results = await asyncio.gather(
         _serial_deploy(),
         create_branch_logflare_objects(branch_id=branch_id),
+
+        # FIXME: Failed to authenticate via JWT: Client error '401 Unauthorized'
         create_vela_grafana_obj(organization_id, branch_id, credential),
         return_exceptions=True,
     )
