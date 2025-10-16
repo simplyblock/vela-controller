@@ -56,11 +56,11 @@ async def _deploy_branch_environment_task(
 ) -> None:
     try:
         await deploy_branch_environment(
-            organization_id=organization_id,
+            _organization_id=organization_id,
             project_id=project_id,
             branch_id=branch_id,
             branch_slug=branch_slug,
-            credential=credential,
+            _credential=credential,
             parameters=parameters,
             jwt_secret=jwt_secret,
             anon_key=anon_key,
