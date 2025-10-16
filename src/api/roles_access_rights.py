@@ -1,13 +1,14 @@
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from sqlmodel import select
 
 from .access_right_utils import check_access
 from .db import SessionDep
 from .models._util import Identifier
-from .models.role import Role, RoleUserLink, AccessRight, RoleAccessRight
+from .models.organizations import OrganizationDep
+from .models.role import AccessRight, Role, RoleAccessRight, RoleDep, RoleUserLink
 
 router = APIRouter(prefix="/roles")
 
@@ -136,23 +137,17 @@ async def delete_role(
 # ----------------------
 # Assign role to user (with context)
 # ----------------------
-@router.post("/organizations/{org_id}/{role_id}/assign/{user_id}/")
+@router.post("/organizations/{organization_id}/{role_id}/assign/{user_id}/")
 async def assign_role(
     session: SessionDep,
-    role_id: Identifier,
-    org_id: Identifier,
+    organization: OrganizationDep,
+    role: RoleDep,
     user_id: UUID,
     payload: RoleAssignmentPayload,
 ):
     """
     Assign a role to a user in one or more contexts. The context is passed as JSON.
     """
-    stmt = select(Role).where(Role.id == role_id, Role.organization_id == org_id)
-    result = await session.execute(stmt)
-    role = result.scalar_one_or_none()
-    if not role:
-        raise HTTPException(404, f"Role {role_id} not found")
-
     # Prepare combinations of context assignments
     project_ids = payload.project_ids or [None]
     branch_ids = payload.branch_ids or [None]
@@ -181,19 +176,25 @@ async def assign_role(
 
     if project_ids:
         for project_id in project_ids:
-            link = RoleUserLink(organization_id=org_id, role_id=role_id, user_id=user_id, project_entity=project_id)
+            link = RoleUserLink(
+                organization_id=organization.id, role_id=role.id, user_id=user_id, project_entity=project_id
+            )
             session.add(link)
             created_links.append(link)
 
     if env_ids:
         for env_id in env_ids:
-            link = RoleUserLink(organization_id=org_id, role_id=role_id, user_id=user_id, environment_entity=env_id)
+            link = RoleUserLink(
+                organization_id=organization.id, role_id=role.id, user_id=user_id, environment_entity=env_id
+            )
             session.add(link)
             created_links.append(link)
 
     if branch_ids:
         for branch_id in branch_ids:
-            link = RoleUserLink(organization_id=org_id, role_id=role_id, user_id=user_id, branch_entity=branch_id)
+            link = RoleUserLink(
+                organization_id=organization.id, role_id=role.id, user_id=user_id, branch_entity=branch_id
+            )
             session.add(link)
             created_links.append(link)
 
@@ -254,7 +255,7 @@ async def api_check_access(
     session: SessionDep,
     org_id: Identifier,
     user_id: UUID,
-    payload: AccessCheckRequest = Body(...),
+    payload: AccessCheckRequest,
 ):
     """
     Example POST JSON:

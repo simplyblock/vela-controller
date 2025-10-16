@@ -4,8 +4,8 @@ from enum import Enum as PyEnum
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field
 
-from ._util import Model
 from ..._util import Identifier
+from ._util import Model
 
 
 # ---------------------------

@@ -1,27 +1,27 @@
 import asyncio
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, logger
 from pydantic import BaseModel
 from sqlalchemy import func
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlmodel import select
 
+from ..check_branch_status import get_branch_status
 from .db import SessionDep
 from .models._util import Identifier
 from .models.branch import Branch
 from .models.project import Project
 from .models.resources import (
     BranchProvisioning,
-    ResourceLimit,
-    ResourceUsageMinute,
-    ProvisioningLog,
-    ResourceType,
     EntityType,
+    ProvisioningLog,
     ResourceConsumptionLimit,
+    ResourceLimit,
+    ResourceType,
+    ResourceUsageMinute,
 )
 from .settings import settings
-from ..check_branch_status import get_branch_status
 
 router = APIRouter()
 
@@ -462,7 +462,7 @@ async def monitor_resources(interval_seconds: int = 60):
                             db.add(usage)
 
                 await db.commit()
-        except Exception:
+        except Exception:  # noqa: BLE001
             logger.exception("Error running metering monitor iteration")
 
         await asyncio.sleep(interval_seconds)

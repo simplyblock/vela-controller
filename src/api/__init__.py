@@ -19,7 +19,8 @@ from .backup import router as backup_router
 from .backupmonitor import run_monitor
 from .db import engine
 from .organization import api as organization_api
-from .resources import monitor_resources, router as resources_router
+from .resources import monitor_resources
+from .resources import router as resources_router
 from .roles_access_rights import router as roles_api
 from .settings import settings
 from .user import api as user_api

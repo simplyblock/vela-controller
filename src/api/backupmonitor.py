@@ -4,21 +4,21 @@ import os
 from datetime import datetime, timedelta
 
 from sqlalchemy import asc
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel, select
 
+from ..check_branch_status import get_branch_status
 from .models.backups import (
-    BackupSchedule,
-    BackupScheduleRow,
     BackupEntry,
     BackupLog,
+    BackupSchedule,
+    BackupScheduleRow,
     NextBackup,
 )
 from .models.branch import Branch
 from .models.organization import Organization
 from .models.project import Project
 from .settings import settings
-from ..check_branch_status import get_branch_status
 
 # ---------------------------
 # Config
