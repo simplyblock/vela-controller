@@ -177,8 +177,10 @@ async def assign_role(
             (has_values(branch_ids) and int(role.role_type.value) != 3) or (not has_values(project_ids)
                                                                             and not has_values(
                         env_ids) and not has_values(branch_ids) and int(role.role_type.value) != 0)):
-        raise HTTPException(422,
-                            f"Role type {role.role_type.value} does not match entitites: {project_ids}, {branch_ids}, {env_ids} ")
+        raise HTTPException(
+            422,
+            f"Role type {role.role_type.value} does not match entitites: {project_ids}, {branch_ids}, {env_ids} "
+        )
 
     if project_ids:
         for project_id in project_ids:
