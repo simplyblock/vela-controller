@@ -4,9 +4,9 @@ from datetime import datetime
 from typing import Self
 
 from fastapi import APIRouter, logger, Request, HTTPException
-from pydantic import BaseModel, validator, model_validator
+from pydantic import BaseModel, model_validator
 from sqlalchemy import delete
-from sqlmodel import select
+from sqlmodel import select, asc
 
 from .db import SessionDep
 from .models._util import Identifier
@@ -100,10 +100,10 @@ logging.basicConfig(
 @router.post("/backup/organizations/{organization_id}/schedule")
 @router.put("/backup/organizations/{organization_id}/schedule")
 async def add_or_replace_org_backup_schedule(
-    session: SessionDep,
-    payload: SchedulePayload,
-    organization_id: Identifier,
-    request: Request = None,
+        session: SessionDep,
+        payload: SchedulePayload,
+        organization_id: Identifier,
+        request: Request = None,
 ) -> BackupScheduleCreatePublic:
     return await add_or_replace_backup_schedule(session, payload, organization_id, None, request)
 
@@ -111,20 +111,20 @@ async def add_or_replace_org_backup_schedule(
 @router.post("/backup/branches/{branch_id}/schedule")
 @router.put("/backup/branches/{branch_id}/schedule")
 async def add_or_replace_branch_backup_schedule(
-    session: SessionDep,
-    payload: SchedulePayload,
-    branch_id: Identifier,
-    request: Request = None,
+        session: SessionDep,
+        payload: SchedulePayload,
+        branch_id: Identifier,
+        request: Request = None,
 ) -> BackupScheduleCreatePublic:
     return await add_or_replace_backup_schedule(session, payload, None, branch_id, request)
 
 
 async def add_or_replace_backup_schedule(
-    session: SessionDep,
-    payload: SchedulePayload,
-    organization_id: Identifier | None,
-    branch_id: Identifier | None,
-    request: Request = None,
+        session: SessionDep,
+        payload: SchedulePayload,
+        organization_id: Identifier | None,
+        branch_id: Identifier | None,
+        request: Request = None,
 ) -> BackupScheduleCreatePublic:
     # TODO: @mxsrc will currently throw an HTTP 500 if the unique constraint fails. Please adjust to 409 Conflict.
     if not payload.rows:
@@ -237,27 +237,27 @@ async def add_or_replace_backup_schedule(
 # ---------------------------
 @router.get("/backup/organizations/{organization_id}/schedule")
 async def list_org_schedules(
-    session: SessionDep,
-    organization_id: Identifier,
-    env_type: str | None = None,
+        session: SessionDep,
+        organization_id: Identifier,
+        env_type: str | None = None,
 ) -> list[BackupSchedulePublic]:
     return await list_schedules(session, organization_id, None, env_type)
 
 
 @router.get("/backup/branches/{branch_id}/schedule")
 async def list_branch_schedules(
-    session: SessionDep,
-    branch_id: Identifier,
-    env_type: str | None = None,
+        session: SessionDep,
+        branch_id: Identifier,
+        env_type: str | None = None,
 ) -> list[BackupSchedulePublic]:
     return await list_schedules(session, None, branch_id, env_type)
 
 
 async def list_schedules(
-    session: SessionDep,
-    organization_id: Identifier | None,
-    branch_id: Identifier | None,
-    env_type: str | None,
+        session: SessionDep,
+        organization_id: Identifier | None,
+        branch_id: Identifier | None,
+        env_type: str | None,
 ) -> list[BackupSchedulePublic]:
     stmt = select(BackupSchedule)
     if organization_id:
@@ -303,27 +303,27 @@ async def list_schedules(
 # ---------------------------
 @router.get("/backup/organizations/{organization_id}/")
 async def list_org_backups(
-    session: SessionDep,
-    organization_id: Identifier | None,
-    env_type: str | None = None,
+        session: SessionDep,
+        organization_id: Identifier | None,
+        env_type: str | None = None,
 ) -> list[BackupPublic]:
     return await list_backups(session, organization_id, None, env_type)
 
 
 @router.get("/backup/branches/{branch_id}/")
 async def list_branch_backups(
-    session: SessionDep,
-    branch_id: Identifier | None,
-    env_type: str | None = None,
+        session: SessionDep,
+        branch_id: Identifier | None,
+        env_type: str | None = None,
 ) -> list[BackupPublic]:
     return await list_backups(session, None, branch_id, env_type)
 
 
 async def list_backups(
-    session: SessionDep,
-    organization_id: Identifier | None = None,
-    branch_id: Identifier | None = None,
-    env_type: str | None = None,
+        session: SessionDep,
+        organization_id: Identifier | None = None,
+        branch_id: Identifier | None = None,
+        env_type: str | None = None,
 ) -> list[BackupPublic]:
     if organization_id:
         stmt = (
@@ -366,8 +366,8 @@ async def list_backups(
 # ---------------------------
 @router.delete("/backup/schedule/{schedule_id}/")
 async def delete_schedule(
-    session: SessionDep,
-    schedule_id: Identifier | None = None,
+        session: SessionDep,
+        schedule_id: Identifier | None = None,
 ) -> BackupScheduleDeletePublic:
     stmt = select(BackupSchedule)
     stmt = stmt.where(BackupSchedule.id == schedule_id)
@@ -442,8 +442,8 @@ async def delete_backup(session: SessionDep, backup_id: Identifier) -> BackupDel
 
 @router.get("/backup/branches/{branch_id}/info")
 async def get_branch_backup_info(
-    session: SessionDep,
-    branch_id: Identifier,
+        session: SessionDep,
+        branch_id: Identifier,
 ) -> BackupInfoPublic:
     # 1️⃣ Find the BackupSchedule that applies to this branch
     # (first look for branch-level, then environment/org fallback if applicable)
@@ -478,7 +478,7 @@ async def get_branch_backup_info(
 
     stmt = (
         (select(NextBackup).where(NextBackup.branch_id == branch_id, NextBackup.schedule_id == schedule.id))
-        .order_by(NextBackup.next_at.asc())
+        .order_by(asc(NextBackup.next_at))
         .limit(1)
     )
     result = await session.execute(stmt)
