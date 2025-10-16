@@ -234,7 +234,7 @@ class BackupMonitor:
         result = await db.execute(
             select(BackupEntry)
             .where(BackupEntry.branch_id == branch.id, BackupEntry.row_index == row.row_index)
-            .order_by(BackupEntry.created_at.asc())
+            .order_by(asc(BackupEntry.created_at))
         )
         backups = result.scalars().all()
         if len(backups) <= row.retention:

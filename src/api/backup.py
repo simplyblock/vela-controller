@@ -194,8 +194,8 @@ async def add_or_replace_backup_schedule(
             await session.execute(stmt)
             await session.commit()
         schedule = BackupSchedule(
-            organization_id=organization.id,
-            branch_id=branch.id,
+            organization_id=organization.id if organization is not None else None,
+            branch_id=branch.id if branch is not None else None,
             env_type=payload.env_type,
         )
         session.add(schedule)
@@ -215,7 +215,7 @@ async def add_or_replace_backup_schedule(
 
     await session.commit()
     await session.refresh(schedule)
-    return BackupScheduleCreatePublic(status="ok", schedule_id=str(schedule.id))
+    return BackupScheduleCreatePublic(status="ok", schedule_id=schedule.id)
 
 
 # ---------------------------
@@ -259,25 +259,25 @@ async def list_schedules(
         raise HTTPException(status_code=404, detail="No schedules found.")
 
     out: list[BackupSchedulePublic] = []
-    for s in schedules:
+    for schedule in schedules:
         stmt = select(BackupScheduleRow)
-        stmt = stmt.where(BackupScheduleRow.schedule_id == s.id)
+        stmt = stmt.where(BackupScheduleRow.schedule_id == schedule.id)
         result = await session.execute(stmt)
         rows = result.scalars().all()
         out.append(
             BackupSchedulePublic(
-                id=str(s.id),
-                organization_id=str(s.organization_id) if s.organization_id else None,
-                branch_id=str(s.branch_id) if s.branch_id else None,
-                env_type=s.env_type,
+                id=schedule.id,
+                organization_id=schedule.organization_id if schedule.organization_id else None,
+                branch_id=schedule.branch_id if schedule.branch_id else None,
+                env_type=schedule.env_type,
                 rows=[
                     BackupScheduleRowPublic(
-                        row_index=r.row_index,
-                        interval=r.interval,
-                        unit=r.unit,
-                        retention=r.retention,
+                        row_index=row.row_index,
+                        interval=row.interval,
+                        unit=row.unit,
+                        retention=row.retention,
                     )
-                    for r in rows
+                    for row in rows
                 ],
             )
         )
@@ -452,7 +452,7 @@ async def get_branch_backup_info(
         # Try environment-level schedule
         if branch.environment_type:
             stmt = select(BackupSchedule).where(
-                BackupSchedule.environment_type == branch.environment_type,
+                BackupSchedule.env_type == branch.env_type,
                 BackupSchedule.organization_id == branch.organization_id,
             )
             level = "environment"
