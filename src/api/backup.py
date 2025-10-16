@@ -1,9 +1,10 @@
 import logging
 import os
 from datetime import datetime
+from typing import Self
 
 from fastapi import APIRouter, logger, Request, HTTPException
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, validator, model_validator
 from sqlalchemy import delete
 from sqlmodel import select
 
@@ -58,11 +59,11 @@ class ScheduleRow(BaseModel):
     unit: str
     retention: int
 
-    @validator("unit")
-    def unit_must_be_valid(self, v: str):
-        if v not in VALID_UNITS:
+    @model_validator(mode="after")
+    def unit_must_be_valid(self) -> Self:
+        if self.unit not in UNIT_MULTIPLIER:
             raise ValueError("Invalid unit")
-        return v
+        return self
 
 
 class SchedulePayload(BaseModel):
