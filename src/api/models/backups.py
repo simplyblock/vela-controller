@@ -122,7 +122,6 @@ class BackupCreatePublic(BaseModel):
 
 class BackupDeletePublic(BaseModel):
     status: str
-    message: str | None
 
 
 class BackupInfoPublic(BaseModel):
