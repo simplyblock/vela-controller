@@ -2,13 +2,12 @@ import logging
 import os
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, logger, Request, HTTPException
+from fastapi import APIRouter, logger, Request, HTTPException
 from pydantic import BaseModel, validator
 from sqlalchemy import delete
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from .db import get_db
+from .db import SessionDep
 from .models._util import Identifier
 from .models.backups import (
     BackupSchedule,
@@ -83,30 +82,30 @@ logging.basicConfig(
 @router.post("/backup/organizations/{organization_id}/schedule")
 @router.put("/backup/organizations/{organization_id}/schedule")
 async def add_or_replace_org_backup_schedule(
+        session: SessionDep,
         payload: SchedulePayload,
         organization_id: Identifier,
-        db: AsyncSession = Depends(get_db),
         request: Request = None,
 ) -> BackupScheduleCreatePublic:
-    return await add_or_replace_backup_schedule(payload, organization_id, None, db, request)
+    return await add_or_replace_backup_schedule(session, payload, organization_id, None, request)
 
 
 @router.post("/backup/branches/{branch_id}/schedule")
 @router.put("/backup/branches/{branch_id}/schedule")
 async def add_or_replace_branch_backup_schedule(
+        session: SessionDep,
         payload: SchedulePayload,
         branch_id: Identifier,
-        db: AsyncSession = Depends(get_db),
         request: Request = None,
 ) -> BackupScheduleCreatePublic:
-    return await add_or_replace_backup_schedule(payload, None, branch_id, db, request)
+    return await add_or_replace_backup_schedule(session, payload, None, branch_id, request)
 
 
 async def add_or_replace_backup_schedule(
+        session: SessionDep,
         payload: SchedulePayload,
         organization_id: Identifier | None,
         branch_id: Identifier | None,
-        db: AsyncSession = Depends(get_db),
         request: Request = None,
 ) -> BackupScheduleCreatePublic:
     # TODO: @mxsrc will currently throw an HTTP 500 if the unique constraint fails. Please adjust to 409 Conflict.
@@ -119,15 +118,15 @@ async def add_or_replace_backup_schedule(
     org = branch = project = None
 
     if organization_id:
-        result = await db.execute(select(Organization).where(Organization.id == organization_id))
+        result = await session.execute(select(Organization).where(Organization.id == organization_id))
         org = result.scalars().first()
         if org:
             logger.info("org-level backup:", str(organization_id))
     elif branch_id:
-        result = await db.execute(select(Branch).where(Branch.id == branch_id))
+        result = await session.execute(select(Branch).where(Branch.id == branch_id))
         branch = result.scalars().first()
         if branch:
-            result = await db.execute(select(Project).where(Project.id == branch.project_id))
+            result = await session.execute(select(Project).where(Project.id == branch.project_id))
             project = result.scalars().first()
             logger.info("branch-level backup:", str(branch_id))
 
@@ -155,7 +154,7 @@ async def add_or_replace_backup_schedule(
                     BackupSchedule.branch_id == branch_id
                 )
             )
-        result = await db.execute(stmt)
+        result = await session.execute(stmt)
         schedule = result.scalars().first()
 
     # Validate schedule rows
@@ -185,28 +184,28 @@ async def add_or_replace_backup_schedule(
 
     # Delete old rows if schedule exists
     if schedule:
-        await db.execute(delete(BackupScheduleRow).where(BackupScheduleRow.schedule_id == schedule.id))
-        await db.execute(delete(NextBackup).where(NextBackup.schedule_id == schedule.id))
-        await db.commit()
+        await session.execute(delete(BackupScheduleRow).where(BackupScheduleRow.schedule_id == schedule.id))
+        await session.execute(delete(NextBackup).where(NextBackup.schedule_id == schedule.id))
+        await session.commit()
     else:
         if branch_id:
-            await db.execute(delete(NextBackup).where(NextBackup.branch_id == branch_id))
+            await session.execute(delete(NextBackup).where(NextBackup.branch_id == branch_id))
         elif env_type is not None:
             stmt = delete(NextBackup).where(
                 NextBackup.branch_id.in_(
                     select(Branch.id).where(Branch.env_type == env_type)
                 )
             )
-            await db.execute(stmt)
-            await db.commit()
+            await session.execute(stmt)
+            await session.commit()
         schedule = BackupSchedule(
             organization_id=organization_id,
             branch_id=branch_id,
             env_type=payload.env_type,
         )
-        db.add(schedule)
-        await db.commit()
-        await db.refresh(schedule)
+        session.add(schedule)
+        await session.commit()
+        await session.refresh(schedule)
 
     # Insert new rows
     for r in payload.rows:
@@ -217,10 +216,10 @@ async def add_or_replace_backup_schedule(
             unit=r.unit,
             retention=r.retention,
         )
-        db.add(row)
+        session.add(row)
 
-    await db.commit()
-    await db.refresh(schedule)
+    await session.commit()
+    await session.refresh(schedule)
     return BackupScheduleCreatePublic(status="ok", schedule_id=str(schedule.id))
 
 
@@ -229,27 +228,27 @@ async def add_or_replace_backup_schedule(
 # ---------------------------
 @router.get("/backup/organizations/{organization_id}/schedule")
 async def list_org_schedules(
+        session: SessionDep,
         organization_id: Identifier,
         env_type: str | None = None,
-        db: AsyncSession = Depends(get_db),
 ) -> list[BackupSchedulePublic]:
-    return await list_schedules(organization_id, None, env_type, db)
+    return await list_schedules(session, organization_id, None, env_type)
 
 
 @router.get("/backup/branches/{branch_id}/schedule")
 async def list_branch_schedules(
+        session: SessionDep,
         branch_id: Identifier,
         env_type: str | None = None,
-        db: AsyncSession = Depends(get_db),
 ) -> list[BackupSchedulePublic]:
-    return await list_schedules(None, branch_id, env_type, db)
+    return await list_schedules(session, None, branch_id, env_type)
 
 
 async def list_schedules(
+        session: SessionDep,
         organization_id: Identifier | None,
         branch_id: Identifier | None,
         env_type: str | None,
-        db: AsyncSession = Depends(get_db),
 ) -> list[BackupSchedulePublic]:
     stmt = select(BackupSchedule)
     if organization_id:
@@ -259,7 +258,7 @@ async def list_schedules(
     if env_type is not None:
         stmt = stmt.where(BackupSchedule.env_type == env_type)
 
-    result = await db.execute(stmt)
+    result = await session.execute(stmt)
     schedules = result.scalars().all()
     if not schedules:
         raise HTTPException(status_code=404, detail="No schedules found.")
@@ -268,7 +267,7 @@ async def list_schedules(
     for s in schedules:
         stmt = select(BackupScheduleRow)
         stmt = stmt.where(BackupScheduleRow.schedule_id == s.id)
-        result = await db.execute(stmt)
+        result = await session.execute(stmt)
         rows = result.scalars().all()
         out.append(
             BackupSchedulePublic(
@@ -295,27 +294,27 @@ async def list_schedules(
 # ---------------------------
 @router.get("/backup/organizations/{organization_id}/")
 async def list_org_backups(
+        session: SessionDep,
         organization_id: Identifier | None,
         env_type: str | None = None,
-        db: AsyncSession = Depends(get_db),
 ) -> list[BackupPublic]:
-    return await list_backups(organization_id, None, env_type, db)
+    return await list_backups(session, organization_id, None, env_type)
 
 
 @router.get("/backup/branches/{branch_id}/")
 async def list_branch_backups(
+        session: SessionDep,
         branch_id: Identifier | None,
         env_type: str | None = None,
-        db: AsyncSession = Depends(get_db),
 ) -> list[BackupPublic]:
-    return await list_backups(None, branch_id, env_type, db)
+    return await list_backups(session, None, branch_id, env_type)
 
 
 async def list_backups(
+        session: SessionDep,
         organization_id: Identifier | None = None,
         branch_id: Identifier | None = None,
         env_type: str | None = None,
-        db: AsyncSession = Depends(get_db),
 ) -> list[BackupPublic]:
     if organization_id:
         stmt = (select(BackupEntry)
@@ -329,7 +328,7 @@ async def list_backups(
     else:
         raise HTTPException(status_code=400, detail="Either org-ref or branch-ref needed.")
 
-    result = await db.execute(stmt)
+    result = await session.execute(stmt)
     backups = result.scalars().all()
     if not backups:
         raise HTTPException(status_code=404, detail="No backups found.")
@@ -356,21 +355,21 @@ async def list_backups(
 # ---------------------------
 @router.delete("/backup/schedule/{schedule_id}/")
 async def delete_schedule(
+        session: SessionDep,
         schedule_id: Identifier | None = None,
-        db: AsyncSession = Depends(get_db),
 ) -> BackupScheduleDeletePublic:
     stmt = select(BackupSchedule)
     stmt = stmt.where(BackupSchedule.id == schedule_id)
 
-    result = await db.execute(stmt)
+    result = await session.execute(stmt)
     schedule = result.scalars().first()
     if not schedule:
         raise HTTPException(status_code=404, detail="Schedule not found")
 
-    await db.execute(delete(BackupScheduleRow).where(BackupScheduleRow.schedule_id == schedule.id))
-    await db.execute(delete(NextBackup).where(NextBackup.schedule_id == schedule.id))
-    await db.delete(schedule)
-    await db.commit()
+    await session.execute(delete(BackupScheduleRow).where(BackupScheduleRow.schedule_id == schedule.id))
+    await session.execute(delete(NextBackup).where(NextBackup.schedule_id == schedule.id))
+    await session.delete(schedule)
+    await session.commit()
 
     return BackupScheduleDeletePublic(status="success", message="Schedule and related data deleted successfully")
 
@@ -379,8 +378,11 @@ async def delete_schedule(
 # Manual Backup
 # ---------------------------
 @router.post("/backup/branches/{branch_id}/")
-async def manual_backup(branch_id: Identifier, db: AsyncSession = Depends(get_db)) -> BackupCreatePublic:
-    result = await db.execute(select(Branch).where(Branch.id == branch_id))
+async def manual_backup(
+        session: SessionDep,
+        branch_id: Identifier
+) -> BackupCreatePublic:
+    result = await session.execute(select(Branch).where(Branch.id == branch_id))
     branch = result.scalars().first()
     if not branch:
         raise HTTPException(status_code=404, detail="Branch not found")
@@ -391,9 +393,9 @@ async def manual_backup(branch_id: Identifier, db: AsyncSession = Depends(get_db
         created_at=datetime.utcnow(),
         size_bytes=0,
     )
-    db.add(backup)
-    await db.commit()
-    await db.refresh(backup)
+    session.add(backup)
+    await session.commit()
+    await session.refresh(backup)
 
     log = BackupLog(
         branch_id=branch.id,
@@ -402,8 +404,8 @@ async def manual_backup(branch_id: Identifier, db: AsyncSession = Depends(get_db
         backup_uuid=str(backup.id),
 
     )
-    db.add(log)
-    await db.commit()
+    session.add(log)
+    await session.commit()
     return BackupCreatePublic(status="manual backup created", backup_id=str(backup.id))
 
 
@@ -411,14 +413,17 @@ async def manual_backup(branch_id: Identifier, db: AsyncSession = Depends(get_db
 # Delete Backup
 # ---------------------------
 @router.delete("/backup/{backup_id}")
-async def delete_backup(backup_id: Identifier, db: AsyncSession = Depends(get_db)) -> BackupDeletePublic:
-    result = await db.execute(select(BackupEntry).where(BackupEntry.id == backup_id))
+async def delete_backup(
+        session: SessionDep,
+        backup_id: Identifier
+) -> BackupDeletePublic:
+    result = await session.execute(select(BackupEntry).where(BackupEntry.id == backup_id))
     backup = result.scalars().first()
     if not backup:
         raise HTTPException(status_code=404, detail="Backup not found")
 
-    await db.delete(backup)
-    await db.commit()
+    await session.delete(backup)
+    await session.commit()
 
     log = BackupLog(
         branch_id=backup.branch_id,
@@ -426,15 +431,15 @@ async def delete_backup(backup_id: Identifier, db: AsyncSession = Depends(get_db
         action="manual-delete",
         ts=datetime.utcnow(),
     )
-    db.add(log)
-    await db.commit()
+    session.add(log)
+    await session.commit()
     return BackupDeletePublic(status="backup deleted")
 
 
 @router.get("/backup/branches/{branch_id}/info")
 async def get_branch_backup_info(
+        session: SessionDep,
         branch_id: Identifier,
-        db: AsyncSession = Depends(get_db),
 ) -> BackupInfoPublic:
     # 1️⃣ Find the BackupSchedule that applies to this branch
     # (first look for branch-level, then environment/org fallback if applicable)
@@ -443,7 +448,7 @@ async def get_branch_backup_info(
         .where(BackupSchedule.branch_id == branch_id)
     )
 
-    result = await db.execute(stmt)
+    result = await session.execute(stmt)
     schedule = result.scalars().first()
     level = "branch"
     nb = None
@@ -451,7 +456,7 @@ async def get_branch_backup_info(
     if not schedule:
         # Find branch’s organization and environment (if such relation exists)
         branch_stmt = select(Branch).where(Branch.id == branch_id)
-        branch_result = await db.execute(branch_stmt)
+        branch_result = await session.execute(branch_stmt)
         branch = branch_result.scalar_one_or_none()
 
         if not branch:
@@ -473,7 +478,7 @@ async def get_branch_backup_info(
 
             )
             level = "organization"
-        result = await db.execute(stmt)
+        result = await session.execute(stmt)
         schedule = result.scalars().first()
 
     stmt = (
@@ -481,7 +486,7 @@ async def get_branch_backup_info(
         .where(NextBackup.branch_id == branch_id,
                NextBackup.schedule_id == schedule.id)
     ).order_by(NextBackup.next_at.asc()).limit(1)
-    result = await db.execute(stmt)
+    result = await session.execute(stmt)
     nb = result.scalars().first()
 
     # 2️⃣ If still no schedule → no backup config

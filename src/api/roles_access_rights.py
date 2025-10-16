@@ -1,12 +1,11 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi import APIRouter, HTTPException, Body
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from .access_right_utils import check_access
-from .db import get_db
+from .db import SessionDep
 from .models._util import Identifier
 from .models.role import Role, RoleUserLink, AccessRight, RoleAccessRight
 
@@ -44,7 +43,11 @@ class RoleAssignmentPayload(BaseModel):
 # Create role
 # ----------------------
 @router.post("/organizations/{org_id}/")
-async def create_role(org_id: Identifier, payload: RolePayload, session: AsyncSession = Depends(get_db)):
+async def create_role(
+        session: SessionDep,
+        org_id: Identifier,
+        payload: RolePayload,
+):
     role = Role(role_type=payload.role_type, is_active=payload.is_active)
     role.organization_id = org_id
     session.add(role)
@@ -69,8 +72,12 @@ async def create_role(org_id: Identifier, payload: RolePayload, session: AsyncSe
 # Modify role
 # ----------------------
 @router.put("/organizations/{org_id}/{role_id}/")
-async def modify_role(org_id: Identifier, role_id: Identifier, payload: RolePayloadUpdate,
-                      session: AsyncSession = Depends(get_db)):
+async def modify_role(
+        session: SessionDep,
+        org_id: Identifier,
+        role_id: Identifier,
+        payload: RolePayloadUpdate,
+):
     stmt = select(Role).where(
         Role.id == role_id,
         Role.organization_id == org_id
@@ -112,7 +119,11 @@ async def modify_role(org_id: Identifier, role_id: Identifier, payload: RolePayl
 # Delete role
 # ----------------------
 @router.delete("/organizations/{org_id}/{role_id}/")
-async def delete_role(org_id: Identifier, role_id: Identifier, session: AsyncSession = Depends(get_db)):
+async def delete_role(
+        session: SessionDep,
+        org_id: Identifier,
+        role_id: Identifier,
+):
     stmt = select(Role).where(
         Role.id == role_id,
         Role.organization_id == org_id
@@ -132,11 +143,11 @@ async def delete_role(org_id: Identifier, role_id: Identifier, session: AsyncSes
 # ----------------------
 @router.post("/organizations/{org_id}/{role_id}/assign/{user_id}/")
 async def assign_role(
+        session: SessionDep,
         role_id: Identifier,
         org_id: Identifier,
         user_id: UUID,
         payload: RoleAssignmentPayload,
-        session: AsyncSession = Depends(get_db)
 ):
     """
     Assign a role to a user in one or more contexts. The context is passed as JSON.
@@ -201,11 +212,11 @@ async def assign_role(
 # ----------------------
 @router.post("/organizations/{org_id}/{role_id}/unassign/{user_id}/")
 async def unassign_role(
+        session: SessionDep,
         role_id: Identifier,
         org_id: Identifier,
         user_id: UUID,
         context: dict[str, UUID] | None = None,
-        session: AsyncSession = Depends(get_db)
 ):
     """
     Remove a role assignment for a user in a specific context.
@@ -241,10 +252,10 @@ async def unassign_role(
 # ----------------------
 @router.post("/organizations/{org_id}/check_access/{user_id}/")
 async def api_check_access(
+        session: SessionDep,
         org_id: Identifier,
         user_id: UUID,
         payload: AccessCheckRequest = Body(...),
-        session: AsyncSession = Depends(get_db),
 ):
     """
     Example POST JSON:
@@ -273,7 +284,10 @@ async def api_check_access(
 
 
 @router.get("/organizations/{org_id}/roles/", response_model=list[RolePayload])
-async def list_roles(org_id: Identifier, session: AsyncSession = Depends(get_db)):
+async def list_roles(
+        session: SessionDep,
+        org_id: Identifier,
+):
     """
     List all roles and their access rights within an organization
     """
@@ -306,9 +320,9 @@ async def list_roles(org_id: Identifier, session: AsyncSession = Depends(get_db)
 
 @router.get("/organizations/{org_id}/role-assignments/")
 async def list_role_assignments(
+        session: SessionDep,
         org_id: Identifier,
         user_id: UUID | None = None,
-        session: AsyncSession = Depends(get_db)
 ):
     """
     List role-user assignments within an organization.
@@ -345,7 +359,9 @@ async def list_role_assignments(
 
 
 @router.get("/access-rights/", response_model=list[str])
-async def list_access_rights(session: AsyncSession = Depends(get_db)):
+async def list_access_rights(
+        session: SessionDep,
+):
     """
     List all access rights defined in the system.
     """

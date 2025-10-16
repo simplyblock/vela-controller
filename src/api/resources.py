@@ -1,14 +1,13 @@
 import asyncio
-from datetime import datetime, timezone, UTC
-from typing import Annotated
+from datetime import datetime, UTC
 
-from fastapi import APIRouter, Depends, HTTPException, logger
+from fastapi import APIRouter, HTTPException, logger
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlmodel import SQLModel, select
+from sqlmodel import select
 
-from .db import get_db
+from .db import SessionDep
 from .models._util import Identifier
 from .models.branch import Branch
 from .models.project import Project
@@ -19,8 +18,6 @@ from .models.resources import (
 )
 from .settings import settings
 from ..check_branch_status import get_branch_status
-
-SessionDep = Annotated[AsyncSession, Depends(get_db)]
 
 router = APIRouter()
 
@@ -40,16 +37,6 @@ AsyncSessionLocal = async_sessionmaker(
     class_=AsyncSession,
     expire_on_commit=False,
 )
-
-
-async def get_db() -> AsyncSession:
-    async with AsyncSessionLocal() as session:
-        yield session
-
-
-async def init_db():
-    async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.create_all)
 
 
 async def get_effective_branch_limits(db: AsyncSession, branch_id: Identifier) -> dict:
@@ -129,7 +116,7 @@ async def log_provisioning(
         amount=amount,
         action=action,
         reason=reason,
-        ts=datetime.utcnow()
+        ts=datetime.now(UTC)
     )
     db.add(log)
     await db.commit()
@@ -160,17 +147,17 @@ class ConsumptionPayload(BaseModel):
 # ---------------------------
 @router.post("/branches/{branch_id}/provision")
 async def provision_branch(
+        session: SessionDep,
         branch_id: Identifier,
         payload: RessourcesPayload,
-        db: AsyncSession = Depends(get_db)
 ):
     provision = payload.ressources
-    result = await db.execute(select(Branch).where(Branch.id == branch_id))
+    result = await session.execute(select(Branch).where(Branch.id == branch_id))
     branch = result.scalars().first()
     if not branch:
         raise HTTPException(404, "Branch not found")
 
-    effective_limits = await get_effective_branch_limits(db, branch_id)
+    effective_limits = await get_effective_branch_limits(session, branch_id)
 
     for rtype, amount in provision.items():
         effective_limit = effective_limits.get(rtype)
@@ -182,25 +169,28 @@ async def provision_branch(
         #    raise HTTPException(422, f"Total allocation for {rtype.value} exceeds project/org limit")
 
         # Create or update provisioning
-        result = await db.execute(select(BranchProvisioning)
-                                  .where(BranchProvisioning.branch_id == branch_id,
-                                         BranchProvisioning.resource == rtype))
+        result = await session.execute(select(BranchProvisioning)
+                                       .where(BranchProvisioning.branch_id == branch_id,
+                                              BranchProvisioning.resource == rtype))
         bp = result.scalars().first()
         if bp:
             bp.amount = amount
         else:
             bp = BranchProvisioning(branch_id=branch_id, resource=rtype, amount=amount, updated_at=datetime.now())
-            db.add(bp)
+            session.add(bp)
 
-        await db.commit()
-        await log_provisioning(db, branch_id, ResourceType(rtype), amount, "create")
+        await session.commit()
+        await log_provisioning(session, branch_id, ResourceType(rtype), amount, "create")
 
     return {"status": "ok"}
 
 
 @router.get("/branches/{branch_id}/provision")
-async def get_branch_provisioning_api(branch_id: Identifier, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(BranchProvisioning).where(BranchProvisioning.branch_id == branch_id))
+async def get_branch_provisioning_api(
+        session: SessionDep,
+        branch_id: Identifier
+):
+    result = await session.execute(select(BranchProvisioning).where(BranchProvisioning.branch_id == branch_id))
     provisionings = result.scalars().all()
     return {p.resource.value: p.amount for p in provisionings}
 
@@ -212,9 +202,9 @@ async def get_branch_provisioning_api(branch_id: Identifier, db: AsyncSession = 
 
 @router.get("/projects/{project_id}/usage")
 async def get_project_usage(
+        session: SessionDep,
         project_id: Identifier,
         payload: ToFromPayload,
-        db: AsyncSession = Depends(get_db)
 ):
     def normalize(dt: datetime | None) -> datetime | None:
         if dt is None:
@@ -232,7 +222,7 @@ async def get_project_usage(
     if cycle_end:
         query = query.where(ResourceUsageMinute.ts_minute < cycle_end)
 
-    result = await db.execute(query)
+    result = await session.execute(query)
     usages = result.scalars().all()
 
     result_dict: dict[str, int] = {}
@@ -245,9 +235,9 @@ async def get_project_usage(
 
 @router.get("/organizations/{org_id}/usage")
 async def get_org_usage(
+        session: SessionDep,
         org_id: Identifier,
         payload: ToFromPayload,
-        db: AsyncSession = Depends(get_db)
 ):
     # Normalize datetimes → make them naive UTC
     def normalize(dt: datetime | None) -> datetime | None:
@@ -266,7 +256,7 @@ async def get_org_usage(
     if end:
         query = query.where(ResourceUsageMinute.ts_minute < end)
 
-    result = await db.execute(query)
+    result = await session.execute(query)
     usages = result.scalars().all()
 
     result_dict: dict[str, int] = {}
@@ -282,15 +272,15 @@ async def get_org_usage(
 # ---------------------------
 @router.post("/limits/provisioning/{entity_type}/{entity_id}")
 async def set_provisioning_limit(
+        session: SessionDep,
         payload: ProvLimitPayload,
         entity_type: EntityType,
         entity_id: Identifier,
-        db: AsyncSession = Depends(get_db)
 ):
     if entity_type == EntityType.org:
         org_id, project_id = entity_id, None
     elif entity_type == EntityType.project:
-        result = await db.execute(select(Project).where(Project.id == entity_id))
+        result = await session.execute(select(Project).where(Project.id == entity_id))
         project = result.scalars().first()
         if not project:
             raise HTTPException(404, "Project not found")
@@ -299,14 +289,14 @@ async def set_provisioning_limit(
         raise HTTPException(400, "Unsupported entity type")
 
     if project_id is not None:
-        result = await db.execute(select(ResourceLimit).where(
+        result = await session.execute(select(ResourceLimit).where(
             ResourceLimit.entity_type == entity_type,
             ResourceLimit.org_id == org_id,
             ResourceLimit.project_id == project_id,
             ResourceLimit.resource == payload.resource
         ))
     else:
-        result = await db.execute(select(ResourceLimit).where(
+        result = await session.execute(select(ResourceLimit).where(
             ResourceLimit.entity_type == entity_type,
             ResourceLimit.org_id == org_id,
             ResourceLimit.resource == payload.resource
@@ -325,17 +315,17 @@ async def set_provisioning_limit(
             max_total=payload.max_total,
             max_per_branch=payload.max_per_branch
         )
-        db.add(limit)
+        session.add(limit)
 
-    await db.commit()
+    await session.commit()
     return {"status": "ok", "limit": str(limit.id)}
 
 
 @router.get("/limits/provisioning/{entity_type}/{entity_id}")
 async def get_provisioning_limits(
+        session: SessionDep,
         entity_type: EntityType,
         entity_id: Identifier,
-        db: AsyncSession = Depends(get_db)
 ):
     q = select(ResourceLimit).where(ResourceLimit.entity_type == entity_type)
     if entity_type == EntityType.org:
@@ -343,7 +333,7 @@ async def get_provisioning_limits(
     elif entity_type == EntityType.project:
         q = q.where(ResourceLimit.project_id == entity_id)
 
-    result = await db.execute(q)
+    result = await session.execute(q)
     return [{
         "resource": limit.resource.value,
         "max_total": limit.max_total,
@@ -353,15 +343,15 @@ async def get_provisioning_limits(
 
 @router.post("/limits/consumption/{entity_type}/{entity_id}")
 async def set_consumption_limit(
+        session: SessionDep,
         entity_type: EntityType,
         entity_id: Identifier,
         payload: ConsumptionPayload,
-        db: AsyncSession = Depends(get_db)
 ):
     if entity_type == EntityType.org:
         org_id, project_id = entity_id, None
     elif entity_type == EntityType.project:
-        result = await db.execute(select(Project).where(Project.id == entity_id))
+        result = await session.execute(select(Project).where(Project.id == entity_id))
         project = result.scalars().first()
         if not project:
             raise HTTPException(404, "Project not found")
@@ -369,7 +359,7 @@ async def set_consumption_limit(
     else:
         raise HTTPException(400, "Unsupported entity type")
 
-    result = await db.execute(select(ResourceConsumptionLimit).where(
+    result = await session.execute(select(ResourceConsumptionLimit).where(
         ResourceConsumptionLimit.entity_type == entity_type,
         ResourceConsumptionLimit.org_id == org_id,
         ResourceConsumptionLimit.project_id == project_id,
@@ -387,17 +377,17 @@ async def set_consumption_limit(
             resource=payload.resource,
             max_total_minutes=payload.max_total_minutes
         )
-        db.add(limit)
+        session.add(limit)
 
-    await db.commit()
+    await session.commit()
     return {"status": "ok", "limit": str(limit.id)}
 
 
 @router.get("/limits/consumption/{entity_type}/{entity_id}")
 async def get_consumption_limits(
+        session: SessionDep,
         entity_type: EntityType,
         entity_id: Identifier,
-        db: AsyncSession = Depends(get_db)
 ):
     q = select(ResourceConsumptionLimit).where(ResourceConsumptionLimit.entity_type == entity_type)
     if entity_type == EntityType.org:
@@ -405,7 +395,7 @@ async def get_consumption_limits(
     elif entity_type == EntityType.project:
         q = q.where(ResourceConsumptionLimit.project_id == entity_id)
 
-    result = await db.execute(q)
+    result = await session.execute(q)
     return [{
         "resource": limit.resource.value,
         "max_total_minutes": limit.max_total_minutes
@@ -414,10 +404,10 @@ async def get_consumption_limits(
 
 @router.get("/branches/{branch_id}/limits/")
 async def branch_effective_limit(
+        session: SessionDep,
         branch_id: Identifier,
-        db: AsyncSession = Depends(get_db)
 ):
-    limit = await get_effective_branch_limits(db, branch_id)
+    limit = await get_effective_branch_limits(session, branch_id)
     return limit
 
 
