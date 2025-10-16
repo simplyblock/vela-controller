@@ -1,7 +1,9 @@
+from uuid import UUID
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from .models.role import RoleUserLink, RoleAccessRight, AccessRight, Role
+from .models.role import RoleUserLink, RoleAccessRight, AccessRight, Role, PermissionCheckContextPublic
 
 
 # Wildcard matcher
@@ -24,10 +26,14 @@ def match_access(required: str, rights: list[str]) -> bool:
     return False
 
 
-async def get_user_rights(session: AsyncSession, user_id, entity_context) -> list[str]:
+async def get_user_rights(
+        session: AsyncSession,
+        user_id: UUID,
+        context: PermissionCheckContextPublic
+) -> list[str]:
     """
     Fetch all access rights for a user in a specific entity context.
-    entity_context is a dict like:
+    context is a context class like:
     {'organization_id': id, 'project_id': id, 'branch_id': id}
     """
 
@@ -42,19 +48,20 @@ async def get_user_rights(session: AsyncSession, user_id, entity_context) -> lis
     )
 
     # Apply context filters if sub != "*" and sub != req_sub:
-    if "organization_id" in entity_context:
-        stmt = stmt.where(RoleUserLink.organization_id == entity_context["organization_id"])
-    if "project_id" in entity_context:
-        stmt = stmt.where(RoleUserLink.project_entity == entity_context["project_id"])
-    if "branch_id" in entity_context:
-        stmt = stmt.where(RoleUserLink.branch_entity == entity_context["branch_id"])
-    if "environment_id" in entity_context:
-        stmt = stmt.where(RoleUserLink.environment_entity == entity_context["environment_id"])
+    if context.organization_id is not None:
+        stmt = stmt.where(RoleUserLink.organization_id == context.organization_id)
+    if context.project_id is not None:
+        stmt = stmt.where(RoleUserLink.project_id == context.project_id)
+    if context.branch_id is not None:
+        stmt = stmt.where(RoleUserLink.branch_id == context.branch_id)
+    if context.env_type is not None:
+        stmt = stmt.where(RoleUserLink.env_type == context.env_type)
 
     result = await session.execute(stmt)
     return list(r for r in result.scalars().all())
 
 
-async def check_access(session: AsyncSession, user_id, required_access: str, entity_context) -> bool:
-    rights = await get_user_rights(session, user_id, entity_context)
+async def check_access(session: AsyncSession, user_id, required_access: str,
+                       context: PermissionCheckContextPublic) -> bool:
+    rights = await get_user_rights(session, user_id, context)
     return match_access(required_access, rights)

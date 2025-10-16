@@ -249,19 +249,20 @@ RBAC
 ----------------------------------------------------------------
 1. after deployment, before rbac can be used, fill the accessright table by running ar.sql (in the src/api/models).
 
-curl -X GET "http://localhost:8000/vela/roles/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/role-assignments?user_id=c92fdc65-ab01-4ff4-8f67-68c608973c18" \
+curl -X GET "http://localhost:8000/vela/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/roles/role-assignments?user_id=c92fdc65-ab01-4ff4-8f67-68c608973c18" \
 -H "Content-Type: application/json"
 
-curl -X GET "http://localhost:8000/vela/roles/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/roles/"
+curl -X GET "http://localhost:8000/vela/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/roles/"
 
-curl -X GET "http://localhost:8000/vela/roles/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/role-assignments/"
+curl -X GET "http://localhost:8000/vela/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/roles/role-assignments/"
 
-curl -X GET "http://localhost:8000/vela/roles/access-rights/"
+curl -X GET "http://localhost:8000/vela/system/access-rights/"
 
 # Role 1: project_admin
-curl -X POST "http://localhost:8000/vela/roles/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/" \
+curl -X POST "http://localhost:8000/vela/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/roles/" \
 -H "Content-Type: application/json" \
 -d '{
+"name": "project_admin",
 "role_type": "project",
 "is_active": true,
 "access_rights": [
@@ -271,12 +272,13 @@ curl -X POST "http://localhost:8000/vela/roles/organizations/01K7CVGXTSC8ZT76V4G
 ]
 }'
 
-curl -X DELETE "http://localhost:8000/vela/roles/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/01K7FBS4CJZ5HR4AVR1N5C8HQ6/"
+curl -X DELETE "http://localhost:8000/vela/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/roles/01K7FBS4CJZ5HR4AVR1N5C8HQ6/"
 
 # Role 2: org_admin
-curl -X POST "http://localhost:8000/vela/roles/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/" \
+curl -X POST "http://localhost:8000/vela/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/roles/" \
 -H "Content-Type: application/json" \
 -d '{
+"name": "org_admin",
 "role_type": "organization",
 "is_active": true,
 "access_rights": [
@@ -292,9 +294,10 @@ curl -X POST "http://localhost:8000/vela/roles/organizations/01K7CVGXTSC8ZT76V4G
 }'
 
 # Role 3: branch_operator
-curl -X POST "http://localhost:8000/vela/roles/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/" \
+curl -X POST "http://localhost:8000/vela/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/roles/" \
 -H "Content-Type: application/json" \
 -d '{
+"name": "branch_operator",
 "role_type": "branch",
 "is_active": true,
 "access_rights": [
@@ -308,9 +311,10 @@ curl -X POST "http://localhost:8000/vela/roles/organizations/01K7CVGXTSC8ZT76V4G
 }'
 
 # Role 4: org_manager
-curl -X POST "http://localhost:8000/vela/roles/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/" \
+curl -X POST "http://localhost:8000/vela/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/roles/" \
 -H "Content-Type: application/json" \
 -d '{
+"name": "org_manager",
 "role_type": "organization",
 "is_active": true,
 "access_rights": [
@@ -322,9 +326,10 @@ curl -X POST "http://localhost:8000/vela/roles/organizations/01K7CVGXTSC8ZT76V4G
 }'
 
 # Role 5: env admin
-curl -X POST "http://localhost:8000/vela/roles/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/" \
+curl -X POST "http://localhost:8000/vela/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/roles/" \
 -H "Content-Type: application/json" \
 -d '{
+"name": "env_admin",
 "role_type": "environment",
 "is_active": true,
 "access_rights": [
@@ -335,9 +340,10 @@ curl -X POST "http://localhost:8000/vela/roles/organizations/01K7CVGXTSC8ZT76V4G
 }'
 
 # Role 2: change org_admin
-curl -X PUT "http://localhost:8000/vela/roles/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/01K7FDS71KSQWZ1VKRAQARFB51/" \
+curl -X PUT "http://localhost:8000/vela/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/roles/01K7FDS71KSQWZ1VKRAQARFB51/" \
 -H "Content-Type: application/json" \
 -d '{
+"name": "org_admin",
 "role_type": "organization",
 "is_active": true,
 "access_rights": [
@@ -349,32 +355,32 @@ curl -X PUT "http://localhost:8000/vela/roles/organizations/01K7CVGXTSC8ZT76V4G2
 ]
 }'
 
-curl -X POST "http://localhost:8000/vela/roles/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/01K7FE330RZ26PNV5V0PDVFV12/assign/6f71a87b-43d4-4a7f-b58f-5a893da2eb9e/" \
+curl -X POST "http://localhost:8000/vela/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/roles/01K7FE330RZ26PNV5V0PDVFV12/assign/6f71a87b-43d4-4a7f-b58f-5a893da2eb9e/" \
 -H "Content-Type: application/json" \
 -d '{
 "project_ids": ["01K7D3XMSVZY7AY71CX50CBWXV", "01K7D3Y9Z6Z9JPRESQMB1R57ME"]
 }'
 
-curl -X POST "http://localhost:8000/vela/roles/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/01K7FE81DED7QP7MAEY44SJ2HZ/assign/b3b7b2f1-bb0a-4e29-932f-8bb1d17a5b21/" \
+curl -X POST "http://localhost:8000/vela/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/roles/01K7FE81DED7QP7MAEY44SJ2HZ/assign/b3b7b2f1-bb0a-4e29-932f-8bb1d17a5b21/" \
 -H "Content-Type: application/json" \
 -d '{
 "environment_ids": ["dev", "qa"]
 }'
 
-curl -X POST "http://localhost:8000/vela/roles/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/01K7FDZCD48PK32MCXP9XWCSYN/assign/c4a2b899-f8f3-4b2e-a4c5-472bc87fa619/" \
+curl -X POST "http://localhost:8000/vela/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/roles/01K7FDZCD48PK32MCXP9XWCSYN/assign/c4a2b899-f8f3-4b2e-a4c5-472bc87fa619/" \
 -H "Content-Type: application/json" \
 -d '{
 "branch_ids": ["01K7D3Z1JBGX93TWHDR7B0ZF90", "01K7D3Y9ZVKYEPE6AX2K237BM2"]
 }'
 
-curl -X POST "http://localhost:8000/vela/roles/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/01K7FE4NNN3R5DN7FEF6484ZSQ/assign/f1e34b9a-cb1c-4ad2-8d53-0b3e29a6b8c4/" \
+curl -X POST "http://localhost:8000/vela/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/roles/01K7FE4NNN3R5DN7FEF6484ZSQ/assign/f1e34b9a-cb1c-4ad2-8d53-0b3e29a6b8c4/" \
 -H "Content-Type: application/json" \
 -d '{
 }'
 
-curl -X GET "http://localhost:8000/vela/roles/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/role-assignments/"
+curl -X GET "http://localhost:8000/vela/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/roles/role-assignments/"
 
-curl -X POST "http://localhost:8000/vela/roles/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/01K7FDZCD48PK32MCXP9XWCSYN/unassign/c4a2b899-f8f3-4b2e-a4c5-472bc87fa619/"
+curl -X POST "http://localhost:8000/vela/organizations/01K7CVGXTSC8ZT76V4G2WVJG57/roles/01K7FDZCD48PK32MCXP9XWCSYN/unassign/c4a2b899-f8f3-4b2e-a4c5-472bc87fa619/"
 
 
 

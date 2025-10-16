@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Annotated
 from uuid import UUID
 
 from fastapi import Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship, SQLModel, select
@@ -33,12 +34,13 @@ class RoleUserLink(AsyncAttrs, SQLModel, table=True):
     organization_id: Identifier = Model.foreign_key_field("organization", nullable=False, primary_key=True)
     role_id: Identifier = Model.foreign_key_field("role", nullable=False, primary_key=True)
     user_id: UUID = Field(foreign_key="user.id", primary_key=True)
-    environment_entity: str = Field(nullable=True)
-    project_entity: Identifier | None = Model.foreign_key_field("project", nullable=True)
-    branch_entity: Identifier | None = Model.foreign_key_field("branch", nullable=True)
+    env_type: str = Field(nullable=True)
+    project_id: Identifier | None = Model.foreign_key_field("project", nullable=True)
+    branch_id: Identifier | None = Model.foreign_key_field("branch", nullable=True)
 
 
 class Role(AsyncAttrs, Model, table=True):
+    name: str
     organization_id: int | None = Model.foreign_key_field("organization", nullable=True)
     organization: Organization | None = Relationship(back_populates="roles")
     users: list["User"] = Relationship(back_populates="roles", link_model=RoleUserLink)
@@ -57,6 +59,62 @@ async def _lookup(session: SessionDep, organization: OrganizationDep, role_id: I
         return (await session.exec(query)).one()
     except NoResultFound as e:
         raise HTTPException(404, f"Role {role_id} not found") from e
+
+
+class RolePublic(BaseModel):
+    id: Identifier
+    organization_id: Identifier
+    name: str
+    role_type: RoleType
+    is_active: bool
+
+
+class RoleDeletePublic(BaseModel):
+    status: str
+
+
+class RoleUserLinkPublic(BaseModel):
+    organization_id: Identifier
+    project_id: Identifier | None
+    branch_id: Identifier | None
+    role_id: Identifier
+    user_id: Identifier
+    env_type: str | None
+
+
+class RoleAssignmentPublic(BaseModel):
+    status: str
+    count: int
+    links: list[RoleUserLinkPublic]
+
+
+class RoleUnassignmentPublic(BaseModel):
+    status: str
+    count: int
+
+
+class RoleAssignmentsPublic(BaseModel):
+    count: int
+    links: list[RoleUserLinkPublic]
+
+
+class PermissionAccessCheckContext(BaseModel):
+    organization_id: Identifier
+    project_id: Identifier | None
+    branch_id: Identifier | None
+    env_type: str | None
+
+
+class PermissionCheckContextPublic(BaseModel):
+    organization_id: Identifier | None
+    project_id: Identifier | None
+    branch_id: Identifier | None
+    env_type: str | None
+
+
+class PermissionAccessCheckPublic(BaseModel):
+    access_granted: bool
+    context: PermissionCheckContextPublic
 
 
 RoleDep = Annotated[Role, Depends(_lookup)]
