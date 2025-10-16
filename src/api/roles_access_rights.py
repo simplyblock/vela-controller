@@ -1,17 +1,17 @@
-from fastapi import APIRouter, Depends, HTTPException
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Body
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
-from typing import Dict
-from .models._util import Identifier
 
-from .models.role import Role, RoleUserLink, AccessRight, RoleAccessRight
-from .db import get_db
 from .access_right_utils import check_access
+from .db import get_db
+from .models._util import Identifier
+from .models.role import Role, RoleUserLink, AccessRight, RoleAccessRight
 
 router = APIRouter(prefix="/roles")
 
-from pydantic import BaseModel
-from uuid import UUID
 
 class AccessCheckRequest(BaseModel):
     access: str  # e.g., "project:settings:update"
@@ -19,25 +19,26 @@ class AccessCheckRequest(BaseModel):
     branch_id: Identifier | None = None
     environment_id: Identifier | None = None
 
-from typing import List
-
 
 class RolePayload(BaseModel):
-    role_id : str
+    role_id: str
     role_type: str
     is_active: bool = True
-    access_rights: List[str] | None = []
+    access_rights: list[str] | None = []
+
 
 class RolePayloadUpdate(BaseModel):
     role_type: str
     is_active: bool = True
-    access_rights: List[str] | None = []
+    access_rights: list[str] | None = []
+
 
 class RoleAssignmentPayload(BaseModel):
     # Single or multiple projects/branches/environments
-    project_ids: List[Identifier] | None = None
-    branch_ids: List[Identifier] | None = None
-    environment_ids: List[str] | None = None
+    project_ids: list[Identifier] | None = None
+    branch_ids: list[Identifier] | None = None
+    environment_ids: list[str] | None = None
+
 
 # ----------------------
 # Create role
@@ -45,7 +46,7 @@ class RoleAssignmentPayload(BaseModel):
 @router.post("/organizations/{org_id}/")
 async def create_role(org_id: Identifier, payload: RolePayload, session: AsyncSession = Depends(get_db)):
     role = Role(role_type=payload.role_type, is_active=payload.is_active)
-    role.organization_id=org_id
+    role.organization_id = org_id
     session.add(role)
     await session.commit()
     await session.refresh(role)
@@ -56,18 +57,20 @@ async def create_role(org_id: Identifier, payload: RolePayload, session: AsyncSe
             stmt = select(AccessRight).where(AccessRight.entry == ar_payload)
             result = await session.execute(stmt)
             ar = result.scalar_one_or_none()
-            role_access_right = RoleAccessRight(organization_id=org_id,role_id=role.id,access_right_id=ar.id)
+            role_access_right = RoleAccessRight(organization_id=org_id, role_id=role.id, access_right_id=ar.id)
             session.add(role_access_right)
         await session.commit()
         await session.refresh(role)
 
     return role
 
+
 # ----------------------
 # Modify role
 # ----------------------
 @router.put("/organizations/{org_id}/{role_id}/")
-async def modify_role(org_id: Identifier, role_id: Identifier, payload: RolePayloadUpdate, session: AsyncSession = Depends(get_db)):
+async def modify_role(org_id: Identifier, role_id: Identifier, payload: RolePayloadUpdate,
+                      session: AsyncSession = Depends(get_db)):
     stmt = select(Role).where(
         Role.id == role_id,
         Role.organization_id == org_id
@@ -103,7 +106,6 @@ async def modify_role(org_id: Identifier, role_id: Identifier, payload: RolePayl
     await session.commit()
     await session.refresh(role)
     return role
-
 
 
 # ----------------------
@@ -159,10 +161,13 @@ async def assign_role(
     def has_values(lst):
         return lst is not None and any(x is not None for x in lst)
 
-    if ((has_values(project_ids) and int(role.role_type.value) != 2) or (has_values(env_ids) and int(role.role_type.value) != 1) or
+    if ((has_values(project_ids) and int(role.role_type.value) != 2) or (
+            has_values(env_ids) and int(role.role_type.value) != 1) or
             (has_values(branch_ids) and int(role.role_type.value) != 3) or (not has_values(project_ids)
-                                                                            and not has_values(env_ids) and not has_values(branch_ids) and int(role.role_type.value) != 0)):
-        raise HTTPException(422, f"Role type {role.role_type.value} does not match entitites: {project_ids}, {branch_ids}, {env_ids} ")
+                                                                            and not has_values(
+                        env_ids) and not has_values(branch_ids) and int(role.role_type.value) != 0)):
+        raise HTTPException(422,
+                            f"Role type {role.role_type.value} does not match entitites: {project_ids}, {branch_ids}, {env_ids} ")
 
     if project_ids:
         for project_id in project_ids:
@@ -191,7 +196,6 @@ async def assign_role(
     return {"status": "assigned", "count": len(created_links), "links": created_links}
 
 
-
 # ----------------------
 # Unassign role from user (with context)
 # ----------------------
@@ -200,7 +204,7 @@ async def unassign_role(
         role_id: Identifier,
         org_id: Identifier,
         user_id: UUID,
-        context: Dict[str, UUID] | None = None,
+        context: dict[str, UUID] | None = None,
         session: AsyncSession = Depends(get_db)
 ):
     """
@@ -211,7 +215,7 @@ async def unassign_role(
         RoleUserLink.role_id == role_id,
         RoleUserLink.organization_id == org_id,
         RoleUserLink.user_id == user_id,
-        )
+    )
 
     if context:
         for key, val in context.items():
@@ -235,11 +239,9 @@ async def unassign_role(
 # ----------------------
 # Check access for a user
 # ----------------------
-from fastapi import Body
-
 @router.post("/organizations/{org_id}/check_access/{user_id}/")
 async def api_check_access(
-        org_id : Identifier,
+        org_id: Identifier,
         user_id: UUID,
         payload: AccessCheckRequest = Body(...),
         session: AsyncSession = Depends(get_db),
@@ -269,7 +271,8 @@ async def api_check_access(
 
     return {"access_granted": True, "context": entity_context}
 
-@router.get("/organizations/{org_id}/roles/", response_model=List[RolePayload])
+
+@router.get("/organizations/{org_id}/roles/", response_model=list[RolePayload])
 async def list_roles(org_id: Identifier, session: AsyncSession = Depends(get_db)):
     """
     List all roles and their access rights within an organization
@@ -300,6 +303,7 @@ async def list_roles(org_id: Identifier, session: AsyncSession = Depends(get_db)
         ))
     return role_list
 
+
 @router.get("/organizations/{org_id}/role-assignments/")
 async def list_role_assignments(
         org_id: Identifier,
@@ -319,15 +323,15 @@ async def list_role_assignments(
 
     assignments = []
     for link in links:
-        project_id=""
-        branch_id=""
-        env_entity=""
+        project_id = ""
+        branch_id = ""
+        env_entity = ""
         if link.project_entity:
             project_id = str(link.project_entity)
         if link.branch_entity:
             branch_id = str(link.branch_entity)
         if link.environment_entity:
-            env_entity= str(link.environment_entity)
+            env_entity = str(link.environment_entity)
 
         assignments.append({
             "role_id": str(link.role_id),
@@ -339,7 +343,8 @@ async def list_role_assignments(
 
     return {"count": len(assignments), "assignments": assignments}
 
-@router.get("/access-rights/", response_model=List[str])
+
+@router.get("/access-rights/", response_model=list[str])
 async def list_access_rights(session: AsyncSession = Depends(get_db)):
     """
     List all access rights defined in the system.

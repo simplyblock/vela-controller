@@ -1,17 +1,11 @@
-# backup_monitor_async.py
-
-import os
 import asyncio
 import logging
+import os
 from datetime import datetime, timedelta
-from typing import Dict
-from .models.project import Project
-from .models.organization import Organization
 
+from sqlalchemy import asc
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlmodel import SQLModel, select
-
-from .models.branch import Branch
 
 from .models.backups import (
     BackupSchedule,
@@ -20,6 +14,9 @@ from .models.backups import (
     BackupLog,
     NextBackup,
 )
+from .models.branch import Branch
+from .models.organization import Organization
+from .models.project import Project
 from .settings import settings
 from ..check_branch_status import get_branch_status
 
@@ -44,8 +41,10 @@ UNIT_MULTIPLIER = {
     "w": 604800, "week": 604800, "weeks": 604800,
 }
 
+
 def interval_seconds(interval: int, unit: str) -> int:
     return interval * UNIT_MULTIPLIER[unit.lower()]
+
 
 # ---------------------------
 # Async DB setup
@@ -63,22 +62,23 @@ AsyncSessionLocal = async_sessionmaker(
     expire_on_commit=False,
 )
 
+
 async def get_db() -> AsyncSession:
     async with AsyncSessionLocal() as session:
         yield session
+
 
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
 
 
-from sqlalchemy import asc
 # ---------------------------
 # Backup Monitor
 # ---------------------------
 class BackupMonitor:
     def __init__(self):
-        self.branch_locks: Dict[str, asyncio.Lock] = {}
+        self.branch_locks: dict[str, asyncio.Lock] = {}
 
     def get_branch_lock(self, branch_id: str) -> asyncio.Lock:
         if branch_id not in self.branch_locks:
@@ -96,7 +96,7 @@ class BackupMonitor:
 
         for branch in branches:
             status = await get_branch_status(branch)
-            if (status=="ACTIVE_HEALTHY"):
+            if (status == "ACTIVE_HEALTHY"):
                 try:
                     await self.process_branch(db, branch, now)
                 except Exception:
@@ -179,11 +179,7 @@ class BackupMonitor:
         entry_rows = entries.scalars().all()
         num_rows = len(entry_rows)
 
-        if num_rows > max_backups:
-            # select the oldest rows to delete
-            to_delete = entry_rows[: num_rows - max_backups]  # first (num_rows - max_backup) rows
-        else:
-            to_delete = []
+        to_delete = entry_rows[:num_rows - max_backups] if num_rows > max_backups else []
         for row in to_delete:
             await db.delete(row)  # async delete
         await db.commit()
@@ -263,9 +259,8 @@ class BackupMonitor:
         await db.commit()
         logger.info("Pruned %d old backups for branch %s row %d", len(to_delete), branch.id, row.row_index)
 
-# in main.py or backupmonitor.py
-import asyncio
 
+# in main.py or backupmonitor.py
 async def run_monitor():
     monitor = BackupMonitor()
     while True:
@@ -275,7 +270,3 @@ async def run_monitor():
         except Exception:
             logger.exception("Error running backup monitor iteration")
         await asyncio.sleep(POLL_INTERVAL)
-
-
-
-

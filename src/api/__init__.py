@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import re
@@ -9,16 +10,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
 from httpx import TimeoutException
 from pydantic import BaseModel
+from sqlmodel import SQLModel
 
 from ..deployment.logflare import create_global_logflare_objects
 from ..exceptions import VelaLogflareError
+from ..deployment.logflare import create_global_logflare_objects
+from .backup import router as backup_router
+from .backupmonitor import run_monitor
 from .db import engine
 from .organization import api as organization_api
-from .roles_access_rights import router as roles_api
-from .backup import router as backup_router
 from .resources import monitor_resources, router as resources_router
+from .roles_access_rights import router as roles_api
+from .settings import settings
 from .user import api as user_api
-from .backupmonitor import *
 
 
 class _FastAPI(FastAPI):
@@ -140,7 +144,6 @@ _tags = [
     {"name": "project", "parent": "organization"},
     {"name": "branch", "parent": "project"},
 ]
-
 
 app = _FastAPI(openapi_tags=_tags, root_path=settings.root_path)
 

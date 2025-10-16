@@ -1,20 +1,20 @@
+from enum import Enum as PyEnum
 from typing import TYPE_CHECKING, Annotated
 from uuid import UUID
-from enum import Enum as PyEnum
 
 from fastapi import Depends, HTTPException
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship, SQLModel, select
 
-from ..._util import Identifier
-from ..db import SessionDep
 from ._util import Model
 from .organization import Organization, OrganizationDep
+from ..db import SessionDep
+from ..._util import Identifier
 
 if TYPE_CHECKING:
     from .user import User  # forward reference for type hints
-    from .role import RoleUserLink
+
 
 class RoleType(PyEnum):
     organization = 0
