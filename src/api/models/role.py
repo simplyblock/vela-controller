@@ -93,9 +93,17 @@ class RoleUnassignmentPublic(BaseModel):
     count: int
 
 
+class RoleUserAssignmentPublic(BaseModel):
+    role_id: Identifier
+    name: str
+    role_type: str
+    is_active: bool = True
+    access_rights: list[str] | None
+
+
 class RoleAssignmentsPublic(BaseModel):
     count: int
-    links: list[RoleUserLinkPublic]
+    links: list[RoleUserAssignmentPublic]
 
 
 class PermissionAccessCheckContext(BaseModel):

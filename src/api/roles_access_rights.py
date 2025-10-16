@@ -20,6 +20,7 @@ from .models.role import (
     RoleDep,
     RolePublic,
     RoleUnassignmentPublic,
+    RoleUserAssignmentPublic,
     RoleUserLink,
     RoleUserLinkPublic,
 )
@@ -325,7 +326,7 @@ async def list_roles(
     roles = result.scalars().all()
 
     # Include access rights in response
-    role_list = []
+    role_list: list[RolePayload] = []
     for role in roles:
         stmt = (
             select(AccessRight.entry)
@@ -336,7 +337,7 @@ async def list_roles(
         result = await session.execute(stmt)
         rows = result.all()
         role_list.append(
-            RolePayload(
+            RoleUserAssignmentPublic(
                 role_id=role.id,
                 role_type=role.role_type.value,
                 name=role.name,
@@ -344,7 +345,7 @@ async def list_roles(
                 access_rights=[ar[0] for ar in rows],
             )
         )
-    return role_list
+    return RoleAssignmentsPublic(count=len(role_list), links=role_list)
 
 
 @router.get("/organizations/{organization_id}/roles/role-assignments/")
