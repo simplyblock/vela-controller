@@ -6,7 +6,7 @@ from typing import Self
 from fastapi import APIRouter, logger, Request, HTTPException
 from pydantic import BaseModel, validator, model_validator
 from sqlalchemy import delete
-from sqlmodel import select
+from sqlmodel import select, asc
 
 from .db import SessionDep
 from .models._util import Identifier
@@ -478,7 +478,7 @@ async def get_branch_backup_info(
 
     stmt = (
         (select(NextBackup).where(NextBackup.branch_id == branch_id, NextBackup.schedule_id == schedule.id))
-        .order_by(NextBackup.next_at.asc())
+        .order_by(asc(NextBackup.next_at))
         .limit(1)
     )
     result = await session.execute(stmt)
