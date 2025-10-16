@@ -1,10 +1,11 @@
-from typing import List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
+
 from .models.role import RoleUserLink, RoleAccessRight, AccessRight, Role
 
+
 # Wildcard matcher
-def match_access(required: str, rights: List[str]) -> bool:
+def match_access(required: str, rights: list[str]) -> bool:
     """
     Returns True if the user rights include the required access.
     Supports wildcards '*' in sub-entity or action, but main entity must match exactly.
@@ -23,7 +24,7 @@ def match_access(required: str, rights: List[str]) -> bool:
     return False
 
 
-async def get_user_rights(session: AsyncSession, user_id, entity_context) -> List[str]:
+async def get_user_rights(session: AsyncSession, user_id, entity_context) -> list[str]:
     """
     Fetch all access rights for a user in a specific entity context.
     entity_context is a dict like:
@@ -38,7 +39,7 @@ async def get_user_rights(session: AsyncSession, user_id, entity_context) -> Lis
         .join(Role, Role.organization_id == RoleAccessRight.organization_id)
         .join(RoleUserLink, RoleUserLink.role_id == Role.id)
         .where(
-            Role.is_active == True,
+            Role.is_active,
             RoleUserLink.user_id == user_id
         )
     )
@@ -54,7 +55,8 @@ async def get_user_rights(session: AsyncSession, user_id, entity_context) -> Lis
         stmt = stmt.where(RoleUserLink.environment_entity == entity_context["environment_id"])
 
     result = await session.execute(stmt)
-    return [r for r in result.scalars().all()]
+    return list(r for r in result.scalars().all())
+
 
 async def check_access(session: AsyncSession, user_id, required_access: str, entity_context) -> bool:
     rights = await get_user_rights(session, user_id, entity_context)

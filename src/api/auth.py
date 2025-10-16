@@ -17,7 +17,6 @@ from .settings import settings
 # HTTPBearer returns 403 instead of 401. Avoid this by raising the error manually
 security = HTTPBearer(auto_error=False)
 
-
 # This is simplistic but will do for now
 _HTTP_URL_PATTERN = re.compile(r"^https?://")
 
@@ -40,8 +39,8 @@ async def user_by_id(session: SessionDep, id_: UUID):
 
 
 async def authenticated_user(
-    session: SessionDep,
-    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
+        session: SessionDep,
+        credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
 ) -> User:
     if credentials is None:
         raise HTTPException(

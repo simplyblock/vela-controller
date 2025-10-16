@@ -10,8 +10,7 @@ class HTTPError(BaseModel):
     detail: str | dict[str, Any]
 
 
-Port = Annotated[int, Field(gt=0, lt=2**16)]
-
+Port = Annotated[int, Field(gt=0, lt=2 ** 16)]
 
 NotFound = {"model": HTTPError, "description": "Not found"}
 Forbidden = {"model": HTTPError, "description": "Forbidden"}

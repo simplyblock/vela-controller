@@ -1,25 +1,27 @@
-from typing import Annotated, Dict
-from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, logger, Request
+import asyncio
+from datetime import datetime, timezone, UTC
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, logger
 from pydantic import BaseModel
 from sqlalchemy import func
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlmodel import SQLModel, select
+
 from .db import get_db
 from .models._util import Identifier
-from .models.project import Project
 from .models.branch import Branch
+from .models.project import Project
 from .models.resources import (
     BranchProvisioning, ResourceLimit,
     ResourceUsageMinute, ProvisioningLog,
     ResourceType, EntityType, ResourceConsumptionLimit
 )
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlmodel import SQLModel, select
 from .settings import settings
-import logging
+from ..check_branch_status import get_branch_status
 
 SessionDep = Annotated[AsyncSession, Depends(get_db)]
 
-logger = logging.getLogger("resource-monitor")
 router = APIRouter()
 
 # ---------------------------
@@ -39,13 +41,16 @@ AsyncSessionLocal = async_sessionmaker(
     expire_on_commit=False,
 )
 
+
 async def get_db() -> AsyncSession:
     async with AsyncSessionLocal() as session:
         yield session
 
+
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
+
 
 async def get_effective_branch_limits(db: AsyncSession, branch_id: Identifier) -> dict:
     result = await db.execute(select(Branch).where(Branch.id == branch_id))
@@ -53,7 +58,7 @@ async def get_effective_branch_limits(db: AsyncSession, branch_id: Identifier) -
     if not branch:
         raise HTTPException(404, f"Branch {branch_id} not found")
 
-    project_id  = branch.project_id
+    project_id = branch.project_id
     org_id = branch.organization_id
 
     effective_limits = {}
@@ -129,21 +134,26 @@ async def log_provisioning(
     db.add(log)
     await db.commit()
 
+
 class RessourcesPayload(BaseModel):
-    ressources: Dict[str, int]
+    ressources: dict[str, int]
+
 
 class ToFromPayload(BaseModel):
     cycle_start: datetime | None = None
     cycle_end: datetime | None = None
+
 
 class ProvLimitPayload(BaseModel):
     resource: ResourceType
     max_total: int
     max_per_branch: int
 
+
 class ConsumptionPayload(BaseModel):
     resource: ResourceType
     max_total_minutes: int
+
 
 # ---------------------------
 # Provisioning endpoints
@@ -167,8 +177,8 @@ async def provision_branch(
         if effective_limit is not None and amount > effective_limit:
             raise HTTPException(422, f"{rtype} limit exceeded for branch {branch.id}")
 
-        #total_allocated = await get_total_allocated(db, branch.project_id, rtype)
-        #if effective_limit is not None and (total_allocated + amount) > effective_limit:
+        # total_allocated = await get_total_allocated(db, branch.project_id, rtype)
+        # if effective_limit is not None and (total_allocated + amount) > effective_limit:
         #    raise HTTPException(422, f"Total allocation for {rtype.value} exceeds project/org limit")
 
         # Create or update provisioning
@@ -210,7 +220,7 @@ async def get_project_usage(
         if dt is None:
             return None
         if dt.tzinfo is not None:
-            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+            dt = dt.astimezone(UTC).replace(tzinfo=None)
         return dt
 
     cycle_start = normalize(payload.cycle_start)
@@ -244,7 +254,7 @@ async def get_org_usage(
         if dt is None:
             return None
         if dt.tzinfo is not None:
-            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+            dt = dt.astimezone(UTC).replace(tzinfo=None)
         return dt
 
     start = normalize(payload.cycle_start)
@@ -265,8 +275,6 @@ async def get_org_usage(
         result_dict[u.resource.value] += u.amount
 
     return result_dict
-
-
 
 
 # ---------------------------
@@ -336,11 +344,11 @@ async def get_provisioning_limits(
         q = q.where(ResourceLimit.project_id == entity_id)
 
     result = await db.execute(q)
-    return [dict(
-        resource=l.resource.value,
-        max_total=l.max_total,
-        max_per_branch=l.max_per_branch
-    ) for l in result.scalars().all()]
+    return [{
+        "resource": limit.resource.value,
+        "max_total": limit.max_total,
+        "max_per_branch": limit.max_per_branch
+    } for limit in result.scalars().all()]
 
 
 @router.post("/limits/consumption/{entity_type}/{entity_id}")
@@ -384,6 +392,7 @@ async def set_consumption_limit(
     await db.commit()
     return {"status": "ok", "limit": str(limit.id)}
 
+
 @router.get("/limits/consumption/{entity_type}/{entity_id}")
 async def get_consumption_limits(
         entity_type: EntityType,
@@ -397,10 +406,11 @@ async def get_consumption_limits(
         q = q.where(ResourceConsumptionLimit.project_id == entity_id)
 
     result = await db.execute(q)
-    return [dict(
-        resource=l.resource.value,
-        max_total_minutes=l.max_total_minutes
-    ) for l in result.scalars().all()]
+    return [{
+        "resource": limit.resource.value,
+        "max_total_minutes": limit.max_total_minutes
+    } for limit in result.scalars().all()]
+
 
 @router.get("/branches/{branch_id}/limits/")
 async def branch_effective_limit(
@@ -410,15 +420,12 @@ async def branch_effective_limit(
     limit = await get_effective_branch_limits(db, branch_id)
     return limit
 
-from datetime import datetime
-from sqlmodel import select
-from ..check_branch_status import get_branch_status
 
 async def monitor_resources(interval_seconds: int = 60):
     while True:
         try:
             async with AsyncSessionLocal() as db:
-                ts_minute = datetime.utcnow().replace(second=0, microsecond=0)
+                ts_minute = datetime.now(UTC).replace(second=0, microsecond=0)
 
                 result = await db.execute(
                     select(Branch)
@@ -452,6 +459,3 @@ async def monitor_resources(interval_seconds: int = 60):
             logger.exception("Error running metering monitor iteration")
 
         await asyncio.sleep(interval_seconds)
-
-
-import asyncio

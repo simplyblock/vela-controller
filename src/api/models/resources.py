@@ -1,11 +1,12 @@
-from enum import Enum as PyEnum
 from datetime import datetime
+from enum import Enum as PyEnum
 
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field
 
 from ._util import Model
 from ..._util import Identifier
+
 
 # ---------------------------
 # Enums
@@ -17,6 +18,7 @@ class ResourceType(PyEnum):
     storage_size = "storage_size"
     database_size = "database_size"
 
+
 class EntityType(PyEnum):
     org = "org"
     org_env = "org_env"
@@ -26,7 +28,7 @@ class EntityType(PyEnum):
 # ---------------------------
 # RESOURCE LIMITS & PROVISIONING
 # ---------------------------
-class ResourceLimit(AsyncAttrs, Model,  table=True):
+class ResourceLimit(AsyncAttrs, Model, table=True):
     entity_type: EntityType
     resource: ResourceType
     org_id: Identifier | None = Model.foreign_key_field("organization", nullable=True)
@@ -36,14 +38,14 @@ class ResourceLimit(AsyncAttrs, Model,  table=True):
     max_per_branch: int
 
 
-class BranchProvisioning(AsyncAttrs, Model,  table=True):
+class BranchProvisioning(AsyncAttrs, Model, table=True):
     branch_id: Identifier = Model.foreign_key_field("branch", nullable=True)
     resource: ResourceType
     amount: int
     updated_at: datetime
 
 
-class ProvisioningLog(AsyncAttrs, Model,  table=True):
+class ProvisioningLog(AsyncAttrs, Model, table=True):
     branch_id: Identifier = Model.foreign_key_field("branch", nullable=True)
     resource: ResourceType
     amount: int
@@ -52,7 +54,7 @@ class ProvisioningLog(AsyncAttrs, Model,  table=True):
     ts: datetime
 
 
-class ResourceUsageMinute(AsyncAttrs, Model,  table=True):
+class ResourceUsageMinute(AsyncAttrs, Model, table=True):
     ts_minute: datetime
     org_id: Identifier = Model.foreign_key_field("organization", nullable=True)
     project_id: Identifier = Model.foreign_key_field("project", nullable=True)
@@ -61,7 +63,7 @@ class ResourceUsageMinute(AsyncAttrs, Model,  table=True):
     amount: int
 
 
-class ResourceConsumptionLimit(AsyncAttrs, Model,  table=True):
+class ResourceConsumptionLimit(AsyncAttrs, Model, table=True):
     entity_type: EntityType
     org_id: Identifier | None = Model.foreign_key_field("organization", nullable=True)
     project_id: Identifier | None = Model.foreign_key_field("project", nullable=True)
