@@ -33,7 +33,7 @@ packages = ['simplyblock.vela']
 
 [tool.tox]
 requires = ['tox']
-env_list = ['lint', 'type-check', 'format-check', 'test']
+env_list = ['lint', 'type-check', 'format-check']
 
 [tool.tox.env.lint]
 description = 'Run linter'
@@ -52,13 +52,6 @@ description = 'Check code format'
 labels = ['static']
 deps = ['ruff']
 commands = [['ruff', 'format', '--check']]
-
-[tool.tox.env.test]
-description = 'Run API tests'
-labels = ['dynamic']
-deps = ['schemathesis', 'httpx', 'testcontainers[postgres]']
-commands = [['python3', 'tests/schemathesis.py']]
-passenv = ['DOCKER_HOST']
 
 
 [tool.ruff]

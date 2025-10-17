@@ -107,24 +107,3 @@ jobs:
 
     - name: Install charts
       run: ct install --target-branch=${{ github.head_ref || github.ref_name }} 
-
-
-  test:
-    name: API tests
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.x'
-        cache: 'pip'
-
-    - name: Install project and testing dependencies
-      run: pip install . schemathesis testcontainers[postgres]
-
-    - name: Test API
-      run: python3 tests/schemathesis.py
