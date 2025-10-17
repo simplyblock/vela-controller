@@ -36,10 +36,10 @@ async def get_user_rights(session: AsyncSession, user_id: UUID, context: Permiss
     # Query all active roles assigned to user in the context
     stmt = (
         select(AccessRight.entry)
-        .join(RoleAccessRight, AccessRight.id == RoleAccessRight.access_right_id)
-        .join(Role, Role.id == RoleAccessRight.role_id)
-        .join(Role, Role.organization_id == RoleAccessRight.organization_id)
-        .join(RoleUserLink, RoleUserLink.role_id == Role.id)
+        .join(RoleAccessRight)
+        .join(Role)
+        .join(Role)
+        .join(RoleUserLink)
         .where(Role.is_active, RoleUserLink.user_id == user_id)
     )
 
