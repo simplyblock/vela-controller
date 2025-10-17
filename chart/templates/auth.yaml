@@ -23,9 +23,11 @@ spec:
           args:
             - "start-dev" # TODO: use `start`` for prod
             - "--import-realm"
-            # - "--https-port=8443"
-            # - "--https-certificate-file=/etc/x509/https/tls.crt"
-            # - "--https-certificate-key-file=/etc/x509/https/tls.key"
+            - "--http-enabled=true"
+            - "--http-port=8080"
+            - "--https-port=8443"
+            - "--https-certificate-file=/etc/x509/https/tls.crt"
+            - "--https-certificate-key-file=/etc/x509/https/tls.key"
           ports:
             - name: https
               containerPort: 8443
@@ -55,21 +57,21 @@ spec:
             httpGet:
               path: /auth/health/started
               port: 9000
-              # scheme: HTTPS
+              scheme: HTTPS
             periodSeconds: 1
             failureThreshold: 600
           readinessProbe:
             httpGet:
               path: /auth/health/ready
               port: 9000
-              # scheme: HTTPS
+              scheme: HTTPS
             periodSeconds: 10
             failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /auth/health/live
               port: 9000
-              # scheme: HTTPS
+              scheme: HTTPS
             periodSeconds: 10
             failureThreshold: 3
           {{- with .Values.securityContext }}

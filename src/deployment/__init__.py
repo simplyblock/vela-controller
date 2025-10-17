@@ -12,6 +12,7 @@ import yaml
 from cloudflare import AsyncCloudflare, CloudflareError
 from kubernetes_asyncio.client.exceptions import ApiException
 from pydantic import BaseModel, Field, model_validator
+from .grafana import create_vela_grafana_obj
 
 from .._util import (
     CPU_CONSTRAINTS,
@@ -654,11 +655,11 @@ async def provision_branch_endpoints(
 
 async def deploy_branch_environment(
     *,
-    _organization_id: Identifier,
+    organization_id: Identifier,
     project_id: Identifier,
     branch_id: Identifier,
     branch_slug: Slug,
-    _credential: str,
+    credential: str,
     parameters: DeploymentParameters,
     jwt_secret: str,
     anon_key: str,
@@ -671,7 +672,7 @@ async def deploy_branch_environment(
 
     # Create grafana objects for vela
     # FIXME: Failed to authenticate via JWT: Client error '401 Unauthorized'
-    # await create_vela_grafana_obj(organization_id, branch_id, credential)
+    await create_vela_grafana_obj(organization_id, branch_id, credential)
 
     # Create the main deployment (database etc)
     await create_vela_config(
