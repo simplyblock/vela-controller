@@ -14,7 +14,10 @@ from ._util import Model
 from .organization import Organization, OrganizationDep
 
 if TYPE_CHECKING:
-    from .user import User  # forward reference for type hints
+    from .user import User
+
+
+RoleTypePublic = Literal["organization", "environment", "project", "branch"]
 
 
 class RoleType(PyEnum):
@@ -22,12 +25,6 @@ class RoleType(PyEnum):
     environment = 1
     project = 2
     branch = 3
-
-
-class RoleAccessRight(AsyncAttrs, Model, table=True):
-    organization_id: Identifier = Model.foreign_key_field("organization", nullable=False, primary_key=True)
-    role_id: Identifier = Model.foreign_key_field("role", nullable=False, primary_key=True)
-    access_right_id: Identifier = Model.foreign_key_field("accessright", nullable=False, primary_key=True)
 
 
 class RoleUserLink(AsyncAttrs, SQLModel, table=True):
@@ -46,6 +43,14 @@ class Role(AsyncAttrs, Model, table=True):
     users: list["User"] = Relationship(back_populates="roles", link_model=RoleUserLink)
     role_type: RoleType
     is_active: bool
+    access_rights = Relationship(back_populates="role")
+
+
+class RoleAccessRight(AsyncAttrs, Model, table=True):
+    organization_id: Identifier = Model.foreign_key_field("organization", nullable=False, primary_key=True)
+    role_id: Identifier = Model.foreign_key_field("role", nullable=False, primary_key=True)
+    role: Role = Relationship(back_populates="access_rights")
+    access_right_id: Identifier = Model.foreign_key_field("accessright", nullable=False, primary_key=True)
 
 
 class AccessRight(AsyncAttrs, Model, table=True):
@@ -59,9 +64,6 @@ async def _lookup(session: SessionDep, organization: OrganizationDep, role_id: I
         return (await session.exec(query)).one()
     except NoResultFound as e:
         raise HTTPException(404, f"Role {role_id} not found") from e
-
-
-RoleTypePublic = Literal[tuple(e.name for e in RoleType)]
 
 
 class RolePublic(BaseModel):

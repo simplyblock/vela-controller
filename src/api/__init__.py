@@ -14,7 +14,6 @@ from sqlmodel import SQLModel
 
 from ..deployment.logflare import create_global_logflare_objects
 from ..exceptions import VelaLogflareError
-from ..deployment.logflare import create_global_logflare_objects
 from .backup import router as backup_router
 from .backupmonitor import run_monitor
 from .db import engine

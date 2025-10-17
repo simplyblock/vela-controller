@@ -66,7 +66,7 @@ async def get_effective_branch_limits(db: AsyncSession, branch_id: Identifier) -
                     select(ResourceLimit).where(
                         ResourceLimit.entity_type == EntityType.org,
                         ResourceLimit.org_id == org_id,
-                        ResourceLimit.project_id.is_(None),
+                        ResourceLimit.project_id.is_(None),  # type: ignore[union-attr]
                         ResourceLimit.resource == resource,
                     )
                 )

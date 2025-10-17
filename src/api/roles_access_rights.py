@@ -95,7 +95,7 @@ async def create_role(
         id=role.id,
         organization_id=role.organization_id,
         name=role.name,
-        role_type=RoleTypePublic(role.role_type.name),
+        role_type=role.role_type.name,  # type: ignore[arg-type]
         is_active=role.is_active,
     )
 
@@ -107,15 +107,9 @@ async def create_role(
 async def modify_role(
     session: SessionDep,
     organization_id: Identifier,
-    role_id: Identifier,
+    role: RoleDep,
     payload: RolePayloadUpdate,
 ) -> RolePublic:
-    stmt = select(Role).where(Role.id == role_id, Role.organization_id == organization_id)
-    result = await session.execute(stmt)
-    role = result.scalar_one_or_none()
-    if not role:
-        raise HTTPException(404, f"Role {role_id} not found")
-
     role.is_active = payload.is_active
     role.name = payload.name
 
@@ -132,10 +126,12 @@ async def modify_role(
                 await session.delete(a)
             await session.commit()
         for ar_payload in payload.access_rights:
-            stmt = select(AccessRight).where(AccessRight.entry == ar_payload)
-            result = await session.execute(stmt)
-            ar = result.scalar_one_or_none()
-            role_access_right = RoleAccessRight(organization_id=organization_id, role_id=role.id, access_right_id=ar.id)
+            stmt2 = select(AccessRight).where(AccessRight.entry == ar_payload)
+            result2 = await session.execute(stmt2)
+            ar2 = result2.scalar_one()
+            role_access_right = RoleAccessRight(
+                organization_id=organization_id, role_id=role.id, access_right_id=ar2.id
+            )
             session.add(role_access_right)
         await session.commit()
         await session.refresh(role)
@@ -143,7 +139,13 @@ async def modify_role(
     session.add(role)
     await session.commit()
     await session.refresh(role)
-    return role
+    return RolePublic(
+        id=role.id,
+        organization_id=role.organization_id,  # type: ignore[arg-type]
+        name=role.name,
+        role_type=role.role_type,  # type: ignore[arg-type]
+        is_active=role.is_active,
+    )
 
 
 # ----------------------
@@ -334,14 +336,14 @@ async def list_roles(
     # Include access rights in response
     role_list: list[RolePermissionAssignmentPublic] = []
     for role in roles:
-        stmt = (
+        stmt2 = (
             select(AccessRight.entry)
             .select_from(RoleAccessRight)  # <- explicitly say the left table
-            .join(AccessRight, RoleAccessRight.access_right_id == AccessRight.id)
+            .join(AccessRight)
             .where(RoleAccessRight.organization_id == organization_id, RoleAccessRight.role_id == role.id)
         )
-        result = await session.execute(stmt)
-        rows = result.all()
+        result2 = await session.execute(stmt2)
+        rows = result2.all()
         role_list.append(
             RolePermissionAssignmentPublic(
                 role_id=role.id,
@@ -392,7 +394,7 @@ async def list_user_permissions(
     user_id: UUID,
 ) -> list[UserPermissionPublic]:
     stmt = (
-        select(
+        select(  # type: ignore[call-overload]
             AccessRight.entry,
             RoleUserLink.organization_id,
             RoleUserLink.project_id,
