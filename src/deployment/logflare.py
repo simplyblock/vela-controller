@@ -1,6 +1,9 @@
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 import httpx
+from httpx import Response
 
 from .._util import Identifier
 from ..exceptions import VelaLogflareError
@@ -9,7 +12,12 @@ from .settings import settings
 logger = logging.getLogger(__name__)
 
 
-async def _client(timeout: int = 10):
+async def _raise_for_status(response: Response) -> None:
+    response.raise_for_status()
+
+
+@asynccontextmanager
+async def _client(timeout: int = 10) -> AsyncIterator[httpx.AsyncClient]:
     async with httpx.AsyncClient(
         base_url=f"{settings.logflare_url}/api",
         timeout=timeout,
@@ -19,9 +27,7 @@ async def _client(timeout: int = 10):
             "Authorization": f"Bearer {settings.logflare_private_access_token}",
         },
         event_hooks={
-            "response": [
-                lambda r, *_, **__: r.raise_for_status(),
-            ]
+            "response": [_raise_for_status],
         },
     ) as client:
         yield client
@@ -39,7 +45,7 @@ async def _create_sources(sources: list[str], prefix: str | None = None) -> list
     async with _client() as client:
         try:
             # Fetch existing sources once to avoid repeated calls
-            existing_sources = {s["name"] for s in (await client.get("/api/sources")).json()}
+            existing_sources = {s["name"] for s in (await client.get("sources")).json()}
 
         except httpx.HTTPError as exc:
             raise VelaLogflareError("Failed to list existing Logflare sources") from exc
