@@ -36,6 +36,11 @@ class RoleUserLink(AsyncAttrs, SQLModel, table=True):
     branch_id: Identifier | None = Model.foreign_key_field("branch", nullable=True)
 
 
+class AccessRight(AsyncAttrs, Model, table=True):
+    entry: str
+    role_type: RoleType
+
+
 class Role(AsyncAttrs, Model, table=True):
     name: str
     organization_id: Identifier | None = Model.foreign_key_field("organization", nullable=True)
@@ -43,7 +48,7 @@ class Role(AsyncAttrs, Model, table=True):
     users: list["User"] = Relationship(back_populates="roles", link_model=RoleUserLink)
     role_type: RoleType
     is_active: bool
-    access_rights = Relationship(back_populates="role")
+    access_rights: list["RoleAccessRight"] = Relationship(back_populates="role")
 
 
 class RoleAccessRight(AsyncAttrs, Model, table=True):
@@ -51,11 +56,6 @@ class RoleAccessRight(AsyncAttrs, Model, table=True):
     role_id: Identifier = Model.foreign_key_field("role", nullable=False, primary_key=True)
     role: Role = Relationship(back_populates="access_rights")
     access_right_id: Identifier = Model.foreign_key_field("accessright", nullable=False, primary_key=True)
-
-
-class AccessRight(AsyncAttrs, Model, table=True):
-    entry: str
-    role_type: RoleType
 
 
 async def _lookup(session: SessionDep, organization: OrganizationDep, role_id: Identifier) -> Role:
