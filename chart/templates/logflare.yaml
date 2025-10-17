@@ -27,39 +27,7 @@ spec:
         app: vela-logflare
     spec:
       initContainers:
-        - name: wait-for-database
-          image: postgres:17-alpine
-          imagePullPolicy: IfNotPresent
-          env:
-            - name: DB_HOST
-              value: "{{ .Values.analytics.DB_HOST }}"
-            - name: DB_PORT
-              value: "{{ .Values.analytics.DB_PORT }}"
-            - name: DB_USER
-              valueFrom:
-                secretKeyRef:
-                  name: database
-                  key: superuser-username
-            - name: PGPASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: database
-                  key: superuser-password
-          command: ["/bin/sh", "-c"]
-          args:
-            - |
-              echo "Waiting for database..."
-              until pg_isready -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER"; do
-                sleep 2
-              done
-              echo "Database is ready"
-              
-              # Ensure postgres superuser can connect
-              until psql -h "$DB_HOST" -U "$DB_USER" -d postgres -c '\q' 2>/dev/null; do
-                echo "Waiting for Postgres superuser connection..."
-                sleep 2
-              done
-
+{{ include "vela.waitForPostgresInitContainer" (dict "host" .Values.analytics.DB_HOST "port" .Values.analytics.DB_PORT) | nindent 8 }}
         - name: init-db
           image: postgres:17-alpine
           imagePullPolicy: IfNotPresent

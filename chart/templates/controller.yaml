@@ -19,39 +19,7 @@ spec:
     spec:
       serviceAccountName: vela-controller
       initContainers:
-        - name: wait-for-database
-          image: postgres:17-alpine
-          imagePullPolicy: IfNotPresent
-          env:
-            - name: DB_HOST
-              value: database
-            - name: DB_PORT
-              value: "5432"
-            - name: DB_USER
-              valueFrom:
-                secretKeyRef:
-                  name: database
-                  key: superuser-username
-            - name: PGPASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: database
-                  key: superuser-password
-          command: ["/bin/sh", "-c"]
-          args:
-            - |
-              echo "Waiting for database..."
-              until pg_isready -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER"; do
-                sleep 2
-              done
-              echo "Database is ready"
-
-              # Ensure postgres superuser can connect
-              until psql -h "$DB_HOST" -U "$DB_USER" -d postgres -c '\q' 2>/dev/null; do
-                echo "Waiting for Postgres superuser connection..."
-                sleep 2
-              done
-
+{{ include "vela.waitForPostgresInitContainer" (dict) | nindent 8 }}
         - name: wait-for-logflare
           image: curlimages/curl:8.11.1
           imagePullPolicy: IfNotPresent
@@ -76,7 +44,6 @@ spec:
               echo "Logflare is ready."
 
       containers:
-        # todo: mount kubeconfig
         - name: vela-controller
           image: "{{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag }}"
           imagePullPolicy: Always
