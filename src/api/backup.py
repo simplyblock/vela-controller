@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Annotated, Self
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, conlist, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import delete
 from sqlmodel import asc, select
 
@@ -96,7 +96,7 @@ def _duplicates(xs):
 
 
 class SchedulePayload(BaseModel):
-    rows: conlist(ScheduleRow, min_length=1, max_length=10)
+    rows: Annotated[list[ScheduleRow], Field(min_length=0, max_length=10)]
     env_type: str | None = None
 
     @field_validator("rows")
@@ -174,17 +174,25 @@ async def add_or_replace_backup_schedule(
         raise HTTPException(status_code=404, detail="Valid branch or organization required.")
 
     # Max backups validation
-    max_allowed = organization.max_backups if organization is not None else branch.project.max_backups
+    if organization is not None:
+        max_allowed = organization.max_backups
+        entity_type = "Organization"
+        entity_id = organization.id
+    elif branch is not None:
+        max_allowed = (await branch.awaitable_attrs.project).max_backups
+        entity_type = "Branch"
+        entity_id = branch.id
+    else:
+        raise AssertionError("unreachable")
+
     if (total_retention := sum(row.retention for row in payload.rows)) > max_allowed:
-        entity_type = "Organization" if organization is not None else "Branch"
-        entity_id = organization.id if organization is not None else branch.id
         raise HTTPException(
             status_code=422,
             detail=f"Max Backups {max_allowed} of {entity_type} {entity_id} exceeded: {total_retention}",
         )
 
     if schedule:
-        session.delete(schedule)
+        await session.delete(schedule)
         schedule = None
 
     schedule = BackupSchedule(
@@ -248,10 +256,10 @@ async def list_schedules(
 
     out: list[BackupSchedulePublic] = []
     for schedule in schedules:
-        stmt = select(BackupScheduleRow)
-        stmt = stmt.where(BackupScheduleRow.schedule_id == schedule.id)
-        result = await session.execute(stmt)
-        rows = result.scalars().all()
+        stmt2 = select(BackupScheduleRow)
+        stmt2 = stmt2.where(BackupScheduleRow.schedule_id == schedule.id)
+        result2 = await session.execute(stmt2)
+        rows = result2.scalars().all()
         out.append(
             BackupSchedulePublic(
                 id=schedule.id,
@@ -424,9 +432,8 @@ async def get_branch_backup_info(
     stmt = select(BackupSchedule).where(BackupSchedule.branch_id == branch_id)
 
     result = await session.execute(stmt)
-    schedule = result.scalars().first()
+    schedule = result.scalars().one_or_none()
     level = "branch"
-    nb = None
     # Optionally, if no branch-level schedule found, fall back to org/env-level
     if not schedule:
         # Find branch’s organization and environment (if such relation exists)
@@ -448,18 +455,18 @@ async def get_branch_backup_info(
             stmt = select(BackupSchedule).where(BackupSchedule.organization_id == branch.organization_id)
             level = "organization"
         result = await session.execute(stmt)
-        schedule = result.scalars().first()
+        schedule = result.scalars().one()
 
-    stmt = (
+    stmt2 = (
         (select(NextBackup).where(NextBackup.branch_id == branch_id, NextBackup.schedule_id == schedule.id))
         .order_by(asc(NextBackup.next_at))
         .limit(1)
     )
-    result = await session.execute(stmt)
-    nb = result.scalars().first()
+    result2 = await session.execute(stmt2)
+    nb2 = result2.scalars().one()
 
     # 2️⃣ If still no schedule → no backup config
     if not schedule:
         raise HTTPException(status_code=404, detail="No backup schedule found for this branch")
 
-    return BackupInfoPublic(branch_id=branch_id, schedule_id=schedule.id, level=level, next_backup=nb.next_at)
+    return BackupInfoPublic(branch_id=branch_id, schedule_id=schedule.id, level=level, next_backup=nb2.next_at)
