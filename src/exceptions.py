@@ -6,6 +6,10 @@ class VelaDeploymentError(VelaError):
     """Deployment-side errors"""
 
 
+class VelaDeployError(VelaDeploymentError, ExceptionGroup):
+    """Errors during vela deployment"""
+
+
 class VelaKubernetesError(VelaDeploymentError):
     """Error interacting with Kubernetes"""
 
