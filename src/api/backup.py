@@ -177,10 +177,10 @@ async def add_or_replace_backup_schedule(
     max_allowed = organization.max_backups if organization is not None else branch.project.max_backups
     if (total_retention := sum(row.retention for row in payload.rows)) > max_allowed:
         entity_type = "Organization" if organization is not None else "Branch"
-        entity_ref = organization.id if organization is not None else branch.id
+        entity_id = organization.id if organization is not None else branch.id
         raise HTTPException(
             status_code=422,
-            detail=f"Max Backups {max_allowed} of {entity_type} {entity_ref} exceeded: {total_retention}",
+            detail=f"Max Backups {max_allowed} of {entity_type} {entity_id} exceeded: {total_retention}",
         )
 
     if schedule:

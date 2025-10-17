@@ -1,5 +1,5 @@
 from enum import Enum as PyEnum
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Literal
 from uuid import UUID
 
 from fastapi import Depends, HTTPException
@@ -34,7 +34,7 @@ class RoleUserLink(AsyncAttrs, SQLModel, table=True):
     organization_id: Identifier = Model.foreign_key_field("organization", nullable=False, primary_key=True)
     role_id: Identifier = Model.foreign_key_field("role", nullable=False, primary_key=True)
     user_id: UUID = Field(foreign_key="user.id", primary_key=True)
-    env_type: str = Field(nullable=True)
+    env_type: str | None
     project_id: Identifier | None = Model.foreign_key_field("project", nullable=True)
     branch_id: Identifier | None = Model.foreign_key_field("branch", nullable=True)
 
@@ -61,11 +61,14 @@ async def _lookup(session: SessionDep, organization: OrganizationDep, role_id: I
         raise HTTPException(404, f"Role {role_id} not found") from e
 
 
+RoleTypePublic = Literal[tuple(e.name for e in RoleType)]
+
+
 class RolePublic(BaseModel):
     id: Identifier
     organization_id: Identifier
     name: str
-    role_type: RoleType
+    role_type: RoleTypePublic
     is_active: bool
 
 
@@ -93,17 +96,22 @@ class RoleUnassignmentPublic(BaseModel):
     count: int
 
 
-class RoleUserAssignmentPublic(BaseModel):
+class RolePermissionAssignmentPublic(BaseModel):
     role_id: Identifier
     name: str
-    role_type: str
+    role_type: RoleTypePublic
     is_active: bool = True
     access_rights: list[str] | None
 
 
 class RoleAssignmentsPublic(BaseModel):
     count: int
-    links: list[RoleUserAssignmentPublic]
+    links: list[RoleUserLinkPublic]
+
+
+class RolePermissionsPublic(BaseModel):
+    count: int
+    links: list[RolePermissionAssignmentPublic]
 
 
 class PermissionAccessCheckContext(BaseModel):
@@ -123,6 +131,14 @@ class PermissionCheckContextPublic(BaseModel):
 class PermissionAccessCheckPublic(BaseModel):
     access_granted: bool
     context: PermissionCheckContextPublic
+
+
+class UserPermissionPublic(BaseModel):
+    permission: str
+    organization_id: Identifier | None
+    project_id: Identifier | None
+    branch_id: Identifier | None
+    env_type: str | None
 
 
 RoleDep = Annotated[Role, Depends(_lookup)]
