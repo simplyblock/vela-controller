@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import math
 import subprocess
@@ -27,7 +28,7 @@ from .._util import (
     bytes_to_mib,
     check_output,
 )
-from ..exceptions import VelaCloudflareError, VelaKubernetesError
+from ..exceptions import VelaCloudflareError, VelaDeployError, VelaKubernetesError
 from .grafana import create_vela_grafana_obj
 from .kubernetes import KubernetesService
 from .kubernetes.kubevirt import get_virtualmachine_status
@@ -674,29 +675,32 @@ async def deploy_branch_environment(
 ) -> None:
     """Background task: provision infra for a branch and persist the resulting endpoint."""
 
-    # Create logflare objects for vela
-    await create_branch_logflare_objects(branch_id=branch_id)
-
-    # Create grafana objects for vela
-    await create_vela_grafana_obj(organization_id, branch_id, credential)
-
-    # Create the main deployment (database etc)
-    await create_vela_config(
-        branch_id=branch_id,
-        parameters=parameters,
-        branch=branch_slug,
-        jwt_secret=jwt_secret,
-        anon_key=anon_key,
-        service_key=service_key,
-    )
-
-    # Provision DNS + HTTPRoute resources
-    ref = branch_dns_label(branch_id)
-    await provision_branch_endpoints(
-        spec=BranchEndpointProvisionSpec(
-            project_id=project_id,
+    async def _serial_deploy():
+        await create_vela_config(
             branch_id=branch_id,
-            branch_slug=branch_slug,
-        ),
-        ref=ref,
+            parameters=parameters,
+            branch=branch_slug,
+            jwt_secret=jwt_secret,
+            anon_key=anon_key,
+            service_key=service_key,
+        )
+
+        ref = branch_dns_label(branch_id)
+        await provision_branch_endpoints(
+            spec=BranchEndpointProvisionSpec(
+                project_id=project_id,
+                branch_id=branch_id,
+                branch_slug=branch_slug,
+            ),
+            ref=ref,
+        )
+
+    results = await asyncio.gather(
+        _serial_deploy(),
+        create_branch_logflare_objects(branch_id=branch_id),
+        create_vela_grafana_obj(organization_id, branch_id, credential),
+        return_exceptions=True,
     )
+
+    if exceptions := [result for result in results if isinstance(result, Exception)]:
+        raise VelaDeployError("Failed operations during vela deployment", exceptions)
