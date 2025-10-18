@@ -24,7 +24,7 @@ from .._util import (
     Slug,
     StatusType,
     bytes_to_gb,
-    bytes_to_mb,
+    bytes_to_mib,
     check_output,
 )
 from ..exceptions import VelaCloudflareError, VelaDeployError, VelaKubernetesError
@@ -175,7 +175,7 @@ async def create_vela_config(
 
     # Set CPU and memory resources
     resource_cfg = db_spec.setdefault("resources", {})
-    resource_cfg["guestMemory"] = f"{bytes_to_mb(parameters.memory_bytes)}M"
+    resource_cfg["guestMemory"] = f"{bytes_to_mib(parameters.memory_bytes)}Mi"
 
     # Calculate and set CPU resources
     cpu_limit, cpu_request = calculate_cpu_resources(parameters.milli_vcpu)
@@ -333,7 +333,7 @@ def resize_deployment(branch_id: Identifier, parameters: ResizeParameters):
 
     # resize memory
     if parameters.memory_bytes is not None:
-        resource_cfg["guestMemory"] = f"{bytes_to_mb(parameters.memory_bytes)}M"
+        resource_cfg["guestMemory"] = f"{bytes_to_mib(parameters.memory_bytes)}Mi"
 
     namespace = deployment_namespace(branch_id)
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as temp_values:

@@ -12,6 +12,12 @@ MB: Final[int] = KB * 1000
 GB: Final[int] = MB * 1000
 TB: Final[int] = GB * 1000
 
+KIB: Final[int] = 1024
+MIB: Final[int] = KIB * 1024
+GIB: Final[int] = MIB * 1024
+TIB: Final[int] = GIB * 1024
+
+
 # FIXME: Increasing to have faster boot times.
 # Reduce min vcpu and memory when when the image is optimised and boot time is improved.
 VCPU_MILLIS_MIN = 2000  # in milli vCPU
@@ -166,10 +172,22 @@ def bytes_to_mb(value: int) -> int:
     return value // MB
 
 
+def bytes_to_mib(value: int) -> int:
+    """Convert a byte count to the nearest whole MiB using floor division."""
+
+    return value // MIB
+
+
 def bytes_to_gb(value: int) -> int:
     """Convert a byte count to the nearest whole GB using floor division."""
 
     return value // GB
+
+
+def bytes_to_gib(value: int) -> int:
+    """Convert a byte count to the nearest whole GiB using floor division."""
+
+    return value // GIB
 
 
 def kb_to_bytes(value: int) -> int:
