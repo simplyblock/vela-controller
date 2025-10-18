@@ -191,7 +191,9 @@ class BackupMonitor:
             await db.delete(row3)  # async delete
         await db.commit()
 
-    async def resolve_schedule(self, db: AsyncSession, branch: Branch) -> BackupSchedule:
+    async def resolve_schedule(self, db: AsyncSession, branch: Branch) -> BackupSchedule | None:
+        project = await branch.awaitable_attrs.project
+
         stmt = select(BackupSchedule).where(BackupSchedule.branch_id == branch.id)
         res = await db.execute(stmt)
         schedule = res.scalar_one_or_none()
@@ -199,7 +201,7 @@ class BackupMonitor:
             return schedule
 
         stmt2 = select(BackupSchedule).where(
-            BackupSchedule.organization_id == (await branch.awaitable_attrs.project).organization_id,
+            BackupSchedule.organization_id == project.organization_id,
             BackupSchedule.env_type == branch.env_type,
             BackupSchedule.branch_id.is_(None),  # type: ignore[union-attr]
         )
@@ -209,12 +211,20 @@ class BackupMonitor:
             return schedule
 
         stmt1 = select(BackupSchedule).where(
-            BackupSchedule.organization_id == (await branch.awaitable_attrs.project).organization_id,
+            BackupSchedule.organization_id == project.organization_id,
             BackupSchedule.branch_id.is_(None),  # type: ignore[union-attr]
             BackupSchedule.env_type.is_(None),  # type: ignore[union-attr]
         )
         res1 = await db.execute(stmt1)
-        return res1.scalar_one()
+        schedule = res1.scalar_one_or_none()
+        if schedule is None:
+            logger.debug(
+                "No backup schedule found for branch %s (env %s, org %s)",
+                branch.id,
+                branch.env_type,
+                project.organization_id,
+            )
+        return schedule
 
     async def execute_backup(self, db: AsyncSession, branch: Branch, row: BackupScheduleRow, nb: NextBackup):
         be = BackupEntry(branch_id=branch.id, row_index=row.row_index, created_at=datetime.utcnow(), size_bytes=0)
