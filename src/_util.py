@@ -1,5 +1,6 @@
 import asyncio
 import subprocess
+from decimal import Decimal, InvalidOperation
 from typing import Annotated, Any, Final, Literal
 
 from pydantic import BeforeValidator, Field, PlainSerializer, StringConstraints, WithJsonSchema
@@ -45,6 +46,16 @@ MEMORY_CONSTRAINTS = {"ge": MEMORY_MIN, "le": MEMORY_MAX, "multiple_of": MEMORY_
 DATABASE_SIZE_CONSTRAINTS = {"ge": DB_SIZE_MIN, "le": DB_SIZE_MAX, "multiple_of": DB_SIZE_STEP}
 STORAGE_SIZE_CONSTRAINTS = {"ge": STORAGE_SIZE_MIN, "le": STORAGE_SIZE_MAX, "multiple_of": STORAGE_SIZE_STEP}
 IOPS_CONSTRAINTS = {"ge": IOPS_MIN, "le": IOPS_MAX}
+_QUANTITY_SUFFIXES: dict[str, int] = {
+    "ki": KIB,
+    "mi": MIB,
+    "gi": GIB,
+    "ti": TIB,
+    "k": KB,
+    "m": MB,
+    "g": GB,
+    "t": TB,
+}
 
 Slug = Annotated[
     str,
@@ -200,3 +211,31 @@ def mb_to_bytes(value: int) -> int:
     """Convert a MB count to bytes."""
 
     return value * MB
+
+
+def quantity_to_bytes(value: str | None) -> int | None:
+    """Convert a Kubernetes-style quantity string (e.g. '10Gi', '512Mi') to bytes.
+
+    Returns ``None`` for empty values and logs no errors, leaving caller responsible for handling
+    unexpected formats.
+    """
+
+    if value is None:
+        return None
+
+    quantity = value.strip()
+    if not quantity:
+        return None
+
+    for suffix, factor in _QUANTITY_SUFFIXES.items():
+        if quantity.lower().endswith(suffix):
+            number = quantity[: -len(suffix)]
+            try:
+                return int(Decimal(number) * factor)
+            except (InvalidOperation, ValueError):
+                return None
+
+    try:
+        return int(Decimal(quantity))
+    except (InvalidOperation, ValueError):
+        return None
