@@ -27,6 +27,43 @@ async def create_vela_grafana_obj(organization_id: Identifier, branch_id: Identi
     await create_dashboard(str(organization_id), folder_id, str(branch_id))
 
 
+async def delete_vela_grafana_obj(branch_id: Identifier):
+    logger.info(f"Deleting Grafana objects branch={branch_id}")
+
+    async with httpx.AsyncClient() as client:
+        try:
+            res = await client.get(f"{settings.grafana_url}/api/folders", auth=auth, headers=headers)
+            res.raise_for_status()
+            folders = res.json()
+            branch_folder_uid = next((f["uid"] for f in folders if f["title"] == str(branch_id)), None)
+
+            if branch_folder_uid:
+                await remove_folder(branch_folder_uid)
+            else:
+                logger.warning(f"No folder found for branch '{branch_id}'")
+
+            team_search = await client.get(
+                f"{settings.grafana_url}/api/teams/search?name={branch_id}", auth=auth, headers=headers
+            )
+            team_search.raise_for_status()
+            teams = team_search.json().get("teams", [])
+            if teams:
+                team_id = teams[0]["id"]
+                await remove_team(team_id)
+            else:
+                logger.warning(f"No team found for branch '{branch_id}'")
+
+            logger.info(f"Grafana objects deleted branch={branch_id}")
+
+        except httpx.HTTPError as exc:
+            logger.exception(f"HTTP error while deleting Grafana objects for branch '{branch_id}': {exc}")
+            raise VelaGrafanaError(f"Failed to delete Grafana objects for branch '{branch_id}': {exc}") from exc
+
+        except Exception as exc:
+            logger.exception(f"Unexpected error while deleting Grafana objects for branch '{branch_id}': {exc}")
+            raise VelaGrafanaError(f"Unexpected error deleting Grafana objects: {exc}") from exc
+
+
 # --- TEAM CREATION ---
 async def create_team(team_name: str):
     async with httpx.AsyncClient() as client:

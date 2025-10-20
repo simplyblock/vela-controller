@@ -29,10 +29,10 @@ from .._util import (
     check_output,
 )
 from ..exceptions import VelaCloudflareError, VelaDeployError, VelaDeploymentError, VelaKubernetesError
-from .grafana import create_vela_grafana_obj
+from .grafana import create_vela_grafana_obj, delete_vela_grafana_obj
 from .kubernetes import KubernetesService
 from .kubernetes.kubevirt import get_virtualmachine_status
-from .logflare import create_branch_logflare_objects
+from .logflare import create_branch_logflare_objects, delete_branch_logflare_objects
 from .settings import settings
 
 logger = logging.getLogger(__name__)
@@ -273,6 +273,8 @@ async def get_deployment_status(branch_id: Identifier) -> DeploymentStatus:
 async def delete_deployment(branch_id: Identifier) -> None:
     namespace, _ = get_db_vmi_identity(branch_id)
     try:
+        await delete_branch_logflare_objects(branch_id)
+        await delete_vela_grafana_obj(branch_id)
         await kube_service.delete_namespace(namespace)
     except ApiException as exc:
         if exc.status == 404:
