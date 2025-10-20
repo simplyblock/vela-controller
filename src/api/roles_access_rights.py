@@ -161,7 +161,7 @@ async def modify_role(
         is_active=role.is_active,
         is_deletable=role.is_deletable,
         description=role.description,
-        user_count=count
+        user_count=count,
     )
 
 
