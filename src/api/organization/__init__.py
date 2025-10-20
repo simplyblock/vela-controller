@@ -8,12 +8,14 @@ from sqlalchemy.exc import IntegrityError
 
 from ...deployment import delete_deployment
 from .._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
+from .._util.role import create_organization_admin_role
 from ..auth import AuthUserDep, authenticated_user
 from ..db import SessionDep
 from ..models.audit import OrganizationAuditLog
 from ..models.organization import Organization, OrganizationCreate, OrganizationDep, OrganizationUpdate
 from .member import api as member_api
 from .project import api as project_api
+from .role import RoleUserLink
 
 api = APIRouter(dependencies=[Depends(authenticated_user)], tags=["organization"])
 
@@ -87,6 +89,17 @@ async def create(
             raise
         raise HTTPException(409, f"Organization {parameters.name} already exists") from e
     await session.refresh(entity)
+
+    # Create the organization admin role
+    admin_role = await create_organization_admin_role(session, entity)
+
+    # Assign the organization admin role to the user
+    await session.refresh(user)
+    link = RoleUserLink(role_id=admin_role.id, user_id=user.id, organization_id=entity.id)
+    session.add(link)
+    await session.commit()
+    await session.refresh(entity)
+
     entity_url = url_path_for(request, "organizations:detail", organization_id=entity.id)
     return JSONResponse(
         content=entity.model_dump() if response == "full" else None,

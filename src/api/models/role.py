@@ -48,6 +48,8 @@ class Role(AsyncAttrs, Model, table=True):
     users: list["User"] = Relationship(back_populates="roles", link_model=RoleUserLink)
     role_type: RoleType
     is_active: bool
+    is_deletable: bool = True
+    description: str | None = None
     access_rights: list["RoleAccessRight"] = Relationship(back_populates="role")
 
 
@@ -58,20 +60,15 @@ class RoleAccessRight(AsyncAttrs, Model, table=True):
     access_right_id: Identifier = Model.foreign_key_field("accessright", nullable=False, primary_key=True)
 
 
-async def _lookup(session: SessionDep, organization: OrganizationDep, role_id: Identifier) -> Role:
-    try:
-        query = select(Role).where(Role.id == role_id, Role.organization_id == organization.id)
-        return (await session.exec(query)).one()
-    except NoResultFound as e:
-        raise HTTPException(404, f"Role {role_id} not found") from e
-
-
 class RolePublic(BaseModel):
     id: Identifier
     organization_id: Identifier
     name: str
+    description: str | None
     role_type: RoleTypePublic
     is_active: bool
+    is_deletable: bool
+    user_count: int
 
 
 class RoleDeletePublic(BaseModel):
@@ -98,22 +95,13 @@ class RoleUnassignmentPublic(BaseModel):
     count: int
 
 
-class RolePermissionAssignmentPublic(BaseModel):
-    role_id: Identifier
-    name: str
-    role_type: RoleTypePublic
-    is_active: bool = True
+class RoleWithPermissionsPublic(RolePublic):
     access_rights: list[str] | None
 
 
 class RoleAssignmentsPublic(BaseModel):
     count: int
     links: list[RoleUserLinkPublic]
-
-
-class RolePermissionsPublic(BaseModel):
-    count: int
-    links: list[RolePermissionAssignmentPublic]
 
 
 class PermissionAccessCheckContext(BaseModel):
@@ -141,6 +129,14 @@ class UserPermissionPublic(BaseModel):
     project_id: Identifier | None
     branch_id: Identifier | None
     env_type: str | None
+
+
+async def _lookup(session: SessionDep, organization: OrganizationDep, role_id: Identifier) -> Role:
+    try:
+        query = select(Role).where(Role.id == role_id, Role.organization_id == organization.id)
+        return (await session.exec(query)).one()
+    except NoResultFound as e:
+        raise HTTPException(404, f"Role {role_id} not found") from e
 
 
 RoleDep = Annotated[Role, Depends(_lookup)]

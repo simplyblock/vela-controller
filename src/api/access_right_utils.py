@@ -14,6 +14,8 @@ def match_access(required: str, rights: list[str]) -> bool:
     """
     req_entity, req_sub, req_action = required.split(":")
 
+
+
     for right in rights:
         entity, sub, action = right.split(":")
         if entity != req_entity:

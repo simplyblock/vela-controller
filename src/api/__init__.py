@@ -23,6 +23,7 @@ from .resources import monitor_resources
 from .resources import router as resources_router
 from .roles_access_rights import router as roles_api
 from .settings import settings
+from .system import api as system_api
 from .user import api as user_api
 
 
@@ -170,6 +171,7 @@ def health():
 app.include_router(organization_api, prefix="/organizations")
 app.include_router(user_api, prefix="/users")
 app.include_router(resources_router, prefix="/resources")
+app.include_router(system_api, prefix="/system")
 app.include_router(backup_router)
 app.include_router(roles_api)
 _use_route_names_as_operation_ids(app)
