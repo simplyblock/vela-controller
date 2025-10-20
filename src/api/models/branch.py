@@ -1,10 +1,12 @@
-from datetime import datetime
-from typing import Annotated, ClassVar, Literal, Optional
+from collections.abc import Mapping
+from datetime import UTC, datetime
+from typing import Annotated, Any, ClassVar, Literal, Optional
 
 from fastapi import Depends, HTTPException
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, ValidationError, model_validator
 from pydantic import Field as PydanticField
-from sqlalchemy import BigInteger, Column, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, Column, String, Text, UniqueConstraint, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship, select
@@ -54,6 +56,14 @@ class Branch(AsyncAttrs, Model, table=True):
     jwt_secret: Annotated[str, Field(default=None, sa_column=Column(Text, nullable=True))]
     anon_key: Annotated[str, Field(default=None, sa_column=Column(Text, nullable=True))]
     service_key: Annotated[str, Field(default=None, sa_column=Column(Text, nullable=True))]
+    resize_status: "BranchResizeStatus" = Field(
+        default="NONE",
+        sa_column=Column(String(length=48), nullable=False),
+    )
+    resize_statuses: dict[str, dict[str, str]] = Field(
+        default_factory=dict,
+        sa_column=Column(JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    )
 
     __table_args__ = (UniqueConstraint("project_id", "name", name="unique_branch_name_per_project"),)
 
@@ -238,6 +248,91 @@ class BranchStatus(BaseModel):
     realtime: BranchServiceStatus
     meta: BranchServiceStatus
     rest: BranchServiceStatus
+
+
+BranchResizeStatus = Literal[
+    "NONE",
+    "PENDING",
+    "RESIZING",
+    "FILESYSTEM_RESIZE_PENDING",
+    "COMPLETED",
+    "FAILED",
+]
+
+RESIZE_STATUS_PRIORITY: dict[BranchResizeStatus, int] = {
+    "NONE": 0,
+    "PENDING": 1,
+    "RESIZING": 2,
+    "FILESYSTEM_RESIZE_PENDING": 3,
+    "COMPLETED": 4,
+    "FAILED": 5,
+}
+
+
+class BranchResizeStatusEntry(BaseModel):
+    """Single service's resize state and the timestamp when it was observed."""
+
+    status: BranchResizeStatus
+    timestamp: str
+
+    def timestamp_as_datetime(self) -> datetime:
+        value = self.timestamp
+        if not value:
+            return datetime.min.replace(tzinfo=UTC)
+        try:
+            normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+            parsed = datetime.fromisoformat(normalized)
+        except ValueError:
+            return datetime.min.replace(tzinfo=UTC)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(UTC)
+
+
+def should_transition_resize_status(current: BranchResizeStatus | None, proposed: BranchResizeStatus) -> bool:
+    """Return True when the proposed status should replace the current one."""
+
+    if proposed not in RESIZE_STATUS_PRIORITY:
+        return False
+    if current == proposed:
+        return False
+    if proposed == "FAILED":
+        return True
+    if current is None:
+        return True
+    return RESIZE_STATUS_PRIORITY[proposed] >= RESIZE_STATUS_PRIORITY[current]
+
+
+def aggregate_resize_statuses(
+    statuses: Mapping[str, BranchResizeStatusEntry | Mapping[str, Any]] | None,
+) -> BranchResizeStatus:
+    """
+    Aggregate per-service resize statuses into a single branch-level status.
+    """
+    highest: BranchResizeStatus = "NONE"
+    if not statuses:
+        return highest
+
+    highest_timestamp = datetime.min.replace(tzinfo=UTC)
+    for entry in statuses.values():
+        if isinstance(entry, BranchResizeStatusEntry):
+            snapshot = entry
+        else:
+            try:
+                snapshot = BranchResizeStatusEntry.model_validate(entry)
+            except ValidationError:
+                continue
+
+        status = snapshot.status
+        if status not in RESIZE_STATUS_PRIORITY:
+            continue
+        timestamp = snapshot.timestamp_as_datetime()
+        if timestamp > highest_timestamp or (
+            timestamp == highest_timestamp and should_transition_resize_status(highest, status)
+        ):
+            highest = status
+            highest_timestamp = timestamp
+    return highest
 
 
 class BranchPublic(BaseModel):
