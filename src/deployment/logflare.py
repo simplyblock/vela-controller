@@ -163,7 +163,7 @@ async def _delete_sources(prefix: str) -> None:
     """
     async with _client() as client:
         try:
-            sources = (await client.get("/api/sources")).json()
+            sources = (await client.get("/sources")).json()
         except (httpx.HTTPError, ValueError) as exc:
             raise VelaLogflareError(f"Failed to list Logflare sources with prefix '{prefix}'") from exc
 
@@ -175,13 +175,14 @@ async def _delete_sources(prefix: str) -> None:
         for src in filtered_sources:
             src_id = src.get("id")
             src_name = src.get("name")
+            src_token = src.get("token")
 
             if not src_id:
                 logger.warning(f"Skipping source '{src_name}' without ID.")
                 continue
 
             try:
-                await client.delete("/sources/{src_id}")
+                await client.delete(f"/sources/{src_token}")
             except httpx.HTTPError as exc:
                 raise VelaLogflareError(f"Failed to delete Logflare source with prefix '{prefix}'") from exc
 
@@ -223,14 +224,15 @@ async def _delete_endpoint_by_name(endpoint_name: str) -> None:
             return
 
         endpoint_id = endpoint.get("id")
+        endpoint_token = endpoint.get("token")
         if not endpoint_id:
             logger.warning(f"Endpoint '{endpoint_name}' has no ID; skipping deletion.")
             return
 
         try:
-            del_resp = await client.delete(f"/endpoints/{endpoint_id}")
+            del_resp = await client.delete(f"/endpoints/{endpoint_token}")
             del_resp.raise_for_status()
-            logger.info(f"Deleted Logflare endpoint '{endpoint_name}' (id={endpoint_id}).")
+            logger.info(f"Deleted Logflare endpoint '{endpoint_name}' (id={endpoint_id}) (token={endpoint_token}).")
 
         except httpx.HTTPError as exc:
             raise VelaLogflareError(f"Failed to delete Logflare endpoint '{endpoint_name}'") from exc
