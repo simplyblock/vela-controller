@@ -18,16 +18,8 @@ keycloak:
 
 controller: 
   image:
-    repository: simplyblock/vela-controller
+    repository: docker.io/simplyblock/vela-controller
     tag: latest
-
-secret:
-  pgmeta_crypto_key: "secret"
-
-controller: 
-  image:
-    repository: docker.io/manoharbrm/vela
-    tag: 95b17
   env:
     VELA_CORS_ORIGINS: '["http://localhost:3000"]'
     VELA_CLOUDFLARE_API_TOKEN: 'your_cloudflare_api_token'
@@ -36,6 +28,9 @@ controller:
     VELA_CLOUDFLARE_DOMAIN_SUFFIX: 'example.com'
     VELA_LOGFLARE_URL: "http://vela-logflare:4000"
     VELA_GRAFANA_URL: "http://vela-grafana:3000"
+
+secret:
+  pgmeta_crypto_key: "secret"
 
 gateway:
   name: vela-public-gateway
