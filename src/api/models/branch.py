@@ -251,8 +251,7 @@ class BranchPublic(BaseModel):
     assigned_labels: list[str]
     used_resources: ResourceUsageDefinition
     api_keys: BranchApiKeys
-    service_health: BranchStatus
-    status: str  # represents the VM status like "Running", "Stopped" etc
+    service_status: BranchStatus
     ptir_enabled: bool
     created_at: datetime
     created_by: str
