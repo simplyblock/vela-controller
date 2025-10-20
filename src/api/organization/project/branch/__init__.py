@@ -151,7 +151,8 @@ def _track_resize_change(
         return
     if new_value != current_value:
         effective[parameter_key] = new_value
-        statuses[service_key] = {"status": "PENDING", "timestamp": timestamp}
+        entry: dict[str, Any] = {"status": "PENDING", "timestamp": timestamp}
+        statuses[service_key] = entry
     elif statuses.get(service_key, {}).get("status") == "PENDING":
         statuses.pop(service_key, None)
 
@@ -620,6 +621,19 @@ async def resize(
     branch: BranchDep,
 ):
     branch_in_session = await session.merge(branch)
+
+    if parameters.memory_bytes is not None:
+        current_memory = branch_in_session.memory
+        requested_memory = parameters.memory_bytes
+        if current_memory is not None and requested_memory < current_memory:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Reducing branch memory is not supported. "
+                    f"Current allocation is {current_memory} bytes, requested {requested_memory} bytes."
+                ),
+            )
+
     updated_statuses = dict(branch_in_session.resize_statuses or {})
     timestamp = datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 

@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Any, ClassVar, Literal, Optional
 
 from fastapi import Depends, HTTPException
-from pydantic import BaseModel, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 from pydantic import Field as PydanticField
 from sqlalchemy import BigInteger, Column, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
@@ -60,7 +60,7 @@ class Branch(AsyncAttrs, Model, table=True):
         default="NONE",
         sa_column=Column(String(length=48), nullable=False),
     )
-    resize_statuses: dict[str, dict[str, str]] = Field(
+    resize_statuses: dict[str, dict[str, Any]] = Field(
         default_factory=dict,
         sa_column=Column(JSONB, nullable=False, server_default=text("'{}'::jsonb")),
     )
@@ -161,7 +161,7 @@ class ResourcesDefinition(BaseModel):
     ram_bytes: Annotated[
         int,
         PydanticField(
-            **MEMORY_CONSTRAINTS,
+            gt=0,
             description="Guest memory expressed in bytes (mirrors Branch.memory).",
         ),
     ]
@@ -281,6 +281,8 @@ RESIZE_STATUS_PRIORITY: dict[BranchResizeStatus, int] = {
 
 class BranchResizeStatusEntry(BaseModel):
     """Single service's resize state and the timestamp when it was observed."""
+
+    model_config = ConfigDict(extra="allow")
 
     status: BranchResizeStatus
     timestamp: str
