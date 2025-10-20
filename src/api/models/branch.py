@@ -259,6 +259,15 @@ BranchResizeStatus = Literal[
     "FAILED",
 ]
 
+CapaResizeKey = Literal["database_size", "storage_size", "milli_vcpu", "memory_bytes"]
+
+BranchResizeService = Literal[
+    "database_disk_resize",
+    "storage_api_disk_resize",
+    "database_cpu_resize",
+    "database_memory_resize",
+]
+
 RESIZE_STATUS_PRIORITY: dict[BranchResizeStatus, int] = {
     "NONE": 0,
     "PENDING": 1,
@@ -343,6 +352,8 @@ class BranchPublic(BaseModel):
     organization_id: Identifier
     database: DatabaseInformation
     max_resources: ResourcesDefinition
+    resize_status: BranchResizeStatus
+    resize_statuses: dict[str, BranchResizeStatusEntry]
     assigned_labels: list[str]
     used_resources: ResourceUsageDefinition
     api_keys: BranchApiKeys

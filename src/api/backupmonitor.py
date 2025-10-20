@@ -263,7 +263,7 @@ class BackupMonitor:
 
 
 # in main.py or backupmonitor.py
-async def run_monitor():
+async def run_backup_monitor():
     monitor = BackupMonitor()
     while True:
         try:
