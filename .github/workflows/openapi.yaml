@@ -59,7 +59,9 @@ jobs:
 
     - name: Print the diff
       run: |
-        echo '${{ steps.diff.outputs.output }}' > openapi.diff
+        cat > openapi.diff <<'EOF'
+        ${{ steps.diff.outputs.output }}
+        EOF
         cat openapi.diff
 
     - name: Add, update, or remove PR comment
