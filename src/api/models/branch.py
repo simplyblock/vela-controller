@@ -347,7 +347,7 @@ class BranchPublic(BaseModel):
     used_resources: ResourceUsageDefinition
     api_keys: BranchApiKeys
     service_status: BranchStatus
-    ptir_enabled: bool
+    pitr_enabled: bool
     created_at: datetime
     created_by: str
     updated_at: datetime | None = None

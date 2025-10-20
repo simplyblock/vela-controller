@@ -229,7 +229,7 @@ async def _public(branch: Branch) -> BranchPublic:
         used_resources=used_resources,
         api_keys=api_keys,
         service_status=_service_status,
-        ptir_enabled=False,
+        pitr_enabled=False,
         created_at=branch.created_datetime,
         created_by="system",  # TODO: update it when user management is in place
         updated_at=None,
