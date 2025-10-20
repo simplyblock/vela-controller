@@ -16,9 +16,15 @@ PVC resize pipeline
    ``Branch`` record, updating aggregate resize state and capacity fields so that
    API consumers observe consistent progress semantics.
 
+Memory resize reconciliation
+----------------------------
+``poll_memory_resizes`` periodically enumerates branches with outstanding
+resizes, pulls their backing VirtualMachineInstance objects, and updates memory
+metrics in-place, using the same aggregate status semantics as the PVC path.
+
 Control surface
 ---------------
-``run_resize_monitor`` drives both multiple loops concurrently, coordinating shutdown via
+``run_resize_monitor`` drives both loops concurrently, coordinating shutdown via
 ``ResizeMonitor`` which offers a simple start/stop interface for long-lived
 services. The design emphasizes:
 * backpressure-aware queuing so surges of events do not starve handlers;
@@ -47,6 +53,7 @@ from ....api.models.branch import (
 )
 from ....deployment import deployment_branch
 from ....exceptions import VelaDeployError, VelaKubernetesError
+from .memory_resize import poll_memory_resizes
 from .pvc_resize import (
     INITIAL_BACKOFF_SECONDS,
     VOLUME_SERVICE_MAP,
@@ -151,16 +158,25 @@ async def _handle_pvc_event(core_v1: CoreV1Api, event: CoreV1Event) -> None:
 
 
 async def run_resize_monitor(stop_event: asyncio.Event) -> None:
-    """Drive PVC resize monitor until the caller signals shutdown."""
+    """Drive both memory and PVC resize monitors until the caller signals shutdown."""
+    memory_task = asyncio.create_task(poll_memory_resizes(stop_event))
     while not stop_event.is_set():
         try:
             await stream_pvc_events(stop_event, _handle_pvc_event)
+        except asyncio.CancelledError:
+            memory_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await memory_task
+            raise
         except VelaKubernetesError as exc:
             logger.warning("PVC resize monitor awaiting Kubernetes configuration: %s", exc)
             await asyncio.sleep(INITIAL_BACKOFF_SECONDS)
         except Exception:  # pragma: no cover - defensive guard
             logger.exception("PVC resize monitor unexpected failure; retrying")
             await asyncio.sleep(INITIAL_BACKOFF_SECONDS)
+    memory_task.cancel()
+    with suppress(asyncio.CancelledError):
+        await memory_task
 
 
 class ResizeMonitor:
