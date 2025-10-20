@@ -12,18 +12,35 @@ securityContext:
     type: 'RuntimeDefault'
 
 domain: staging.vela.run
-domaincertsecret: vela-run-staging-wildcard-cert  # TODO: use cert manager 
 
 keycloak:
   realmFile: files/realm.json
 
 controller: 
   image:
-    repository: simplyblock/vela-controller
+    repository: docker.io/simplyblock/vela-controller
     tag: latest
+  env:
+    VELA_CORS_ORIGINS: '["http://localhost:3000"]'
+    VELA_CLOUDFLARE_API_TOKEN: 'your_cloudflare_api_token'
+    VELA_CLOUDFLARE_ZONE_ID: 'your_cloudflare_zone_id'
+    VELA_CLOUDFLARE_BRANCH_REF_CNAME: 'branch-ref.staging.vela.run'
+    VELA_CLOUDFLARE_DOMAIN_SUFFIX: 'example.com'
+    VELA_LOGFLARE_URL: "http://vela-logflare:4000"
+    VELA_GRAFANA_URL: "http://vela-grafana:3000"
 
 secret:
   pgmeta_crypto_key: "secret"
+
+gateway:
+  name: vela-public-gateway
+  namespace: kong-system
+
+issuer: ca-issuer
+
+prometheus:
+  name: vela-prometheus
+  namespace: monitoring
 
 analytics:
   DB_HOST: database
@@ -44,6 +61,7 @@ monitoring:
   VELA_GRAFANA_SECURITY_ADMIN_PASSWORD: password
   
 studio:
+  enabled: true
   env:
     PLATFORM_PG_META_URL: 'http://meta:8080'
     SUPABASE_URL: 'http://kong:8000'
@@ -69,3 +87,6 @@ studio:
     VELA_PLATFORM_EXT_API_SERVICE_URL: 'http://staging.vela.run/api'
 
     VELA_PLATFORM_URL: 'http://vela-controller-service:8000'
+
+vector:
+  enabled: true

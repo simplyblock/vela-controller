@@ -1,3 +1,5 @@
+{{- if .Values.studio.enabled }}
+{{- $env := default (dict) .Values.studio.env }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -59,7 +61,6 @@ data:
 {{- range $key, $value := $env }}
   {{ $key }}: {{ $value | quote }}
 {{- end }}
-{{- end }}
 ---
 apiVersion: v1
 kind: Service
@@ -94,3 +95,4 @@ spec:
         - name: vela-studio-service
           namespace: {{ .Release.Namespace }}
           port: 3000
+{{- end }}

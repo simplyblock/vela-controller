@@ -12,6 +12,7 @@ import yaml
 from cloudflare import AsyncCloudflare, CloudflareError
 from kubernetes_asyncio.client.exceptions import ApiException
 from pydantic import BaseModel, Field, model_validator
+from ulid import ULID
 
 from .._util import (
     CPU_CONSTRAINTS,
@@ -27,7 +28,7 @@ from .._util import (
     bytes_to_mib,
     check_output,
 )
-from ..exceptions import VelaCloudflareError, VelaDeployError, VelaKubernetesError
+from ..exceptions import VelaCloudflareError, VelaDeployError, VelaDeploymentError, VelaKubernetesError
 from .grafana import create_vela_grafana_obj, delete_vela_grafana_obj
 from .kubernetes import KubernetesService
 from .kubernetes.kubevirt import get_virtualmachine_status
@@ -51,6 +52,26 @@ def deployment_namespace(branch_id: Identifier) -> str:
     if prefix:
         return f"{prefix}-{branch_value}"
     return branch_value
+
+
+def deployment_branch(namespace: str) -> ULID:
+    """Return the branch ULID for a given deployment namespace."""
+
+    prefix = settings.deployment_namespace_prefix.strip().lower()
+    normalized = namespace.strip().lower()
+    if prefix:
+        prefix_token = f"{prefix}-"
+        if not normalized.startswith(prefix_token):
+            raise VelaDeploymentError(
+                f"Namespace '{namespace}' does not match deployment prefix '{prefix}'",
+            )
+        suffix = normalized[len(prefix_token) :]
+    else:
+        suffix = normalized
+    try:
+        return ULID.from_str(suffix.upper())
+    except ValueError as e:
+        raise VelaDeploymentError(f"Invalid branch ULID in namespace '{namespace}'") from e
 
 
 def branch_dns_label(branch_id: Identifier) -> str:
@@ -702,7 +723,9 @@ async def deploy_branch_environment(
     results = await asyncio.gather(
         _serial_deploy(),
         create_branch_logflare_objects(branch_id=branch_id),
-        create_vela_grafana_obj(organization_id, branch_id, credential),
+        create_vela_grafana_obj(
+            organization_id, branch_id, credential
+        ),  # FIXME: Fails with error: "certificate signed by unknown authority"
         return_exceptions=True,
     )
 

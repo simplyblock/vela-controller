@@ -27,8 +27,9 @@ spec:
         app: vela-logflare
     spec:
       initContainers:
+{{ include "vela.waitForPostgresInitContainer" (dict "host" .Values.analytics.DB_HOST "port" .Values.analytics.DB_PORT) | nindent 8 }}
         - name: init-db
-          image: postgres:15-alpine
+          image: postgres:17-alpine
           imagePullPolicy: IfNotPresent
           env:
             - name: DB_HOST
@@ -52,18 +53,25 @@ spec:
           command: ["/bin/sh", "-c"]
           args:
             - |
-                echo "Waiting for database..."
-                until pg_isready -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER"; do
-                sleep 2
-                done
-                echo "Database is ready"
-                
-                # Create the database if it doesn't exist
-                psql -h "$DB_HOST" -U "$DB_USER" -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = '$DB_DATABASE'" | grep -q 1 || \
-                psql -h "$DB_HOST" -U "$DB_USER" -d postgres -c "CREATE DATABASE $DB_DATABASE;"
+                set -euo pipefail
 
-                # Ensure schema exists
-                psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_DATABASE" -c "CREATE SCHEMA IF NOT EXISTS $DB_SCHEMA;"
+                # Create the database if it doesn't exist
+                if ! psql -h "$DB_HOST" -U "$DB_USER" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='${DB_DATABASE}'" | grep -q 1; then
+                  echo "Creating database $DB_DATABASE..."
+                  psql -h "$DB_HOST" -U "$DB_USER" -d postgres -c "CREATE DATABASE ${DB_DATABASE};"
+                else
+                  echo "Database $DB_DATABASE already exists."
+                fi
+
+                # Wait until the new DB accepts connections
+                until psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_DATABASE" -c '\q' 2>/dev/null; do
+                  echo "Waiting for database $DB_DATABASE to become available..."
+                  sleep 2
+                done
+
+                # Ensure schema exists (default to "public" if not set)
+                SCHEMA="${DB_SCHEMA:-public}"
+                psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_DATABASE" -c "CREATE SCHEMA IF NOT EXISTS ${SCHEMA};"
 
                 echo "DB Init finished"
       containers:
@@ -143,8 +151,8 @@ metadata:
   name: vela-logflare
 spec:
   parentRefs:
-    - name: vela-public-gateway
-      namespace: kong-system
+    - name: {{ .Values.gateway.name }}
+      namespace: {{ .Values.gateway.namespace }}
   hostnames:
     - "{{ .Values.domain }}"
   rules:
