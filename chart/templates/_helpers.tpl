@@ -51,7 +51,7 @@ The helper accepts a dictionary with the following optional keys:
       done
       echo "Database is ready"
 
-      # Ensure postgres superuser can connect
+      # Ensure postgres user can connect
       until psql -h "$DB_HOST" -U "$DB_USER" -d postgres -c '\q' 2>/dev/null; do
         echo "Waiting for Postgres superuser connection..."
         sleep 2
