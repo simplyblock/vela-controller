@@ -1,4 +1,5 @@
 INSERT INTO accessright (id, entry, role_type) VALUES
+(gen_random_uuid(), 'org:owner:admin', 'organization'),
 (gen_random_uuid(), 'org:settings:read', 'organization'),
 (gen_random_uuid(), 'org:settings:admin', 'organization'),
 (gen_random_uuid(), 'org:auth:read', 'organization'),

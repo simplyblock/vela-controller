@@ -143,8 +143,8 @@ async def log_provisioning(
     await db.commit()
 
 
-class RessourcesPayload(BaseModel):
-    ressources: dict[str, int]
+class ResourcesPayload(BaseModel):
+    resources: dict[str, int]
 
 
 class ToFromPayload(BaseModel):
@@ -170,7 +170,7 @@ class ConsumptionPayload(BaseModel):
 async def provision_branch(
     session: SessionDep,
     branch_id: Identifier,
-    payload: RessourcesPayload,
+    payload: ResourcesPayload,
 ):
     provision = payload.ressources
     result = await session.execute(select(Branch).where(Branch.id == branch_id))
