@@ -27,13 +27,9 @@ from .....deployment import (
     resize_deployment,
     update_branch_database_password,
 )
-from .....deployment.kubernetes.kubevirt import (
-    KubevirtSubresourceAction,
-    call_kubevirt_subresource,
-    get_virtualmachine_status,
-)
+from .....deployment.kubernetes.kubevirt import KubevirtSubresourceAction, call_kubevirt_subresource
 from .....deployment.settings import settings as deployment_settings
-from .....exceptions import VelaDeploymentError, VelaError
+from .....exceptions import VelaError
 from ...._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ...._util.crypto import encrypt_with_passphrase
 from ....auth import security
@@ -206,18 +202,12 @@ async def _public(branch: Branch) -> BranchPublic:
         iops=0,
         storage_bytes=None,
     )
-    namespace, vmi_name = get_db_vmi_identity(branch.id)
-    status = "UNKNOWN"
+    namespace, _ = get_db_vmi_identity(branch.id)
     try:
-        status = await get_virtualmachine_status(namespace, vmi_name)
-    except VelaDeploymentError:
-        logging.exception("Failed to query VM status")
-
-    try:
-        _service_health = await _collect_branch_service_health(namespace)
+        _service_status = await _collect_branch_service_health(namespace)
     except Exception:
         logging.exception("Failed to determine service health via socket probes")
-        _service_health = BranchStatus(
+        _service_status = BranchStatus(
             database="UNKNOWN",
             realtime="UNKNOWN",
             storage="UNKNOWN",
@@ -238,8 +228,7 @@ async def _public(branch: Branch) -> BranchPublic:
         assigned_labels=[],
         used_resources=used_resources,
         api_keys=api_keys,
-        status=status,
-        service_health=_service_health,
+        service_status=_service_status,
         ptir_enabled=False,
         created_at=branch.created_datetime,
         created_by="system",  # TODO: update it when user management is in place
