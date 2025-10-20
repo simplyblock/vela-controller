@@ -43,8 +43,8 @@ class AccessRight(AsyncAttrs, Model, table=True):
 
 class Role(AsyncAttrs, Model, table=True):
     name: str
-    organization_id: Identifier | None = Model.foreign_key_field("organization", nullable=True)
-    organization: Organization | None = Relationship(back_populates="roles")
+    organization_id: Identifier = Model.foreign_key_field("organization", nullable=True)
+    organization: Organization = Relationship(back_populates="roles")
     users: list["User"] = Relationship(back_populates="roles", link_model=RoleUserLink)
     role_type: RoleType
     is_active: bool

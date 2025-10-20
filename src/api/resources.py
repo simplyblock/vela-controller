@@ -172,7 +172,7 @@ async def provision_branch(
     branch_id: Identifier,
     payload: ResourcesPayload,
 ):
-    provision = payload.ressources
+    provision = payload.resources
     result = await session.execute(select(Branch).where(Branch.id == branch_id))
     branch = result.scalars().first()
     if not branch:
