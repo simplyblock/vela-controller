@@ -362,21 +362,21 @@ async def create_global_logflare_objects():
     logger.info(f"Created {len(sources)} global sources and endpoint {endpoint_id}.")
 
 
-async def delete_branch_logflare_objects(branch_id: str):
+async def delete_branch_logflare_objects(branch_id: Identifier):
     """
     Delete all Logflare objects (sources and endpoint) associated with a specific branch.
     This function combines deletion of sources and the aggregated endpoint.
     """
     logger.info(f"Deleting all Logflare objects for branch_id={branch_id}")
     try:
-        await delete_branch_sources(branch_id)
+        await delete_branch_sources(str(branch_id))
         logger.info(f"Deleted all sources for branch '{branch_id}' successfully.")
     except VelaLogflareError as exc:
         logger.error(f"Failed to delete sources for branch '{branch_id}': {exc}")
         raise
 
     try:
-        await delete_branch_endpoint(branch_id)
+        await delete_branch_endpoint(str(branch_id))
         logger.info(f"Deleted endpoint for branch '{branch_id}' successfully.")
     except VelaLogflareError as exc:
         logger.error(f"Failed to delete endpoint for branch '{branch_id}': {exc}")
