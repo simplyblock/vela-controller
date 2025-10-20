@@ -26,8 +26,9 @@ async def create_vela_grafana_obj(organization_id: Identifier, branch_id: Identi
     await add_user_to_team(team_id, user_id)
     await create_dashboard(str(organization_id), folder_id, str(branch_id))
 
-async def delete_vela_grafana_obj(organization_id: Identifier, branch_id: Identifier, credential):
-    logger.info(f"Deleting Grafana objects for organization={organization_id}, branch={branch_id}")
+
+async def delete_vela_grafana_obj(branch_id: Identifier):
+    logger.info(f"Deleting Grafana objects branch={branch_id}")
 
     async with httpx.AsyncClient() as client:
         try:
@@ -35,7 +36,6 @@ async def delete_vela_grafana_obj(organization_id: Identifier, branch_id: Identi
             res.raise_for_status()
             folders = res.json()
             branch_folder_uid = next((f["uid"] for f in folders if f["title"] == str(branch_id)), None)
-            org_folder_uid = next((f["uid"] for f in folders if f["title"] == str(organization_id)), None)
 
             if branch_folder_uid:
                 await remove_folder(branch_folder_uid)
@@ -53,13 +53,7 @@ async def delete_vela_grafana_obj(organization_id: Identifier, branch_id: Identi
             else:
                 logger.warning(f"No team found for branch '{branch_id}'")
 
-            if org_folder_uid:
-                try:
-                    await remove_folder(org_folder_uid)
-                except VelaGrafanaError as e:
-                    logger.info(f"Skipping deletion of org folder '{organization_id}': likely not empty ({e})")
-
-            logger.info(f"Grafana objects deleted for organization={organization_id}, branch={branch_id}")
+            logger.info(f"Grafana objects deleted branch={branch_id}")
 
         except httpx.HTTPError as exc:
             logger.exception(f"HTTP error while deleting Grafana objects for branch '{branch_id}': {exc}")

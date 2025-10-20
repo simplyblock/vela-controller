@@ -361,6 +361,7 @@ async def create_global_logflare_objects():
 
     logger.info(f"Created {len(sources)} global sources and endpoint {endpoint_id}.")
 
+
 async def delete_branch_logflare_objects(branch_id: str):
     """
     Delete all Logflare objects (sources and endpoint) associated with a specific branch.
