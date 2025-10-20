@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import logging
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from typing import Annotated, Any, Literal, cast
 
 from asyncpg import exceptions as asyncpg_exceptions
@@ -10,6 +11,7 @@ from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials
 from keycloak.exceptions import KeycloakError
 from kubernetes_asyncio.client.exceptions import ApiException
+from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 
 from ....._util import DEFAULT_DB_NAME, DEFAULT_DB_USER, Identifier
@@ -43,11 +45,15 @@ from ....models.branch import (
     BranchDep,
     BranchPasswordReset,
     BranchPublic,
+    BranchResizeService,
+    BranchResizeStatusEntry,
     BranchServiceStatus,
     BranchStatus,
     BranchUpdate,
+    CapaResizeKey,
     DatabaseInformation,
     ResourceUsageDefinition,
+    aggregate_resize_statuses,
 )
 from ....models.branch import (
     lookup as lookup_branch,
@@ -119,6 +125,51 @@ async def _collect_branch_service_health(namespace: str) -> BranchStatus:
         meta=results["meta"],
         rest=results["rest"],
     )
+
+
+_PARAMETER_TO_SERVICE: dict[CapaResizeKey, BranchResizeService] = {
+    "database_size": "database_disk_resize",
+    "storage_size": "storage_api_disk_resize",
+    "milli_vcpu": "database_cpu_resize",
+    "memory_bytes": "database_memory_resize",
+}
+
+
+def _track_resize_change(
+    *,
+    parameter_key: CapaResizeKey,
+    new_value: int | None,
+    current_value: int,
+    statuses: dict[str, dict[str, str]],
+    effective: dict[CapaResizeKey, int],
+    timestamp: str,
+) -> None:
+    service_key = _PARAMETER_TO_SERVICE[parameter_key]
+    if new_value is None:
+        return
+    if new_value != current_value:
+        effective[parameter_key] = new_value
+        statuses[service_key] = {"status": "PENDING", "timestamp": timestamp}
+    elif statuses.get(service_key, {}).get("status") == "PENDING":
+        statuses.pop(service_key, None)
+
+
+async def _apply_resize_operations(branch: Branch, effective_parameters: dict[CapaResizeKey, int]) -> None:
+    resize_params = ResizeParameters(**{str(key): value for key, value in effective_parameters.items()})
+    cpu_limit = cpu_request = None
+    if "milli_vcpu" in effective_parameters:
+        cpu_limit, cpu_request = calculate_cpu_resources(effective_parameters["milli_vcpu"])
+
+    resize_deployment(branch.id, resize_params)
+
+    if cpu_limit is not None and cpu_request is not None:
+        namespace, vm_name = get_db_vmi_identity(branch.id)
+        await kube_service.resize_vm_compute_cpu(
+            namespace,
+            vm_name,
+            cpu_request=cpu_request,
+            cpu_limit=cpu_limit,
+        )
 
 
 async def _deploy_branch_environment_task(
@@ -217,6 +268,20 @@ async def _public(branch: Branch) -> BranchPublic:
 
     api_keys = BranchApiKeys(anon=branch.anon_key, service_role=branch.service_key)
 
+    normalized_resize_statuses: dict[str, BranchResizeStatusEntry] = {}
+    for service, entry in (branch.resize_statuses or {}).items():
+        if isinstance(entry, BranchResizeStatusEntry):
+            normalized_resize_statuses[service] = entry
+            continue
+        try:
+            normalized_resize_statuses[service] = BranchResizeStatusEntry.model_validate(entry)
+        except ValidationError:
+            logger.warning(
+                "Skipping invalid resize status entry for branch %s service %s",
+                branch.id,
+                service,
+            )
+
     return BranchPublic(
         id=branch.id,
         name=branch.name,
@@ -225,6 +290,8 @@ async def _public(branch: Branch) -> BranchPublic:
         database=database_info,
         env_type=branch.env_type,
         max_resources=max_resources,
+        resize_status=branch.resize_status,
+        resize_statuses=normalized_resize_statuses,
         assigned_labels=[],
         used_resources=used_resources,
         api_keys=api_keys,
@@ -509,22 +576,58 @@ async def reset_password(
     status_code=202,
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
-async def resize(_organization: OrganizationDep, _project: ProjectDep, parameters: ResizeParameters, branch: BranchDep):
-    # Trigger helm upgrade with provided parameters; returns 202 Accepted
-    cpu_limit = cpu_request = None
-    if parameters.milli_vcpu is not None:
-        cpu_limit, cpu_request = calculate_cpu_resources(parameters.milli_vcpu)
+async def resize(
+    session: SessionDep,
+    _organization: OrganizationDep,
+    _project: ProjectDep,
+    parameters: ResizeParameters,
+    branch: BranchDep,
+):
+    branch_in_session = await session.merge(branch)
+    updated_statuses = dict(branch_in_session.resize_statuses or {})
+    timestamp = datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
-    resize_deployment(branch.id, parameters)
+    effective_parameters: dict[CapaResizeKey, int] = {}
 
-    if cpu_limit is not None and cpu_request is not None:
-        namespace, vm_name = get_db_vmi_identity(branch.id)
-        await kube_service.resize_vm_compute_cpu(
-            namespace,
-            vm_name,
-            cpu_request=cpu_request,
-            cpu_limit=cpu_limit,
-        )
+    _track_resize_change(
+        parameter_key="database_size",
+        new_value=parameters.database_size,
+        current_value=branch_in_session.database_size,
+        statuses=updated_statuses,
+        effective=effective_parameters,
+        timestamp=timestamp,
+    )
+    _track_resize_change(
+        parameter_key="storage_size",
+        new_value=parameters.storage_size,
+        current_value=branch_in_session.storage_size,
+        statuses=updated_statuses,
+        effective=effective_parameters,
+        timestamp=timestamp,
+    )
+    _track_resize_change(
+        parameter_key="milli_vcpu",
+        new_value=parameters.milli_vcpu,
+        current_value=branch_in_session.milli_vcpu,
+        statuses=updated_statuses,
+        effective=effective_parameters,
+        timestamp=timestamp,
+    )
+    _track_resize_change(
+        parameter_key="memory_bytes",
+        new_value=parameters.memory_bytes,
+        current_value=branch_in_session.memory,
+        statuses=updated_statuses,
+        effective=effective_parameters,
+        timestamp=timestamp,
+    )
+
+    if effective_parameters:
+        await _apply_resize_operations(branch_in_session, effective_parameters)
+
+    branch_in_session.resize_statuses = updated_statuses
+    branch_in_session.resize_status = aggregate_resize_statuses(updated_statuses)
+    await session.commit()
     return Response(status_code=202)
 
 

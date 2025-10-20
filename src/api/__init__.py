@@ -13,9 +13,10 @@ from pydantic import BaseModel
 from sqlmodel import SQLModel
 
 from ..deployment.logflare import create_global_logflare_objects
+from ..deployment.monitors.resize import ResizeMonitor
 from ..exceptions import VelaLogflareError
 from .backup import router as backup_router
-from .backupmonitor import run_monitor
+from .backupmonitor import run_backup_monitor
 from .db import engine
 from .organization import api as organization_api
 from .resources import monitor_resources
@@ -174,6 +175,9 @@ app.include_router(roles_api)
 _use_route_names_as_operation_ids(app)
 
 
+_resize_monitor = ResizeMonitor()
+
+
 @app.on_event("startup")
 async def on_startup():
     await _create_db_and_tables()
@@ -184,8 +188,14 @@ async def on_startup():
             raise
         logging.error("Timeout while creating global logflare entities")
     # start async background monitor
-    asyncio.create_task(run_monitor())
+    asyncio.create_task(run_backup_monitor())
     asyncio.create_task(monitor_resources(60))
+    _resize_monitor.start()
+
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    await _resize_monitor.stop()
 
 
 __all__ = ["app"]
