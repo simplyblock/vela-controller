@@ -1,3 +1,4 @@
+from typing import cast
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
@@ -367,7 +368,7 @@ async def list_roles(
             organization_id=role.organization_id,
             description=role.description,
             is_deletable=role.is_deletable,
-            role_type=role.role_type.name,
+            role_type=cast("RoleTypePublic", role.role_type.name),
             name=role.name,
             is_active=role.is_active,
             access_rights=[row.entry for row in result.all()],

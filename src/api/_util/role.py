@@ -1,13 +1,12 @@
-from cloudflare.types.user import Organization
 from sqlmodel import select
 
 from ..db import SessionDep
-from ..models.role import AccessRight, Role, RoleAccessRight, RoleType
+from ..models.role import AccessRight, Organization, Role, RoleAccessRight, RoleType
 
 
 async def get_access_rights(session: SessionDep) -> list[AccessRight]:
     result = await session.execute(select(AccessRight))
-    return result.scalars().all()
+    return list(result.scalars().all())
 
 
 async def create_organization_admin_role(session: SessionDep, organization: Organization) -> Role:
