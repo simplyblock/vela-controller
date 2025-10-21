@@ -4,10 +4,10 @@ from collections import Counter
 from datetime import datetime
 from typing import Annotated, Self
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator, model_validator
-from sqlalchemy import delete
-from sqlmodel import asc, select
+from sqlmodel import asc, delete, select
+from ulid import ULID
 
 from .db import SessionDep
 from .models._util import Identifier
@@ -26,7 +26,7 @@ from .models.backups import (
     BackupScheduleRowPublic,
     NextBackup,
 )
-from .models.branch import Branch, BranchDep
+from .models.branch import Branch
 from .models.organization import Organization, OrganizationDep
 from .models.project import Project
 
@@ -107,6 +107,10 @@ class SchedulePayload(BaseModel):
         return rows
 
 
+class BackupScheduleUpdate(SchedulePayload):
+    schedule_id: ULID
+
+
 logging.basicConfig(
     level=os.environ.get("LOG_LEVEL", "INFO"),
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -136,29 +140,58 @@ async def _lookup_backup_schedule(
     return result.scalars().one_or_none()
 
 
-BackupScheduleDep = Annotated[BackupSchedule | None, _lookup_backup_schedule]
+BackupScheduleDep = Annotated[BackupSchedule | None, Depends(_lookup_backup_schedule)]
 
 
 @router.post("/backup/organizations/{organization_id}/schedule")
-@router.put("/backup/organizations/{organization_id}/schedule")
-async def add_or_replace_org_backup_schedule(
+async def add_org_backup_schedule(
     session: SessionDep,
     payload: SchedulePayload,
     organization: OrganizationDep,
-    schedule: BackupScheduleDep,
 ) -> BackupScheduleCreatePublic:
-    return await add_or_replace_backup_schedule(session, payload, organization, None, schedule)
+    response = await add_or_replace_backup_schedule(session, payload, organization, None, None)
+    return response
+
+
+@router.put("/backup/organizations/{organization_id}/schedule")
+async def replace_org_backup_schedule(
+    session: SessionDep,
+    payload: BackupScheduleUpdate,
+    organization: OrganizationDep,
+) -> BackupScheduleCreatePublic:
+    # Dependency object don't work as they bring in required query parameters
+    result = await session.execute(select(BackupSchedule).where(BackupSchedule.id == payload.schedule_id))
+    schedule = result.scalars().one_or_none()
+    response = await add_or_replace_backup_schedule(session, payload, organization, None, schedule)
+    return response
 
 
 @router.post("/backup/branches/{branch_id}/schedule")
-@router.put("/backup/branches/{branch_id}/schedule")
-async def add_or_replace_branch_backup_schedule(
+async def add_branch_backup_schedule(
     session: SessionDep,
     payload: SchedulePayload,
-    branch: BranchDep,
-    schedule: BackupScheduleDep,
+    branch_id: ULID,
 ) -> BackupScheduleCreatePublic:
-    return await add_or_replace_backup_schedule(session, payload, None, branch, schedule)
+    # Dependency object don't work as they bring in required query parameters
+    result = await session.execute(select(Branch).where(Branch.id == branch_id))
+    branch = result.scalars().one_or_none()
+    response = await add_or_replace_backup_schedule(session, payload, None, branch, None)
+    return response
+
+
+@router.put("/backup/branches/{branch_id}/schedule")
+async def replace_branch_backup_schedule(
+    session: SessionDep,
+    payload: BackupScheduleUpdate,
+    branch_id: ULID,
+) -> BackupScheduleCreatePublic:
+    # Dependency object don't work as they bring in required query parameters
+    result = await session.execute(select(Branch).where(Branch.id == branch_id))
+    branch = result.scalars().one_or_none()
+    result = await session.execute(select(BackupSchedule).where(BackupSchedule.id == payload.schedule_id))
+    schedule = result.scalars().one_or_none()
+    response = await add_or_replace_backup_schedule(session, payload, None, branch, schedule)
+    return response
 
 
 async def add_or_replace_backup_schedule(
@@ -191,9 +224,15 @@ async def add_or_replace_backup_schedule(
             detail=f"Max Backups {max_allowed} of {entity_type} {entity_id} exceeded: {total_retention}",
         )
 
-    if schedule:
-        await session.delete(schedule)
-        schedule = None
+    if schedule is not None:
+        await session.execute(delete(BackupScheduleRow).where(BackupScheduleRow.schedule_id == schedule.id))  # type: ignore
+        await session.execute(delete(NextBackup).where(NextBackup.schedule_id == schedule.id))  # type: ignore
+        await session.execute(delete(BackupSchedule).where(BackupSchedule.id == schedule.id))  # type: ignore
+        await session.commit()
+        if organization is not None:
+            await session.refresh(organization)
+        if branch is not None:
+            await session.refresh(branch)
 
     schedule = BackupSchedule(
         organization_id=organization.id if organization is not None else None,
@@ -211,7 +250,9 @@ async def add_or_replace_backup_schedule(
     )
     session.add(schedule)
     await session.commit()
-    return BackupScheduleCreatePublic(status="ok", schedule_id=await schedule.awaitable_attrs.id)
+    await session.refresh(schedule)
+
+    return BackupScheduleCreatePublic(status="ok", schedule_id=schedule.id)
 
 
 # ---------------------------
