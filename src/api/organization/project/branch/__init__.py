@@ -28,6 +28,7 @@ from .....deployment import (
     kube_service,
     resize_deployment,
     update_branch_database_password,
+    update_branch_volume_iops,
 )
 from .....deployment.kubernetes.kubevirt import KubevirtSubresourceAction, call_kubevirt_subresource
 from .....deployment.settings import settings as deployment_settings
@@ -132,6 +133,7 @@ _PARAMETER_TO_SERVICE: dict[CapaResizeKey, BranchResizeService] = {
     "storage_size": "storage_api_disk_resize",
     "milli_vcpu": "database_cpu_resize",
     "memory_bytes": "database_memory_resize",
+    "iops": "database_iops_resize",
 }
 
 
@@ -161,6 +163,9 @@ async def _apply_resize_operations(branch: Branch, effective_parameters: dict[Ca
         cpu_limit, cpu_request = calculate_cpu_resources(effective_parameters["milli_vcpu"])
 
     resize_deployment(branch.id, resize_params)
+
+    if "iops" in effective_parameters:
+        await update_branch_volume_iops(branch.id, effective_parameters["iops"])
 
     if cpu_limit is not None and cpu_request is not None:
         namespace, vm_name = get_db_vmi_identity(branch.id)
@@ -621,9 +626,22 @@ async def resize(
         effective=effective_parameters,
         timestamp=timestamp,
     )
+    _track_resize_change(
+        parameter_key="iops",
+        new_value=parameters.iops,
+        current_value=branch_in_session.iops,
+        statuses=updated_statuses,
+        effective=effective_parameters,
+        timestamp=timestamp,
+    )
 
     if effective_parameters:
         await _apply_resize_operations(branch_in_session, effective_parameters)
+        if "iops" in effective_parameters:
+            updated_statuses["database_iops_resize"] = {
+                "status": "COMPLETED",
+                "timestamp": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+            }
 
     branch_in_session.resize_statuses = updated_statuses
     branch_in_session.resize_status = aggregate_resize_statuses(updated_statuses)

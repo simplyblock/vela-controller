@@ -4,7 +4,7 @@ from typing import Any
 from kubernetes_asyncio import client
 
 from ...exceptions import VelaKubernetesError
-from ._util import core_v1_client, custom_api_client
+from ._util import core_v1_client, custom_api_client, storage_v1_client
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -99,6 +99,64 @@ class KubernetesService:
                     )
                 else:
                     raise
+
+    async def apply_storage_class(self, manifest: dict[str, Any]) -> None:
+        name = manifest["metadata"]["name"]
+        async with storage_v1_client() as storage_v1:
+            try:
+                await storage_v1.create_storage_class(body=manifest)
+                logger.info("Created StorageClass %s", name)
+            except client.exceptions.ApiException as exc:
+                if exc.status == 409:
+                    logger.info("StorageClass %s already exists; replacing", name)
+                    await storage_v1.replace_storage_class(name=name, body=manifest)
+                else:
+                    raise
+
+    async def get_storage_class(self, name: str) -> Any:
+        async with storage_v1_client() as storage_v1:
+            try:
+                return await storage_v1.read_storage_class(name)
+            except client.exceptions.ApiException as exc:
+                if exc.status == 404:
+                    raise VelaKubernetesError(f"StorageClass {name!r} not found") from exc
+                raise
+
+    async def get_config_map(self, namespace: str, name: str) -> Any:
+        async with core_v1_client() as core_v1:
+            try:
+                return await core_v1.read_namespaced_config_map(name=name, namespace=namespace)
+            except client.exceptions.ApiException as exc:
+                if exc.status == 404:
+                    raise VelaKubernetesError(f"ConfigMap {namespace!r}/{name!r} not found") from exc
+                raise
+
+    async def get_secret(self, namespace: str, name: str) -> Any:
+        async with core_v1_client() as core_v1:
+            try:
+                return await core_v1.read_namespaced_secret(name=name, namespace=namespace)
+            except client.exceptions.ApiException as exc:
+                if exc.status == 404:
+                    raise VelaKubernetesError(f"Secret {namespace!r}/{name!r} not found") from exc
+                raise
+
+    async def get_persistent_volume_claim(self, namespace: str, name: str) -> Any:
+        async with core_v1_client() as core_v1:
+            try:
+                return await core_v1.read_namespaced_persistent_volume_claim(name=name, namespace=namespace)
+            except client.exceptions.ApiException as exc:
+                if exc.status == 404:
+                    raise VelaKubernetesError(f"PersistentVolumeClaim {namespace!r}/{name!r} not found") from exc
+                raise
+
+    async def get_persistent_volume(self, name: str) -> Any:
+        async with core_v1_client() as core_v1:
+            try:
+                return await core_v1.read_persistent_volume(name=name)
+            except client.exceptions.ApiException as exc:
+                if exc.status == 404:
+                    raise VelaKubernetesError(f"PersistentVolume {name!r} not found") from exc
+                raise
 
     async def get_vm_pod_name(self, namespace: str, vm_name: str) -> str:
         """
