@@ -198,13 +198,9 @@ async def create_vela_config(
     resource_cfg = db_spec.setdefault("resources", {})
     resource_cfg["guestMemory"] = f"{bytes_to_mib(parameters.memory_bytes)}Mi"
 
-    # Calculate and set CPU resources
-    cpu_limit, cpu_request = calculate_cpu_resources(parameters.milli_vcpu)
+    vcpu_count = max(1, parameters.milli_vcpu // 1000)
     resource_cfg["limits"] = {
-        "cpu": cpu_limit,
-    }
-    resource_cfg["requests"] = {
-        "cpu": cpu_request,
+        "cpu": vcpu_count,
     }
 
     # Set database volume size
@@ -345,13 +341,10 @@ def resize_deployment(branch_id: Identifier, parameters: ResizeParameters):
     # resize CPU resources
     resource_cfg = db_spec.setdefault("resources", {})
 
+    vcpu_count = max(1, parameters.milli_vcpu // 1000)
     if parameters.milli_vcpu is not None:
-        cpu_limit, cpu_request = calculate_cpu_resources(parameters.milli_vcpu)
         resource_cfg["limits"] = {
-            "cpu": cpu_limit,
-        }
-        resource_cfg["requests"] = {
-            "cpu": cpu_request,
+            "cpu": vcpu_count,
         }
 
     # resize memory

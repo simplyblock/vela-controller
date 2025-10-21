@@ -19,8 +19,8 @@ spec:
     spec:
       domain:
         cpu:
-          cores: 32 # we do resource limiting using Requests and Limits
-          sockets: 2
+          cores: 1
+          sockets: {{ .Values.db.resources.limits.cpu }}
           threads: 1
         memory:
           guest: {{ .Values.db.resources.guestMemory }}
@@ -50,11 +50,6 @@ spec:
           interfaces:
           - name: default
             masquerade: {}
-        resources:
-          limits:
-            cpu: {{ .Values.db.resources.limits.cpu }}
-          requests:
-            cpu: {{ .Values.db.resources.requests.cpu }}
       networks:
       - name: default
         pod: {}

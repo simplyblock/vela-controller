@@ -21,9 +21,9 @@ TIB: Final[int] = GIB * 1024
 
 # FIXME: Increasing to have faster boot times.
 # Reduce min vcpu and memory when when the image is optimised and boot time is improved.
-VCPU_MILLIS_MIN = 2000  # in milli vCPU
+VCPU_MILLIS_MIN = 1000  # in milli vCPU
 VCPU_MILLIS_MAX = 64000
-VCPU_MILLIS_STEP = 100
+VCPU_MILLIS_STEP = 1000
 
 MEMORY_MIN = 4 * GB
 MEMORY_MAX = 256 * GB

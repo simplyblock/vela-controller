@@ -156,20 +156,7 @@ def _track_resize_change(
 
 async def _apply_resize_operations(branch: Branch, effective_parameters: dict[CapaResizeKey, int]) -> None:
     resize_params = ResizeParameters(**{str(key): value for key, value in effective_parameters.items()})
-    cpu_limit = cpu_request = None
-    if "milli_vcpu" in effective_parameters:
-        cpu_limit, cpu_request = calculate_cpu_resources(effective_parameters["milli_vcpu"])
-
     resize_deployment(branch.id, resize_params)
-
-    if cpu_limit is not None and cpu_request is not None:
-        namespace, vm_name = get_db_vmi_identity(branch.id)
-        await kube_service.resize_vm_compute_cpu(
-            namespace,
-            vm_name,
-            cpu_request=cpu_request,
-            cpu_limit=cpu_limit,
-        )
 
 
 async def _deploy_branch_environment_task(
@@ -605,14 +592,17 @@ async def resize(
         effective=effective_parameters,
         timestamp=timestamp,
     )
-    _track_resize_change(
-        parameter_key="milli_vcpu",
-        new_value=parameters.milli_vcpu,
-        current_value=branch_in_session.milli_vcpu,
-        statuses=updated_statuses,
-        effective=effective_parameters,
-        timestamp=timestamp,
-    )
+    if parameters.milli_vcpu is not None:
+        if parameters.milli_vcpu < branch_in_session.milli_vcpu:
+            raise HTTPException(status_code=400, detail="CPU resize can only increase milli_vcpu")
+        _track_resize_change(
+            parameter_key="milli_vcpu",
+            new_value=parameters.milli_vcpu,
+            current_value=branch_in_session.milli_vcpu,
+            statuses=updated_statuses,
+            effective=effective_parameters,
+            timestamp=timestamp,
+        )
     _track_resize_change(
         parameter_key="memory_bytes",
         new_value=parameters.memory_bytes,
@@ -624,6 +614,25 @@ async def resize(
 
     if effective_parameters:
         await _apply_resize_operations(branch_in_session, effective_parameters)
+        # TODO: remove this block when the respective resize monitors are implemented
+        if "milli_vcpu" in effective_parameters:
+            branch_in_session.milli_vcpu = effective_parameters["milli_vcpu"]
+            updated_statuses["database_cpu_resize"] = {
+                "status": "COMPLETED",
+                "timestamp": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+            }
+        if "memory_bytes" in effective_parameters:
+            branch_in_session.memory = effective_parameters["memory_bytes"]
+            updated_statuses["database_memory_resize"] = {
+                "status": "COMPLETED",
+                "timestamp": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+            }
+        if "iops" in effective_parameters:
+            branch_in_session.iops = effective_parameters["iops"]
+            updated_statuses["database_iops_resize"] = {
+                "status": "COMPLETED",
+                "timestamp": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+            }
 
     branch_in_session.resize_statuses = updated_statuses
     branch_in_session.resize_status = aggregate_resize_statuses(updated_statuses)
