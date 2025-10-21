@@ -259,13 +259,14 @@ BranchResizeStatus = Literal[
     "FAILED",
 ]
 
-CapaResizeKey = Literal["database_size", "storage_size", "milli_vcpu", "memory_bytes"]
+CapaResizeKey = Literal["database_size", "storage_size", "milli_vcpu", "memory_bytes", "iops"]
 
 BranchResizeService = Literal[
     "database_disk_resize",
     "storage_api_disk_resize",
     "database_cpu_resize",
     "database_memory_resize",
+    "database_iops_resize",
 ]
 
 RESIZE_STATUS_PRIORITY: dict[BranchResizeStatus, int] = {
