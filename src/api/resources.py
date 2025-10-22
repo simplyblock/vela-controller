@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Literal, get_args
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -164,20 +164,21 @@ async def get_project_usage(
     result = await session.execute(query)
     usages = result.scalars().all()
 
-    result_dict: dict[ResourceTypePublic, int] = {}
+    result_dict: dict[ResourceTypePublic, int] = {
+        resource_type: 0 for resource_type in get_args(ResourceTypePublic)
+    }
     for usage in usages:
-        result_dict.setdefault(usage.resource.name, 0)
         result_dict[usage.resource.name] += usage.amount
 
     return result_dict
 
 
-@router.get("/organizations/{org_id}/usage")
+@router.get("/organizations/{organization_id}/usage")
 async def get_org_usage(
     session: SessionDep,
-    org_id: Identifier,
+        organization_id: Identifier,
     payload: ToFromPayload,
-):
+) -> dict[ResourceTypePublic, int]:
     # Normalize datetimes → make them naive UTC
     def normalize(dt: datetime | None) -> datetime | None:
         if dt is None:
@@ -189,7 +190,7 @@ async def get_org_usage(
     start = normalize(payload.cycle_start)
     end = normalize(payload.cycle_end)
 
-    query = select(ResourceUsageMinute).where(ResourceUsageMinute.org_id == org_id)
+    query = select(ResourceUsageMinute).where(ResourceUsageMinute.org_id == organization_id)
     if start:
         query = query.where(ResourceUsageMinute.ts_minute >= start)
     if end:
@@ -198,10 +199,11 @@ async def get_org_usage(
     result = await session.execute(query)
     usages = result.scalars().all()
 
-    result_dict: dict[str, int] = {}
-    for u in usages:
-        result_dict.setdefault(u.resource.value, 0)
-        result_dict[u.resource.value] += u.amount
+    result_dict: dict[ResourceTypePublic, int] = {
+        resource_type: 0 for resource_type in get_args(ResourceTypePublic)
+    }
+    for usage in usages:
+        result_dict[usage.resource.name] += usage.amount
 
     return result_dict
 
