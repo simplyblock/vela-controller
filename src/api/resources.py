@@ -1,14 +1,15 @@
 import asyncio
 import logging
 from datetime import UTC, datetime
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlmodel import select
 
 from ..check_branch_status import get_branch_status
+from ._util.resourcelimit import check_resource_limits, get_effective_branch_limits
 from .db import SessionDep
 from .models._util import Identifier
 from .models.branch import Branch
@@ -47,92 +48,6 @@ AsyncSessionLocal = async_sessionmaker(
 logger = logging.getLogger(__name__)
 
 
-async def get_effective_branch_limits(db: AsyncSession, branch_id: Identifier) -> dict:
-    result = await db.execute(select(Branch).where(Branch.id == branch_id))
-    branch = result.scalars().first()
-    if not branch:
-        raise HTTPException(404, f"Branch {branch_id} not found")
-
-    project = await branch.awaitable_attrs.project
-    project_id = branch.project_id
-    org_id = project.organization_id
-
-    effective_limits = {}
-
-    for resource in ResourceType:
-        org_limit = (
-            (
-                await db.execute(
-                    select(ResourceLimit).where(
-                        ResourceLimit.entity_type == EntityType.org,
-                        ResourceLimit.org_id == org_id,
-                        ResourceLimit.project_id.is_(None),  # type: ignore[union-attr]
-                        ResourceLimit.resource == resource,
-                    )
-                )
-            )
-            .scalars()
-            .first()
-        )
-
-        project_limit = (
-            (
-                await db.execute(
-                    select(ResourceLimit).where(
-                        ResourceLimit.entity_type == EntityType.project,
-                        ResourceLimit.org_id == org_id,
-                        ResourceLimit.project_id == project_id,
-                        ResourceLimit.resource == resource,
-                    )
-                )
-            )
-            .scalars()
-            .first()
-        )
-
-        per_branch_limit = (
-            project_limit.max_per_branch
-            if project_limit and project_limit.max_per_branch is not None
-            else org_limit.max_per_branch
-            if org_limit and org_limit.max_per_branch is not None
-            else 32000
-        )
-
-        # Aggregate usage
-        org_prov = (
-            await db.execute(
-                select(func.sum(BranchProvisioning.amount))
-                .join(Branch)
-                .join(Project)
-                .where(Project.organization_id == org_id, BranchProvisioning.resource == resource)
-            )
-        ).scalars().one() or 0
-
-        proj_prov = (
-            await db.execute(
-                select(func.sum(BranchProvisioning.amount))
-                .join(Branch)
-                .where(Branch.project_id == project_id, BranchProvisioning.resource == resource)
-            )
-        ).scalars().one() or 0
-
-        remaining_org = (org_limit.max_total - org_prov) if org_limit else float("inf")
-        remaining_project = (project_limit.max_total - proj_prov) if project_limit else float("inf")
-
-        effective_limits[resource.value] = max(min(per_branch_limit, remaining_org, remaining_project), 0)
-
-    return effective_limits
-
-
-async def get_total_allocated(db: AsyncSession, project_id: Identifier, resource: ResourceType) -> int:
-    total = await db.execute(
-        select(func.coalesce(func.sum(BranchProvisioning.amount), 0))
-        .join(Branch)
-        .where(Branch.project_id == project_id, BranchProvisioning.resource == resource)
-    )
-    return total.scalars().one() or 0
-
-
 async def log_provisioning(
     db: AsyncSession, branch_id: Identifier, resource: ResourceType, amount: int, action: str, reason: str | None = None
 ):
@@ -143,8 +58,11 @@ async def log_provisioning(
     await db.commit()
 
 
+ResourceTypePublic = Literal["milli_vcpu", "ram", "iops", "storage_size", "database_size"]
+
+
 class ResourcesPayload(BaseModel):
-    resources: dict[str, int]
+    resources: dict[ResourceTypePublic, int]
 
 
 class ToFromPayload(BaseModel):
@@ -153,14 +71,18 @@ class ToFromPayload(BaseModel):
 
 
 class ProvLimitPayload(BaseModel):
-    resource: ResourceType
+    resource: ResourceTypePublic
     max_total: int
     max_per_branch: int
 
 
 class ConsumptionPayload(BaseModel):
-    resource: ResourceType
+    resource: ResourceTypePublic
     max_total_minutes: int
+
+
+class BranchProvisionPublic(BaseModel):
+    status: str
 
 
 # ---------------------------
@@ -171,41 +93,39 @@ async def provision_branch(
     session: SessionDep,
     branch_id: Identifier,
     payload: ResourcesPayload,
-):
-    provision = payload.resources
+) -> BranchProvisionPublic:
     result = await session.execute(select(Branch).where(Branch.id == branch_id))
     branch = result.scalars().first()
     if not branch:
         raise HTTPException(404, "Branch not found")
 
-    effective_limits = await get_effective_branch_limits(session, branch_id)
+    # Map public resource type literal to internal enum
+    provision_request = {ResourceType(item[0]): item[1] for item in payload.resources.items()}
 
-    for rtype, amount in provision.items():
-        effective_limit = effective_limits.get(rtype)
-        if effective_limit is not None and amount > effective_limit:
-            raise HTTPException(422, f"{rtype} limit exceeded for branch {branch.id}")
+    exceeded_limits = await check_resource_limits(session, branch, provision_request)
+    if len(exceeded_limits) > 0:
+        raise HTTPException(422, f"Branch {branch.id} limit(s) exceeded: {exceeded_limits}")
 
-        # total_allocated = await get_total_allocated(db, branch.project_id, rtype)
-        # if effective_limit is not None and (total_allocated + amount) > effective_limit:
-        #    raise HTTPException(422, f"Total allocation for {rtype.value} exceeds project/org limit")
-
+    for resource_type, amount in provision_request.items():
         # Create or update provisioning
         result = await session.execute(
             select(BranchProvisioning).where(
-                BranchProvisioning.branch_id == branch_id, BranchProvisioning.resource == rtype
+                BranchProvisioning.branch_id == branch_id, BranchProvisioning.resource == resource_type
             )
         )
         bp = result.scalars().first()
         if bp:
             bp.amount = amount
         else:
-            bp = BranchProvisioning(branch_id=branch_id, resource=rtype, amount=amount, updated_at=datetime.now())
+            bp = BranchProvisioning(
+                branch_id=branch_id, resource=resource_type, amount=amount, updated_at=datetime.now()
+            )
             session.add(bp)
 
         await session.commit()
-        await log_provisioning(session, branch_id, ResourceType(rtype), amount, "create")
+        await log_provisioning(session, branch_id, resource_type, amount, "create")
 
-    return {"status": "ok"}
+    return BranchProvisionPublic(status="ok")
 
 
 @router.get("/branches/{branch_id}/provision")
@@ -246,9 +166,9 @@ async def get_project_usage(
     result = await session.execute(query)
     usages = result.scalars().all()
 
-    result_dict: dict[str, int] = {}
+    result_dict: dict[ResourceTypePublic, int] = {}
     for u in usages:
-        result_dict.setdefault(u.resource.value, 0)
+        result_dict.setdefault(u.resource, 0)
         result_dict[u.resource.value] += u.amount
 
     return result_dict
