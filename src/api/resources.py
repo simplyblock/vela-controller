@@ -1,20 +1,26 @@
 import asyncio
 import logging
 from datetime import UTC, datetime
-from typing import get_args
 
 from fastapi import APIRouter, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlmodel import select
 
 from ..check_branch_status import get_branch_status
-from ._util.resourcelimit import check_resource_limits, get_effective_branch_limits
+from ._util.resourcelimit import (
+    check_resource_limits,
+    dict_to_resource_limits,
+    get_effective_branch_limits,
+    get_organization_resource_usage,
+    get_project_resource_usage,
+    make_usage_cycle,
+    resource_limits_to_dict,
+)
 from .db import SessionDep
 from .models._util import Identifier
 from .models.branch import Branch
 from .models.project import Project
 from .models.resources import (
-    BranchLimitsPublic,
     BranchProvisioning,
     BranchProvisionPublic,
     ConsumptionLimitPublic,
@@ -26,9 +32,9 @@ from .models.resources import (
     ProvLimitPayload,
     ResourceConsumptionLimit,
     ResourceLimit,
+    ResourceLimitsPublic,
     ResourcesPayload,
     ResourceType,
-    ResourceTypePublic,
     ResourceUsageMinute,
     ToFromPayload,
 )
@@ -83,12 +89,10 @@ async def provision_branch(
     if len(exceeded_limits) > 0:
         raise HTTPException(422, f"Branch {branch.id} limit(s) exceeded: {exceeded_limits}")
 
-    for key in ResourcesPayload.resources:
-        if payload.resources[key] is None:
+    requests = resource_limits_to_dict(payload.resources)
+    for resource_type, amount in requests.items():
+        if amount is None:
             continue
-
-        resource_type = ResourceType(key)
-        amount = payload.resources[key]
 
         # Create or update provisioning
         result = await session.execute(
@@ -125,62 +129,17 @@ async def get_branch_provisioning_api(session: SessionDep, branch_id: Identifier
 @router.get("/projects/{project_id}/usage")
 async def get_project_usage(
     session: SessionDep, project_id: Identifier, payload: ToFromPayload
-) -> dict[ResourceTypePublic, int]:
-    def normalize(dt: datetime | None) -> datetime | None:
-        if dt is None:
-            return None
-        if dt.tzinfo is not None:
-            dt = dt.astimezone(UTC).replace(tzinfo=None)
-        return dt
-
-    cycle_start = normalize(payload.cycle_start)
-    cycle_end = normalize(payload.cycle_end)
-
-    query = select(ResourceUsageMinute).where(ResourceUsageMinute.project_id == project_id)
-    if cycle_start:
-        query = query.where(ResourceUsageMinute.ts_minute >= cycle_start)
-    if cycle_end:
-        query = query.where(ResourceUsageMinute.ts_minute < cycle_end)
-
-    result = await session.execute(query)
-    usages = result.scalars().all()
-
-    result_dict: dict[ResourceTypePublic, int] = dict.fromkeys(get_args(ResourceTypePublic), 0)
-    for usage in usages:
-        result_dict[usage.resource.name] += usage.amount
-
-    return result_dict
+) -> ResourceLimitsPublic:
+    usage_cycle = make_usage_cycle(payload.cycle_start, payload.cycle_end)
+    return dict_to_resource_limits(await get_project_resource_usage(session, project_id, usage_cycle))
 
 
 @router.get("/organizations/{organization_id}/usage")
 async def get_org_usage(
     session: SessionDep, organization_id: Identifier, payload: ToFromPayload
-) -> dict[ResourceTypePublic, int]:
-    # Normalize datetimes → make them naive UTC
-    def normalize(dt: datetime | None) -> datetime | None:
-        if dt is None:
-            return None
-        if dt.tzinfo is not None:
-            dt = dt.astimezone(UTC).replace(tzinfo=None)
-        return dt
-
-    start = normalize(payload.cycle_start)
-    end = normalize(payload.cycle_end)
-
-    query = select(ResourceUsageMinute).where(ResourceUsageMinute.org_id == organization_id)
-    if start:
-        query = query.where(ResourceUsageMinute.ts_minute >= start)
-    if end:
-        query = query.where(ResourceUsageMinute.ts_minute < end)
-
-    result = await session.execute(query)
-    usages = result.scalars().all()
-
-    result_dict: dict[ResourceTypePublic, int] = dict.fromkeys(get_args(ResourceTypePublic), 0)
-    for usage in usages:
-        result_dict[usage.resource.name] += usage.amount
-
-    return result_dict
+) -> ResourceLimitsPublic:
+    usage_cycle = make_usage_cycle(payload.cycle_start, payload.cycle_end)
+    return dict_to_resource_limits(await get_organization_resource_usage(session, organization_id, usage_cycle))
 
 
 # ---------------------------
@@ -239,15 +198,10 @@ async def get_project_consumption_limits(session: SessionDep, project_id: Identi
 
 
 @router.get("/branches/{branch_id}/limits/")
-async def branch_effective_limit(session: SessionDep, branch_id: Identifier) -> BranchLimitsPublic:
-    limits = await get_effective_branch_limits(session, branch_id)
-    return BranchLimitsPublic(
-        milli_vcpu=limits[ResourceType.milli_vcpu],
-        ram=limits[ResourceType.ram],
-        iops=limits[ResourceType.iops],
-        database_size=limits[ResourceType.database_size],
-        storage_size=limits[ResourceType.storage_size],
-    )
+async def branch_effective_limit(session: SessionDep, branch_id: Identifier) -> ResourceLimitsPublic:
+    result = await session.execute(select(Branch).where(Branch.id == branch_id))
+    branch = result.scalars().one()
+    return await get_effective_branch_limits(session, branch)
 
 
 async def set_provisioning_limit(
