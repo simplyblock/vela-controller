@@ -24,7 +24,6 @@ class ResourceType(PyEnum):
 
 class EntityType(PyEnum):
     org = "org"
-    org_env = "org_env"
     project = "project"
 
 
