@@ -36,7 +36,6 @@ from .models.resources import (
     ResourcesPayload,
     ResourceType,
     ResourceUsageMinute,
-    ToFromPayload,
 )
 from .settings import settings
 
@@ -128,17 +127,20 @@ async def get_branch_provisioning_api(session: SessionDep, branch_id: Identifier
 #
 @router.get("/projects/{project_id}/usage")
 async def get_project_usage(
-    session: SessionDep, project_id: Identifier, payload: ToFromPayload
+    session: SessionDep, project_id: Identifier, cycle_start: datetime | None = None, cycle_end: datetime | None = None
 ) -> ResourceLimitsPublic:
-    usage_cycle = make_usage_cycle(payload.cycle_start, payload.cycle_end)
+    usage_cycle = make_usage_cycle(cycle_start, cycle_end)
     return dict_to_resource_limits(await get_project_resource_usage(session, project_id, usage_cycle))
 
 
 @router.get("/organizations/{organization_id}/usage")
 async def get_org_usage(
-    session: SessionDep, organization_id: Identifier, payload: ToFromPayload
+    session: SessionDep,
+    organization_id: Identifier,
+    cycle_start: datetime | None = None,
+    cycle_end: datetime | None = None,
 ) -> ResourceLimitsPublic:
-    usage_cycle = make_usage_cycle(payload.cycle_start, payload.cycle_end)
+    usage_cycle = make_usage_cycle(cycle_start, cycle_end)
     return dict_to_resource_limits(await get_organization_resource_usage(session, organization_id, usage_cycle))
 
 
