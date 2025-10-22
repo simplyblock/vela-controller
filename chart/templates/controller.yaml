@@ -101,7 +101,18 @@ spec:
               value: "http://vela-grafana:3000"
             - name: VELA_LOGFLARE_URL
               value: "http://vela-logflare:4000"
-              
+            # The following limits are temporary and need to be adjusted when figured out
+            - name: VELA_SYSTEM_LIMIT_MILLIS_VCPU
+              value: '100000'
+            - name: VELA_SYSTEM_LIMIT_RAM
+              value: '274877906944'
+            - name: VELA_SYSTEM_LIMIT_IOPS
+              value: '1000000000'
+            - name: VELA_SYSTEM_LIMIT_DATABASE_SIZE
+              value: '100000000000000'
+            - name: VELA_SYSTEM_LIMIT_STORAGE_SIZE
+              value: '1000000000000'
+
           livenessProbe:
             httpGet:
               path: /health
