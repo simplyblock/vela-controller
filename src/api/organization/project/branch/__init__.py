@@ -32,7 +32,7 @@ from .....deployment import (
 )
 from .....deployment.kubernetes.kubevirt import KubevirtSubresourceAction, call_kubevirt_subresource
 from .....deployment.settings import settings as deployment_settings
-from .....exceptions import VelaError
+from .....exceptions import VelaError, VelaKubernetesError
 from ...._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ...._util.crypto import encrypt_with_passphrase
 from ....auth import security
@@ -156,25 +156,56 @@ def _track_resize_change(
         statuses.pop(service_key, None)
 
 
+# TODO: send an alert if function fails.
+async def _sync_branch_cpu_resources(
+    branch_id: Identifier,
+    *,
+    desired_milli_vcpu: int,
+    attempts: int = 10,
+    delay_seconds: float = 2.0,
+) -> None:
+    """
+    Ensure the virt-launcher pod backing the branch VM reflects the desired CPU settings.
+    Retries while the pod is recreating (e.g. immediately after a start request).
+    """
+    namespace, vm_name = get_db_vmi_identity(branch_id)
+
+    last_error: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            cpu_limit, cpu_request = calculate_cpu_resources(desired_milli_vcpu)
+            await kube_service.resize_vm_compute_cpu(
+                namespace,
+                vm_name,
+                cpu_request=cpu_request,
+                cpu_limit=cpu_limit,
+            )
+            return
+        except VelaKubernetesError as exc:
+            last_error = exc
+            if attempt == attempts - 1:
+                raise
+            await asyncio.sleep(delay_seconds)
+
+    if last_error is not None:
+        raise last_error
+
+
 async def _apply_resize_operations(branch: Branch, effective_parameters: dict[CapaResizeKey, int]) -> None:
     resize_params = ResizeParameters(**{str(key): value for key, value in effective_parameters.items()})
-    cpu_limit = cpu_request = None
-    if "milli_vcpu" in effective_parameters:
-        cpu_limit, cpu_request = calculate_cpu_resources(effective_parameters["milli_vcpu"])
-
     resize_deployment(branch.id, resize_params)
 
     if "iops" in effective_parameters:
         await update_branch_volume_iops(branch.id, effective_parameters["iops"])
 
-    if cpu_limit is not None and cpu_request is not None:
-        namespace, vm_name = get_db_vmi_identity(branch.id)
-        await kube_service.resize_vm_compute_cpu(
-            namespace,
-            vm_name,
-            cpu_request=cpu_request,
-            cpu_limit=cpu_limit,
+    # TODO: as a part of memory monitor, after memory resize is complete, run _sync_branch_cpu_resources
+    milli_vcpu = effective_parameters.get("milli_vcpu")
+    if milli_vcpu is not None:
+        await _sync_branch_cpu_resources(
+            branch.id,
+            desired_milli_vcpu=milli_vcpu,
         )
+        branch.milli_vcpu = milli_vcpu
 
 
 async def _deploy_branch_environment_task(
@@ -637,10 +668,16 @@ async def resize(
 
     if effective_parameters:
         await _apply_resize_operations(branch_in_session, effective_parameters)
+        completion_timestamp = datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        if "milli_vcpu" in effective_parameters:
+            updated_statuses["database_cpu_resize"] = {
+                "status": "COMPLETED",
+                "timestamp": completion_timestamp,
+            }
         if "iops" in effective_parameters:
             updated_statuses["database_iops_resize"] = {
                 "status": "COMPLETED",
-                "timestamp": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+                "timestamp": completion_timestamp,
             }
 
     branch_in_session.resize_statuses = updated_statuses
@@ -698,6 +735,18 @@ async def control_branch(
     namespace, vmi_name = get_db_vmi_identity(branch.id)
     try:
         await call_kubevirt_subresource(namespace, vmi_name, _CONTROL_TO_KUBEVIRT[action])
+        if action == "start":
+
+            async def _run_cpu_sync() -> None:
+                try:
+                    await _sync_branch_cpu_resources(
+                        branch.id,
+                        desired_milli_vcpu=branch.milli_vcpu,
+                    )
+                except VelaKubernetesError:
+                    logger.exception("Failed to sync CPU resources after starting branch %s", branch.id)
+
+            asyncio.create_task(_run_cpu_sync())
         return Response(status_code=204)
     except ApiException as e:
         status = 404 if e.status == 404 else 400
