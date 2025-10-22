@@ -14,10 +14,14 @@ from .models._util import Identifier
 from .models.branch import Branch
 from .models.project import Project
 from .models.resources import (
+    BranchLimitsPublic,
     BranchProvisioning,
     BranchProvisionPublic,
+    ConsumptionLimitPublic,
     ConsumptionPayload,
     EntityType,
+    LimitResultPublic,
+    ProvisioningLimitPublic,
     ProvisioningLog,
     ProvLimitPayload,
     ResourceConsumptionLimit,
@@ -30,7 +34,7 @@ from .models.resources import (
 )
 from .settings import settings
 
-router = APIRouter()
+router = APIRouter(tags=["resource"])
 
 # ---------------------------
 # Helper functions
@@ -77,14 +81,17 @@ async def provision_branch(
     if not branch:
         raise HTTPException(404, "Branch not found")
 
-    # Map public resource type literal to internal enum
-    provision_request = {ResourceType(item[0]): item[1] for item in payload.resources.items()}
-
-    exceeded_limits = await check_resource_limits(session, branch, provision_request)
+    exceeded_limits = await check_resource_limits(session, branch, ResourcesPayload.resources)
     if len(exceeded_limits) > 0:
         raise HTTPException(422, f"Branch {branch.id} limit(s) exceeded: {exceeded_limits}")
 
-    for resource_type, amount in provision_request.items():
+    for key in ResourcesPayload.resources:
+        if payload.resources[key] is None:
+            continue
+
+        resource_type = ResourceType(key)
+        amount = payload.resources[key]
+
         # Create or update provisioning
         result = await session.execute(
             select(BranchProvisioning).where(
@@ -191,7 +198,7 @@ async def set_provisioning_limit(
     payload: ProvLimitPayload,
     entity_type: EntityType,
     entity_id: Identifier,
-):
+) -> LimitResultPublic:
     if entity_type == EntityType.org:
         org_id, project_id = entity_id, None
     elif entity_type == EntityType.project:
@@ -237,7 +244,7 @@ async def set_provisioning_limit(
         session.add(limit)
 
     await session.commit()
-    return {"status": "ok", "limit": str(limit.id)}
+    return LimitResultPublic(status="ok", limit=limit.id)
 
 
 @router.get("/limits/provisioning/{entity_type}/{entity_id}")
@@ -245,7 +252,7 @@ async def get_provisioning_limits(
     session: SessionDep,
     entity_type: EntityType,
     entity_id: Identifier,
-):
+) -> list[ProvisioningLimitPublic]:
     q = select(ResourceLimit).where(ResourceLimit.entity_type == entity_type)
     if entity_type == EntityType.org:
         q = q.where(ResourceLimit.org_id == entity_id)
@@ -254,7 +261,9 @@ async def get_provisioning_limits(
 
     result = await session.execute(q)
     return [
-        {"resource": limit.resource.value, "max_total": limit.max_total, "max_per_branch": limit.max_per_branch}
+        ProvisioningLimitPublic(
+            resource=limit.resource.value, max_total=limit.max_total, max_per_branch=limit.max_per_branch
+        )
         for limit in result.scalars().all()
     ]
 
@@ -265,7 +274,7 @@ async def set_consumption_limit(
     entity_type: EntityType,
     entity_id: Identifier,
     payload: ConsumptionPayload,
-):
+) -> LimitResultPublic:
     if entity_type == EntityType.org:
         org_id, project_id = entity_id, None
     elif entity_type == EntityType.project:
@@ -300,7 +309,7 @@ async def set_consumption_limit(
         session.add(limit)
 
     await session.commit()
-    return {"status": "ok", "limit": str(limit.id)}
+    return LimitResultPublic(status="ok", limit=limit.id)
 
 
 @router.get("/limits/consumption/{entity_type}/{entity_id}")
@@ -308,7 +317,7 @@ async def get_consumption_limits(
     session: SessionDep,
     entity_type: EntityType,
     entity_id: Identifier,
-):
+) -> list[ConsumptionLimitPublic]:
     q = select(ResourceConsumptionLimit).where(ResourceConsumptionLimit.entity_type == entity_type)
     if entity_type == EntityType.org:
         q = q.where(ResourceConsumptionLimit.org_id == entity_id)
@@ -317,7 +326,7 @@ async def get_consumption_limits(
 
     result = await session.execute(q)
     return [
-        {"resource": limit.resource.value, "max_total_minutes": limit.max_total_minutes}
+        ConsumptionLimitPublic(resource=limit.resource.value, max_total_minutes=limit.max_total_minutes)
         for limit in result.scalars().all()
     ]
 
@@ -326,9 +335,15 @@ async def get_consumption_limits(
 async def branch_effective_limit(
     session: SessionDep,
     branch_id: Identifier,
-):
-    limit = await get_effective_branch_limits(session, branch_id)
-    return limit
+) -> BranchLimitsPublic:
+    limits = await get_effective_branch_limits(session, branch_id)
+    return BranchLimitsPublic(
+        milli_vcpu=limits[ResourceType.milli_vcpu],
+        ram=limits[ResourceType.ram],
+        iops=limits[ResourceType.iops],
+        database_size=limits[ResourceType.database_size],
+        storage_size=limits[ResourceType.storage_size],
+    )
 
 
 async def monitor_resources(interval_seconds: int = 60):

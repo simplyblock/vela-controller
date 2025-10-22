@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field
+from ulid import ULID
 
 from ..._util import Identifier
 from ._util import Model
@@ -106,3 +107,27 @@ class ConsumptionPayload(BaseModel):
 
 class BranchProvisionPublic(BaseModel):
     status: str
+
+
+class LimitResultPublic(BaseModel):
+    status: str
+    limit: ULID
+
+
+class ProvisioningLimitPublic(BaseModel):
+    resource: ResourceTypePublic
+    max_total: int
+    max_per_branch: int
+
+
+class ConsumptionLimitPublic(BaseModel):
+    resource: ResourceTypePublic
+    max_total_minutes: int
+
+
+class BranchLimitsPublic(BaseModel):
+    milli_vcpu: int | None = None
+    ram: int | None = None
+    iops: int | None = None
+    storage_size: int | None = None
+    database_size: int | None = None
