@@ -46,10 +46,6 @@ async def refresh_memory_status(session: AsyncSession, branch: Branch) -> None:
 
     target_memory = await kube_service.get_vm_memory_bytes(namespace, vmi_name)
     if target_memory is None:
-        # logger.error(
-        #     "Unable to determine target VM memory for branch %s; deferring status update",
-        #     branch.id,
-        # )
         return
 
     pod_satisfies_request = (
