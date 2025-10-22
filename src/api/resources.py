@@ -139,14 +139,12 @@ async def get_branch_provisioning_api(session: SessionDep, branch_id: Identifier
 # Resource usage endpoints
 # ---------------------------
 #
-
-
 @router.get("/projects/{project_id}/usage")
 async def get_project_usage(
     session: SessionDep,
     project_id: Identifier,
     payload: ToFromPayload,
-):
+) -> dict[ResourceTypePublic, int]:
     def normalize(dt: datetime | None) -> datetime | None:
         if dt is None:
             return None
@@ -167,9 +165,9 @@ async def get_project_usage(
     usages = result.scalars().all()
 
     result_dict: dict[ResourceTypePublic, int] = {}
-    for u in usages:
-        result_dict.setdefault(u.resource, 0)
-        result_dict[u.resource.value] += u.amount
+    for usage in usages:
+        result_dict.setdefault(usage.resource.name, 0)
+        result_dict[usage.resource.name] += usage.amount
 
     return result_dict
 
