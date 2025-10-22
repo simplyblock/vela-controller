@@ -76,7 +76,7 @@ class ResourceConsumptionLimit(AsyncAttrs, Model, table=True):
 ResourceTypePublic = Literal["milli_vcpu", "ram", "iops", "storage_size", "database_size"]
 
 
-class ResourceRequest(BaseModel):
+class ResourceLimitsPublic(BaseModel):
     milli_vcpu: int | None = None
     ram: int | None = None
     iops: int | None = None
@@ -85,7 +85,7 @@ class ResourceRequest(BaseModel):
 
 
 class ResourcesPayload(BaseModel):
-    resources: ResourceRequest
+    resources: ResourceLimitsPublic
 
 
 class ToFromPayload(BaseModel):
@@ -124,9 +124,6 @@ class ConsumptionLimitPublic(BaseModel):
     max_total_minutes: int
 
 
-class BranchLimitsPublic(BaseModel):
-    milli_vcpu: int | None = None
-    ram: int | None = None
-    iops: int | None = None
-    storage_size: int | None = None
-    database_size: int | None = None
+class UsageCycle(BaseModel):
+    start: datetime | None
+    end: datetime | None
