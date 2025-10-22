@@ -24,3 +24,7 @@ class VelaLogflareError(VelaDeploymentError):
 
 class VelaGrafanaError(VelaDeploymentError):
     """Error interacting with Grafana"""
+
+
+class VelaResourceLimitError(VelaError):
+    """Error when resource limits are exceeded or illegal"""

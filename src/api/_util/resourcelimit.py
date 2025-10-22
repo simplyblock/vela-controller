@@ -4,6 +4,7 @@ from sqlalchemy import func
 from sqlmodel import select
 
 from ..._util import Identifier
+from ...exceptions import VelaResourceLimitError
 from ..db import SessionDep
 from ..models.branch import Branch
 from ..models.project import Project
@@ -125,8 +126,12 @@ async def get_effective_branch_limits(session: SessionDep, branch: Branch) -> Re
             if project_limit and project_limit.max_per_branch is not None
             else organization_limit.max_per_branch
             if organization_limit and organization_limit.max_per_branch is not None
-            else 32000
+            else None
         )
+
+        if per_branch_limit is None:
+            # This should never happen! If it does, we forgot to initialize the limit at organization creation.
+            raise VelaResourceLimitError()
 
         # Aggregate usage
         current_organization_allocation = organization_allocations.get(resource_type)
