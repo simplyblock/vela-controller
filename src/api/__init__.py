@@ -15,6 +15,7 @@ from sqlmodel import SQLModel
 from ..deployment.logflare import create_global_logflare_objects
 from ..deployment.monitors.resize import ResizeMonitor
 from ..exceptions import VelaLogflareError
+from ._util.resourcelimit import create_system_resource_limits
 from ._util.role import create_access_rights_if_emtpy
 from .backup import router as backup_router
 from .backupmonitor import run_backup_monitor
@@ -127,6 +128,7 @@ async def _create_db_and_tables():
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
         await create_access_rights_if_emtpy(conn)
+        await create_system_resource_limits(conn)
 
 
 def _use_route_names_as_operation_ids(app: FastAPI) -> None:

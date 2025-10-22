@@ -1,12 +1,15 @@
 from datetime import UTC, datetime
 
 from sqlalchemy import func
+from sqlalchemy.dialects.mysql import insert
+from sqlalchemy.ext.asyncio import AsyncConnection
 from sqlmodel import select
 
 from ..._util import Identifier
 from ...exceptions import VelaResourceLimitError
 from ..db import SessionDep
 from ..models.branch import Branch
+from ..models.organization import Organization
 from ..models.project import Project
 from ..models.resources import (
     BranchProvisioning,
@@ -17,6 +20,57 @@ from ..models.resources import (
     ResourceUsageMinute,
     UsageCycle,
 )
+from ..settings import settings
+
+
+async def create_system_resource_limits(conn: AsyncConnection):
+    result = await conn.execute(select(ResourceLimit).where(ResourceLimit.entity_type == EntityType.system))
+
+    # If already initialized, do nothing
+    if len(list(result.scalars().all())) > 0:
+        return
+
+    # Set up initial system resource limits if not yet existing
+    resource_limits = ResourceLimitsPublic(
+        milli_vcpu=settings.system_limit_millis_vcpu,
+        ram=settings.system_limit_ram,
+        iops=settings.system_limit_iops,
+        database_size=settings.system_limit_database_size,
+        storage_size=settings.system_limit_storage_size,
+    )
+    for resource_type, limit in resource_limits.model_dump(exclude_unset=True).items():
+        if limit is not None:
+            await conn.execute(
+                insert(ResourceLimit).values(
+                    entity_type=EntityType.system,
+                    org_id=None,
+                    project_id=None,
+                    resource=ResourceType(resource_type),
+                    max_total=limit,
+                    max_per_branch=limit,
+                )
+            )
+    await conn.commit()
+
+
+async def initialize_organization_resource_limits(session: SessionDep, organization: Organization):
+    result = await session.execute(select(ResourceLimit).where(ResourceLimit.entity_type == EntityType.system))
+    system_limits = result.scalars().all()
+
+    with session.no_autoflush:
+        for system_limit in system_limits:
+            await session.merge(
+                ResourceLimit(
+                    entity_type=EntityType.org,
+                    org_id=organization.id,
+                    project_id=None,
+                    resource=system_limit.resource,
+                    max_total=system_limit.max_total,
+                    max_per_branch=system_limit.max_per_branch,
+                )
+            )
+    await session.commit()
+    await session.refresh(organization)
 
 
 def dict_to_resource_limits(value: dict[ResourceType, int]) -> ResourceLimitsPublic:
@@ -111,6 +165,7 @@ async def get_effective_branch_limits(session: SessionDep, branch: Branch) -> Re
     project_id = branch.project_id
     organization_id = project.organization_id
 
+    system_limits = await get_system_resource_limits(session)
     organization_limits = await get_organization_resource_limits(session, organization_id)
     project_limits = await get_project_resource_limits(session, organization_id, project_id)
 
@@ -119,6 +174,7 @@ async def get_effective_branch_limits(session: SessionDep, branch: Branch) -> Re
 
     effective_limits: dict[ResourceType, int] = {}
     for resource_type in ResourceType:
+        system_limit = system_limits.get(resource_type)
         organization_limit = organization_limits.get(resource_type)
         project_limit = project_limits.get(resource_type)
         per_branch_limit = (
@@ -126,6 +182,8 @@ async def get_effective_branch_limits(session: SessionDep, branch: Branch) -> Re
             if project_limit and project_limit.max_per_branch is not None
             else organization_limit.max_per_branch
             if organization_limit and organization_limit.max_per_branch is not None
+            else system_limit.max_per_branch
+            if system_limit and system_limit.max_per_branch is not None
             else None
         )
 
@@ -153,12 +211,23 @@ async def get_effective_branch_limits(session: SessionDep, branch: Branch) -> Re
     return dict_to_resource_limits(effective_limits)
 
 
+async def get_system_resource_limits(session: SessionDep) -> dict[ResourceType, ResourceLimit]:
+    result = await session.execute(
+        select(ResourceLimit).where(
+            ResourceLimit.entity_type == EntityType.system,
+            ResourceLimit.org_id.is_(None),  # type: ignore[union-attr]
+            ResourceLimit.project_id.is_(None),  # type: ignore[union-attr]
+        )
+    )
+    return _map_resource_limits(list(result.scalars().all()))
+
+
 async def get_organization_resource_limits(
     session: SessionDep, organization_id: Identifier
 ) -> dict[ResourceType, ResourceLimit]:
     result = await session.execute(
         select(ResourceLimit).where(
-            ResourceLimit.entity_type == EntityType.project,
+            ResourceLimit.entity_type == EntityType.org,
             ResourceLimit.org_id == organization_id,
             ResourceLimit.project_id.is_(None),  # type: ignore[union-attr]
         )

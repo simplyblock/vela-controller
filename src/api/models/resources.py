@@ -1,8 +1,9 @@
 from datetime import datetime
 from enum import Enum as PyEnum
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel
+from sqlalchemy import BigInteger
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field
 from ulid import ULID
@@ -23,6 +24,7 @@ class ResourceType(PyEnum):
 
 
 class EntityType(PyEnum):
+    system = "system"
     org = "org"
     project = "project"
 
@@ -36,21 +38,21 @@ class ResourceLimit(AsyncAttrs, Model, table=True):
     org_id: Identifier | None = Model.foreign_key_field("organization", nullable=True)
     env_type: str | None = Field(default=None, nullable=True)
     project_id: Identifier | None = Model.foreign_key_field("project", nullable=True)
-    max_total: int
-    max_per_branch: int
+    max_total: Annotated[int, Field(sa_type=BigInteger)]
+    max_per_branch: Annotated[int, Field(sa_type=BigInteger)]
 
 
 class BranchProvisioning(AsyncAttrs, Model, table=True):
     branch_id: Identifier = Model.foreign_key_field("branch", nullable=True)
     resource: ResourceType
-    amount: int
+    amount: Annotated[int, Field(sa_type=BigInteger)]
     updated_at: datetime
 
 
 class ProvisioningLog(AsyncAttrs, Model, table=True):
     branch_id: Identifier = Model.foreign_key_field("branch", nullable=True)
     resource: ResourceType
-    amount: int
+    amount: Annotated[int, Field(sa_type=BigInteger)]
     action: str
     reason: str | None = None
     ts: datetime
@@ -62,7 +64,7 @@ class ResourceUsageMinute(AsyncAttrs, Model, table=True):
     project_id: Identifier = Model.foreign_key_field("project", nullable=True)
     branch_id: Identifier = Model.foreign_key_field("branch", nullable=True)
     resource: ResourceType
-    amount: int
+    amount: Annotated[int, Field(sa_type=BigInteger)]
 
 
 class ResourceConsumptionLimit(AsyncAttrs, Model, table=True):

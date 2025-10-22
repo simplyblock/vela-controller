@@ -316,7 +316,7 @@ async def set_consumption_limit(
 
 
 async def get_consumption_limits(
-    session: SessionDep, entity_type: EntityType, entity_id: Identifier
+    session: SessionDep, entity_type: EntityType, entity_id: Identifier | None
 ) -> list[ConsumptionLimitPublic]:
     q = select(ResourceConsumptionLimit).where(ResourceConsumptionLimit.entity_type == entity_type)
     if entity_type == EntityType.org:
