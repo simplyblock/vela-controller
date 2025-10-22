@@ -723,15 +723,14 @@ def _realtime_route_specs(ref: str, domain: str, namespace: str) -> list[HTTPRou
 def _pgmeta_route_specs(ref: str, domain: str, namespace: str) -> list[HTTPRouteSpec]:
     """HTTPRoute definitions that expose the Postgres Meta service for a branch."""
 
-    path = f"/platform/pgmeta/{ref}"
     return [
         HTTPRouteSpec(
             ref=ref,
-            domain=domain,  # TODO: change domain to api.
+            domain=domain,
             namespace=namespace,
             service_name="supabase-supabase-meta",
             service_port=8080,
-            path_prefix=path,
+            path_prefix="/pg-meta",
             route_suffix="pgmeta-route",
             plugins=["realtime-cors", CHECK_ENCRYPTED_HEADER_PLUGIN_NAME],
         ),
