@@ -1,10 +1,9 @@
 import asyncio
 import logging
 from datetime import UTC, datetime
-from typing import Literal, get_args
+from typing import get_args
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlmodel import select
 
@@ -16,12 +15,18 @@ from .models.branch import Branch
 from .models.project import Project
 from .models.resources import (
     BranchProvisioning,
+    BranchProvisionPublic,
+    ConsumptionPayload,
     EntityType,
     ProvisioningLog,
+    ProvLimitPayload,
     ResourceConsumptionLimit,
     ResourceLimit,
+    ResourcesPayload,
     ResourceType,
+    ResourceTypePublic,
     ResourceUsageMinute,
+    ToFromPayload,
 )
 from .settings import settings
 
@@ -56,33 +61,6 @@ async def log_provisioning(
     )
     db.add(log)
     await db.commit()
-
-
-ResourceTypePublic = Literal["milli_vcpu", "ram", "iops", "storage_size", "database_size"]
-
-
-class ResourcesPayload(BaseModel):
-    resources: dict[ResourceTypePublic, int]
-
-
-class ToFromPayload(BaseModel):
-    cycle_start: datetime | None = None
-    cycle_end: datetime | None = None
-
-
-class ProvLimitPayload(BaseModel):
-    resource: ResourceTypePublic
-    max_total: int
-    max_per_branch: int
-
-
-class ConsumptionPayload(BaseModel):
-    resource: ResourceTypePublic
-    max_total_minutes: int
-
-
-class BranchProvisionPublic(BaseModel):
-    status: str
 
 
 # ---------------------------
@@ -164,9 +142,7 @@ async def get_project_usage(
     result = await session.execute(query)
     usages = result.scalars().all()
 
-    result_dict: dict[ResourceTypePublic, int] = {
-        resource_type: 0 for resource_type in get_args(ResourceTypePublic)
-    }
+    result_dict: dict[ResourceTypePublic, int] = dict.fromkeys(get_args(ResourceTypePublic), 0)
     for usage in usages:
         result_dict[usage.resource.name] += usage.amount
 
@@ -176,7 +152,7 @@ async def get_project_usage(
 @router.get("/organizations/{organization_id}/usage")
 async def get_org_usage(
     session: SessionDep,
-        organization_id: Identifier,
+    organization_id: Identifier,
     payload: ToFromPayload,
 ) -> dict[ResourceTypePublic, int]:
     # Normalize datetimes → make them naive UTC
@@ -199,9 +175,7 @@ async def get_org_usage(
     result = await session.execute(query)
     usages = result.scalars().all()
 
-    result_dict: dict[ResourceTypePublic, int] = {
-        resource_type: 0 for resource_type in get_args(ResourceTypePublic)
-    }
+    result_dict: dict[ResourceTypePublic, int] = dict.fromkeys(get_args(ResourceTypePublic), 0)
     for usage in usages:
         result_dict[usage.resource.name] += usage.amount
 

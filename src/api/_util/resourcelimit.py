@@ -9,20 +9,21 @@ from ..models.resources import (
     BranchProvisioning,
     EntityType,
     ResourceLimit,
+    ResourceRequest,
     ResourceType,
 )
 
-type ProvisioningRequest = dict[ResourceType, int]
-
 
 async def check_resource_limits(
-    session: SessionDep, branch: Branch, provisioning_request: ProvisioningRequest
+    session: SessionDep, branch: Branch, provisioning_request: ResourceRequest
 ) -> list[ResourceType]:
     effective_branch_limits = await get_effective_branch_limits(session, branch)
     exceeded_limits: list[ResourceType] = []
-    for request in provisioning_request.items():
-        resource_type, amount = request
-        if effective_branch_limits[resource_type] < amount:
+    for key, value in provisioning_request:
+        if value is None:
+            continue
+        resource_type = ResourceType(key)
+        if effective_branch_limits[resource_type] < value:
             exceeded_limits.append(resource_type)
     return exceeded_limits
 
