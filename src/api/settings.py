@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     keycloak_realm: str = "vela"
     keycloak_admin_name: str
     keycloak_admin_secret: str
+    system_limit_millis_vcpu: int
+    system_limit_ram: int
+    system_limit_iops: int
+    system_limit_storage_size: int
+    system_limit_database_size: int
 
 
 settings = Settings()  # type: ignore[call-arg]

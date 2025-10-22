@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 
 from ...deployment import delete_deployment
 from .._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
+from .._util.resourcelimit import initialize_organization_resource_limits
 from .._util.role import create_organization_admin_role
 from ..auth import AuthUserDep, authenticated_user
 from ..db import SessionDep
@@ -99,6 +100,9 @@ async def create(
     session.add(link)
     await session.commit()
     await session.refresh(entity)
+
+    # Set up initial organization resource limits
+    await initialize_organization_resource_limits(session, entity)
 
     entity_url = url_path_for(request, "organizations:detail", organization_id=entity.id)
     return JSONResponse(
