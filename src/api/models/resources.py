@@ -1,6 +1,8 @@
 from datetime import datetime
 from enum import Enum as PyEnum
+from typing import Literal
 
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field
 
@@ -69,3 +71,38 @@ class ResourceConsumptionLimit(AsyncAttrs, Model, table=True):
     project_id: Identifier | None = Model.foreign_key_field("project", nullable=True)
     resource: ResourceType
     max_total_minutes: int
+
+
+ResourceTypePublic = Literal["milli_vcpu", "ram", "iops", "storage_size", "database_size"]
+
+
+class ResourceRequest(BaseModel):
+    milli_vcpu: int | None = None
+    ram: int | None = None
+    iops: int | None = None
+    storage_size: int | None = None
+    database_size: int | None = None
+
+
+class ResourcesPayload(BaseModel):
+    resources: ResourceRequest
+
+
+class ToFromPayload(BaseModel):
+    cycle_start: datetime | None = None
+    cycle_end: datetime | None = None
+
+
+class ProvLimitPayload(BaseModel):
+    resource: ResourceTypePublic
+    max_total: int
+    max_per_branch: int
+
+
+class ConsumptionPayload(BaseModel):
+    resource: ResourceTypePublic
+    max_total_minutes: int
+
+
+class BranchProvisionPublic(BaseModel):
+    status: str
