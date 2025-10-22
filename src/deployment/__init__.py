@@ -369,6 +369,8 @@ async def create_vela_config(
     db_spec.setdefault("persistence", {})["size"] = f"{bytes_to_gb(parameters.database_size)}G"
 
     # Create and apply custom StorageClass for database volume with specified IOPS
+    # TODO: Storage class is a non namespaced object
+    # remove the storage class when deleting the branch deployment
     storage_class_name = branch_storage_class_name(branch_id)
     base_storage_class = await kube_service.get_storage_class("simplyblock-csi-sc")
     db_spec.setdefault("persistence", {})["storageClassName"] = storage_class_name
@@ -496,33 +498,27 @@ def resize_deployment(branch_id: Identifier, parameters: ResizeParameters):
     """
     chart = resources.files(__package__) / "charts" / "supabase"
     # Minimal values file with only overrides
-    values_content: dict = {}
-    db_spec = values_content.setdefault("db", {})
+    values_content: dict[str, Any] = {}
 
-    # resize database volume
+    # resize Database volume
     if parameters.database_size is not None:
+        db_spec = values_content.setdefault("db", {})
         db_spec.setdefault("persistence", {})["size"] = f"{bytes_to_gb(parameters.database_size)}G"
 
-    # resize storage volume
+    # resize storageAPI volume
     if parameters.storage_size is not None:
         storage_size_gb = f"{bytes_to_gb(parameters.storage_size)}G"
         values_content.setdefault("storage", {}).setdefault("persistence", {})["size"] = storage_size_gb
 
-    # resize CPU resources
-    resource_cfg = db_spec.setdefault("resources", {})
-
-    if parameters.milli_vcpu is not None:
-        cpu_limit, cpu_request = calculate_cpu_resources(parameters.milli_vcpu)
-        resource_cfg["limits"] = {
-            "cpu": cpu_limit,
-        }
-        resource_cfg["requests"] = {
-            "cpu": cpu_request,
-        }
-
     # resize memory
     if parameters.memory_bytes is not None:
+        db_spec = values_content.setdefault("db", {})
+        resource_cfg = db_spec.setdefault("resources", {})
         resource_cfg["guestMemory"] = f"{bytes_to_mib(parameters.memory_bytes)}Mi"
+
+    if not values_content:
+        logger.info("No Helm overrides required for resize of branch %s; skipping upgrade.", branch_id)
+        return
 
     namespace = deployment_namespace(branch_id)
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as temp_values:
