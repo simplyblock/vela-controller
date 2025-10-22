@@ -61,7 +61,7 @@ async def get_organization_resource_usage(
 
     result = await session.execute(query)
     usages = result.scalars().all()
-    return __map_resource_usages(list(usages))
+    return _map_resource_usages(list(usages))
 
 
 async def get_project_resource_usage(
@@ -75,7 +75,7 @@ async def get_project_resource_usage(
 
     result = await session.execute(query)
     usages = result.scalars().all()
-    return __map_resource_usages(list(usages))
+    return _map_resource_usages(list(usages))
 
 
 async def check_resource_limits(
@@ -158,7 +158,7 @@ async def get_organization_resource_limits(
             ResourceLimit.project_id.is_(None),  # type: ignore[union-attr]
         )
     )
-    return __map_resource_limits(list(result.scalars().all()))
+    return _map_resource_limits(list(result.scalars().all()))
 
 
 async def get_project_resource_limits(
@@ -171,10 +171,10 @@ async def get_project_resource_limits(
             ResourceLimit.project_id == project_id,
         )
     )
-    return __map_resource_limits(list(result.scalars().all()))
+    return _map_resource_limits(list(result.scalars().all()))
 
 
-def __map_resource_limits(limits: list[ResourceLimit]) -> dict[ResourceType, ResourceLimit]:
+def _map_resource_limits(limits: list[ResourceLimit]) -> dict[ResourceType, ResourceLimit]:
     result: dict[ResourceType, ResourceLimit] = {}
     for limit in limits:
         result[limit.resource] = limit
@@ -190,24 +190,24 @@ async def get_current_organization_allocations(
         .join(Project)
         .where(Project.organization_id == organization_id)
     )
-    return __map_resource_allocation(list(result.scalars().all()))
+    return _map_resource_allocation(list(result.scalars().all()))
 
 
 async def get_current_project_allocations(session: SessionDep, project_id: Identifier) -> dict[ResourceType, int]:
     result = await session.execute(
         select(func.sum(BranchProvisioning.amount)).join(Branch).where(Branch.project_id == project_id)
     )
-    return __map_resource_allocation(list(result.scalars().all()))
+    return _map_resource_allocation(list(result.scalars().all()))
 
 
-def __map_resource_allocation(provisioning_list: list[BranchProvisioning]) -> dict[ResourceType, int]:
+def _map_resource_allocation(provisioning_list: list[BranchProvisioning]) -> dict[ResourceType, int]:
     result: dict[ResourceType, int] = {}
     for resource_type in ResourceType:
-        result[resource_type] = __select_resource_allocation_or_zero(resource_type, provisioning_list)
+        result[resource_type] = _select_resource_allocation_or_zero(resource_type, provisioning_list)
     return result
 
 
-def __select_resource_allocation_or_zero(resource_type: ResourceType, allocations: list[BranchProvisioning]):
+def _select_resource_allocation_or_zero(resource_type: ResourceType, allocations: list[BranchProvisioning]):
     value: int | None = None
     for allocation in allocations:
         if allocation.resource == resource_type:
@@ -217,7 +217,7 @@ def __select_resource_allocation_or_zero(resource_type: ResourceType, allocation
     return value if value is not None else 0
 
 
-def __map_resource_usages(usages: list[ResourceUsageMinute]) -> dict[ResourceType, int]:
+def _map_resource_usages(usages: list[ResourceUsageMinute]) -> dict[ResourceType, int]:
     result: dict[ResourceType, int] = {}
     for usage in usages:
         result[usage.resource] = result.get(usage.resource, 0) + usage.amount
