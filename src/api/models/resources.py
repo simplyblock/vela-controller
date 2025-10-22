@@ -88,11 +88,6 @@ class ResourcesPayload(BaseModel):
     resources: ResourceLimitsPublic
 
 
-class ToFromPayload(BaseModel):
-    cycle_start: datetime | None = None
-    cycle_end: datetime | None = None
-
-
 class ProvLimitPayload(BaseModel):
     resource: ResourceTypePublic
     max_total: int
