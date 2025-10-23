@@ -1,10 +1,14 @@
 import asyncio
+import contextlib
 import hashlib
 import logging
+import secrets
+import string
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal, cast
 
+import asyncpg
 from asyncpg import exceptions as asyncpg_exceptions
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
@@ -51,6 +55,8 @@ from ....models.branch import (
     BranchCreate,
     BranchDep,
     BranchPasswordReset,
+    BranchPgbouncerConfigStatus,
+    BranchPgbouncerConfigUpdate,
     BranchPublic,
     BranchResizeService,
     BranchResizeStatusEntry,
@@ -59,6 +65,7 @@ from ....models.branch import (
     BranchUpdate,
     CapaResizeKey,
     DatabaseInformation,
+    PgbouncerConfig,
     ResourceUsageDefinition,
     aggregate_resize_statuses,
 )
@@ -84,6 +91,15 @@ _BRANCH_SERVICE_ENDPOINTS: dict[str, tuple[str, int]] = {
     "meta": ("supabase-supabase-meta", 8080),
     "rest": ("supabase-supabase-rest", 3000),
 }
+
+_PGBOUNCER_ADMIN_USER = "pgbouncer_admin"
+_PGBOUNCER_ADMIN_DATABASE = "pgbouncer"
+_PGBOUNCER_SERVICE_PORT = 6432
+
+
+def generate_pgbouncer_password(length: int = 32) -> str:
+    alphabet = string.ascii_letters + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
 async def _probe_service_socket(host: str, port: int, *, label: str) -> BranchServiceStatus:
@@ -228,6 +244,7 @@ async def _deploy_branch_environment_task(
     jwt_secret: str,
     anon_key: str,
     service_key: str,
+    pgbouncer_admin_password: str,
 ) -> None:
     try:
         await deploy_branch_environment(
@@ -240,6 +257,7 @@ async def _deploy_branch_environment_task(
             jwt_secret=jwt_secret,
             anon_key=anon_key,
             service_key=service_key,
+            pgbouncer_admin_password=pgbouncer_admin_password,
         )
     except VelaError:
         logging.exception(
@@ -505,6 +523,14 @@ async def create(
             database_image_tag=deployment_params.database_image_tag,
         )
         entity.database_password = deployment_params.database_password
+    pgbouncer_admin_password = generate_pgbouncer_password()
+    entity.pgbouncer_password = pgbouncer_admin_password
+    entity.pgbouncer_config = PgbouncerConfig(
+        default_pool_size=PgbouncerConfig.DEFAULT_POOL_SIZE,
+        max_client_conn=PgbouncerConfig.DEFAULT_MAX_CLIENT_CONN,
+        server_idle_timeout=PgbouncerConfig.DEFAULT_SERVER_IDLE_TIMEOUT,
+        server_lifetime=PgbouncerConfig.DEFAULT_SERVER_LIFETIME,
+    )
     session.add(entity)
     try:
         await realm_admin("master").a_create_realm({"realm": str(entity.id)})
@@ -545,6 +571,7 @@ async def create(
                 jwt_secret=entity.jwt_secret,
                 anon_key=entity.anon_key,
                 service_key=entity.service_key,
+                pgbouncer_admin_password=pgbouncer_admin_password,
             )
         )
     # TODO: implement source branch cloning for config/data copy
@@ -669,6 +696,58 @@ async def reset_password(
 
     await session.commit()
     return Response(status_code=204)
+
+
+# PgBouncer configuration
+@instance_api.patch(
+    "/pgbouncer-config",
+    name="organizations:projects:branch:update-pgbouncer-config",
+    response_model=BranchPgbouncerConfigStatus,
+    responses={
+        401: Unauthenticated,
+        403: Forbidden,
+        404: NotFound,
+        500: {"description": "PgBouncer configuration template missing required entries."},
+        502: {"description": "Failed to update PgBouncer configuration."},
+    },
+)
+async def update_pgbouncer_config(
+    session: SessionDep,
+    _organization: OrganizationDep,
+    _project: ProjectDep,
+    branch: BranchDep,
+    parameters: BranchPgbouncerConfigUpdate,
+) -> BranchPgbouncerConfigStatus:
+    config = _ensure_pgbouncer_config(session, branch)
+
+    namespace, _ = get_db_vmi_identity(branch.id)
+    host = _pgbouncer_host_for_namespace(namespace)
+    update_commands = _collect_pgbouncer_updates(parameters)
+
+    if not update_commands:
+        raise HTTPException(status_code=400, detail="No PgBouncer parameters provided for update.")
+
+    admin_password = _resolve_pgbouncer_password(branch)
+
+    try:
+        await _apply_pgbouncer_settings(host=host, password=admin_password, update_commands=update_commands)
+    except HTTPException:
+        await session.rollback()
+        raise
+
+    _persist_pgbouncer_settings(config, update_commands)
+    await session.commit()
+    await session.refresh(config)
+
+    return BranchPgbouncerConfigStatus(
+        pgbouncer_enabled=True,
+        pgbouncer_status="RELOADING",
+        pool_mode="transaction",
+        max_client_conn=config.max_client_conn,
+        default_pool_size=config.default_pool_size,
+        server_idle_timeout=config.server_idle_timeout,
+        server_lifetime=config.server_lifetime,
+    )
 
 
 # Resize controls
@@ -866,3 +945,71 @@ async def get_apikeys(
 
 
 api.include_router(instance_api)
+
+
+def _ensure_pgbouncer_config(session: SessionDep, branch: Branch) -> PgbouncerConfig:
+    config = branch.pgbouncer_config
+    if config is None:
+        config = PgbouncerConfig(
+            default_pool_size=PgbouncerConfig.DEFAULT_POOL_SIZE,
+            max_client_conn=PgbouncerConfig.DEFAULT_MAX_CLIENT_CONN,
+            server_idle_timeout=PgbouncerConfig.DEFAULT_SERVER_IDLE_TIMEOUT,
+            server_lifetime=PgbouncerConfig.DEFAULT_SERVER_LIFETIME,
+        )
+        branch.pgbouncer_config = config
+        session.add(config)
+    return config
+
+
+def _collect_pgbouncer_updates(parameters: BranchPgbouncerConfigUpdate) -> dict[str, int]:
+    updates: dict[str, int] = {}
+    if parameters.default_pool_size is not None:
+        updates["default_pool_size"] = parameters.default_pool_size
+    if parameters.max_client_conn is not None:
+        updates["max_client_conn"] = parameters.max_client_conn
+    if parameters.server_idle_timeout is not None:
+        updates["server_idle_timeout"] = parameters.server_idle_timeout
+    if parameters.server_lifetime is not None:
+        updates["server_lifetime"] = parameters.server_lifetime
+    return updates
+
+
+def _pgbouncer_host_for_namespace(namespace: str) -> str:
+    return f"{deployment_settings.deployment_release_name}-pgbouncer.{namespace}.svc.cluster.local"
+
+
+def _resolve_pgbouncer_password(branch: Branch) -> str:
+    try:
+        return branch.pgbouncer_password
+    except ValueError as exc:
+        logger.exception("PgBouncer admin password missing for branch %s", branch.id)
+        raise HTTPException(status_code=500, detail="PgBouncer admin password is unavailable.") from exc
+
+
+async def _apply_pgbouncer_settings(*, host: str, password: str, update_commands: dict[str, int]) -> None:
+    connection: asyncpg.Connection | None = None
+    try:
+        connection = await asyncpg.connect(
+            user=_PGBOUNCER_ADMIN_USER,
+            password=password,
+            database=_PGBOUNCER_ADMIN_DATABASE,
+            host=host,
+            port=_PGBOUNCER_SERVICE_PORT,
+            server_settings={"application_name": "vela-pgbouncer-config"},
+            command_timeout=10,
+        )
+        for setting, value in update_commands.items():
+            await connection.execute(f"SET {setting} = {value}")
+        await connection.execute("RELOAD")
+    except (asyncpg_exceptions.PostgresError, OSError) as exc:
+        logger.exception("Failed to apply PgBouncer runtime settings for host %s", host)
+        raise HTTPException(status_code=502, detail="Failed to apply PgBouncer runtime settings.") from exc
+    finally:
+        with contextlib.suppress(Exception):
+            if connection is not None:
+                await connection.close()
+
+
+def _persist_pgbouncer_settings(config: PgbouncerConfig, updates: dict[str, int]) -> None:
+    for field, value in updates.items():
+        setattr(config, field, value)

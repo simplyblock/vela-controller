@@ -18,6 +18,11 @@ MIB: Final[int] = KIB * 1024
 GIB: Final[int] = MIB * 1024
 TIB: Final[int] = GIB * 1024
 
+PGBOUNCER_DEFAULT_MAX_CLIENT_CONN: Final[int] = 100
+PGBOUNCER_DEFAULT_POOL_SIZE: Final[int] = 20
+PGBOUNCER_DEFAULT_SERVER_IDLE_TIMEOUT: Final[int] = 60
+PGBOUNCER_DEFAULT_SERVER_LIFETIME: Final[int] = 600
+
 
 # FIXME: Increasing to have faster boot times.
 # Reduce min vcpu and memory when when the image is optimised and boot time is improved.

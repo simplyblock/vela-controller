@@ -16,13 +16,22 @@ from ..._util import (
     DATABASE_SIZE_CONSTRAINTS,
     IOPS_CONSTRAINTS,
     MEMORY_CONSTRAINTS,
+    PGBOUNCER_DEFAULT_MAX_CLIENT_CONN,
+    PGBOUNCER_DEFAULT_POOL_SIZE,
+    PGBOUNCER_DEFAULT_SERVER_IDLE_TIMEOUT,
+    PGBOUNCER_DEFAULT_SERVER_LIFETIME,
     STORAGE_SIZE_CONSTRAINTS,
     DBPassword,
     Identifier,
     Slug,
 )
 from ...deployment import DeploymentParameters
-from .._util.crypto import decrypt_with_base64_key, decrypt_with_passphrase, encrypt_with_random_passphrase
+from .._util.crypto import (
+    decrypt_with_base64_key,
+    decrypt_with_passphrase,
+    encrypt_with_passphrase,
+    encrypt_with_random_passphrase,
+)
 from ..db import SessionDep
 from ._util import Model, Name
 from .project import Project, ProjectDep
@@ -46,6 +55,12 @@ class Branch(AsyncAttrs, Model, table=True):
     # base64-encoded encrypted password and encryption key
     encrypted_database_password: Annotated[str, Field(default="", sa_column=Column(Text, nullable=False))]
     encryption_key: Annotated[str, Field(default="", sa_column=Column(String(255), nullable=False))]
+    encrypted_pgbouncer_admin_password: Annotated[str, Field(default="", sa_column=Column(Text, nullable=False))]
+
+    pgbouncer_config: Optional["PgbouncerConfig"] = Relationship(
+        back_populates="branch",
+        sa_relationship_kwargs={"uselist": False, "cascade": "all, delete-orphan"},
+    )
 
     database_size: Annotated[int, Field(**DATABASE_SIZE_CONSTRAINTS, sa_column=Column(BigInteger))]
     milli_vcpu: Annotated[int, Field(**CPU_CONSTRAINTS, sa_column=Column(BigInteger))]  # units of milli vCPU
@@ -96,6 +111,47 @@ class Branch(AsyncAttrs, Model, table=True):
         self.encrypted_database_password = encrypted
         self.encryption_key = key
 
+    @property
+    def pgbouncer_password(self) -> str:
+        if not self.encrypted_pgbouncer_admin_password or not self.encryption_key:
+            raise ValueError("PgBouncer admin password is not configured.")
+        try:
+            return decrypt_with_passphrase(
+                self.encrypted_pgbouncer_admin_password,
+                self.encryption_key,
+            )
+        except ValueError:
+            plaintext = decrypt_with_base64_key(
+                self.encrypted_pgbouncer_admin_password,
+                self.encryption_key,
+            )
+            self.pgbouncer_password = plaintext
+            return plaintext
+
+    @pgbouncer_password.setter
+    def pgbouncer_password(self, password: str) -> None:
+        if not self.encryption_key:
+            encrypted, key = encrypt_with_random_passphrase(password)
+            self.encrypted_pgbouncer_admin_password = encrypted
+            self.encryption_key = key
+            return
+        self.encrypted_pgbouncer_admin_password = encrypt_with_passphrase(password, self.encryption_key)
+
+
+class PgbouncerConfig(Model, table=True):
+    DEFAULT_MAX_CLIENT_CONN: ClassVar[int | None] = PGBOUNCER_DEFAULT_MAX_CLIENT_CONN
+    DEFAULT_POOL_SIZE: ClassVar[int] = PGBOUNCER_DEFAULT_POOL_SIZE
+    DEFAULT_SERVER_IDLE_TIMEOUT: ClassVar[int | None] = PGBOUNCER_DEFAULT_SERVER_IDLE_TIMEOUT
+    DEFAULT_SERVER_LIFETIME: ClassVar[int | None] = PGBOUNCER_DEFAULT_SERVER_LIFETIME
+
+    branch_id: Identifier = Model.foreign_key_field("branch", nullable=False, unique=True)
+    branch: Branch = Relationship(back_populates="pgbouncer_config")
+
+    max_client_conn: Annotated[int | None, Field(default=None, ge=1)]
+    default_pool_size: Annotated[int, Field(ge=1)]
+    server_idle_timeout: Annotated[int | None, Field(default=None, ge=0)]
+    server_lifetime: Annotated[int | None, Field(default=None, ge=0)]
+
 
 class BranchSourceParameters(BaseModel):
     branch_id: Identifier
@@ -123,6 +179,49 @@ class BranchUpdate(BaseModel):
 
 class BranchPasswordReset(BaseModel):
     new_password: DBPassword
+
+
+class BranchPgbouncerConfigUpdate(BaseModel):
+    default_pool_size: Annotated[
+        int | None,
+        PydanticField(
+            ge=PGBOUNCER_DEFAULT_POOL_SIZE,
+            description="Number of client connections allowed per database/user pair.",
+        ),
+    ] = None
+    max_client_conn: Annotated[
+        int | None,
+        PydanticField(ge=PGBOUNCER_DEFAULT_MAX_CLIENT_CONN),
+    ] = None
+    server_idle_timeout: Annotated[
+        int | None,
+        PydanticField(ge=PGBOUNCER_DEFAULT_SERVER_IDLE_TIMEOUT),
+    ] = None
+    server_lifetime: Annotated[
+        int | None,
+        PydanticField(ge=PGBOUNCER_DEFAULT_SERVER_LIFETIME),
+    ] = None
+
+    @model_validator(mode="after")
+    def ensure_updates(self) -> "BranchPgbouncerConfigUpdate":
+        if (
+            self.default_pool_size is None
+            and self.max_client_conn is None
+            and self.server_idle_timeout is None
+            and self.server_lifetime is None
+        ):
+            raise ValueError("Provide at least one PgBouncer parameter to update.")
+        return self
+
+
+class BranchPgbouncerConfigStatus(BaseModel):
+    pgbouncer_enabled: bool
+    pgbouncer_status: Annotated[str, PydanticField(min_length=1)]
+    pool_mode: Annotated[str, PydanticField(min_length=1)]
+    max_client_conn: int | None = None
+    default_pool_size: int
+    server_idle_timeout: int | None = None
+    server_lifetime: int | None = None
 
 
 BranchServiceStatus = Literal[

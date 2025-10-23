@@ -26,7 +26,7 @@ from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_fo
 from ...auth import security
 from ...db import SessionDep
 from ...keycloak import realm_admin
-from ...models.branch import Branch
+from ...models.branch import Branch, PgbouncerConfig
 from ...models.organization import OrganizationDep
 from ...models.project import (
     Project,
@@ -53,6 +53,7 @@ async def _deploy_branch_environment_task(
     jwt_secret: str,
     anon_key: str,
     service_key: str,
+    pgbouncer_admin_password: str,
 ) -> None:
     try:
         await deploy_branch_environment(
@@ -65,6 +66,7 @@ async def _deploy_branch_environment_task(
             jwt_secret=jwt_secret,
             anon_key=anon_key,
             service_key=service_key,
+            pgbouncer_admin_password=pgbouncer_admin_password,
         )
     except VelaError:
         logger.exception(
@@ -161,6 +163,14 @@ async def create(
         env_type=parameters.env_type,
     )
     main_branch.database_password = parameters.deployment.database_password
+    pgbouncer_admin_password = branch_module.generate_pgbouncer_password()
+    main_branch.pgbouncer_password = pgbouncer_admin_password
+    main_branch.pgbouncer_config = PgbouncerConfig(
+        default_pool_size=PgbouncerConfig.DEFAULT_POOL_SIZE,
+        max_client_conn=PgbouncerConfig.DEFAULT_MAX_CLIENT_CONN,
+        server_idle_timeout=PgbouncerConfig.DEFAULT_SERVER_IDLE_TIMEOUT,
+        server_lifetime=PgbouncerConfig.DEFAULT_SERVER_LIFETIME,
+    )
     session.add(main_branch)
     try:
         await realm_admin("master").a_create_realm({"realm": str(main_branch.id)})
@@ -203,6 +213,7 @@ async def create(
             jwt_secret=jwt_secret,
             anon_key=anon_key,
             service_key=service_key,
+            pgbouncer_admin_password=pgbouncer_admin_password,
         )
     )
     await session.refresh(organization)
