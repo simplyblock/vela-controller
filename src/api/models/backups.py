@@ -83,6 +83,7 @@ class BackupPublic(BaseModel):
     project_id: Identifier
     branch_id: Identifier
     row_index: int
+    size_bytes: int
     created_at: datetime
 
 

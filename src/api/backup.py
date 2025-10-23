@@ -379,6 +379,7 @@ async def list_backups(
             branch_id=backup.branch_id,
             row_index=backup.row_index,
             created_at=backup.created_at,
+            size_bytes=backup.size_bytes,
         )
 
     return [await backup_mapper(b) for b in backups]
