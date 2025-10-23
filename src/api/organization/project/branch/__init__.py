@@ -38,6 +38,7 @@ from ...._util.crypto import encrypt_with_passphrase
 from ...._util.resourcelimit import (
     check_available_resources_limits,
     create_or_update_branch_provisioning,
+    delete_branch_provisioning,
     get_current_branch_allocations,
 )
 from ....auth import security
@@ -621,8 +622,10 @@ async def delete(
         raise HTTPException(400, "Default branch cannot be deleted")
     await delete_deployment(branch.id)
     await realm_admin("master").a_delete_realm(str(branch.id))
+    await delete_branch_provisioning(session, branch)
     await session.delete(branch)
     await session.commit()
+
     return Response(status_code=204)
 
 
