@@ -11,6 +11,7 @@ from ._util.resourcelimit import (
     check_resource_limits,
     create_or_update_branch_provisioning,
     dict_to_resource_limits,
+    get_current_branch_allocations,
     get_effective_branch_limits,
     get_organization_resource_usage,
     get_project_resource_usage,
@@ -34,7 +35,6 @@ from .models.resources import (
     ResourceLimit,
     ResourceLimitsPublic,
     ResourcesPayload,
-    ResourceType,
     ResourceUsageMinute,
 )
 from .settings import settings
@@ -84,23 +84,12 @@ async def set_branch_allocations(
 
 @router.get("/branches/{branch_id}/allocations")
 async def get_branch_allocations(session: SessionDep, branch_id: Identifier) -> BranchAllocationPublic:
-    result = await session.execute(select(BranchProvisioning).where(BranchProvisioning.branch_id == branch_id))
-    allocations = list(result.scalars().all())
+    result = await session.execute(select(Branch).where(Branch.id == branch_id))
+    branch = result.scalars().first()
+    if not branch:
+        raise HTTPException(404, "Branch not found")
 
-    def select_allocation(resource_type: ResourceType, allocations: list[BranchProvisioning]):
-        for allocation in allocations:
-            if allocation.resource == resource_type:
-                return allocation.amount
-        return None
-
-    return BranchAllocationPublic(
-        branch_id=branch_id,
-        milli_vcpu=select_allocation(ResourceType.milli_vcpu, allocations),
-        ram=select_allocation(ResourceType.ram, allocations),
-        iops=select_allocation(ResourceType.iops, allocations),
-        database_size=select_allocation(ResourceType.database_size, allocations),
-        storage_size=select_allocation(ResourceType.storage_size, allocations),
-    )
+    return await get_current_branch_allocations(session, branch)
 
 
 # ---------------------------

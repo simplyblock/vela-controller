@@ -12,6 +12,7 @@ from ..models.branch import Branch
 from ..models.organization import Organization
 from ..models.project import Project
 from ..models.resources import (
+    BranchAllocationPublic,
     BranchProvisioning,
     EntityType,
     ProvisioningLog,
@@ -22,6 +23,20 @@ from ..models.resources import (
     UsageCycle,
 )
 from ..settings import settings
+
+
+async def get_current_branch_allocations(session: SessionDep, branch: Branch) -> BranchAllocationPublic:
+    result = await session.execute(select(BranchProvisioning).where(BranchProvisioning.branch_id == branch.id))
+    allocations = list(result.scalars().all())
+
+    return BranchAllocationPublic(
+        branch_id=branch.id,
+        milli_vcpu=_select_allocation(ResourceType.milli_vcpu, allocations),
+        ram=_select_allocation(ResourceType.ram, allocations),
+        iops=_select_allocation(ResourceType.iops, allocations),
+        database_size=_select_allocation(ResourceType.database_size, allocations),
+        storage_size=_select_allocation(ResourceType.storage_size, allocations),
+    )
 
 
 async def audit_new_branch_resource_provisioning(
@@ -372,3 +387,10 @@ def _map_resource_usages(usages: list[ResourceUsageMinute]) -> dict[ResourceType
     for usage in usages:
         result[usage.resource] = result.get(usage.resource, 0) + usage.amount
     return result
+
+
+def _select_allocation(resource_type: ResourceType, allocations: list[BranchProvisioning]):
+    for allocation in allocations:
+        if allocation.resource == resource_type:
+            return allocation.amount
+    return None
