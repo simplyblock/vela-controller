@@ -40,6 +40,56 @@ services:
     - 3000:3000
     networks:
     - supabase
+  pgbouncer:
+    container_name: vela-pgbouncer
+    image: docker.io/edoburu/pgbouncer:v1.24.1-p0
+    depends_on:
+    - db
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGBOUNCER_ADMIN_PASSWORD: ${PGBOUNCER_ADMIN_PASSWORD}
+      DB_HOST: 'db'
+      POSTGRES_DB: ${POSTGRES_DB}
+    command:
+    - /bin/sh
+    - -c
+    - |
+        set -eu
+        mkdir -p /etc/pgbouncer
+
+        cat <<EOF >/etc/pgbouncer/pgbouncer.ini
+        [databases]
+        ${POSTGRES_DB} = host=${DB_HOST} port=5432 user=postgres password=${POSTGRES_PASSWORD}
+
+        [pgbouncer]
+        listen_addr = 0.0.0.0
+        listen_port = 5432
+        auth_type = plain
+        auth_file = /etc/pgbouncer/users.txt
+        pool_mode = transaction
+        max_client_conn = 100
+        default_pool_size = 20
+        query_wait_timeout = 30
+        server_idle_timeout = 60
+        server_lifetime = 600
+        log_connections = 1
+        log_disconnections = 1
+        admin_users = pgbouncer_admin
+        stats_users = pgbouncer_admin
+        EOF
+
+        cat <<EOF >/etc/pgbouncer/users.txt
+        "postgres" "${POSTGRES_PASSWORD}"
+        "pgbouncer_admin" "${PGBOUNCER_ADMIN_PASSWORD}"
+        EOF
+
+        exec pgbouncer /etc/pgbouncer/pgbouncer.ini
+    ports:
+      - 6432:5432
+    networks:
+      - supabase
+
   realtime:
     container_name: vela-realtime
     image: docker.io/supabase/realtime:v2.27.5

@@ -71,6 +71,7 @@ logger = logging.getLogger(__name__)
 _SERVICE_PROBE_TIMEOUT_SECONDS = 2
 _BRANCH_SERVICE_ENDPOINTS: dict[str, tuple[str, int]] = {
     "database": ("supabase-supabase-db", 5432),
+    "pgbouncer": ("supabase-pgbouncer", 6432),
     "realtime": ("supabase-supabase-realtime", 4000),
     "storage": ("supabase-supabase-storage", 5000),
     "meta": ("supabase-supabase-meta", 8080),
