@@ -1,0 +1,35 @@
+{{- if and .Values.db.enabled .Values.pgbouncer.enabled }}
+{{- $dbPassword := required "Values.secret.db.password is required when PgBouncer is enabled" .Values.secret.db.password }}
+{{- $pgbouncerAdminPassword := required "Values.secret.pgbouncer.admin_password is required when PgBouncer is enabled" .Values.secret.pgbouncer.admin_password }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ printf "%s-pgbouncer" (include "supabase.db.fullname" .) }}
+  labels:
+    {{- include "supabase.labels" . | nindent 4 }}
+data:
+  namespace: {{ .Release.Namespace }}
+  pgbouncer.ini: |
+    [databases]
+    postgres = host=db port=5432 user=postgres password={{ $dbPassword | quote }}
+
+    [pgbouncer]
+    listen_addr = 0.0.0.0
+    listen_port = 5432
+    auth_type = plain
+    auth_file = /etc/pgbouncer/users.txt
+    pool_mode = transaction
+    max_client_conn = 100
+    default_pool_size = 20
+    query_wait_timeout = 30
+    server_idle_timeout = 60
+    server_lifetime = 600
+    log_connections = 1
+    log_disconnections = 1
+    admin_users = pgbouncer_admin
+    stats_users = pgbouncer_admin
+  users.txt: |
+    "postgres" {{ $dbPassword | quote }}
+    "pgbouncer_admin" {{ $pgbouncerAdminPassword | quote }}
+  
+{{- end }}

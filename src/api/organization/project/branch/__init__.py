@@ -33,6 +33,7 @@ from .....deployment import (
     update_branch_database_password,
     update_branch_volume_iops,
 )
+from .....deployment.kubernetes._util import core_v1_client
 from .....deployment.kubernetes.kubevirt import KubevirtSubresourceAction, call_kubevirt_subresource
 from .....deployment.settings import settings as deployment_settings
 from .....exceptions import VelaError, VelaKubernetesError
@@ -94,6 +95,8 @@ _BRANCH_SERVICE_ENDPOINTS: dict[str, tuple[str, int]] = {
 _PGBOUNCER_ADMIN_USER = "pgbouncer_admin"
 _PGBOUNCER_ADMIN_DATABASE = "pgbouncer"
 _PGBOUNCER_SERVICE_PORT = 6432
+_PGBOUNCER_CONFIG_TEMPLATE_ERROR = "PgBouncer configuration template missing required entries."
+_PGBOUNCER_CONFIG_UPDATE_ERROR = "Failed to update PgBouncer configuration."
 
 
 def generate_pgbouncer_password(length: int = 32) -> str:
@@ -724,12 +727,23 @@ async def update_pgbouncer_config(
 ) -> BranchPgbouncerConfigStatus:
     config = _ensure_pgbouncer_config(session, branch)
 
-    namespace, _ = get_db_vmi_identity(branch.id)
+    namespace, vmi_name = get_db_vmi_identity(branch.id)
     host = _pgbouncer_host_for_namespace(namespace)
     update_commands = _collect_pgbouncer_updates(parameters)
 
     if not update_commands:
         raise HTTPException(status_code=400, detail="No PgBouncer parameters provided for update.")
+
+    config_map_name = f"{vmi_name}-pgbouncer"
+    try:
+        await _update_pgbouncer_config_map(
+            namespace=namespace,
+            config_map_name=config_map_name,
+            updates=update_commands,
+        )
+    except HTTPException:
+        await session.rollback()
+        raise
 
     admin_password = _resolve_pgbouncer_password(branch)
 
@@ -988,6 +1002,101 @@ def _resolve_pgbouncer_password(branch: Branch) -> str:
     except ValueError as exc:
         logger.exception("PgBouncer admin password missing for branch %s", branch.id)
         raise HTTPException(status_code=500, detail="PgBouncer admin password is unavailable.") from exc
+
+
+async def _update_pgbouncer_config_map(
+    *,
+    namespace: str,
+    config_map_name: str,
+    updates: dict[str, int],
+) -> None:
+    if not updates:
+        return
+
+    async with core_v1_client() as core_v1:
+        try:
+            config_map = await core_v1.read_namespaced_config_map(name=config_map_name, namespace=namespace)
+        except ApiException as exc:
+            if exc.status == 404:
+                logger.exception(
+                    "PgBouncer ConfigMap %s/%s not found while applying updates",
+                    namespace,
+                    config_map_name,
+                )
+                raise HTTPException(status_code=500, detail=_PGBOUNCER_CONFIG_TEMPLATE_ERROR) from exc
+            logger.exception(
+                "Failed to retrieve PgBouncer ConfigMap %s/%s",
+                namespace,
+                config_map_name,
+            )
+            raise HTTPException(status_code=502, detail=_PGBOUNCER_CONFIG_UPDATE_ERROR) from exc
+
+        data = dict(config_map.data or {})
+        try:
+            ini_content = data["pgbouncer.ini"]
+        except KeyError as exc:
+            logger.exception(
+                "PgBouncer ConfigMap %s/%s missing pgbouncer.ini entry",
+                namespace,
+                config_map_name,
+            )
+            raise HTTPException(status_code=500, detail=_PGBOUNCER_CONFIG_TEMPLATE_ERROR) from exc
+
+        try:
+            updated_ini = _render_updated_pgbouncer_ini(ini_content, updates)
+        except ValueError as exc:
+            logger.exception(
+                "PgBouncer ConfigMap %s/%s missing required PgBouncer settings: %s",
+                namespace,
+                config_map_name,
+                exc,
+            )
+            raise HTTPException(status_code=500, detail=_PGBOUNCER_CONFIG_TEMPLATE_ERROR) from exc
+
+        data["pgbouncer.ini"] = updated_ini
+        data["namespace"] = namespace
+
+        patch_body = {"data": data}
+        try:
+            await core_v1.patch_namespaced_config_map(
+                name=config_map_name,
+                namespace=namespace,
+                body=patch_body,
+            )
+        except ApiException as exc:
+            logger.exception(
+                "Failed to patch PgBouncer ConfigMap %s/%s",
+                namespace,
+                config_map_name,
+            )
+            raise HTTPException(status_code=502, detail=_PGBOUNCER_CONFIG_UPDATE_ERROR) from exc
+
+
+def _render_updated_pgbouncer_ini(content: str, updates: dict[str, int]) -> str:
+    if not updates:
+        return content
+
+    lines = content.splitlines(keepends=True)
+    for setting, value in updates.items():
+        replaced = False
+        for index, line in enumerate(lines):
+            stripped = line.lstrip()
+            if not stripped.startswith(f"{setting} ="):
+                continue
+
+            line_without_newline = line.rstrip("\r\n")
+            line_ending = line[len(line_without_newline) :]
+            leading_length = len(line_without_newline) - len(line_without_newline.lstrip())
+            indent = line_without_newline[:leading_length]
+
+            lines[index] = f"{indent}{setting} = {value}{line_ending}"
+            replaced = True
+            break
+
+        if not replaced:
+            raise ValueError(f"missing setting {setting!r}")
+
+    return "".join(lines)
 
 
 async def _apply_pgbouncer_settings(*, host: str, password: str, update_commands: dict[str, int]) -> None:
