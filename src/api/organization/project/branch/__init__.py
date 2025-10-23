@@ -3,7 +3,6 @@ import contextlib
 import hashlib
 import logging
 import secrets
-import string
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal, cast
@@ -98,8 +97,13 @@ _PGBOUNCER_SERVICE_PORT = 6432
 
 
 def generate_pgbouncer_password(length: int = 32) -> str:
-    alphabet = string.ascii_letters + string.digits
-    return "".join(secrets.choice(alphabet) for _ in range(length))
+    if length <= 0:
+        raise ValueError("PgBouncer password length must be positive.")
+    password = ""
+    # secrets.token_urlsafe returns roughly 4/3 * n characters, so loop until we have enough.
+    while len(password) < length:
+        password += secrets.token_urlsafe(length)
+    return password[:length]
 
 
 async def _probe_service_socket(host: str, port: int, *, label: str) -> BranchServiceStatus:
