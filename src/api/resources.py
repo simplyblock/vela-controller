@@ -14,7 +14,7 @@ from ._util.resourcelimit import (
     get_organization_resource_usage,
     get_project_resource_usage,
     make_usage_cycle,
-    resource_limits_to_dict,
+    resource_limits_to_dict, create_or_update_branch_provisioning,
 )
 from .db import SessionDep
 from .models._util import Identifier
@@ -62,16 +62,6 @@ AsyncSessionLocal = async_sessionmaker(
 logger = logging.getLogger(__name__)
 
 
-async def log_provisioning(
-    db: AsyncSession, branch_id: Identifier, resource: ResourceType, amount: int, action: str, reason: str | None = None
-):
-    log = ProvisioningLog(
-        branch_id=branch_id, resource=resource, amount=amount, action=action, reason=reason, ts=datetime.now(UTC)
-    )
-    db.add(log)
-    await db.commit()
-
-
 # ---------------------------
 # Provisioning endpoints
 # ---------------------------
@@ -88,28 +78,7 @@ async def provision_branch(
     if len(exceeded_limits) > 0:
         raise HTTPException(422, f"Branch {branch.id} limit(s) exceeded: {exceeded_limits}")
 
-    requests = resource_limits_to_dict(payload.resources)
-    for resource_type, amount in requests.items():
-        if amount is None:
-            continue
-
-        # Create or update provisioning
-        result = await session.execute(
-            select(BranchProvisioning).where(
-                BranchProvisioning.branch_id == branch_id, BranchProvisioning.resource == resource_type
-            )
-        )
-        bp = result.scalars().first()
-        if bp:
-            bp.amount = amount
-        else:
-            bp = BranchProvisioning(
-                branch_id=branch_id, resource=resource_type, amount=amount, updated_at=datetime.now()
-            )
-            session.add(bp)
-
-        await session.commit()
-        await log_provisioning(session, branch_id, resource_type, amount, "create")
+    await create_or_update_branch_provisioning(session, branch_id, payload.resources)
 
     return BranchProvisionPublic(status="ok")
 

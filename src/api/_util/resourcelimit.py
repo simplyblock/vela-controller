@@ -14,6 +14,7 @@ from ..models.project import Project
 from ..models.resources import (
     BranchProvisioning,
     EntityType,
+    ProvisioningLog,
     ResourceLimit,
     ResourceLimitsPublic,
     ResourceType,
@@ -21,6 +22,80 @@ from ..models.resources import (
     UsageCycle,
 )
 from ..settings import settings
+
+
+async def audit_new_branch_resource_provisioning(
+    session: SessionDep,
+    branch: Branch,
+    resource_type: ResourceType,
+    amount: int,
+    action: str,
+    reason: str | None = None,
+):
+    new_log = ProvisioningLog(
+        branch_id=branch.id,
+        resource=resource_type,
+        amount=amount,
+        action=action,
+        reason=reason,
+        ts=datetime.now(UTC),
+    )
+    await session.merge(new_log)
+
+
+async def create_or_update_branch_provisioning(
+    session: SessionDep, branch: Branch, resource_requests: ResourceLimitsPublic
+):
+    requests = resource_limits_to_dict(resource_requests)
+    for resource_type, amount in requests.items():
+        if amount is None:
+            continue
+
+        # Create or update allocation
+        result = await session.execute(
+            select(BranchProvisioning).where(
+                BranchProvisioning.branch_id == branch.id, BranchProvisioning.resource == resource_type
+            )
+        )
+        allocation = result.scalars().first()
+
+        new_allocation = allocation is None
+        if new_allocation:
+            allocation = BranchProvisioning(
+                branch_id=branch.id,
+                resource=resource_type,
+                amount=amount,
+                updated_at=datetime.now(),
+            )
+        else:
+            allocation.amount = amount
+        await session.merge(allocation)
+
+        # Create audit log entry
+        await audit_new_branch_resource_provisioning(
+            session, branch, resource_type, amount, "create" if new_allocation else "update"
+        )
+
+    await session.commit()
+    await session.refresh(branch)
+
+
+async def clone_branch_provisioning(session: SessionDep, source: Branch, target: Branch):
+    result = await session.execute(select(BranchProvisioning).where(BranchProvisioning.branch_id == source.id))
+    provisions = result.scalars().all()
+
+    with session.no_autoflush:
+        for provision in provisions:
+            await session.merge(
+                BranchProvisioning(
+                    branch_id=target.id,
+                    resource=provision.resource,
+                    amount=provision.amount,
+                    updated_at=datetime.now(),
+                )
+            )
+    await session.commit()
+    await session.refresh(target)
 
 
 async def create_system_resource_limits(conn: AsyncConnection):
