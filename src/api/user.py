@@ -94,9 +94,7 @@ async def list_user_roles(
     user_id = (
         UUID(await realm_admin("vela").a_get_user_id(str(user_ref))) if isinstance(user_ref, EmailStr) else user_ref
     )
-    stmt = select(RoleUserLink).where(RoleUserLink.user_id == user_id)
-
-    result = await session.execute(stmt)
+    result = await session.execute(select(RoleUserLink).where(RoleUserLink.user_id == user_id))
     return [
         RoleUserLinkPublic(
             organization_id=row.organization_id,
@@ -106,7 +104,7 @@ async def list_user_roles(
             user_id=row.user_id,
             env_type=row.env_type,
         )
-        for row in result.all()
+        for row in result.scalars().all()
     ]
 
 
