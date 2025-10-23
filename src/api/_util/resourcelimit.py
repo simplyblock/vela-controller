@@ -227,7 +227,16 @@ async def get_project_resource_usage(
 async def check_resource_limits(
     session: SessionDep, branch: Branch, provisioning_request: ResourceLimitsPublic
 ) -> list[ResourceType]:
-    effective_branch_limits = await get_effective_branch_limits(session, branch)
+    project = await branch.awaitable_attrs.project
+    project_id = branch.project_id
+    organization_id = project.organization_id
+    return await check_available_resources_limits(session, organization_id, project_id, provisioning_request)
+
+
+async def check_available_resources_limits(
+    session: SessionDep, organization_id: Identifier, project_id: Identifier, provisioning_request: ResourceLimitsPublic
+) -> list[ResourceType]:
+    effective_branch_limits = await get_remaining_project_resources(session, organization_id, project_id)
     exceeded_limits: list[ResourceType] = []
     if provisioning_request.milli_vcpu:
         if check_resource_limit(provisioning_request.milli_vcpu, effective_branch_limits.milli_vcpu):
@@ -252,10 +261,13 @@ def check_resource_limit(requested: int | None, available: int | None) -> bool:
 
 
 async def get_effective_branch_limits(session: SessionDep, branch: Branch) -> ResourceLimitsPublic:
-    project = await branch.awaitable_attrs.project
-    project_id = branch.project_id
-    organization_id = project.organization_id
+    organization_id = (await branch.awaitable_attrs.project).organization_id
+    return await get_remaining_project_resources(session, organization_id, branch.project_id)
 
+
+async def get_remaining_project_resources(
+    session: SessionDep, organization_id: Identifier, project_id: Identifier
+) -> ResourceLimitsPublic:
     system_limits = await get_system_resource_limits(session)
     organization_limits = await get_organization_resource_limits(session, organization_id)
     project_limits = await get_project_resource_limits(session, organization_id, project_id)
