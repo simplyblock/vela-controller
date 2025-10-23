@@ -44,6 +44,12 @@ spec:
             - name: jwt-secrets
               disk:
                 bus: virtio
+            - name: k8s-api-access # /vdg
+              disk:
+                bus: virtio
+            - name: pgbouncer-config # /vdh
+              disk:
+                bus: virtio
             - name: cloudinitdisk
               disk:
                 bus: virtio
@@ -77,6 +83,12 @@ spec:
         - name: jwt-secrets # vdf
           secret:
             secretName: {{ include "supabase.secret.jwt" . }}
+        - name: k8s-api-access # vdg
+          serviceAccount:
+            serviceAccountName: {{ printf "%s-vm-config-reader" (include "supabase.db.fullname" .) }}
+        - name: pgbouncer-config # vdh
+          configMap:
+            name: {{ printf "%s-pgbouncer" (include "supabase.db.fullname" .) }}
         - name: cloudinitdisk
           cloudInitNoCloud:
             secretRef: 
