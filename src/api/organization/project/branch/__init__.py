@@ -35,6 +35,11 @@ from .....deployment.settings import settings as deployment_settings
 from .....exceptions import VelaError, VelaKubernetesError
 from ...._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ...._util.crypto import encrypt_with_passphrase
+from ...._util.resourcelimit import (
+    check_available_resources_limits,
+    create_or_update_branch_provisioning,
+    get_current_branch_allocations,
+)
 from ....auth import security
 from ....db import SessionDep
 from ....keycloak import realm_admin
@@ -61,6 +66,7 @@ from ....models.branch import (
 )
 from ....models.organization import OrganizationDep
 from ....models.project import ProjectDep
+from ....models.resources import ResourceLimitsPublic
 from ....settings import settings
 from .auth import api as auth_api
 
@@ -341,6 +347,47 @@ async def _public(branch: Branch) -> BranchPublic:
     )
 
 
+async def _build_resource_request(
+    session: SessionDep, deployment_parameters: DeploymentParameters | None, source: Branch | None
+) -> ResourceLimitsPublic:
+    source_limits = await get_current_branch_allocations(session, source) if source is not None else None
+
+    millis_vcpu = (
+        deployment_parameters.milli_vcpu
+        if deployment_parameters
+        else source_limits.milli_vcpu
+        if source_limits
+        else None
+    )
+
+    ram = deployment_parameters.memory_bytes if deployment_parameters else source_limits.ram if source_limits else None
+    iops = deployment_parameters.iops if deployment_parameters else source_limits.iops if source_limits else None
+
+    database_size = (
+        deployment_parameters.database_size
+        if deployment_parameters
+        else source_limits.database_size
+        if source_limits
+        else None
+    )
+
+    storage_size = (
+        deployment_parameters.storage_size
+        if deployment_parameters
+        else source_limits.storage_size
+        if source_limits
+        else None
+    )
+
+    return ResourceLimitsPublic(
+        milli_vcpu=millis_vcpu,
+        ram=ram,
+        iops=iops,
+        database_size=database_size,
+        storage_size=storage_size,
+    )
+
+
 @api.get(
     "/",
     name="organizations:projects:branch:list",
@@ -411,8 +458,19 @@ async def create(
     parameters: BranchCreate,
     response: Literal["empty", "full"] = "empty",
 ) -> JSONResponse:
-    if parameters.source is not None:
-        source = await lookup_branch(session, project, parameters.source.branch_id)
+    # Either one must be set for a valid request (create or clone)
+    if parameters.source is None and parameters.deployment is not None:
+        raise HTTPException(400, "Either source or deployment parameters must be provided")
+
+    source = await lookup_branch(session, project, parameters.source.branch_id) if parameters.source else None
+    resource_requests = await _build_resource_request(session, parameters.deployment, source)
+    exceeded_limits = await check_available_resources_limits(
+        session, project.organization_id, project.id, resource_requests
+    )
+    if len(exceeded_limits) > 0:
+        raise HTTPException(422, f"New branch will exceed limit(s): {exceeded_limits}")
+
+    if source is not None:
         env_type = parameters.env_type if parameters.env_type is not None else ""
         entity = Branch(
             name=parameters.name,
@@ -462,6 +520,9 @@ async def create(
         raise
 
     await session.refresh(entity)
+
+    # Configure allocations
+    await create_or_update_branch_provisioning(session, entity, resource_requests)
 
     entity_url = url_path_for(
         request,
