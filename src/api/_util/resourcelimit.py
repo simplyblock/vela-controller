@@ -1,6 +1,5 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import func
 from sqlalchemy.dialects.mysql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 from sqlmodel import select
@@ -24,6 +23,15 @@ from ..models.resources import (
     UsageCycle,
 )
 from ..settings import settings
+
+
+async def delete_branch_provisioning(session: SessionDep, branch: Branch):
+    result = await session.execute(select(BranchProvisioning).where(BranchProvisioning.branch_id == branch.id))
+    allocations = result.scalars().all()
+    for allocation in allocations:
+        await session.delete(allocation)
+    await session.commit()
+    await session.refresh(branch)
 
 
 async def get_current_branch_allocations(session: SessionDep, branch: Branch) -> BranchAllocationPublic:
@@ -363,10 +371,7 @@ async def get_current_organization_allocations(
     session: SessionDep, organization_id: Identifier
 ) -> dict[ResourceType, int]:
     result = await session.execute(
-        select(func.sum(BranchProvisioning.amount))
-        .join(Branch)
-        .join(Project)
-        .where(Project.organization_id == organization_id)
+        select(BranchProvisioning).join(Branch).join(Project).where(Project.organization_id == organization_id)
     )
     rows = list(result.scalars().all())
 
