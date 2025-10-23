@@ -60,7 +60,7 @@ async def create_or_update_branch_provisioning(
         allocation = result.scalars().first()
 
         new_allocation = allocation is None
-        if new_allocation:
+        if allocation is None:
             allocation = BranchProvisioning(
                 branch_id=branch.id,
                 resource=resource_type,
@@ -68,7 +68,8 @@ async def create_or_update_branch_provisioning(
                 updated_at=datetime.now(),
             )
         else:
-            allocation.amount = amount
+            allocation.amount = int(amount or 0)  # else won't happen since it's checked above
+            allocation.updated_at = datetime.now()
         await session.merge(allocation)
 
         # Create audit log entry

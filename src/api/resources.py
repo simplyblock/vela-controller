@@ -9,18 +9,19 @@ from sqlmodel import select
 from ..check_branch_status import get_branch_status
 from ._util.resourcelimit import (
     check_resource_limits,
+    create_or_update_branch_provisioning,
     dict_to_resource_limits,
     get_effective_branch_limits,
     get_organization_resource_usage,
     get_project_resource_usage,
     make_usage_cycle,
-    resource_limits_to_dict, create_or_update_branch_provisioning,
 )
 from .db import SessionDep
 from .models._util import Identifier
 from .models.branch import Branch
 from .models.project import Project
 from .models.resources import (
+    BranchAllocationPublic,
     BranchProvisioning,
     BranchProvisionPublic,
     ConsumptionLimitPublic,
@@ -28,7 +29,6 @@ from .models.resources import (
     EntityType,
     LimitResultPublic,
     ProvisioningLimitPublic,
-    ProvisioningLog,
     ProvLimitPayload,
     ResourceConsumptionLimit,
     ResourceLimit,
@@ -58,15 +58,14 @@ AsyncSessionLocal = async_sessionmaker(
     expire_on_commit=False,
 )
 
-
 logger = logging.getLogger(__name__)
 
 
 # ---------------------------
 # Provisioning endpoints
 # ---------------------------
-@router.post("/branches/{branch_id}/provision")
-async def provision_branch(
+@router.post("/branches/{branch_id}/allocations")
+async def set_branch_allocations(
     session: SessionDep, branch_id: Identifier, payload: ResourcesPayload
 ) -> BranchProvisionPublic:
     result = await session.execute(select(Branch).where(Branch.id == branch_id))
@@ -78,16 +77,30 @@ async def provision_branch(
     if len(exceeded_limits) > 0:
         raise HTTPException(422, f"Branch {branch.id} limit(s) exceeded: {exceeded_limits}")
 
-    await create_or_update_branch_provisioning(session, branch_id, payload.resources)
+    await create_or_update_branch_provisioning(session, branch, payload.resources)
 
     return BranchProvisionPublic(status="ok")
 
 
-@router.get("/branches/{branch_id}/provision")
-async def get_branch_provisioning_api(session: SessionDep, branch_id: Identifier):
+@router.get("/branches/{branch_id}/allocations")
+async def get_branch_allocations(session: SessionDep, branch_id: Identifier) -> BranchAllocationPublic:
     result = await session.execute(select(BranchProvisioning).where(BranchProvisioning.branch_id == branch_id))
-    provisionings = result.scalars().all()
-    return {p.resource.value: p.amount for p in provisionings}
+    allocations = list(result.scalars().all())
+
+    def select_allocation(resource_type: ResourceType, allocations: list[BranchProvisioning]):
+        for allocation in allocations:
+            if allocation.resource == resource_type:
+                return allocation.amount
+        return None
+
+    return BranchAllocationPublic(
+        branch_id=branch_id,
+        milli_vcpu=select_allocation(ResourceType.milli_vcpu, allocations),
+        ram=select_allocation(ResourceType.ram, allocations),
+        iops=select_allocation(ResourceType.iops, allocations),
+        database_size=select_allocation(ResourceType.database_size, allocations),
+        storage_size=select_allocation(ResourceType.storage_size, allocations),
+    )
 
 
 # ---------------------------
