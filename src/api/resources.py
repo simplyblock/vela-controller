@@ -313,7 +313,7 @@ async def monitor_resources(interval_seconds: int = 60):
                 logger.info("Found %d active branches", len(branches))
 
                 for branch in branches:
-                    status = await get_branch_status(branch)
+                    status = await get_branch_status(branch.id)
                     if status == "ACTIVE_HEALTHY":
                         prov_result = await db.execute(
                             select(BranchProvisioning).where(BranchProvisioning.branch_id == branch.id)
