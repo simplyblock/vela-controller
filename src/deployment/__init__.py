@@ -300,6 +300,7 @@ async def create_vela_config(
     jwt_secret: str,
     anon_key: str,
     service_key: str,
+    pgbouncer_admin_password: str,
 ):
     namespace = deployment_namespace(branch_id)
     logging.info(
@@ -346,6 +347,7 @@ async def create_vela_config(
     secrets.setdefault("db", {}).update(
         password=parameters.database_password,
     )
+    secrets.setdefault("pgbouncer", {})["admin_password"] = pgbouncer_admin_password
 
     # Set CPU and memory resources
     resource_cfg = db_spec.setdefault("resources", {})
@@ -858,6 +860,7 @@ async def deploy_branch_environment(
     jwt_secret: str,
     anon_key: str,
     service_key: str,
+    pgbouncer_admin_password: str,
 ) -> None:
     """Background task: provision infra for a branch and persist the resulting endpoint."""
 
@@ -869,6 +872,7 @@ async def deploy_branch_environment(
             jwt_secret=jwt_secret,
             anon_key=anon_key,
             service_key=service_key,
+            pgbouncer_admin_password=pgbouncer_admin_password,
         )
 
         ref = branch_dns_label(branch_id)
