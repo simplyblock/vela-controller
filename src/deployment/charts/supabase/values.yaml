@@ -88,6 +88,7 @@ db:
       cpu: 100m
   persistence:
     enabled: true
+    create: true
     storageClassName: "simplyblock-csi-sc"
     annotations: {}
     size: 10Gi

@@ -92,6 +92,9 @@ def build_pvc_manifest_from_existing(
         "pv.kubernetes.io/bound-by-controller",
         "volume.beta.kubernetes.io/storage-provisioner",
         "kubectl.kubernetes.io/last-applied-configuration",
+        "meta.helm.sh/release-name",
+        "meta.helm.sh/release-namespace",
+        "helm.sh/resource-policy",
     ):
         annotations.pop(noisy, None)
 

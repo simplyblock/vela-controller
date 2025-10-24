@@ -293,6 +293,18 @@ async def update_branch_volume_iops(branch_id: Identifier, iops: int) -> None:
     logger.info("Updated Simplyblock volume %s IOPS to %s using endpoint %s", volume_uuid, iops, endpoint)
 
 
+async def ensure_branch_storage_class(branch_id: Identifier, *, iops: int) -> str:
+    storage_class_name = branch_storage_class_name(branch_id)
+    base_storage_class = await kube_service.get_storage_class("simplyblock-csi-sc")
+    storage_class_manifest = _build_storage_class_manifest(
+        storage_class_name=storage_class_name,
+        iops=iops,
+        base_storage_class=base_storage_class,
+    )
+    await kube_service.apply_storage_class(storage_class_manifest)
+    return storage_class_name
+
+
 async def create_vela_config(
     branch_id: Identifier,
     parameters: DeploymentParameters,
@@ -301,6 +313,8 @@ async def create_vela_config(
     anon_key: str,
     service_key: str,
     pgbouncer_admin_password: str,
+    *,
+    use_existing_db_pvc: bool = False,
 ):
     namespace = deployment_namespace(branch_id)
     logging.info(
@@ -368,22 +382,16 @@ async def create_vela_config(
     storage_persistence["size"] = f"{bytes_to_gb(parameters.storage_size)}G"
 
     # Set database volume size
-    db_spec.setdefault("persistence", {})["size"] = f"{bytes_to_gb(parameters.database_size)}G"
+    db_persistence = db_spec.setdefault("persistence", {})
+    db_persistence["size"] = f"{bytes_to_gb(parameters.database_size)}G"
+    if use_existing_db_pvc:
+        db_persistence["create"] = False
 
     # Create and apply custom StorageClass for database volume with specified IOPS
     # TODO: Storage class is a non namespaced object
     # remove the storage class when deleting the branch deployment
-    storage_class_name = branch_storage_class_name(branch_id)
-    base_storage_class = await kube_service.get_storage_class("simplyblock-csi-sc")
-    db_spec.setdefault("persistence", {})["storageClassName"] = storage_class_name
-
-    storage_class_manifest = _build_storage_class_manifest(
-        storage_class_name=storage_class_name,
-        iops=parameters.iops,
-        base_storage_class=base_storage_class,
-    )
-
-    await kube_service.apply_storage_class(storage_class_manifest)
+    storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
+    db_persistence["storageClassName"] = storage_class_name
 
     with (
         tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as temp_values,
@@ -419,11 +427,17 @@ async def create_vela_config(
         except subprocess.CalledProcessError as e:
             logger.exception(f"Failed to create deployment: {e.stderr}")
             release_name = _release_name(namespace)
-            await check_output(
-                ["helm", "uninstall", release_name, "-n", namespace],
-                stderr=subprocess.PIPE,
-                text=True,
-            )
+            try:
+                await check_output(
+                    ["helm", "uninstall", release_name, "-n", namespace],
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+            except subprocess.CalledProcessError as uninstall_err:
+                stderr_msg = (uninstall_err.stderr or "").lower()
+                if "release: not found" not in stderr_msg:
+                    raise
+                logger.info("Helm release %s not found during cleanup; continuing", release_name)
             raise
 
 
@@ -861,6 +875,7 @@ async def deploy_branch_environment(
     anon_key: str,
     service_key: str,
     pgbouncer_admin_password: str,
+    use_existing_pvc: bool = False,
 ) -> None:
     """Background task: provision infra for a branch and persist the resulting endpoint."""
 
@@ -873,6 +888,7 @@ async def deploy_branch_environment(
             anon_key=anon_key,
             service_key=service_key,
             pgbouncer_admin_password=pgbouncer_admin_password,
+            use_existing_db_pvc=use_existing_pvc,
         )
 
         ref = branch_dns_label(branch_id)

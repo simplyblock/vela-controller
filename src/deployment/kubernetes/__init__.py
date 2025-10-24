@@ -19,6 +19,15 @@ class KubernetesService:
         async with core_v1_client() as core_v1:
             await core_v1.delete_namespace(name=namespace)
 
+    async def ensure_namespace(self, namespace: str) -> None:
+        async with core_v1_client() as core_v1:
+            body = client.V1Namespace(metadata=client.V1ObjectMeta(name=namespace))
+            try:
+                await core_v1.create_namespace(body=body)
+            except client.exceptions.ApiException as exc:
+                if exc.status != 409:
+                    raise
+
     async def check_namespace_status(self, namespace: str) -> dict[str, str]:
         """
         Check if all pods in the namespace are running.

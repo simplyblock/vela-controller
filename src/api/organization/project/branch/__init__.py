@@ -27,6 +27,7 @@ from .....deployment import (
     calculate_cpu_resources,
     delete_deployment,
     deploy_branch_environment,
+    ensure_branch_storage_class,
     get_db_vmi_identity,
     kube_service,
     resize_deployment,
@@ -35,6 +36,7 @@ from .....deployment import (
 )
 from .....deployment.kubernetes._util import core_v1_client
 from .....deployment.kubernetes.kubevirt import KubevirtSubresourceAction, call_kubevirt_subresource
+from .....deployment.kubernetes.volume_clone import clone_branch_database_volume
 from .....deployment.settings import settings as deployment_settings
 from .....exceptions import VelaError, VelaKubernetesError
 from ...._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
@@ -83,6 +85,12 @@ api = APIRouter(tags=["branch"])
 logger = logging.getLogger(__name__)
 
 _SERVICE_PROBE_TIMEOUT_SECONDS = 2
+_SNAPSHOT_TIMEOUT_SECONDS = float(600)
+_SNAPSHOT_POLL_INTERVAL_SECONDS = float(2)
+_PVC_TIMEOUT_SECONDS = float(600)
+_PVC_POLL_INTERVAL_SECONDS = float(2)
+_VOLUME_SNAPSHOT_CLASS = "simplyblock-csi-snapshotclass"
+
 _BRANCH_SERVICE_ENDPOINTS: dict[str, tuple[str, int]] = {
     "database": ("supabase-supabase-db", 5432),
     "pgbouncer": ("supabase-pgbouncer", 6432),
@@ -107,6 +115,98 @@ def generate_pgbouncer_password(length: int = 32) -> str:
     while len(password) < length:
         password += secrets.token_urlsafe(length)
     return password[:length]
+
+
+async def _copy_pgbouncer_config_from_source(entity: Branch, source: Branch) -> None:
+    config = await source.awaitable_attrs.pgbouncer_config
+    if config is None:
+        entity.pgbouncer_config = _default_pgbouncer_config()
+        return
+    entity.pgbouncer_config = PgbouncerConfig(
+        default_pool_size=config.default_pool_size,
+        max_client_conn=config.max_client_conn,
+        server_idle_timeout=config.server_idle_timeout,
+        server_lifetime=config.server_lifetime,
+    )
+
+
+def _default_pgbouncer_config() -> PgbouncerConfig:
+    return PgbouncerConfig(
+        default_pool_size=PgbouncerConfig.DEFAULT_POOL_SIZE,
+        max_client_conn=PgbouncerConfig.DEFAULT_MAX_CLIENT_CONN,
+        server_idle_timeout=PgbouncerConfig.DEFAULT_SERVER_IDLE_TIMEOUT,
+        server_lifetime=PgbouncerConfig.DEFAULT_SERVER_LIFETIME,
+    )
+
+
+def _deployment_parameters_from_source(source: Branch) -> DeploymentParameters:
+    image_tag = source.database_image_tag
+    if image_tag != "15.1.0.147":  # pragma: no cover - defensive guard against unsupported images
+        logger.warning(
+            "Source branch %s has unexpected database image tag %s; defaulting to supported image",
+            source.id,
+            image_tag,
+        )
+        image_tag = "15.1.0.147"
+
+    return DeploymentParameters(
+        database_password=source.database_password,
+        database_size=source.database_size,
+        storage_size=source.storage_size,
+        milli_vcpu=source.milli_vcpu,
+        memory_bytes=source.memory,
+        iops=source.iops,
+        database_image_tag=cast("Literal['15.1.0.147']", image_tag),
+    )
+
+
+async def _build_branch_entity(
+    *,
+    project: ProjectDep,
+    parameters: BranchCreate,
+    source: Branch | None,
+    copy_config: bool,
+) -> tuple[Branch, DeploymentParameters | None]:
+    if source is not None:
+        env_type = parameters.env_type if parameters.env_type is not None else ""
+        entity = Branch(
+            name=parameters.name,
+            project_id=project.id,
+            parent_id=source.id,
+            database=DEFAULT_DB_NAME,
+            database_user=DEFAULT_DB_USER,
+            database_size=source.database_size,
+            storage_size=source.storage_size,
+            milli_vcpu=source.milli_vcpu,
+            memory=source.memory,
+            iops=source.iops,
+            database_image_tag=source.database_image_tag,
+            env_type=env_type,
+        )
+        entity.database_password = source.database_password
+        if copy_config:
+            await _copy_pgbouncer_config_from_source(entity, source)
+        else:
+            entity.pgbouncer_config = _default_pgbouncer_config()
+        return entity, _deployment_parameters_from_source(source)
+
+    deployment_params = cast("DeploymentParameters", parameters.deployment)
+    entity = Branch(
+        name=parameters.name,
+        project_id=project.id,
+        parent=None,
+        database=DEFAULT_DB_NAME,
+        database_user=DEFAULT_DB_USER,
+        database_size=deployment_params.database_size,
+        storage_size=deployment_params.storage_size,
+        milli_vcpu=deployment_params.milli_vcpu,
+        memory=deployment_params.memory_bytes,
+        iops=deployment_params.iops,
+        database_image_tag=deployment_params.database_image_tag,
+    )
+    entity.database_password = deployment_params.database_password
+    entity.pgbouncer_config = _default_pgbouncer_config()
+    return entity, None
 
 
 async def _probe_service_socket(host: str, port: int, *, label: str) -> BranchServiceStatus:
@@ -269,6 +369,67 @@ async def _deploy_branch_environment_task(
     except VelaError:
         logging.exception(
             "Branch deployment failed for project_id=%s branch_id=%s branch_slug=%s",
+            project_id,
+            branch_id,
+            branch_slug,
+        )
+
+
+async def _clone_branch_environment_task(
+    *,
+    organization_id: Identifier,
+    project_id: Identifier,
+    credential: str,
+    branch_id: Identifier,
+    branch_slug: str,
+    parameters: DeploymentParameters,
+    jwt_secret: str,
+    anon_key: str,
+    service_key: str,
+    pgbouncer_admin_password: str,
+    source_branch_id: Identifier,
+    copy_data: bool,
+) -> None:
+    storage_class_name: str | None = None
+    if copy_data:
+        try:
+            storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
+            await clone_branch_database_volume(
+                source_branch_id=source_branch_id,
+                target_branch_id=branch_id,
+                snapshot_class=_VOLUME_SNAPSHOT_CLASS,
+                storage_class_name=storage_class_name,
+                snapshot_timeout_seconds=_SNAPSHOT_TIMEOUT_SECONDS,
+                snapshot_poll_interval_seconds=_SNAPSHOT_POLL_INTERVAL_SECONDS,
+                pvc_timeout_seconds=_PVC_TIMEOUT_SECONDS,
+                pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
+            )
+        except VelaError:
+            logging.exception(
+                "Branch data clone failed for project_id=%s branch_id=%s branch_slug=%s",
+                project_id,
+                branch_id,
+                branch_slug,
+            )
+            return
+
+    try:
+        await deploy_branch_environment(
+            organization_id=organization_id,
+            project_id=project_id,
+            branch_id=branch_id,
+            branch_slug=branch_slug,
+            credential=credential,
+            parameters=parameters,
+            jwt_secret=jwt_secret,
+            anon_key=anon_key,
+            service_key=service_key,
+            pgbouncer_admin_password=pgbouncer_admin_password,
+            use_existing_pvc=copy_data,
+        )
+    except VelaError:
+        logging.exception(
+            "Branch deployment (clone) failed for project_id=%s branch_id=%s branch_slug=%s",
             project_id,
             branch_id,
             branch_slug,
@@ -490,6 +651,7 @@ async def create(
         raise HTTPException(400, "Either source or deployment parameters must be provided")
 
     source = await lookup_branch(session, project, parameters.source.branch_id) if parameters.source else None
+    source_id: Identifier | None = source.id if source is not None else None
     resource_requests = await _build_resource_request(session, parameters.deployment, source)
     exceeded_limits = await check_available_resources_limits(
         session, project.organization_id, project.id, resource_requests
@@ -497,51 +659,21 @@ async def create(
     if len(exceeded_limits) > 0:
         raise HTTPException(422, f"New branch will exceed limit(s): {exceeded_limits}")
 
-    if source is not None:
-        env_type = parameters.env_type if parameters.env_type is not None else ""
-        entity = Branch(
-            name=parameters.name,
-            project_id=project.id,
-            parent_id=source.id,
-            database=DEFAULT_DB_NAME,
-            database_user=DEFAULT_DB_USER,
-            database_size=source.database_size,
-            storage_size=source.storage_size,
-            milli_vcpu=source.milli_vcpu,
-            memory=source.memory,
-            iops=source.iops,
-            database_image_tag=source.database_image_tag,
-            env_type=env_type,
-        )
-        entity.database_password = source.database_password
-    else:
-        deployment_params = cast("DeploymentParameters", parameters.deployment)
-        entity = Branch(
-            name=parameters.name,
-            project_id=project.id,
-            parent=None,
-            database=DEFAULT_DB_NAME,
-            database_user=DEFAULT_DB_USER,
-            database_size=deployment_params.database_size,
-            storage_size=deployment_params.storage_size,
-            milli_vcpu=deployment_params.milli_vcpu,
-            memory=deployment_params.memory_bytes,
-            iops=deployment_params.iops,
-            database_image_tag=deployment_params.database_image_tag,
-        )
-        entity.database_password = deployment_params.database_password
+    copy_config = parameters.source.config_copy if parameters.source else False
+    copy_data = parameters.source.data_copy if parameters.source else False
+
+    entity, clone_parameters = await _build_branch_entity(
+        project=project,
+        parameters=parameters,
+        source=source,
+        copy_config=copy_config,
+    )
     jwt_secret, anon_key, service_key = generate_keys(str(entity.id))
     entity.jwt_secret = jwt_secret
     entity.anon_key = anon_key
     entity.service_key = service_key
     pgbouncer_admin_password = generate_pgbouncer_password()
     entity.pgbouncer_password = pgbouncer_admin_password
-    entity.pgbouncer_config = PgbouncerConfig(
-        default_pool_size=PgbouncerConfig.DEFAULT_POOL_SIZE,
-        max_client_conn=PgbouncerConfig.DEFAULT_MAX_CLIENT_CONN,
-        server_idle_timeout=PgbouncerConfig.DEFAULT_SERVER_IDLE_TIMEOUT,
-        server_lifetime=PgbouncerConfig.DEFAULT_SERVER_LIFETIME,
-    )
     session.add(entity)
     try:
         await realm_admin("master").a_create_realm({"realm": str(entity.id)})
@@ -585,7 +717,24 @@ async def create(
                 pgbouncer_admin_password=pgbouncer_admin_password,
             )
         )
-    # TODO: implement source branch cloning for config/data copy
+    elif source_id is not None and clone_parameters is not None:
+        asyncio.create_task(
+            _clone_branch_environment_task(
+                organization_id=organization.id,
+                project_id=project.id,
+                credential=credentials.credentials,
+                branch_id=entity.id,
+                branch_slug=entity.name,
+                parameters=clone_parameters,
+                jwt_secret=entity.jwt_secret,
+                anon_key=entity.anon_key,
+                service_key=entity.service_key,
+                pgbouncer_admin_password=pgbouncer_admin_password,
+                source_branch_id=source_id,
+                copy_data=copy_data,
+            )
+        )
+
     payload = (await _public(entity)).model_dump() if response == "full" else None
 
     return JSONResponse(
