@@ -117,12 +117,11 @@ def generate_pgbouncer_password(length: int = 32) -> str:
     return password[:length]
 
 
-async def _copy_pgbouncer_config_from_source(entity: Branch, source: Branch) -> None:
+async def _copy_pgbouncer_config_from_source(source: Branch) -> PgbouncerConfig:
     config = await source.awaitable_attrs.pgbouncer_config
     if config is None:
-        entity.pgbouncer_config = _default_pgbouncer_config()
-        return
-    entity.pgbouncer_config = PgbouncerConfig(
+        return _default_pgbouncer_config()
+    return PgbouncerConfig(
         default_pool_size=config.default_pool_size,
         max_client_conn=config.max_client_conn,
         server_idle_timeout=config.server_idle_timeout,
@@ -185,7 +184,7 @@ async def _build_branch_entity(
         )
         entity.database_password = source.database_password
         if copy_config:
-            await _copy_pgbouncer_config_from_source(entity, source)
+            entity.pgbouncer_config = await _copy_pgbouncer_config_from_source(source)
         else:
             entity.pgbouncer_config = _default_pgbouncer_config()
         return entity, _deployment_parameters_from_source(source)
