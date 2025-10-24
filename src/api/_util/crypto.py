@@ -1,5 +1,8 @@
 import base64
+import secrets
+from datetime import UTC, datetime, timedelta
 
+import jwt
 from Crypto.Cipher import AES
 from Crypto.Hash import MD5
 from Crypto.Random import get_random_bytes
@@ -66,3 +69,44 @@ def decrypt_with_base64_key(ciphertext: str, key: str) -> str:
     cipher = AES.new(key_bytes, AES.MODE_CBC, iv)
     plaintext = unpad(cipher.decrypt(encrypted), AES.block_size)
     return plaintext.decode("utf-8")
+
+
+def generate_keys(branch_id: str) -> tuple[str, str, str]:
+    """Generates JWT secret, anon key, and service role key"""
+    jwt_secret = secrets.token_urlsafe(32)
+
+    iat = int(datetime.now(UTC).timestamp())
+    # 10 years expiration
+    exp = int((datetime.now(UTC) + timedelta(days=365 * 10)).timestamp())
+
+    anon_payload = {
+        "iss": "vela",
+        "ref": branch_id,
+        "role": "anon",
+        "iat": iat,
+        "exp": exp,
+    }
+
+    service_role_payload = {
+        "iss": "vela",
+        "ref": branch_id,
+        "role": "service_role",
+        "iat": iat,
+        "exp": exp,
+    }
+
+    anon_key = jwt.encode(
+        payload=anon_payload,
+        key=jwt_secret,
+        algorithm="HS256",
+        headers={"alg": "HS256", "typ": "JWT"},
+    )
+
+    service_key = jwt.encode(
+        payload=service_role_payload,
+        key=jwt_secret,
+        algorithm="HS256",
+        headers={"alg": "HS256", "typ": "JWT"},
+    )
+
+    return jwt_secret, anon_key, service_key
