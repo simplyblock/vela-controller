@@ -4,10 +4,11 @@ import hashlib
 import logging
 import secrets
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal, cast
 
 import asyncpg
+import jwt
 from asyncpg import exceptions as asyncpg_exceptions
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
@@ -97,6 +98,36 @@ _PGBOUNCER_ADMIN_DATABASE = "pgbouncer"
 _PGBOUNCER_SERVICE_PORT = 6432
 _PGBOUNCER_CONFIG_TEMPLATE_ERROR = "PgBouncer configuration template missing required entries."
 _PGBOUNCER_CONFIG_UPDATE_ERROR = "Failed to update PgBouncer configuration."
+
+
+def _generate_branch_keys(branch_id: str) -> tuple[str, str, str]:
+    """Generate JWT secret plus anon/service keys bound to a branch."""
+    jwt_secret = secrets.token_urlsafe(32)
+
+    issued_at = int(datetime.now(UTC).timestamp())
+    expires_at = int((datetime.now(UTC) + timedelta(days=365 * 10)).timestamp())
+
+    payload = {
+        "iss": "supabase",
+        "ref": branch_id,
+        "iat": issued_at,
+        "exp": expires_at,
+    }
+
+    anon_key = jwt.encode(
+        payload={**payload, "role": "anon"},
+        key=jwt_secret,
+        algorithm="HS256",
+        headers={"alg": "HS256", "typ": "JWT"},
+    )
+    service_key = jwt.encode(
+        payload={**payload, "role": "service_role"},
+        key=jwt_secret,
+        algorithm="HS256",
+        headers={"alg": "HS256", "typ": "JWT"},
+    )
+
+    return jwt_secret, anon_key, service_key
 
 
 def generate_pgbouncer_password(length: int = 32) -> str:
@@ -486,7 +517,7 @@ async def create(
     response: Literal["empty", "full"] = "empty",
 ) -> JSONResponse:
     # Either one must be set for a valid request (create or clone)
-    if parameters.source is None and parameters.deployment is not None:
+    if parameters.source is None and parameters.deployment is None:
         raise HTTPException(400, "Either source or deployment parameters must be provided")
 
     source = await lookup_branch(session, project, parameters.source.branch_id) if parameters.source else None
@@ -530,6 +561,10 @@ async def create(
             database_image_tag=deployment_params.database_image_tag,
         )
         entity.database_password = deployment_params.database_password
+    jwt_secret, anon_key, service_key = _generate_branch_keys(str(entity.id))
+    entity.jwt_secret = jwt_secret
+    entity.anon_key = anon_key
+    entity.service_key = service_key
     pgbouncer_admin_password = generate_pgbouncer_password()
     entity.pgbouncer_password = pgbouncer_admin_password
     entity.pgbouncer_config = PgbouncerConfig(
