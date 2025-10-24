@@ -44,8 +44,7 @@ services:
     container_name: vela-pgbouncer
     image: docker.io/edoburu/pgbouncer:v1.24.1-p0
     volumes:
-      - ./pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro,z
-      - ./users.txt:/etc/pgbouncer/users.txt:ro,z
+      - ./pgbouncer:/etc/pgbouncer:Z
     depends_on:
     - db
     restart: unless-stopped
