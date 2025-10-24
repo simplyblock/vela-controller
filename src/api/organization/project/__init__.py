@@ -1,11 +1,8 @@
 import asyncio
 import logging
-import secrets
 from collections.abc import Sequence
-from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 
-import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials
@@ -23,6 +20,7 @@ from ....deployment import (
 from ....deployment.kubernetes.kubevirt import call_kubevirt_subresource
 from ....exceptions import VelaError
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
+from ..._util.crypto import generate_keys
 from ...auth import security
 from ...db import SessionDep
 from ...keycloak import realm_admin
@@ -195,7 +193,7 @@ async def create(
     branch_dbid = main_branch.id
 
     # Generate keys and store keys
-    jwt_secret, anon_key, service_key = _generate_keys(branch_dbid.__str__())
+    jwt_secret, anon_key, service_key = generate_keys(branch_dbid.__str__())
     main_branch.jwt_secret = jwt_secret
     main_branch.anon_key = anon_key
     main_branch.service_key = service_key
@@ -362,44 +360,3 @@ async def resume(_organization: OrganizationDep, project: ProjectDep):
 
 
 api.include_router(instance_api)
-
-
-def _generate_keys(branch_id: str) -> tuple[str, str, str]:
-    """Generates JWT secret, anon key, and service role key"""
-    jwt_secret = secrets.token_urlsafe(32)
-
-    iat = int(datetime.now(UTC).timestamp())
-    # 10 years expiration
-    exp = int((datetime.now(UTC) + timedelta(days=365 * 10)).timestamp())
-
-    anon_payload = {
-        "iss": "supabase",
-        "ref": branch_id,
-        "role": "anon",
-        "iat": iat,
-        "exp": exp,
-    }
-
-    service_role_payload = {
-        "iss": "supabase",
-        "ref": branch_id,
-        "role": "service_role",
-        "iat": iat,
-        "exp": exp,
-    }
-
-    anon_key = jwt.encode(
-        payload=anon_payload,
-        key=jwt_secret,
-        algorithm="HS256",
-        headers={"alg": "HS256", "typ": "JWT"},
-    )
-
-    service_key = jwt.encode(
-        payload=service_role_payload,
-        key=jwt_secret,
-        algorithm="HS256",
-        headers={"alg": "HS256", "typ": "JWT"},
-    )
-
-    return jwt_secret, anon_key, service_key

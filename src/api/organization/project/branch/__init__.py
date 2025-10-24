@@ -4,11 +4,10 @@ import hashlib
 import logging
 import secrets
 from collections.abc import Sequence
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Annotated, Any, Literal, cast
 
 import asyncpg
-import jwt
 from asyncpg import exceptions as asyncpg_exceptions
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
@@ -39,7 +38,7 @@ from .....deployment.kubernetes.kubevirt import KubevirtSubresourceAction, call_
 from .....deployment.settings import settings as deployment_settings
 from .....exceptions import VelaError, VelaKubernetesError
 from ...._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
-from ...._util.crypto import encrypt_with_passphrase
+from ...._util.crypto import encrypt_with_passphrase, generate_keys
 from ...._util.resourcelimit import (
     check_available_resources_limits,
     create_or_update_branch_provisioning,
@@ -98,36 +97,6 @@ _PGBOUNCER_ADMIN_DATABASE = "pgbouncer"
 _PGBOUNCER_SERVICE_PORT = 6432
 _PGBOUNCER_CONFIG_TEMPLATE_ERROR = "PgBouncer configuration template missing required entries."
 _PGBOUNCER_CONFIG_UPDATE_ERROR = "Failed to update PgBouncer configuration."
-
-
-def _generate_branch_keys(branch_id: str) -> tuple[str, str, str]:
-    """Generate JWT secret plus anon/service keys bound to a branch."""
-    jwt_secret = secrets.token_urlsafe(32)
-
-    issued_at = int(datetime.now(UTC).timestamp())
-    expires_at = int((datetime.now(UTC) + timedelta(days=365 * 10)).timestamp())
-
-    payload = {
-        "iss": "supabase",
-        "ref": branch_id,
-        "iat": issued_at,
-        "exp": expires_at,
-    }
-
-    anon_key = jwt.encode(
-        payload={**payload, "role": "anon"},
-        key=jwt_secret,
-        algorithm="HS256",
-        headers={"alg": "HS256", "typ": "JWT"},
-    )
-    service_key = jwt.encode(
-        payload={**payload, "role": "service_role"},
-        key=jwt_secret,
-        algorithm="HS256",
-        headers={"alg": "HS256", "typ": "JWT"},
-    )
-
-    return jwt_secret, anon_key, service_key
 
 
 def generate_pgbouncer_password(length: int = 32) -> str:
@@ -561,7 +530,7 @@ async def create(
             database_image_tag=deployment_params.database_image_tag,
         )
         entity.database_password = deployment_params.database_password
-    jwt_secret, anon_key, service_key = _generate_branch_keys(str(entity.id))
+    jwt_secret, anon_key, service_key = generate_keys(str(entity.id))
     entity.jwt_secret = jwt_secret
     entity.anon_key = anon_key
     entity.service_key = service_key
