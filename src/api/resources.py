@@ -306,7 +306,7 @@ async def monitor_resources(interval_seconds: int = 60):
     while True:
         try:
             async with AsyncSessionLocal() as db:
-                ts_minute = datetime.now(UTC).replace(second=0, microsecond=0, tzinfo=None)
+                ts_minute = datetime.now(UTC).replace(second=0, microsecond=0)
 
                 result = await db.execute(select(Branch))
                 branches = result.scalars().all()

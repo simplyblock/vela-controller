@@ -3,7 +3,7 @@ from enum import Enum as PyEnum
 from typing import Annotated, Literal
 
 from pydantic import BaseModel
-from sqlalchemy import BigInteger
+from sqlalchemy import BigInteger, Column, DateTime
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field
 from ulid import ULID
@@ -46,7 +46,7 @@ class BranchProvisioning(AsyncAttrs, Model, table=True):
     branch_id: Identifier = Model.foreign_key_field("branch", nullable=True)
     resource: ResourceType
     amount: Annotated[int, Field(sa_type=BigInteger)]
-    updated_at: datetime
+    updated_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
 
 
 class ProvisioningLog(AsyncAttrs, Model, table=True):
@@ -55,11 +55,11 @@ class ProvisioningLog(AsyncAttrs, Model, table=True):
     amount: Annotated[int, Field(sa_type=BigInteger)]
     action: str
     reason: str | None = None
-    ts: datetime
+    ts: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
 
 
 class ResourceUsageMinute(AsyncAttrs, Model, table=True):
-    ts_minute: datetime
+    ts_minute: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
     org_id: Identifier = Model.foreign_key_field("organization", nullable=True)
     project_id: Identifier = Model.foreign_key_field("project", nullable=True)
     branch_id: Identifier = Model.foreign_key_field("branch", nullable=True)
