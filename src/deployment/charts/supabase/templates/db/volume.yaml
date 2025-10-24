@@ -1,4 +1,5 @@
-{{- if .Values.db.enabled -}}
+{{- $createPVC := default true .Values.db.persistence.create -}}
+{{- if and .Values.db.enabled .Values.db.persistence.enabled $createPVC -}}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
