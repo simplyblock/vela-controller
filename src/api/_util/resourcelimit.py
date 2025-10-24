@@ -56,13 +56,14 @@ async def audit_new_branch_resource_provisioning(
     action: str,
     reason: str | None = None,
 ):
+    timestamp = datetime.now(UTC).replace(tzinfo=None)
     new_log = ProvisioningLog(
         branch_id=branch.id,
         resource=resource_type,
         amount=amount,
         action=action,
         reason=reason,
-        ts=datetime.now(UTC),
+        ts=timestamp,
     )
     await session.merge(new_log)
 
