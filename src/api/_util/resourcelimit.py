@@ -56,7 +56,7 @@ async def audit_new_branch_resource_provisioning(
     action: str,
     reason: str | None = None,
 ):
-    timestamp = datetime.now(UTC).replace(tzinfo=None)
+    timestamp = datetime.now(UTC)
     new_log = ProvisioningLog(
         branch_id=branch.id,
         resource=resource_type,
@@ -90,11 +90,11 @@ async def create_or_update_branch_provisioning(
                 branch_id=branch.id,
                 resource=resource_type,
                 amount=amount,
-                updated_at=datetime.now(),
+                updated_at=datetime.now(UTC),
             )
         else:
             allocation.amount = int(amount or 0)  # else won't happen since it's checked above
-            allocation.updated_at = datetime.now()
+            allocation.updated_at = datetime.now(UTC)
         await session.merge(allocation)
 
         # Create audit log entry
@@ -117,7 +117,7 @@ async def clone_branch_provisioning(session: SessionDep, source: Branch, target:
                     branch_id=target.id,
                     resource=provision.resource,
                     amount=provision.amount,
-                    updated_at=datetime.now(),
+                    updated_at=datetime.now(UTC),
                 )
             )
     await session.commit()
@@ -202,8 +202,8 @@ def normalize_datetime_to_utc(instant: datetime | None) -> datetime | None:
     if instant is None:
         return None
     if instant.tzinfo is None:
-        return instant.replace(tzinfo=None)
-    return instant.astimezone(UTC).replace(tzinfo=None)
+        return instant.replace(tzinfo=UTC)
+    return instant.astimezone(UTC)
 
 
 async def get_organization_resource_usage(
