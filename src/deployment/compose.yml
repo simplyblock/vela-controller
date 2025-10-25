@@ -10,6 +10,7 @@ services:
     volumes:
     - /mnt/postgres_data/pgdata:/var/lib/postgresql/data
     - ./pg_hba.conf:/etc/postgresql/pg_hba.conf:ro,z
+    - ./charts/supabase/files/initdb:/docker-entrypoint-initdb.d:ro,z
     networks:
     - supabase
     ports:
