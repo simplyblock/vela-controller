@@ -315,6 +315,7 @@ async def create_vela_config(
     pgbouncer_admin_password: str,
     *,
     use_existing_db_pvc: bool = False,
+    pgbouncer_config: dict[str, int | None] | None = None,
 ):
     namespace = deployment_namespace(branch_id)
     logging.info(
@@ -341,6 +342,14 @@ async def create_vela_config(
         raise FileNotFoundError(f"pg_hba.conf file not found at {pb_hba_conf}")
 
     values_content = yaml.safe_load((chart / "values.yaml").read_text())
+
+    pgbouncer_values = values_content.setdefault("pgbouncer", {})
+    pgbouncer_cfg = pgbouncer_values.setdefault("config", {})
+    if pgbouncer_config:
+        for key in ("default_pool_size", "max_client_conn", "server_idle_timeout", "server_lifetime"):
+            value = pgbouncer_config.get(key)
+            if value is not None:
+                pgbouncer_cfg[key] = value
 
     # Set image tag
     db_spec = values_content.setdefault("db", {})
@@ -875,6 +884,7 @@ async def deploy_branch_environment(
     anon_key: str,
     service_key: str,
     pgbouncer_admin_password: str,
+    pgbouncer_config: dict[str, int | None],
     use_existing_pvc: bool = False,
 ) -> None:
     """Background task: provision infra for a branch and persist the resulting endpoint."""
@@ -889,6 +899,7 @@ async def deploy_branch_environment(
             service_key=service_key,
             pgbouncer_admin_password=pgbouncer_admin_password,
             use_existing_db_pvc=use_existing_pvc,
+            pgbouncer_config=pgbouncer_config,
         )
 
         ref = branch_dns_label(branch_id)

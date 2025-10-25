@@ -18,8 +18,8 @@ keycloak:
 
 controller: 
   image:
-    repository: docker.io/simplyblock/vela-controller
-    tag: latest
+    repository: docker.io/manoharbrm/vela
+    tag: a0e1
   env:
     VELA_CORS_ORIGINS: '["http://localhost:3000"]'
     VELA_CLOUDFLARE_API_TOKEN: 'your_cloudflare_api_token'

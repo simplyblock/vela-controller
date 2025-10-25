@@ -52,6 +52,7 @@ async def _deploy_branch_environment_task(
     anon_key: str,
     service_key: str,
     pgbouncer_admin_password: str,
+    pgbouncer_config: branch_module.PgbouncerConfigSnapshot,
 ) -> None:
     try:
         await deploy_branch_environment(
@@ -65,6 +66,7 @@ async def _deploy_branch_environment_task(
             anon_key=anon_key,
             service_key=service_key,
             pgbouncer_admin_password=pgbouncer_admin_password,
+            pgbouncer_config=pgbouncer_config,
         )
     except VelaError:
         logger.exception(
@@ -187,6 +189,9 @@ async def create(
 
     await session.refresh(entity)
     await session.refresh(main_branch)
+    pgbouncer_config_snapshot = branch_module.snapshot_pgbouncer_config(
+        await main_branch.awaitable_attrs.pgbouncer_config
+    )
     organization_id = entity.organization_id
     project_id = entity.id
     branch_slug = main_branch.name
@@ -212,6 +217,7 @@ async def create(
             anon_key=anon_key,
             service_key=service_key,
             pgbouncer_admin_password=pgbouncer_admin_password,
+            pgbouncer_config=pgbouncer_config_snapshot,
         )
     )
     await session.refresh(organization)

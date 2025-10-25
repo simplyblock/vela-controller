@@ -5,7 +5,7 @@ import logging
 import secrets
 from collections.abc import Sequence
 from datetime import UTC, datetime
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Any, Literal, TypedDict, cast
 
 import asyncpg
 from asyncpg import exceptions as asyncpg_exceptions
@@ -135,6 +135,33 @@ def _default_pgbouncer_config() -> PgbouncerConfig:
         max_client_conn=PgbouncerConfig.DEFAULT_MAX_CLIENT_CONN,
         server_idle_timeout=PgbouncerConfig.DEFAULT_SERVER_IDLE_TIMEOUT,
         server_lifetime=PgbouncerConfig.DEFAULT_SERVER_LIFETIME,
+    )
+
+
+class PgbouncerConfigSnapshot(TypedDict):
+    default_pool_size: int
+    max_client_conn: int | None
+    server_idle_timeout: int | None
+    server_lifetime: int | None
+
+
+def snapshot_pgbouncer_config(config: PgbouncerConfig | None) -> PgbouncerConfigSnapshot:
+    if config is None:
+        config = _default_pgbouncer_config()
+    max_client_conn = config.max_client_conn
+    if max_client_conn is None:
+        max_client_conn = PgbouncerConfig.DEFAULT_MAX_CLIENT_CONN
+    server_idle_timeout = config.server_idle_timeout
+    if server_idle_timeout is None:
+        server_idle_timeout = PgbouncerConfig.DEFAULT_SERVER_IDLE_TIMEOUT
+    server_lifetime = config.server_lifetime
+    if server_lifetime is None:
+        server_lifetime = PgbouncerConfig.DEFAULT_SERVER_LIFETIME
+    return PgbouncerConfigSnapshot(
+        default_pool_size=config.default_pool_size,
+        max_client_conn=max_client_conn,
+        server_idle_timeout=server_idle_timeout,
+        server_lifetime=server_lifetime,
     )
 
 
@@ -351,6 +378,7 @@ async def _deploy_branch_environment_task(
     anon_key: str,
     service_key: str,
     pgbouncer_admin_password: str,
+    pgbouncer_config: PgbouncerConfigSnapshot,
 ) -> None:
     try:
         await deploy_branch_environment(
@@ -364,6 +392,7 @@ async def _deploy_branch_environment_task(
             anon_key=anon_key,
             service_key=service_key,
             pgbouncer_admin_password=pgbouncer_admin_password,
+            pgbouncer_config=pgbouncer_config,
         )
     except VelaError:
         logging.exception(
@@ -388,6 +417,7 @@ async def _clone_branch_environment_task(
     pgbouncer_admin_password: str,
     source_branch_id: Identifier,
     copy_data: bool,
+    pgbouncer_config: PgbouncerConfigSnapshot,
 ) -> None:
     storage_class_name: str | None = None
     if copy_data:
@@ -425,6 +455,7 @@ async def _clone_branch_environment_task(
             service_key=service_key,
             pgbouncer_admin_password=pgbouncer_admin_password,
             use_existing_pvc=copy_data,
+            pgbouncer_config=pgbouncer_config,
         )
     except VelaError:
         logging.exception(
@@ -690,6 +721,7 @@ async def create(
         raise
 
     await session.refresh(entity)
+    pgbouncer_config_snapshot = snapshot_pgbouncer_config(await entity.awaitable_attrs.pgbouncer_config)
 
     # Configure allocations
     await create_or_update_branch_provisioning(session, entity, resource_requests)
@@ -714,6 +746,7 @@ async def create(
                 anon_key=entity.anon_key,
                 service_key=entity.service_key,
                 pgbouncer_admin_password=pgbouncer_admin_password,
+                pgbouncer_config=pgbouncer_config_snapshot,
             )
         )
     elif source_id is not None and clone_parameters is not None:
@@ -731,6 +764,7 @@ async def create(
                 pgbouncer_admin_password=pgbouncer_admin_password,
                 source_branch_id=source_id,
                 copy_data=copy_data,
+                pgbouncer_config=pgbouncer_config_snapshot,
             )
         )
 
