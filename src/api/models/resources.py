@@ -133,3 +133,11 @@ class ConsumptionLimitPublic(BaseModel):
 class UsageCycle(BaseModel):
     start: datetime | None
     end: datetime | None
+
+
+class ResourceLimitDefinitionPublic(BaseModel):
+    resource_type: ResourceTypePublic
+    min: int
+    max: int
+    step: int
+    unit: str | None
