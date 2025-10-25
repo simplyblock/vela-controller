@@ -5,6 +5,7 @@ import logging
 import subprocess
 import tempfile
 import textwrap
+from collections.abc import Mapping
 from importlib import resources
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -305,6 +306,80 @@ async def ensure_branch_storage_class(branch_id: Identifier, *, iops: int) -> st
     return storage_class_name
 
 
+def _require_asset(path: Path, description: str) -> Path:
+    if not path.exists():
+        raise FileNotFoundError(f"{description} not found at {path}")
+    return path
+
+
+def _load_compose_manifest(branch_id: Identifier) -> dict[str, Any]:
+    compose_file_path = _require_asset(Path(__file__).with_name("compose.yml"), "docker-compose manifest")
+    compose_content = yaml.safe_load(compose_file_path.read_text())
+    if not isinstance(compose_content, dict):
+        raise VelaDeploymentError("docker-compose manifest must be a mapping")
+    return inject_branch_env(compose_content, branch_id)
+
+
+def _load_chart_values(chart_root: Any) -> dict[str, Any]:
+    values_content = yaml.safe_load((chart_root / "values.yaml").read_text())
+    if not isinstance(values_content, dict):
+        raise VelaDeploymentError("Supabase chart values.yaml must be a mapping")
+    return values_content
+
+
+def _configure_vela_values(
+    values_content: dict[str, Any],
+    *,
+    parameters: DeploymentParameters,
+    jwt_secret: str,
+    anon_key: str,
+    service_key: str,
+    pgbouncer_admin_password: str,
+    storage_class_name: str,
+    use_existing_db_pvc: bool,
+    pgbouncer_config: Mapping[str, int] | None,
+) -> dict[str, Any]:
+    pgbouncer_values = values_content.setdefault("pgbouncer", {})
+    pgbouncer_cfg = pgbouncer_values.setdefault("config", {})
+    if pgbouncer_config:
+        for key in ("default_pool_size", "max_client_conn", "server_idle_timeout", "server_lifetime"):
+            value = pgbouncer_config.get(key)
+            if value is not None:
+                pgbouncer_cfg[key] = value
+
+    db_spec = values_content.setdefault("db", {})
+    db_spec.setdefault("image", {})["tag"] = parameters.database_image_tag
+
+    secrets = values_content.setdefault("secret", {})
+    secrets.setdefault("jwt", {}).update(
+        secret=jwt_secret,
+        anonKey=anon_key,
+        serviceKey=service_key,
+    )
+    secrets.update(pgmeta_crypto_key=settings.pgmeta_crypto_key)
+    secrets.setdefault("db", {})["password"] = parameters.database_password
+    secrets.setdefault("pgbouncer", {})["admin_password"] = pgbouncer_admin_password
+
+    resource_cfg = db_spec.setdefault("resources", {})
+    resource_cfg["guestMemory"] = f"{bytes_to_mib(parameters.memory_bytes)}Mi"
+
+    cpu_limit, cpu_request = calculate_cpu_resources(parameters.milli_vcpu)
+    resource_cfg["limits"] = {"cpu": cpu_limit}
+    resource_cfg["requests"] = {"cpu": cpu_request}
+
+    storage_spec = values_content.setdefault("storage", {})
+    storage_persistence = storage_spec.setdefault("persistence", {})
+    storage_persistence["size"] = f"{bytes_to_gb(parameters.storage_size)}G"
+
+    db_persistence = db_spec.setdefault("persistence", {})
+    db_persistence["size"] = f"{bytes_to_gb(parameters.database_size)}G"
+    if use_existing_db_pvc:
+        db_persistence["create"] = False
+    db_persistence["storageClassName"] = storage_class_name
+
+    return values_content
+
+
 async def create_vela_config(
     branch_id: Identifier,
     parameters: DeploymentParameters,
@@ -315,6 +390,7 @@ async def create_vela_config(
     pgbouncer_admin_password: str,
     *,
     use_existing_db_pvc: bool = False,
+    pgbouncer_config: Mapping[str, int] | None = None,
 ):
     namespace = deployment_namespace(branch_id)
     logging.info(
@@ -325,73 +401,23 @@ async def create_vela_config(
     )
 
     chart = resources.files(__package__) / "charts" / "supabase"
-    compose_file_path = Path(__file__).with_name("compose.yml")
-    if not compose_file_path.exists():
-        raise FileNotFoundError(f"docker-compose manifest not found at {compose_file_path}")
+    compose_file = _load_compose_manifest(branch_id)
+    vector_file = _require_asset(Path(__file__).with_name("vector.yml"), "vector config file")
+    pb_hba_conf = _require_asset(Path(__file__).with_name("pg_hba.conf"), "pg_hba.conf file")
+    values_content = _load_chart_values(chart)
 
-    compose_file = yaml.safe_load(compose_file_path.read_text())
-    compose_file = inject_branch_env(compose_file, branch_id)
-
-    vector_file = Path(__file__).with_name("vector.yml")
-    if not vector_file.exists():
-        raise FileNotFoundError(f"vector config file not found at {vector_file}")
-
-    pb_hba_conf = Path(__file__).with_name("pg_hba.conf")
-    if not pb_hba_conf.exists():
-        raise FileNotFoundError(f"pg_hba.conf file not found at {pb_hba_conf}")
-
-    values_content = yaml.safe_load((chart / "values.yaml").read_text())
-
-    # Set image tag
-    db_spec = values_content.setdefault("db", {})
-    db_spec.setdefault("image", {})["tag"] = parameters.database_image_tag
-
-    # Set JWT and anon keys
-    secrets = values_content.setdefault("secret", {})
-    secrets.setdefault("jwt", {}).update(
-        secret=jwt_secret,
-        anonKey=anon_key,
-        serviceKey=service_key,
-    )
-    secrets.update(
-        pgmeta_crypto_key=settings.pgmeta_crypto_key,
-    )
-
-    # Set database password
-    secrets.setdefault("db", {}).update(
-        password=parameters.database_password,
-    )
-    secrets.setdefault("pgbouncer", {})["admin_password"] = pgbouncer_admin_password
-
-    # Set CPU and memory resources
-    resource_cfg = db_spec.setdefault("resources", {})
-    resource_cfg["guestMemory"] = f"{bytes_to_mib(parameters.memory_bytes)}Mi"
-
-    # Calculate and set CPU resources
-    cpu_limit, cpu_request = calculate_cpu_resources(parameters.milli_vcpu)
-    resource_cfg["limits"] = {
-        "cpu": cpu_limit,
-    }
-    resource_cfg["requests"] = {
-        "cpu": cpu_request,
-    }
-
-    # Set storage volume size
-    storage_spec = values_content.setdefault("storage", {})
-    storage_persistence = storage_spec.setdefault("persistence", {})
-    storage_persistence["size"] = f"{bytes_to_gb(parameters.storage_size)}G"
-
-    # Set database volume size
-    db_persistence = db_spec.setdefault("persistence", {})
-    db_persistence["size"] = f"{bytes_to_gb(parameters.database_size)}G"
-    if use_existing_db_pvc:
-        db_persistence["create"] = False
-
-    # Create and apply custom StorageClass for database volume with specified IOPS
-    # TODO: Storage class is a non namespaced object
-    # remove the storage class when deleting the branch deployment
     storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
-    db_persistence["storageClassName"] = storage_class_name
+    values_content = _configure_vela_values(
+        values_content,
+        parameters=parameters,
+        jwt_secret=jwt_secret,
+        anon_key=anon_key,
+        service_key=service_key,
+        pgbouncer_admin_password=pgbouncer_admin_password,
+        storage_class_name=storage_class_name,
+        use_existing_db_pvc=use_existing_db_pvc,
+        pgbouncer_config=pgbouncer_config,
+    )
 
     with (
         tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as temp_values,
@@ -875,6 +901,7 @@ async def deploy_branch_environment(
     anon_key: str,
     service_key: str,
     pgbouncer_admin_password: str,
+    pgbouncer_config: Mapping[str, int],
     use_existing_pvc: bool = False,
 ) -> None:
     """Background task: provision infra for a branch and persist the resulting endpoint."""
@@ -889,6 +916,7 @@ async def deploy_branch_environment(
             service_key=service_key,
             pgbouncer_admin_password=pgbouncer_admin_password,
             use_existing_db_pvc=use_existing_pvc,
+            pgbouncer_config=pgbouncer_config,
         )
 
         ref = branch_dns_label(branch_id)
