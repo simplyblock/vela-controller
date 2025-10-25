@@ -32,12 +32,17 @@ async def refresh_memory_status(session: AsyncSession, branch: Branch) -> None:
     entry_payload = _load_resize_entry(raw_entry)
     entry_payload.pop("requested_value", None)
     current_status = entry_payload.get("status", "PENDING")
+    requested_at = _parse_timestamp(entry_payload.get("requested_at") or entry_payload.get("timestamp"))
 
     namespace, vmi_name = get_db_vmi_identity(branch.id)
     pod_memory_bytes: int | None = None
 
     try:
-        _pod_name, pod_memory_quantity = await kube_service.get_vm_pod_name(namespace, vmi_name)
+        _pod_name, pod_memory_quantity = await kube_service.get_vm_pod_name(
+            namespace,
+            vmi_name,
+            earliest_start_time=requested_at,
+        )
     except VelaKubernetesError as exc:
         logger.debug("Waiting for VM pod during memory resize for branch %s: %s", branch.id, exc)
         pod_memory_quantity = None
@@ -87,6 +92,19 @@ async def refresh_memory_status(session: AsyncSession, branch: Branch) -> None:
 
 def _timestamp_now() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _parse_timestamp(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    candidate = value[:-1] + "+00:00" if value.endswith("Z") else value
+    try:
+        parsed = datetime.fromisoformat(candidate)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def _load_resize_entry(entry: Any) -> dict[str, Any]:

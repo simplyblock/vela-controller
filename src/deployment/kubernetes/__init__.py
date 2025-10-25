@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from aiohttp import ClientError
@@ -170,7 +170,13 @@ class KubernetesService:
                     raise VelaKubernetesError(f"PersistentVolume {name!r} not found") from exc
                 raise
 
-    async def get_vm_pod_name(self, namespace: str, vm_name: str) -> tuple[str, str | None]:
+    async def get_vm_pod_name(
+        self,
+        namespace: str,
+        vm_name: str,
+        *,
+        earliest_start_time: datetime | None = None,
+    ) -> tuple[str, str | None]:
         """
         Resolve the virt-launcher pod name backing the supplied KubeVirt VirtualMachine.
 
@@ -181,6 +187,15 @@ class KubernetesService:
         candidates = _eligible_vm_pods(pods.items or [])
         if not candidates:
             raise VelaKubernetesError(f"No pods found for VM {vm_name!r} in namespace {namespace!r}")
+
+        if earliest_start_time is not None:
+            normalized_start = earliest_start_time.astimezone(UTC)
+            candidates = [pod for pod in candidates if _pod_start_time(pod) >= normalized_start]
+            if not candidates:
+                raise VelaKubernetesError(
+                    f"No pods for VM {vm_name!r} in namespace {namespace!r} meet start time "
+                    f"{normalized_start.isoformat()}"
+                )
 
         target_pod = _choose_vm_pod(candidates)
         requested_memory = _compute_container_memory(target_pod)
@@ -352,9 +367,10 @@ def _pod_start_time(pod: Any) -> datetime:
         getattr(metadata, "creation_timestamp", None),
         getattr(metadata, "creationTimestamp", None),
     ):
-        if value is not None:
-            return value
-    return datetime.min
+        if isinstance(value, datetime):
+            normalized = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+            return normalized.astimezone(UTC)
+    return datetime.min.replace(tzinfo=UTC)
 
 
 def _compute_container_memory(pod: Any) -> str | None:

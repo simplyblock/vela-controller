@@ -272,7 +272,7 @@ def _track_resize_change(
     parameter_key: CapaResizeKey,
     new_value: int | None,
     current_value: int,
-    statuses: dict[str, dict[str, str]],
+    statuses: dict[str, dict[str, Any]],
     effective: dict[CapaResizeKey, int],
     timestamp: str,
 ) -> None:
@@ -281,7 +281,7 @@ def _track_resize_change(
         return
     if new_value != current_value:
         effective[parameter_key] = new_value
-        entry: dict[str, Any] = {"status": "PENDING", "timestamp": timestamp}
+        entry: dict[str, Any] = {"status": "PENDING", "timestamp": timestamp, "requested_at": timestamp}
         statuses[service_key] = entry
     elif statuses.get(service_key, {}).get("status") == "PENDING":
         statuses.pop(service_key, None)
