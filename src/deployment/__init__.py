@@ -480,6 +480,7 @@ async def get_deployment_status(branch_id: Identifier) -> DeploymentStatus:
 
 async def delete_deployment(branch_id: Identifier) -> None:
     namespace, _ = get_db_vmi_identity(branch_id)
+    storage_class_name = branch_storage_class_name(branch_id)
     try:
         await delete_branch_logflare_objects(branch_id)
         await delete_vela_grafana_obj(branch_id)
@@ -487,8 +488,15 @@ async def delete_deployment(branch_id: Identifier) -> None:
     except ApiException as exc:
         if exc.status == 404:
             logger.info("Namespace %s not found", namespace)
-            return
-        raise
+        else:
+            raise
+    try:
+        await kube_service.delete_storage_class(storage_class_name)
+    except ApiException as exc:
+        if exc.status == 404:
+            logger.info("StorageClass %s not found", storage_class_name)
+        else:
+            raise
 
 
 def get_db_vmi_identity(branch_id: Identifier) -> tuple[str, str]:

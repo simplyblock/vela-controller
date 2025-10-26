@@ -134,6 +134,17 @@ class KubernetesService:
                     raise VelaKubernetesError(f"StorageClass {name!r} not found") from exc
                 raise
 
+    async def delete_storage_class(self, name: str) -> None:
+        async with storage_v1_client() as storage_v1:
+            try:
+                await storage_v1.delete_storage_class(name)
+                logger.info("Deleted StorageClass %s", name)
+            except client.exceptions.ApiException as exc:
+                if exc.status == 404:
+                    logger.info("StorageClass %s not found; skipping delete", name)
+                    return
+                raise
+
     async def get_config_map(self, namespace: str, name: str) -> Any:
         async with core_v1_client() as core_v1:
             try:
