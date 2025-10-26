@@ -70,7 +70,7 @@ class _VolumeCloneOperation:
         pvc_name = f"{deployment_settings.deployment_release_name}{DATABASE_PVC_SUFFIX}"
         source_ns = deployment_namespace(self.source_branch_id)
         target_ns = deployment_namespace(self.target_branch_id)
-        timestamp = datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "")
+        timestamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
         source_snapshot = f"{str(self.source_branch_id).lower()}-snapshot-{timestamp}"[:63]
         target_snapshot = f"{str(self.target_branch_id).lower()}-snapshot-{timestamp}"[:63]
         snapshot_content = f"snapcontent-crossns-{str(self.target_branch_id).lower()}-{timestamp}"[:63]
