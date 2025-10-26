@@ -112,6 +112,55 @@ class KubernetesService:
                 else:
                     raise
 
+    async def apply_kong_consumer(self, namespace: str, consumer: dict[str, Any]) -> None:
+        group, version = consumer["apiVersion"].split("/")
+        plural = "kongconsumers"
+
+        async with custom_api_client() as custom:
+            try:
+                await custom.create_namespaced_custom_object(
+                    group=group,
+                    version=version,
+                    namespace=namespace,
+                    plural=plural,
+                    body=consumer,
+                )
+                logger.info("Created KongConsumer %s in %s", consumer["metadata"]["name"], namespace)
+            except client.exceptions.ApiException as exc:
+                if exc.status == 409:
+                    logger.info(
+                        "KongConsumer %s already exists in %s; replacing",
+                        consumer["metadata"]["name"],
+                        namespace,
+                    )
+                    await custom.replace_namespaced_custom_object(
+                        group=group,
+                        version=version,
+                        namespace=namespace,
+                        plural=plural,
+                        name=consumer["metadata"]["name"],
+                        body=consumer,
+                    )
+                else:
+                    raise
+
+    async def apply_secret(self, namespace: str, secret: dict[str, Any]) -> None:
+        name = secret["metadata"]["name"]
+        async with core_v1_client() as core_v1:
+            try:
+                await core_v1.create_namespaced_secret(namespace=namespace, body=secret)
+                logger.info("Created Secret %s in %s", name, namespace)
+            except client.exceptions.ApiException as exc:
+                if exc.status == 409:
+                    logger.info("Secret %s already exists in %s; replacing", name, namespace)
+                    await core_v1.replace_namespaced_secret(
+                        name=name,
+                        namespace=namespace,
+                        body=secret,
+                    )
+                else:
+                    raise
+
     async def apply_storage_class(self, manifest: dict[str, Any]) -> None:
         name = manifest["metadata"]["name"]
         async with storage_v1_client() as storage_v1:
