@@ -78,7 +78,9 @@ TODO
 
 This service hosts https://github.com/supabase/storage. Export the token fetched from the `/apikeys` endpoint into the `TOKEN` environment variable before running the commands below.
 
-Create a bucket: (needs serviceRole API Key)
+By default `anon` key doesn't have any permissions to perform operations associated with storage API. All the below operations needs to be performed using `service_role` key.
+
+Create a bucket:
 
 ```sh
 curl -X POST 'https://01k6mpdwnay4jf91j9pd916ngf.staging.vela.run/storage/bucket' \
@@ -90,7 +92,7 @@ curl -X POST 'https://01k6mpdwnay4jf91j9pd916ngf.staging.vela.run/storage/bucket
       }'
 ```
 
-Upload a file to a bucket: (needs serviceRole API Key)
+Upload a file to a bucket:
 
 ```sh
 curl -X POST "https://01k6mpdwnay4jf91j9pd916ngf.staging.vela.run/storage/object/my_bucket/asdf.txt" \
@@ -98,7 +100,7 @@ curl -X POST "https://01k6mpdwnay4jf91j9pd916ngf.staging.vela.run/storage/object
   --data-binary @asdf.txt
 ```
 
-List objects: (needs serviceRole API Key. TODO: make this work with anonKey)
+List objects:
 
 ```sh
 curl -X POST \
@@ -108,7 +110,7 @@ curl -X POST \
   -d '{"prefix": ""}' | jq .
 ```
 
-Retrieve the file and store it locally: (needs serviceRole API Key. TODO: make this work with anonKey)
+Retrieve the file and store it locally:
 
 ```sh
 curl -X GET "https://01k6mpdwnay4jf91j9pd916ngf.staging.vela.run/storage/object/my_bucket/asdf.txt" \

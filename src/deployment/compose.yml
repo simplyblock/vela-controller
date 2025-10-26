@@ -30,7 +30,6 @@ services:
       DB_DRIVER: postgres
       DB_SSL: disable
       PGRST_DB_SCHEMAS: public,storage,graphql_public
-      PGRST_DB_ANON_ROLE: anon
       PGRST_DB_USE_LEGACY_GUCS: 'false'
       PGRST_APP_SETTINGS_JWT_EXP: '3600'
       PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD_ENC}@db:5432/${POSTGRES_DB}?sslmode=disable
@@ -125,6 +124,7 @@ services:
       DB_SSL: disable
       FILE_SIZE_LIMIT: '52428800'
       STORAGE_BACKEND: file
+      PGOPTIONS: -c search_path=storage,public
       FILE_STORAGE_BACKEND_PATH: /var/lib/storage
       TENANT_ID: stub
       REGION: stub
