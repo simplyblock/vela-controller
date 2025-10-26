@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Any, ClassVar, Literal, Optional
 
 from fastapi import Depends, HTTPException
-from pydantic import AliasChoices, BaseModel, ConfigDict, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 from pydantic import Field as PydanticField
 from sqlalchemy import BigInteger, Column, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
@@ -175,11 +175,12 @@ class BranchSourceParameters(BaseModel):
     branch_id: Identifier
     config_copy: bool = False
     data_copy: bool = False
-    deployment_parameters: BranchSourceDeploymentParameters | None = PydanticField(
-        default=None,
-        validation_alias=AliasChoices("deployment_parameters", "deploymentParameters"),
-        serialization_alias="deploymentParameters",
-    )
+    deployment_parameters: BranchSourceDeploymentParameters | None = PydanticField(default=None)
+
+
+class BranchRestoreParameters(BaseModel):
+    backup_id: Identifier
+    config_copy: bool = True
 
 
 class BranchCreate(BaseModel):
@@ -187,12 +188,13 @@ class BranchCreate(BaseModel):
     env_type: str | None = None
     source: BranchSourceParameters | None = None
     deployment: DeploymentParameters | None = None
+    restore: BranchRestoreParameters | None = None
 
     @model_validator(mode="after")
     def _validate_source_or_deployment(self) -> "BranchCreate":
-        provided = sum(value is not None for value in (self.source, self.deployment))
+        provided = sum(value is not None for value in (self.source, self.deployment, self.restore))
         if provided != 1:
-            raise ValueError("Provide exactly one of source or deployment")
+            raise ValueError("Provide exactly one of source, deployment, or restore")
         return self
 
 
