@@ -16,6 +16,7 @@ from keycloak.exceptions import KeycloakError
 from kubernetes_asyncio.client.exceptions import ApiException
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
+from sqlmodel import select
 
 from ....._util import DEFAULT_DB_NAME, DEFAULT_DB_USER, Identifier
 from .....check_branch_status import get_branch_status
@@ -37,7 +38,10 @@ from .....deployment import (
 )
 from .....deployment.kubernetes._util import core_v1_client
 from .....deployment.kubernetes.kubevirt import KubevirtSubresourceAction, call_kubevirt_subresource
-from .....deployment.kubernetes.volume_clone import clone_branch_database_volume
+from .....deployment.kubernetes.volume_clone import (
+    clone_branch_database_volume,
+    restore_branch_database_volume_from_snapshot,
+)
 from .....deployment.settings import settings as deployment_settings
 from .....exceptions import VelaError, VelaKubernetesError
 from ...._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
@@ -54,6 +58,7 @@ from ...._util.role import clone_user_role_assignment
 from ....auth import security
 from ....db import SessionDep
 from ....keycloak import realm_admin
+from ....models.backups import BackupEntry
 from ....models.branch import (
     ApiKeyDetails,
     Branch,
@@ -155,6 +160,12 @@ class PgbouncerConfigSnapshot(TypedDict):
     reserve_pool_size: int | None
     server_idle_timeout: int | None
     server_lifetime: int | None
+
+
+class RestoreSnapshotContext(TypedDict):
+    namespace: str
+    name: str
+    content_name: str | None
 
 
 def snapshot_pgbouncer_config(config: PgbouncerConfig | None) -> PgbouncerConfigSnapshot:
@@ -678,6 +689,75 @@ async def _clone_branch_environment_task(
         )
 
 
+async def _restore_branch_environment_task(
+    *,
+    organization_id: Identifier,
+    project_id: Identifier,
+    credential: str,
+    branch_id: Identifier,
+    branch_slug: str,
+    parameters: DeploymentParameters,
+    jwt_secret: str,
+    anon_key: str,
+    service_key: str,
+    pgbouncer_admin_password: str,
+    source_branch_id: Identifier,
+    snapshot_namespace: str,
+    snapshot_name: str,
+    snapshot_content_name: str | None,
+    pgbouncer_config: PgbouncerConfigSnapshot,
+) -> None:
+    storage_class_name: str | None = None
+    try:
+        storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
+        await restore_branch_database_volume_from_snapshot(
+            source_branch_id=source_branch_id,
+            target_branch_id=branch_id,
+            snapshot_namespace=snapshot_namespace,
+            snapshot_name=snapshot_name,
+            snapshot_content_name=snapshot_content_name,
+            snapshot_class=_VOLUME_SNAPSHOT_CLASS,
+            storage_class_name=storage_class_name,
+            snapshot_timeout_seconds=_SNAPSHOT_TIMEOUT_SECONDS,
+            snapshot_poll_interval_seconds=_SNAPSHOT_POLL_INTERVAL_SECONDS,
+            pvc_timeout_seconds=_PVC_TIMEOUT_SECONDS,
+            pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
+        )
+    except VelaError:
+        logging.exception(
+            "Branch restore failed for project_id=%s branch_id=%s branch_slug=%s using snapshot %s/%s",
+            project_id,
+            branch_id,
+            branch_slug,
+            snapshot_namespace,
+            snapshot_name,
+        )
+        return
+
+    try:
+        await deploy_branch_environment(
+            organization_id=organization_id,
+            project_id=project_id,
+            branch_id=branch_id,
+            branch_slug=branch_slug,
+            credential=credential,
+            parameters=parameters,
+            jwt_secret=jwt_secret,
+            anon_key=anon_key,
+            service_key=service_key,
+            pgbouncer_admin_password=pgbouncer_admin_password,
+            use_existing_pvc=True,
+            pgbouncer_config=pgbouncer_snapshot_to_mapping(pgbouncer_config),
+        )
+    except VelaError:
+        logging.exception(
+            "Branch deployment (restore) failed for project_id=%s branch_id=%s branch_slug=%s",
+            project_id,
+            branch_id,
+            branch_slug,
+        )
+
+
 async def _public(branch: Branch) -> BranchPublic:
     project = await branch.awaitable_attrs.project
 
@@ -825,8 +905,8 @@ _links = {
 
 
 def _validate_branch_create_request(parameters: BranchCreate) -> None:
-    if parameters.source is None and parameters.deployment is None:
-        raise HTTPException(400, "Either source or deployment parameters must be provided")
+    if parameters.source is None and parameters.deployment is None and parameters.restore is None:
+        raise HTTPException(400, "Either source, deployment, or restore parameters must be provided")
 
 
 async def _resolve_source_branch(
@@ -834,10 +914,28 @@ async def _resolve_source_branch(
     project: ProjectDep,
     _organization: OrganizationDep,
     parameters: BranchCreate,
-) -> Branch | None:
-    if parameters.source is None:
-        return None
-    return await lookup_branch(session, project, parameters.source.branch_id)
+) -> tuple[Branch | None, BackupEntry | None]:
+    if parameters.source is not None:
+        branch = await lookup_branch(session, project, parameters.source.branch_id)
+        return branch, None
+
+    if parameters.restore is not None:
+        backup_id = parameters.restore.backup_id
+        result = await session.execute(select(BackupEntry).where(BackupEntry.id == backup_id))
+        backup = result.scalar_one_or_none()
+        if backup is None:
+            raise HTTPException(404, f"Backup {backup_id} not found")
+        try:
+            branch = await lookup_branch(session, project, backup.branch_id)
+        except HTTPException as exc:
+            if exc.status_code == 404:
+                raise HTTPException(404, f"Backup {backup_id} not found") from exc
+            raise
+        if not backup.snapshot_name or not backup.snapshot_namespace:
+            raise HTTPException(400, "Selected backup does not include complete snapshot metadata")
+        return branch, backup
+
+    return None, None
 
 
 def _ensure_branch_resource_limits(
@@ -852,15 +950,15 @@ def _ensure_branch_resource_limits(
 
 async def _post_commit_branch_setup(
     session: SessionDep,
-    source: Branch | None,
+    source_branch_id: Identifier | None,
     *,
     copy_config: bool,
     entity: Branch,
 ) -> PgbouncerConfigSnapshot:
     await session.refresh(entity)
-    if source is not None and copy_config:
-        await copy_branch_backup_schedules(session, source, entity)
-        await clone_user_role_assignment(session, source, entity)
+    if source_branch_id is not None and copy_config:
+        await copy_branch_backup_schedules(session, source_branch_id, entity)
+        await clone_user_role_assignment(session, source_branch_id, entity)
     return snapshot_pgbouncer_config(await entity.awaitable_attrs.pgbouncer_config)
 
 
@@ -879,6 +977,7 @@ def _schedule_branch_environment_tasks(
     service_key: str,
     pgbouncer_admin_password: str,
     pgbouncer_config: PgbouncerConfigSnapshot,
+    restore_snapshot: RestoreSnapshotContext | None,
 ) -> None:
     if deployment_parameters is not None:
         asyncio.create_task(
@@ -893,6 +992,27 @@ def _schedule_branch_environment_tasks(
                 anon_key=anon_key,
                 service_key=service_key,
                 pgbouncer_admin_password=pgbouncer_admin_password,
+                pgbouncer_config=pgbouncer_config,
+            )
+        )
+        return
+    if restore_snapshot is not None and source_id is not None and clone_parameters is not None:
+        asyncio.create_task(
+            _restore_branch_environment_task(
+                organization_id=organization_id,
+                project_id=project_id,
+                credential=credential,
+                branch_id=branch.id,
+                branch_slug=branch.name,
+                parameters=clone_parameters,
+                jwt_secret=jwt_secret,
+                anon_key=anon_key,
+                service_key=service_key,
+                pgbouncer_admin_password=pgbouncer_admin_password,
+                source_branch_id=source_id,
+                snapshot_namespace=restore_snapshot["namespace"],
+                snapshot_name=restore_snapshot["name"],
+                snapshot_content_name=restore_snapshot["content_name"],
                 pgbouncer_config=pgbouncer_config,
             )
         )
@@ -948,7 +1068,14 @@ async def create(
     response: Literal["empty", "full"] = "empty",
 ) -> JSONResponse:
     _validate_branch_create_request(parameters)
-    source = await _resolve_source_branch(session, project, organization, parameters)
+    source, backup_entry = await _resolve_source_branch(session, project, organization, parameters)
+    restore_snapshot_context: RestoreSnapshotContext | None = None
+    if backup_entry is not None:
+        restore_snapshot_context = RestoreSnapshotContext(
+            namespace=cast("str", backup_entry.snapshot_namespace),
+            name=cast("str", backup_entry.snapshot_name),
+            content_name=backup_entry.snapshot_content_name,
+        )
     source_id: Identifier | None = getattr(source, "id", None)
     clone_parameters: DeploymentParameters | None = None
     if source is not None:
@@ -969,7 +1096,10 @@ async def create(
     )
     _ensure_branch_resource_limits(exceeded_limits, resource_requests, remaining_limits)
 
-    copy_config = bool(parameters.source and parameters.source.config_copy)
+    if parameters.restore is not None:
+        copy_config = parameters.restore.config_copy
+    else:
+        copy_config = bool(parameters.source and parameters.source.config_copy)
     copy_data = bool(parameters.source and parameters.source.data_copy)
 
     entity = await _build_branch_entity(
@@ -1002,7 +1132,7 @@ async def create(
         raise
     pgbouncer_config_snapshot = await _post_commit_branch_setup(
         session,
-        source,
+        source_id,
         copy_config=copy_config,
         entity=entity,
     )
@@ -1017,6 +1147,8 @@ async def create(
         project_id=await project.awaitable_attrs.id,
         branch_id=entity.id,
     )
+    restore_snapshot: RestoreSnapshotContext | None = restore_snapshot_context
+
     _schedule_branch_environment_tasks(
         deployment_parameters=parameters.deployment,
         organization_id=organization.id,
@@ -1031,6 +1163,7 @@ async def create(
         service_key=entity.service_key,
         pgbouncer_admin_password=pgbouncer_admin_password,
         pgbouncer_config=pgbouncer_config_snapshot,
+        restore_snapshot=restore_snapshot,
     )
 
     payload = (await _public(entity)).model_dump(mode="json") if response == "full" else None

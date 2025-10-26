@@ -4,13 +4,18 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from sqlmodel import insert, select
 from ulid import ULID
 
+from ..._util import Identifier
 from ..db import SessionDep
 from ..models.branch import Branch
 from ..models.role import AccessRight, AccessRightPublic, Organization, Role, RoleAccessRight, RoleType, RoleUserLink
 
 
-async def clone_user_role_assignment(session: SessionDep, source: Branch, target: Branch):
-    result = await session.execute(select(RoleUserLink).where(RoleUserLink.branch_id == source.id))
+async def clone_user_role_assignment(
+    session: SessionDep,
+    source_branch_id: Identifier,
+    target: Branch,
+):
+    result = await session.execute(select(RoleUserLink).where(RoleUserLink.branch_id == source_branch_id))
     assignments = result.scalars().all()
 
     with session.no_autoflush:

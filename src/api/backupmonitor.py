@@ -234,10 +234,11 @@ class BackupMonitor:
         try:
             snapshot = await create_branch_snapshot(
                 branch.id,
+                backup_id=backup_id,
                 snapshot_class=VOLUME_SNAPSHOT_CLASS,
                 poll_interval=SNAPSHOT_POLL_INTERVAL_SEC,
                 label=f"row-{row.row_index}",
-                timeout=SNAPSHOT_TIMEOUT_SEC,
+                time_limit=SNAPSHOT_TIMEOUT_SEC,
             )
         except Exception:
             nb.next_at = next_due
@@ -301,7 +302,7 @@ class BackupMonitor:
                     name=b.snapshot_name,
                     namespace=b.snapshot_namespace,
                     content_name=b.snapshot_content_name,
-                    timeout=SNAPSHOT_TIMEOUT_SEC,
+                    time_limit=SNAPSHOT_TIMEOUT_SEC,
                     poll_interval=SNAPSHOT_POLL_INTERVAL_SEC,
                 )
             except Exception:

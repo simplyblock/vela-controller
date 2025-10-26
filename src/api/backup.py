@@ -450,10 +450,11 @@ async def manual_backup(session: SessionDep, branch_id: Identifier) -> BackupCre
     try:
         snapshot = await create_branch_snapshot(
             branch.id,
+            backup_id=backup_id,
             snapshot_class=VOLUME_SNAPSHOT_CLASS,
             poll_interval=SNAPSHOT_POLL_INTERVAL_SEC,
             label="manual",
-            timeout=MANUAL_BACKUP_TIMEOUT_SEC,
+            time_limit=MANUAL_BACKUP_TIMEOUT_SEC,
         )
     except Exception as exc:
         logger.exception("Manual backup failed for branch %s within timeout", branch.id)
@@ -499,7 +500,7 @@ async def delete_backup(session: SessionDep, backup_id: Identifier) -> BackupDel
             name=backup.snapshot_name,
             namespace=backup.snapshot_namespace,
             content_name=backup.snapshot_content_name,
-            timeout=SNAPSHOT_TIMEOUT_SEC,
+            time_limit=SNAPSHOT_TIMEOUT_SEC,
             poll_interval=SNAPSHOT_POLL_INTERVAL_SEC,
         )
     except Exception as exc:

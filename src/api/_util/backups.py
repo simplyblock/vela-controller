@@ -7,13 +7,18 @@ from sqlmodel import select
 from ..models.backups import BackupSchedule, BackupScheduleRow
 
 if TYPE_CHECKING:
+    from ..._util import Identifier
     from ..db import SessionDep
     from ..models.branch import Branch
 
 
-async def copy_branch_backup_schedules(session: SessionDep, source: Branch, target: Branch) -> None:
+async def copy_branch_backup_schedules(
+    session: SessionDep,
+    source_branch_id: Identifier,
+    target: Branch,
+) -> None:
     """Clone backup schedules (and their rows) from source branch to target branch."""
-    result = await session.exec(select(BackupSchedule).where(BackupSchedule.branch_id == source.id))
+    result = await session.exec(select(BackupSchedule).where(BackupSchedule.branch_id == source_branch_id))
     schedules = list(result.all())
     if not schedules:
         return
