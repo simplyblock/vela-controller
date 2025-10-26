@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlmodel import asc, delete, select
 from ulid import ULID
 
+from .backup_snapshots import create_branch_snapshot, delete_branch_snapshot
 from .db import SessionDep
 from .models._util import Identifier
 from .models.backups import (
@@ -35,6 +36,10 @@ router = APIRouter()
 # ---------------------------
 # Constants
 # ---------------------------
+VOLUME_SNAPSHOT_CLASS = os.environ.get("VOLUME_SNAPSHOT_CLASS", "csi-snapshot-class")
+SNAPSHOT_TIMEOUT_SEC = int(os.environ.get("SNAPSHOT_TIMEOUT_SEC", "120"))
+SNAPSHOT_POLL_INTERVAL_SEC = int(os.environ.get("SNAPSHOT_POLL_INTERVAL_SEC", "5"))
+
 UNIT_MULTIPLIER = {
     "min": 60,
     "minute": 60,
@@ -438,15 +443,29 @@ async def manual_backup(session: SessionDep, branch_id: Identifier) -> BackupCre
     if not branch:
         raise HTTPException(status_code=404, detail="Branch not found")
 
+    try:
+        snapshot = await create_branch_snapshot(
+            branch.id,
+            snapshot_class=VOLUME_SNAPSHOT_CLASS,
+            timeout=SNAPSHOT_TIMEOUT_SEC,
+            poll_interval=SNAPSHOT_POLL_INTERVAL_SEC,
+            label="manual",
+        )
+    except Exception as exc:
+        logger.exception("Failed to create manual backup snapshot for branch %s", branch.id)
+        raise HTTPException(status_code=500, detail="Failed to create backup snapshot") from exc
+
     backup = BackupEntry(
         branch_id=branch.id,
         row_index=-1,
         created_at=datetime.utcnow(),
-        size_bytes=0,
+        size_bytes=snapshot.size_bytes or 0,
+        snapshot_name=snapshot.name,
+        snapshot_namespace=snapshot.namespace,
+        snapshot_content_name=snapshot.content_name,
     )
     session.add(backup)
-    await session.commit()
-    await session.refresh(backup)
+    await session.flush()
 
     log = BackupLog(
         branch_id=branch.id,
@@ -469,8 +488,19 @@ async def delete_backup(session: SessionDep, backup_id: Identifier) -> BackupDel
     if not backup:
         raise HTTPException(status_code=404, detail="Backup not found")
 
+    try:
+        await delete_branch_snapshot(
+            name=backup.snapshot_name,
+            namespace=backup.snapshot_namespace,
+            content_name=backup.snapshot_content_name,
+            timeout=SNAPSHOT_TIMEOUT_SEC,
+            poll_interval=SNAPSHOT_POLL_INTERVAL_SEC,
+        )
+    except Exception as exc:
+        logger.exception("Failed to delete snapshot for backup %s", backup_id)
+        raise HTTPException(status_code=500, detail="Failed to delete backup snapshot") from exc
+
     await session.delete(backup)
-    await session.commit()
 
     log = BackupLog(
         branch_id=backup.branch_id,

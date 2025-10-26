@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from pydantic import BaseModel
-from sqlalchemy import UniqueConstraint
+from sqlalchemy import Column, String, UniqueConstraint
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship
 
@@ -54,6 +54,18 @@ class BackupEntry(AsyncAttrs, Model, table=True):
     row_index: int
     created_at: datetime
     size_bytes: int
+    snapshot_name: str | None = Field(
+        default=None,
+        sa_column=Column(String(length=255), nullable=True),
+    )
+    snapshot_namespace: str | None = Field(
+        default=None,
+        sa_column=Column(String(length=255), nullable=True),
+    )
+    snapshot_content_name: str | None = Field(
+        default=None,
+        sa_column=Column(String(length=255), nullable=True),
+    )
 
 
 class BackupLog(AsyncAttrs, Model, table=True):

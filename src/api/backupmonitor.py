@@ -10,6 +10,7 @@ from sqlmodel import SQLModel, asc, select
 from ulid import ULID
 
 from ..check_branch_status import get_branch_status
+from .backup_snapshots import create_branch_snapshot, delete_branch_snapshot
 from .models.backups import (
     BackupEntry,
     BackupLog,
@@ -25,10 +26,10 @@ from .settings import settings
 # ---------------------------
 # Config
 # ---------------------------
-K8S_NAMESPACE = os.environ.get("K8S_NAMESPACE", "default")
 VOLUME_SNAPSHOT_CLASS = os.environ.get("VOLUME_SNAPSHOT_CLASS", "csi-snapshot-class")
 POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", "60"))
 SNAPSHOT_TIMEOUT_SEC = int(os.environ.get("SNAPSHOT_TIMEOUT_SEC", "120"))
+SNAPSHOT_POLL_INTERVAL_SEC = int(os.environ.get("SNAPSHOT_POLL_INTERVAL_SEC", "5"))
 
 logging.basicConfig(
     level=os.environ.get("LOG_LEVEL", "INFO"),
@@ -227,21 +228,51 @@ class BackupMonitor:
         return schedule
 
     async def execute_backup(self, db: AsyncSession, branch: Branch, row: BackupScheduleRow, nb: NextBackup):
-        be = BackupEntry(branch_id=branch.id, row_index=row.row_index, created_at=datetime.utcnow(), size_bytes=0)
+        next_due = nb.next_at + timedelta(seconds=interval_seconds(row.interval, row.unit))
+        try:
+            snapshot = await create_branch_snapshot(
+                branch.id,
+                snapshot_class=VOLUME_SNAPSHOT_CLASS,
+                timeout=SNAPSHOT_TIMEOUT_SEC,
+                poll_interval=SNAPSHOT_POLL_INTERVAL_SEC,
+                label=f"row-{row.row_index}",
+            )
+        except Exception:
+            nb.next_at = next_due
+            db.add(nb)
+            await db.commit()
+            logger.exception("Failed to create backup snapshot for branch %s row %d", branch.id, row.row_index)
+            return
+
+        be = BackupEntry(
+            branch_id=branch.id,
+            row_index=row.row_index,
+            created_at=datetime.utcnow(),
+            size_bytes=snapshot.size_bytes or 0,
+            snapshot_name=snapshot.name,
+            snapshot_namespace=snapshot.namespace,
+            snapshot_content_name=snapshot.content_name,
+        )
         db.add(be)
-        await db.commit()
-        await db.refresh(be)
+        await db.flush()
 
         log_entry = BackupLog(branch_id=branch.id, backup_uuid=str(be.id), action="taken", ts=datetime.utcnow())
         db.add(log_entry)
 
-        nb.next_at = nb.next_at + timedelta(seconds=interval_seconds(row.interval, row.unit))
+        nb.next_at = next_due
         db.add(nb)
         await db.commit()
 
         await self.prune_backups(db, branch, row)
 
-        logger.info("Backup created %s for branch %s row %d", be.id, branch.id, row.row_index)
+        logger.info(
+            "Backup created %s for branch %s row %d (snapshot=%s/%s)",
+            be.id,
+            branch.id,
+            row.row_index,
+            snapshot.namespace,
+            snapshot.name,
+        )
 
     async def prune_backups(self, db: AsyncSession, branch: Branch, row: BackupScheduleRow):
         result = await db.execute(
@@ -254,12 +285,30 @@ class BackupMonitor:
             return
 
         to_delete = backups[: len(backups) - row.retention]
+        deleted = 0
         for b in to_delete:
+            try:
+                await delete_branch_snapshot(
+                    name=b.snapshot_name,
+                    namespace=b.snapshot_namespace,
+                    content_name=b.snapshot_content_name,
+                    timeout=SNAPSHOT_TIMEOUT_SEC,
+                    poll_interval=SNAPSHOT_POLL_INTERVAL_SEC,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to delete snapshot for backup %s (branch %s row %d)", b.id, branch.id, row.row_index
+                )
+                continue
+
             log = BackupLog(branch_id=branch.id, backup_uuid=str(b.id), action="delete", ts=datetime.utcnow())
             db.add(log)
             await db.delete(b)
-        await db.commit()
-        logger.info("Pruned %d old backups for branch %s row %d", len(to_delete), branch.id, row.row_index)
+            deleted += 1
+
+        if deleted:
+            await db.commit()
+            logger.info("Pruned %d old backups for branch %s row %d", deleted, branch.id, row.row_index)
 
 
 # in main.py or backupmonitor.py
