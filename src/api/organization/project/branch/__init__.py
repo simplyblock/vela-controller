@@ -215,6 +215,7 @@ def _deployment_parameters_from_source(source: Branch) -> DeploymentParameters:
         memory_bytes=source.memory,
         iops=source.iops,
         database_image_tag=cast("Literal['15.1.0.147']", image_tag),
+        enable_file_storage=source.enable_file_storage,
     )
 
 
@@ -240,6 +241,7 @@ async def _build_branch_entity(
             iops=source.iops,
             database_image_tag=source.database_image_tag,
             env_type=env_type,
+            enable_file_storage=source.enable_file_storage,
         )
         entity.database_password = source.database_password
         if copy_config:
