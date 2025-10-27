@@ -236,6 +236,7 @@ BranchSystemStatus = Literal[
     "RESTARTING",
     "STOPPING",
     "UNKNOWN",
+    "ERROR",
 ]
 
 
@@ -250,6 +251,7 @@ BranchServiceStatus = Literal[
     "RESTARTING",
     "STOPPING",
     "UNKNOWN",
+    "ERROR",
 ]
 
 
