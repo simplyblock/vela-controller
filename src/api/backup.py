@@ -2,7 +2,7 @@ import logging
 import os
 from collections import Counter
 from datetime import datetime
-from typing import Annotated, Self
+from typing import Annotated, Literal, Self
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -66,6 +66,9 @@ INTERVAL_LIMITS = {
     "w": 12,
     "weeks": 12,
 }
+
+
+type ResponseType = Literal["empty", "full"]
 
 
 # ---------------------------
@@ -145,12 +148,9 @@ BackupScheduleDep = Annotated[BackupSchedule | None, Depends(_lookup_backup_sche
 
 @router.post("/backup/organizations/{organization_id}/schedule")
 async def add_org_backup_schedule(
-    session: SessionDep,
-    payload: SchedulePayload,
-    organization: OrganizationDep,
-) -> BackupScheduleCreatePublic:
-    response = await add_or_replace_backup_schedule(session, payload, organization, None, None)
-    return response
+    session: SessionDep, payload: SchedulePayload, organization: OrganizationDep, response: ResponseType = "empty"
+) -> BackupScheduleCreatePublic | BackupSchedulePublic:
+    return await add_or_replace_backup_schedule(session, payload, organization, None, None, response)
 
 
 @router.put("/backup/organizations/{organization_id}/schedule")
@@ -158,12 +158,12 @@ async def replace_org_backup_schedule(
     session: SessionDep,
     payload: BackupScheduleUpdate,
     organization: OrganizationDep,
-) -> BackupScheduleCreatePublic:
+    response: ResponseType = "empty",
+) -> BackupScheduleCreatePublic | BackupSchedulePublic:
     # Dependency object don't work as they bring in required query parameters
     result = await session.execute(select(BackupSchedule).where(BackupSchedule.id == payload.schedule_id))
     schedule = result.scalars().one_or_none()
-    response = await add_or_replace_backup_schedule(session, payload, organization, None, schedule)
-    return response
+    return await add_or_replace_backup_schedule(session, payload, organization, None, schedule, response)
 
 
 @router.post("/backup/branches/{branch_id}/schedule")
@@ -171,12 +171,12 @@ async def add_branch_backup_schedule(
     session: SessionDep,
     payload: SchedulePayload,
     branch_id: ULID,
-) -> BackupScheduleCreatePublic:
+    response: ResponseType = "empty",
+) -> BackupScheduleCreatePublic | BackupSchedulePublic:
     # Dependency object don't work as they bring in required query parameters
     result = await session.execute(select(Branch).where(Branch.id == branch_id))
     branch = result.scalars().one_or_none()
-    response = await add_or_replace_backup_schedule(session, payload, None, branch, None)
-    return response
+    return await add_or_replace_backup_schedule(session, payload, None, branch, None, response)
 
 
 @router.put("/backup/branches/{branch_id}/schedule")
@@ -184,14 +184,14 @@ async def replace_branch_backup_schedule(
     session: SessionDep,
     payload: BackupScheduleUpdate,
     branch_id: ULID,
-) -> BackupScheduleCreatePublic:
+    response: ResponseType = "empty",
+) -> BackupScheduleCreatePublic | BackupSchedulePublic:
     # Dependency object don't work as they bring in required query parameters
     result = await session.execute(select(Branch).where(Branch.id == branch_id))
     branch = result.scalars().one_or_none()
     result = await session.execute(select(BackupSchedule).where(BackupSchedule.id == payload.schedule_id))
     schedule = result.scalars().one_or_none()
-    response = await add_or_replace_backup_schedule(session, payload, None, branch, schedule)
-    return response
+    return await add_or_replace_backup_schedule(session, payload, None, branch, schedule, response)
 
 
 async def add_or_replace_backup_schedule(
@@ -200,7 +200,8 @@ async def add_or_replace_backup_schedule(
     organization: Organization | None,
     branch: Branch | None,
     schedule: BackupSchedule | None,
-) -> BackupScheduleCreatePublic:
+    response: ResponseType,
+) -> BackupScheduleCreatePublic | BackupSchedulePublic:
     # TODO: @mxsrc will currently throw an HTTP 500 if the unique constraint fails. Please adjust to 409 Conflict.
 
     if organization is None and branch is None:
@@ -252,6 +253,23 @@ async def add_or_replace_backup_schedule(
     await session.commit()
     await session.refresh(schedule)
 
+    if response == "full":
+        return BackupSchedulePublic(
+            id=schedule.id,
+            organization_id=schedule.organization_id,
+            project_id=branch.project_id if branch else None,
+            branch_id=schedule.branch_id,
+            env_type=schedule.env_type,
+            rows=[
+                BackupScheduleRowPublic(
+                    row_index=row.row_index,
+                    interval=row.interval,
+                    unit=row.unit,
+                    retention=row.retention,
+                )
+                for row in schedule.rows
+            ],
+        )
     return BackupScheduleCreatePublic(status="ok", schedule_id=schedule.id)
 
 
@@ -305,6 +323,7 @@ async def list_schedules(
             BackupSchedulePublic(
                 id=schedule.id,
                 organization_id=schedule.organization_id if schedule.organization_id else None,
+                project_id=(await schedule.awaitable_attrs.branch).project_id if schedule.branch_id else None,
                 branch_id=schedule.branch_id if schedule.branch_id else None,
                 env_type=schedule.env_type,
                 rows=[
