@@ -57,6 +57,7 @@ class ProjectPublic(BaseModel):
     name: Name
     max_backups: int
     status: ProjectStatus  # TODO @Manohar please fill in the correct status
+    default_branch_id: Identifier | None  # TODO @Manohar please fill in the correct value
 
 
 async def _lookup(session: SessionDep, organization: OrganizationDep, project_id: Identifier) -> Project:
