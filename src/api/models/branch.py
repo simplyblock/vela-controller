@@ -224,6 +224,20 @@ class BranchPgbouncerConfigStatus(BaseModel):
     server_lifetime: int | None = None
 
 
+BranchSystemStatus = Literal[
+    "ACTIVE_HEALTHY",
+    "STOPPED",
+    "STARTING",
+    "ACTIVE_UNHEALTHY",
+    "CREATING",
+    "DELETING",
+    "UPDATING",
+    "RESTARTING",
+    "STOPPING",
+    "UNKNOWN",
+]
+
+
 BranchServiceStatus = Literal[
     "ACTIVE_HEALTHY",
     "STOPPED",
@@ -459,6 +473,7 @@ class BranchPublic(BaseModel):
     assigned_labels: list[str]
     used_resources: ResourceUsageDefinition
     api_keys: BranchApiKeys
+    status: BranchSystemStatus
     service_status: BranchStatus
     pitr_enabled: bool
     created_at: datetime

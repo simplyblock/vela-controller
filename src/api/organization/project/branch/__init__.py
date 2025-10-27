@@ -588,6 +588,7 @@ async def _public(branch: Branch) -> BranchPublic:
         assigned_labels=[],
         used_resources=used_resources,
         api_keys=api_keys,
+        status="ACTIVE_HEALTHY",  # TODO @Manohar please fill in the actual value
         service_status=_service_status,
         pitr_enabled=False,
         created_at=branch.created_datetime,
