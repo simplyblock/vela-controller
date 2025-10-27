@@ -31,6 +31,7 @@ spec:
   selector:
     vm.kubevirt.io/name: {{ include "supabase.db.fullname" . }}
 ---
+{{- if .Values.storage.enabled }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -47,6 +48,7 @@ spec:
   selector:
     vm.kubevirt.io/name: {{ include "supabase.db.fullname" . }}
 ---
+{{- end }}
 apiVersion: v1
 kind: Service
 metadata:

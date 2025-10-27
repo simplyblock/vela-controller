@@ -146,7 +146,7 @@ class DeploymentParameters(BaseModel):
     memory_bytes: Annotated[int, Field(**MEMORY_CONSTRAINTS)]
     iops: Annotated[int, Field(**IOPS_CONSTRAINTS)]
     database_image_tag: Literal["15.1.0.147"]
-    enable_file_storage: bool  # TODO @Manohar please reflect this in the branch creation
+    enable_file_storage: bool = True
 
 
 class DeploymentStatus(BaseModel):
@@ -321,6 +321,15 @@ def _load_compose_manifest(branch_id: Identifier) -> dict[str, Any]:
     return inject_branch_env(compose_content, branch_id)
 
 
+def _configure_compose_storage(compose: dict[str, Any], *, enable_file_storage: bool) -> dict[str, Any]:
+    services = compose.get("services")
+    if not isinstance(services, dict):
+        raise VelaDeploymentError("docker-compose manifest missing 'services' mapping")
+    if not enable_file_storage:
+        services.pop("storage", None)
+    return compose
+
+
 def _load_chart_values(chart_root: Any) -> dict[str, Any]:
     values_content = yaml.safe_load((chart_root / "values.yaml").read_text())
     if not isinstance(values_content, dict):
@@ -339,6 +348,7 @@ def _configure_vela_values(
     storage_class_name: str,
     use_existing_db_pvc: bool,
     pgbouncer_config: Mapping[str, int] | None,
+    enable_file_storage: bool,
 ) -> dict[str, Any]:
     pgbouncer_values = values_content.setdefault("pgbouncer", {})
     pgbouncer_cfg = pgbouncer_values.setdefault("config", {})
@@ -371,6 +381,8 @@ def _configure_vela_values(
     storage_spec = values_content.setdefault("storage", {})
     storage_persistence = storage_spec.setdefault("persistence", {})
     storage_persistence["size"] = f"{bytes_to_gb(parameters.storage_size)}G"
+    storage_persistence["storageClassName"] = storage_class_name
+    storage_spec["enabled"] = enable_file_storage
 
     db_persistence = db_spec.setdefault("persistence", {})
     db_persistence["size"] = f"{bytes_to_gb(parameters.database_size)}G"
@@ -402,7 +414,10 @@ async def create_vela_config(
     )
 
     chart = resources.files(__package__) / "charts" / "supabase"
-    compose_file = _load_compose_manifest(branch_id)
+    compose_file = _configure_compose_storage(
+        _load_compose_manifest(branch_id),
+        enable_file_storage=parameters.enable_file_storage,
+    )
     vector_file = _require_asset(Path(__file__).with_name("vector.yml"), "vector config file")
     pb_hba_conf = _require_asset(Path(__file__).with_name("pg_hba.conf"), "pg_hba.conf file")
     values_content = _load_chart_values(chart)
@@ -418,6 +433,7 @@ async def create_vela_config(
         storage_class_name=storage_class_name,
         use_existing_db_pvc=use_existing_db_pvc,
         pgbouncer_config=pgbouncer_config,
+        enable_file_storage=parameters.enable_file_storage,
     )
 
     with (
@@ -658,6 +674,7 @@ class BranchEndpointProvisionSpec(BaseModel):
     project_id: Identifier
     branch_id: Identifier
     branch_slug: str
+    enable_file_storage: bool
 
 
 class BranchEndpointResult(BaseModel):
@@ -859,7 +876,7 @@ async def provision_branch_endpoints(
     *,
     ref: str,
 ) -> BranchEndpointResult:
-    """Provision DNS + HTTPRoute resources (PostgREST + Storage + Realtime + PGMeta) for a branch."""
+    """Provision DNS + HTTPRoute resources (PostgREST + optional Storage + Realtime + PGMeta) for a branch."""
 
     cf_cfg = CloudflareConfig(
         api_token=settings.cloudflare_api_token,
@@ -886,12 +903,11 @@ async def provision_branch_endpoints(
     for plugin in kong_plugins:
         await _apply_kong_plugin(gateway_cfg.namespace, plugin)
 
-    route_specs = (
-        _postgrest_route_specs(ref, domain, gateway_cfg.namespace)
-        + _storage_route_specs(ref, domain, gateway_cfg.namespace)
-        + _realtime_route_specs(ref, domain, gateway_cfg.namespace)
-        + _pgmeta_route_specs(ref, domain, gateway_cfg.namespace)
-    )
+    route_specs = _postgrest_route_specs(ref, domain, gateway_cfg.namespace)
+    if spec.enable_file_storage:
+        route_specs += _storage_route_specs(ref, domain, gateway_cfg.namespace)
+    route_specs += _realtime_route_specs(ref, domain, gateway_cfg.namespace)
+    route_specs += _pgmeta_route_specs(ref, domain, gateway_cfg.namespace)
     routes = [_build_http_route(gateway_cfg, route_spec) for route_spec in route_specs]
     await _apply_http_routes(gateway_cfg.namespace, routes)
 
@@ -934,6 +950,7 @@ async def deploy_branch_environment(
                 project_id=project_id,
                 branch_id=branch_id,
                 branch_slug=branch_slug,
+                enable_file_storage=parameters.enable_file_storage,
             ),
             ref=ref,
         )

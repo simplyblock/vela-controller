@@ -264,6 +264,7 @@ async def _build_branch_entity(
         memory=deployment_params.memory_bytes,
         iops=deployment_params.iops,
         database_image_tag=deployment_params.database_image_tag,
+        enable_file_storage=deployment_params.enable_file_storage,
     )
     entity.database_password = deployment_params.database_password
     entity.pgbouncer_config = _default_pgbouncer_config()
@@ -291,7 +292,13 @@ async def _probe_service_socket(host: str, port: int, *, label: str) -> BranchSe
     return "ACTIVE_HEALTHY"
 
 
-async def _collect_branch_service_health(namespace: str) -> BranchStatus:
+async def _collect_branch_service_health(namespace: str, *, storage_enabled: bool) -> BranchStatus:
+    endpoints = {
+        label: (service_name, port)
+        for label, (service_name, port) in _BRANCH_SERVICE_ENDPOINTS.items()
+        if storage_enabled or label != "storage"
+    }
+
     probes = {
         label: asyncio.create_task(
             _probe_service_socket(
@@ -300,7 +307,7 @@ async def _collect_branch_service_health(namespace: str) -> BranchStatus:
                 label=label,
             )
         )
-        for label, (service_name, port) in _BRANCH_SERVICE_ENDPOINTS.items()
+        for label, (service_name, port) in endpoints.items()
     }
 
     results: dict[str, BranchServiceStatus] = {}
@@ -313,7 +320,7 @@ async def _collect_branch_service_health(namespace: str) -> BranchStatus:
 
     return BranchStatus(
         database=results["database"],
-        storage=results["storage"],
+        storage=results.get("storage", "STOPPED" if not storage_enabled else "UNKNOWN"),
         realtime=results["realtime"],
         meta=results["meta"],
         rest=results["rest"],
@@ -551,13 +558,13 @@ async def _public(branch: Branch) -> BranchPublic:
     )
     namespace, _ = get_db_vmi_identity(branch.id)
     try:
-        _service_status = await _collect_branch_service_health(namespace)
+        _service_status = await _collect_branch_service_health(namespace, storage_enabled=branch.enable_file_storage)
     except Exception:
         logging.exception("Failed to determine service health via socket probes")
         _service_status = BranchStatus(
             database="UNKNOWN",
             realtime="UNKNOWN",
-            storage="UNKNOWN",
+            storage="STOPPED" if not branch.enable_file_storage else "UNKNOWN",
             meta="UNKNOWN",
             rest="UNKNOWN",
         )
