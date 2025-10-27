@@ -8,7 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Relationship, select
 
 from ..._util import Identifier
-from ...deployment import DeploymentParameters
 from ..db import SessionDep
 from ._util import Model, Name
 from .organization import Organization, OrganizationDep
@@ -30,11 +29,9 @@ class Project(AsyncAttrs, Model, table=True):
 
 class ProjectCreate(BaseModel):
     name: Name
-    deployment: DeploymentParameters  # TODO @Manohar please remove the immediate branch creation
     per_branch_limits: ResourceLimitsPublic
     project_limits: ResourceLimitsPublic
     max_backups: int
-    env_type: str  # TODO @Manohar please remove the immediate branch creation
 
 
 class ProjectUpdate(BaseModel):
