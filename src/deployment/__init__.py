@@ -668,7 +668,7 @@ class HTTPRouteSpec(BaseModel):
     service_port: int
     path_prefix: str
     route_suffix: str
-    plugins: list[str] = Field(default_factory=lambda: ["realtime-cors"])
+    plugins: list[str] = Field(default_factory=lambda: ["cors"])
 
 
 class BranchEndpointProvisionSpec(BaseModel):
@@ -754,7 +754,7 @@ def _postgrest_route_specs(ref: str, domain: str, namespace: str) -> list[HTTPRo
             service_port=3000,
             path_prefix="/rest",
             route_suffix="postgrest-route",
-            plugins=["realtime-cors", APIKEY_JWT_PLUGIN_NAME],
+            plugins=["cors", APIKEY_JWT_PLUGIN_NAME],
         ),
     ]
 
@@ -771,7 +771,7 @@ def _storage_route_specs(ref: str, domain: str, namespace: str) -> list[HTTPRout
             service_port=5000,
             path_prefix="/storage",
             route_suffix="storage-route",
-            plugins=["realtime-cors", APIKEY_JWT_PLUGIN_NAME],
+            plugins=["cors", APIKEY_JWT_PLUGIN_NAME],
         ),
     ]
 
@@ -804,7 +804,7 @@ def _pgmeta_route_specs(ref: str, domain: str, namespace: str) -> list[HTTPRoute
             service_port=8080,
             path_prefix="/pg-meta",
             route_suffix="pgmeta-route",
-            plugins=["realtime-cors", CHECK_ENCRYPTED_HEADER_PLUGIN_NAME],
+            plugins=["cors", CHECK_ENCRYPTED_HEADER_PLUGIN_NAME],
         ),
     ]
 
@@ -819,18 +819,18 @@ async def _apply_http_routes(namespace: str, routes: list[dict[str, Any]]) -> No
 
 def _build_kong_plugins(namespace: str) -> list[dict[str, Any]]:
     return [
-        _build_realtime_cors_plugin(namespace),
+        _build_cors_plugin(namespace),
         _build_check_encrypted_header_plugin(namespace),
         _build_apikey_jwt_plugin(namespace),
     ]
 
 
-def _build_realtime_cors_plugin(namespace: str) -> dict[str, Any]:
+def _build_cors_plugin(namespace: str) -> dict[str, Any]:
     return {
         "apiVersion": "configuration.konghq.com/v1",
         "kind": "KongPlugin",
         "metadata": {
-            "name": "realtime-cors",
+            "name": "cors",
             "namespace": namespace,
         },
         "config": {
