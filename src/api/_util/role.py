@@ -5,7 +5,28 @@ from sqlmodel import insert, select
 from ulid import ULID
 
 from ..db import SessionDep
-from ..models.role import AccessRight, AccessRightPublic, Organization, Role, RoleAccessRight, RoleType
+from ..models.branch import Branch
+from ..models.role import AccessRight, AccessRightPublic, Organization, Role, RoleAccessRight, RoleType, RoleUserLink
+
+
+async def clone_user_role_assignment(session: SessionDep, source: Branch, target: Branch):
+    result = await session.execute(select(RoleUserLink).where(RoleUserLink.branch_id == source.id))
+    assignments = result.scalars().all()
+
+    with session.no_autoflush:
+        for assignment in assignments:
+            await session.merge(
+                RoleUserLink(
+                    organization_id=assignment.organization_id,
+                    project_id=assignment.project_id,
+                    branch_id=target.id,
+                    role_id=assignment.role_id,
+                    user_id=assignment.user_id,
+                    env_type=assignment.env_type,
+                )
+            )
+    await session.commit()
+    await session.refresh(target)
 
 
 def get_role_type(access_right: AccessRightPublic) -> RoleType:
