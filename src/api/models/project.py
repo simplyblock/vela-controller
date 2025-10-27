@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, Annotated, Literal
 
 from fastapi import Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from sqlalchemy import Column, String, UniqueConstraint
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
@@ -48,6 +48,24 @@ class ProjectCreate(BaseModel):
     per_branch_limits: ResourceLimitsPublic
     project_limits: ResourceLimitsPublic
     max_backups: int
+
+    @model_validator(mode="after")
+    def _validate_limits(self):
+        for resource_name in ResourceLimitsPublic.model_fields:
+            per_branch_value = getattr(self.per_branch_limits, resource_name)
+            project_value = getattr(self.project_limits, resource_name)
+            if per_branch_value is None:
+                continue
+            if project_value is None:
+                raise ValueError(
+                    f"per_branch_limits.{resource_name} is set but project_limits.{resource_name} is not defined"
+                )
+            if per_branch_value > project_value:
+                raise ValueError(
+                    f"per_branch_limits.{resource_name} ({per_branch_value}) exceeds "
+                    f"project_limits.{resource_name} ({project_value})"
+                )
+        return self
 
 
 class ProjectUpdate(BaseModel):
