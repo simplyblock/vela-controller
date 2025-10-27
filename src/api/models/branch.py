@@ -67,6 +67,7 @@ class Branch(AsyncAttrs, Model, table=True):
     memory: Annotated[int, Field(**MEMORY_CONSTRAINTS, sa_column=Column(BigInteger))]
     iops: Annotated[int, Field(**IOPS_CONSTRAINTS, sa_column=Column(BigInteger))]
     storage_size: Annotated[int, Field(**STORAGE_SIZE_CONSTRAINTS, sa_column=Column(BigInteger))]
+    enable_file_storage: bool
     database_image_tag: str
     jwt_secret: Annotated[str, Field(default=None, sa_column=Column(Text, nullable=True))]
     anon_key: Annotated[str, Field(default=None, sa_column=Column(Text, nullable=True))]
