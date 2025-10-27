@@ -16,7 +16,6 @@ from keycloak.exceptions import KeycloakError
 from kubernetes_asyncio.client.exceptions import ApiException
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import select
 
 from ....._util import DEFAULT_DB_NAME, DEFAULT_DB_USER, Identifier
 from .....deployment import (
@@ -41,6 +40,7 @@ from .....deployment.kubernetes.volume_clone import clone_branch_database_volume
 from .....deployment.settings import settings as deployment_settings
 from .....exceptions import VelaError, VelaKubernetesError
 from ...._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
+from ...._util.backups import copy_branch_backup_schedules
 from ...._util.crypto import encrypt_with_passphrase, generate_keys
 from ...._util.resourcelimit import (
     check_available_resources_limits,
@@ -51,7 +51,6 @@ from ...._util.resourcelimit import (
 from ....auth import security
 from ....db import SessionDep
 from ....keycloak import realm_admin
-from ....models.backups import BackupSchedule, BackupScheduleRow
 from ....models.branch import (
     ApiKeyDetails,
     Branch,
@@ -138,33 +137,6 @@ def _default_pgbouncer_config() -> PgbouncerConfig:
         server_idle_timeout=PgbouncerConfig.DEFAULT_SERVER_IDLE_TIMEOUT,
         server_lifetime=PgbouncerConfig.DEFAULT_SERVER_LIFETIME,
     )
-
-
-async def _copy_branch_backup_schedules(session: SessionDep, source: Branch, target: Branch) -> None:
-    result = await session.exec(select(BackupSchedule).where(BackupSchedule.branch_id == source.id))
-    schedules = list(result.all())
-    if not schedules:
-        return
-
-    for schedule in schedules:
-        rows = list(await schedule.awaitable_attrs.rows)
-        rows.sort(key=lambda row: row.row_index)
-        session.add(
-            BackupSchedule(
-                organization_id=schedule.organization_id,
-                branch_id=target.id,
-                env_type=schedule.env_type,
-                rows=[
-                    BackupScheduleRow(
-                        row_index=row.row_index,
-                        interval=row.interval,
-                        unit=row.unit,
-                        retention=row.retention,
-                    )
-                    for row in rows
-                ],
-            )
-        )
 
 
 class PgbouncerConfigSnapshot(TypedDict):
@@ -786,7 +758,7 @@ async def create(
 
     await session.refresh(entity)
     if source is not None and copy_config:
-        await _copy_branch_backup_schedules(session, source, entity)
+        await copy_branch_backup_schedules(session, source, entity)
     pgbouncer_config_snapshot = snapshot_pgbouncer_config(await entity.awaitable_attrs.pgbouncer_config)
 
     # Configure allocations
