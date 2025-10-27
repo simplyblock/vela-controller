@@ -47,6 +47,9 @@ ProjectStatus = Literal[
     "PAUSED",
     "STARTING",
     "STARTED",
+    "MIGRATING",
+    "DELETING",
+    "ERROR",
     "UNKNOWN",
 ]
 
