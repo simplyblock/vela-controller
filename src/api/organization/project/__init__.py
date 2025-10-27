@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from ....deployment import delete_deployment, get_db_vmi_identity
 from ....deployment.kubernetes.kubevirt import call_kubevirt_subresource
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
+from ..._util.resourcelimit import get_organization_resource_limits
 from ...auth import security
 from ...db import SessionDep
 from ...models.organization import OrganizationDep
@@ -20,6 +21,7 @@ from ...models.project import (
     ProjectPublic,
     ProjectUpdate,
 )
+from ...models.resources import ResourceType
 from . import branch as branch_module
 
 api = APIRouter(tags=["project"])
@@ -92,6 +94,31 @@ async def create(
     parameters: ProjectCreate,
     response: Literal["empty", "full"] = "empty",
 ) -> JSONResponse:
+    org_limits = await get_organization_resource_limits(session, organization.id)
+    requested_project_limits = parameters.project_limits.model_dump(exclude_unset=True, exclude_none=True)
+    for resource_name, requested_limit in requested_project_limits.items():
+        try:
+            resource_type = ResourceType(resource_name)
+        except ValueError as exc:  # pragma: no cover - defensive coding against invalid payloads
+            raise HTTPException(422, f"Unknown resource type {resource_name!r}") from exc
+        organization_limit = org_limits.get(resource_type)
+        if organization_limit is None or organization_limit.max_total is None:
+            raise HTTPException(
+                422,
+                (
+                    f"Organization limit for {resource_name} is not configured; "
+                    f"cannot set project limit to {requested_limit}"
+                ),
+            )
+        if requested_limit > organization_limit.max_total:
+            raise HTTPException(
+                422,
+                (
+                    f"project_limits.{resource_name} ({requested_limit}) exceeds organization's limit "
+                    f"({organization_limit.max_total})"
+                ),
+            )
+
     entity = Project(
         organization=organization,
         name=parameters.name,
