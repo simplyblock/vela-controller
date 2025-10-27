@@ -48,6 +48,7 @@ from ...._util.resourcelimit import (
     delete_branch_provisioning,
     get_current_branch_allocations,
 )
+from ...._util.role import clone_user_role_assignment
 from ....auth import security
 from ....db import SessionDep
 from ....keycloak import realm_admin
@@ -766,6 +767,7 @@ async def create(
     await session.refresh(entity)
     if source is not None and copy_config:
         await copy_branch_backup_schedules(session, source, entity)
+        await clone_user_role_assignment(session, source, entity)
     pgbouncer_config_snapshot = snapshot_pgbouncer_config(await entity.awaitable_attrs.pgbouncer_config)
 
     # Configure allocations
