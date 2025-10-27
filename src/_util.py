@@ -78,24 +78,24 @@ DEFAULT_DB_USER = "postgres"
 # Represents the state of Kubevirt VM
 # https://github.com/kubevirt/kubevirt/blob/main/staging/src/kubevirt.io/api/core/v1/types.go#L1897-L1942
 StatusType = Literal[
-    "Stopped",  # PAUSED
-    "Provisioning",  # STARTING
-    "Starting",  # STARTING
-    "Running",  # STARTING or STARTED (based on other rules)
-    "Paused",  # PAUSED
-    "Stopping",  # PAUSED
-    "Terminating",  # DELETING
-    "CrashLoopBackOff",  # ERROR
-    "Migrating",  # MIGRATING
-    "Unknown",  # UNKNOWN
-    "ErrorUnschedulable",  # ERROR
-    "ErrImagePull",  # ERROR
-    "ImagePullBackOff",  # ERROR
-    "ErrorPvcNotFound",  # ERROR
-    "DataVolumeError",  # ERROR
-    "WaitingForVolumeBinding",  # STARTING
-    "WaitingForReceiver",  # STARTING
-    "UNKNOWN",  # UNKNOWN
+    "Stopped",
+    "Provisioning",
+    "Starting",
+    "Running",
+    "Paused",
+    "Stopping",
+    "Terminating",
+    "CrashLoopBackOff",
+    "Migrating",
+    "Unknown",
+    "ErrorUnschedulable",
+    "ErrImagePull",
+    "ImagePullBackOff",
+    "ErrorPvcNotFound",
+    "DataVolumeError",
+    "WaitingForVolumeBinding",
+    "WaitingForReceiver",
+    "UNKNOWN",
 ]
 
 
