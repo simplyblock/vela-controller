@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Literal
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel
@@ -12,6 +12,7 @@ from ...deployment import DeploymentParameters
 from ..db import SessionDep
 from ._util import Model, Name
 from .organization import Organization, OrganizationDep
+from .resources import ResourceLimitsPublic
 
 if TYPE_CHECKING:
     from .branch import Branch
@@ -29,9 +30,11 @@ class Project(AsyncAttrs, Model, table=True):
 
 class ProjectCreate(BaseModel):
     name: Name
-    deployment: DeploymentParameters
+    deployment: DeploymentParameters  # TODO @Manohar please remove the immediate branch creation
+    per_branch_limits: ResourceLimitsPublic
+    project_limits: ResourceLimitsPublic
     max_backups: int
-    env_type: str
+    env_type: str  # TODO @Manohar please remove the immediate branch creation
 
 
 class ProjectUpdate(BaseModel):
@@ -39,11 +42,21 @@ class ProjectUpdate(BaseModel):
     max_backups: int | None = None
 
 
+ProjectStatus = Literal[
+    "PAUSING",
+    "PAUSED",
+    "STARTING",
+    "STARTED",
+    "UNKNOWN",
+]
+
+
 class ProjectPublic(BaseModel):
     organization_id: Identifier
     id: Identifier
     name: Name
     max_backups: int
+    status: ProjectStatus  # TODO @Manohar please fill in the correct status
 
 
 async def _lookup(session: SessionDep, organization: OrganizationDep, project_id: Identifier) -> Project:
