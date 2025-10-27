@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 from sqlmodel import select
 
 from .._util import (
@@ -24,6 +25,12 @@ from .models.resources import ResourceLimitDefinitionPublic
 from .models.role import AccessRight
 
 api = APIRouter(dependencies=[Depends(authenticated_user)], tags=["system"])
+
+
+class AvailablePostgresqlVersion(BaseModel):
+    label: str
+    value: str
+    default: bool
 
 
 @api.get("/available-permissions/")
@@ -55,4 +62,15 @@ async def list_resource_limit_definitions() -> list[ResourceLimitDefinitionPubli
         ResourceLimitDefinitionPublic(
             resource_type="storage_size", min=STORAGE_SIZE_MIN, max=STORAGE_SIZE_MAX, step=STORAGE_SIZE_STEP, unit="GB"
         ),
+    ]
+
+
+@api.get("/available-postgresql-versions")
+async def list_available_postgresql_versions() -> list[AvailablePostgresqlVersion]:
+    return [
+        AvailablePostgresqlVersion(
+            label="15",
+            value="15.1.0.147",
+            default=True,
+        )
     ]
