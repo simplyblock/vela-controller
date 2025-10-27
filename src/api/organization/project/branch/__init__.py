@@ -18,6 +18,7 @@ from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 
 from ....._util import DEFAULT_DB_NAME, DEFAULT_DB_USER, Identifier
+from .....check_branch_status import get_branch_status
 from .....deployment import (
     DeploymentParameters,
     ResizeParameters,
@@ -569,6 +570,12 @@ async def _public(branch: Branch) -> BranchPublic:
             rest="UNKNOWN",
         )
 
+    try:
+        branch_status = await get_branch_status(branch.id)
+    except Exception:
+        logger.exception("Failed to determine branch status for %s", branch.id)
+        branch_status = "UNKNOWN"
+
     api_keys = BranchApiKeys(anon=branch.anon_key, service_role=branch.service_key)
 
     normalized_resize_statuses: dict[str, BranchResizeStatusEntry] = {}
@@ -598,7 +605,7 @@ async def _public(branch: Branch) -> BranchPublic:
         assigned_labels=[],
         used_resources=used_resources,
         api_keys=api_keys,
-        status="ACTIVE_HEALTHY",  # TODO @Manohar please fill in the actual value
+        status=branch_status,
         service_status=_service_status,
         pitr_enabled=False,
         created_at=branch.created_datetime,
