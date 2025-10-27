@@ -2,10 +2,10 @@ from typing import TYPE_CHECKING, Annotated, Literal
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import UniqueConstraint
+from sqlalchemy import Column, String, UniqueConstraint
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlmodel import Relationship, select
+from sqlmodel import Field, Relationship, select
 
 from ..._util import Identifier
 from ..db import SessionDep
@@ -17,9 +17,25 @@ if TYPE_CHECKING:
     from .branch import Branch
 
 
+ProjectStatus = Literal[
+    "PAUSING",
+    "PAUSED",
+    "STARTING",
+    "STARTED",
+    "MIGRATING",
+    "DELETING",
+    "ERROR",
+    "UNKNOWN",
+]
+
+
 class Project(AsyncAttrs, Model, table=True):
     name: Name
     max_backups: int
+    status: ProjectStatus = Field(
+        default="STARTED",
+        sa_column=Column(String(length=32), nullable=False, server_default="STARTED"),
+    )
     organization_id: Identifier = Model.foreign_key_field("organization")
     organization: Organization = Relationship(back_populates="projects")
     branches: list["Branch"] = Relationship(back_populates="project", cascade_delete=True)
@@ -39,24 +55,12 @@ class ProjectUpdate(BaseModel):
     max_backups: int | None = None
 
 
-ProjectStatus = Literal[
-    "PAUSING",
-    "PAUSED",
-    "STARTING",
-    "STARTED",
-    "MIGRATING",
-    "DELETING",
-    "ERROR",
-    "UNKNOWN",
-]
-
-
 class ProjectPublic(BaseModel):
     organization_id: Identifier
     id: Identifier
     name: Name
     max_backups: int
-    status: ProjectStatus  # TODO @Manohar please fill in the correct status
+    status: ProjectStatus
     default_branch_id: Identifier | None  # TODO @Manohar please fill in the correct value
 
 

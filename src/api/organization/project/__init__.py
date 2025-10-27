@@ -31,7 +31,7 @@ async def _public(project: Project) -> ProjectPublic:
         id=await project.awaitable_attrs.id,
         name=await project.awaitable_attrs.name,
         max_backups=await project.awaitable_attrs.max_backups,
-        status="STARTED",  # TODO @Manohar please fill in the correct status
+        status=await project.awaitable_attrs.status,
         default_branch_id=None,  # TODO @Manohar please fill in the correct value
     )
 
@@ -194,10 +194,18 @@ async def update(
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def delete(session: SessionDep, _organization: OrganizationDep, project: ProjectDep):
+    project.status = "DELETING"
+    await session.commit()
+
     await session.refresh(project, ["branches"])
     branches = await project.awaitable_attrs.branches
-    for branch in branches:
-        await delete_deployment(branch.id)
+    try:
+        for branch in branches:
+            await delete_deployment(branch.id)
+    except Exception:
+        project.status = "ERROR"
+        await session.commit()
+        raise
     await session.delete(project)
     await session.commit()
     return Response(status_code=204)
@@ -209,8 +217,11 @@ async def delete(session: SessionDep, _organization: OrganizationDep, project: P
     status_code=204,
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
-async def suspend(_organization: OrganizationDep, project: ProjectDep):
+async def suspend(session: SessionDep, _organization: OrganizationDep, project: ProjectDep):
     # get all the branches and stop their VM
+    project.status = "PAUSING"
+    await session.commit()
+
     branches = await project.awaitable_attrs.branches
     errors = []
 
@@ -224,8 +235,12 @@ async def suspend(_organization: OrganizationDep, project: ProjectDep):
             errors.append(f"{vmi_name}: {e.status}")
 
     if errors:
+        project.status = "ERROR"
+        await session.commit()
         raise HTTPException(status_code=400, detail={"failed": errors})
 
+    project.status = "PAUSED"
+    await session.commit()
     return Response(status_code=204)
 
 
@@ -235,8 +250,11 @@ async def suspend(_organization: OrganizationDep, project: ProjectDep):
     status_code=204,
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
-async def resume(_organization: OrganizationDep, project: ProjectDep):
+async def resume(session: SessionDep, _organization: OrganizationDep, project: ProjectDep):
     # get all the branches and start their VM
+    project.status = "STARTING"
+    await session.commit()
+
     branches = await project.awaitable_attrs.branches
     errors = []
 
@@ -248,8 +266,12 @@ async def resume(_organization: OrganizationDep, project: ProjectDep):
             errors.append(f"{vmi_name}: {e.status}")
 
     if errors:
+        project.status = "ERROR"
+        await session.commit()
         raise HTTPException(status_code=400, detail={"failed": errors})
 
+    project.status = "STARTED"
+    await session.commit()
     return Response(status_code=204)
 
 
