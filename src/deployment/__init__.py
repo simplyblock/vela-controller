@@ -146,7 +146,7 @@ class DeploymentParameters(BaseModel):
     memory_bytes: Annotated[int, Field(**MEMORY_CONSTRAINTS)]
     iops: Annotated[int, Field(**IOPS_CONSTRAINTS)]
     database_image_tag: Literal["15.1.0.147"]
-    enable_file_storage: bool
+    enable_file_storage: bool  # TODO @Manohar please reflect this in the branch creation
 
 
 class DeploymentStatus(BaseModel):
