@@ -32,24 +32,26 @@ spec:
             - name: datadisk # /vdb
               disk:
                 bus: virtio
-            - name: storage-disk # /vdc
+            - name: db-secrets # /vdc
               disk:
                 bus: virtio
-            - name: db-secrets # /vdd
+            - name: compose-config # /vdd
               disk:
-                bus: virtio
-            - name: compose-config # /vde
-              disk:
-                bus: virtio # /vdf
+                bus: virtio # /vde
             - name: jwt-secrets
               disk:
                 bus: virtio
-            - name: k8s-api-access # /vdg
+            - name: k8s-api-access # /vdf
               disk:
                 bus: virtio
-            - name: pgbouncer-config # /vdh
+            - name: pgbouncer-config # /vdg
               disk:
                 bus: virtio
+            {{- if .Values.storage.enabled }}
+            - name: storage-disk # /vdh
+              disk:
+                bus: virtio
+            {{- end }}
             - name: cloudinitdisk
               disk:
                 bus: virtio
@@ -71,24 +73,26 @@ spec:
         - name: datadisk # vdb
           persistentVolumeClaim:
             claimName: {{ include "supabase.db.fullname" . }}-pvc
-        - name: storage-disk # vdc
-          persistentVolumeClaim:
-            claimName: {{ include "supabase.db.fullname" . }}-storage-pvc
-        - name: db-secrets # vdd
+        - name: db-secrets # vdc
           secret:
             secretName: {{ include "supabase.secret.db" . }}
-        - name: compose-config # vde
+        - name: compose-config # vdd
           configMap:
             name: {{ include "supabase.db.fullname" . }}-compose
-        - name: jwt-secrets # vdf
+        - name: jwt-secrets # vde
           secret:
             secretName: {{ include "supabase.secret.jwt" . }}
-        - name: k8s-api-access # vdg
+        - name: k8s-api-access # vdf
           serviceAccount:
             serviceAccountName: {{ printf "%s-vm-config-reader" (include "supabase.db.fullname" .) }}
-        - name: pgbouncer-config # vdh
+        - name: pgbouncer-config # vdg
           configMap:
             name: {{ printf "%s-pgbouncer" (include "supabase.db.fullname" .) }}
+        {{- if .Values.storage.enabled }}
+        - name: storage-disk # vdh
+          persistentVolumeClaim:
+            claimName: {{ include "supabase.db.fullname" . }}-storage-pvc
+        {{- end }}
         - name: cloudinitdisk
           cloudInitNoCloud:
             secretRef: 
