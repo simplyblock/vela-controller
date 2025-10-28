@@ -126,6 +126,8 @@ async def create(
         max_backups=parameters.max_backups,
     )
     session.add(entity)
+    # Ensure the project exists in the database before inserting dependent limits.
+    await session.flush()
     project_resource_limits: list[ResourceLimit] = []
     for resource_name, project_limit in requested_project_limits.items():
         resource_type = ResourceType(resource_name)
