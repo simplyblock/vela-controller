@@ -264,11 +264,12 @@ async def check_available_resources_limits(
 
 
 def check_resource_limit(requested: int | None, available: int | None) -> bool:
+    """return true if requested is more than available"""
     if requested is None:
         return False
     if available is None:
         return True
-    return requested <= available
+    return requested >= available
 
 
 def format_limit_violation_details(
