@@ -16,12 +16,8 @@ import yaml
 from cloudflare import AsyncCloudflare, CloudflareError
 from kubernetes_asyncio.client.exceptions import ApiException
 from pydantic import BaseModel, Field, model_validator
-from ulid import ULID
-
 from sqlmodel.ext.asyncio.session import AsyncSession
-
-from ..api.models.branch import Branch
-from ..api.db import engine
+from ulid import ULID
 
 from .._util import (
     CPU_CONSTRAINTS,
@@ -37,6 +33,8 @@ from .._util import (
     bytes_to_mib,
     check_output,
 )
+from ..api.db import engine
+from ..api.models.branch import Branch
 from ..exceptions import VelaCloudflareError, VelaDeployError, VelaDeploymentError, VelaKubernetesError
 from .grafana import create_vela_grafana_obj, delete_vela_grafana_obj
 from .kubernetes import KubernetesService

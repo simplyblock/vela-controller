@@ -8,6 +8,7 @@ from .._util import Identifier
 from ..exceptions import VelaGrafanaError
 from .settings import get_settings
 
+
 logger = logging.getLogger(__name__)
 
 
