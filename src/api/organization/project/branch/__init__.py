@@ -919,7 +919,7 @@ async def create(
         pgbouncer_config=pgbouncer_config_snapshot,
     )
 
-    payload = (await _public(entity)).model_dump() if response == "full" else None
+    payload = (await _public(entity)).model_dump(mode="json") if response == "full" else None
 
     return JSONResponse(
         content=payload,
