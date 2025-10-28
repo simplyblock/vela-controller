@@ -7,7 +7,14 @@ from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship, select
 
-from ..._util import Identifier
+from ..._util import (
+    DB_SIZE_MIN,
+    IOPS_MIN,
+    MEMORY_MIN,
+    STORAGE_SIZE_MIN,
+    VCPU_MILLIS_MIN,
+    Identifier,
+)
 from ..db import SessionDep
 from ._util import Model, Name
 from .organization import Organization, OrganizationDep
@@ -51,14 +58,31 @@ class ProjectCreate(BaseModel):
 
     @model_validator(mode="after")
     def _validate_limits(self):
+        minimums: dict[str, int] = {
+            "milli_vcpu": VCPU_MILLIS_MIN,
+            "ram": MEMORY_MIN,
+            "iops": IOPS_MIN,
+            "storage_size": STORAGE_SIZE_MIN,
+            "database_size": DB_SIZE_MIN,
+        }
         for resource_name in ResourceLimitsPublic.model_fields:
             per_branch_value = getattr(self.per_branch_limits, resource_name)
             project_value = getattr(self.project_limits, resource_name)
+            min_value = minimums.get(resource_name)
+            if project_value is not None and min_value is not None and project_value < min_value:
+                raise ValueError(
+                    f"project_limits.{resource_name} ({project_value}) is below the minimum allowed value ({min_value})"
+                )
             if per_branch_value is None:
                 continue
             if project_value is None:
                 raise ValueError(
                     f"per_branch_limits.{resource_name} is set but project_limits.{resource_name} is not defined"
+                )
+            if min_value is not None and per_branch_value < min_value:
+                raise ValueError(
+                    f"per_branch_limits.{resource_name} ({per_branch_value}) is below "
+                    f"the minimum allowed value ({min_value})"
                 )
             if per_branch_value > project_value:
                 raise ValueError(
