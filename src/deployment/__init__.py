@@ -817,11 +817,11 @@ async def _apply_http_routes(namespace: str, routes: list[dict[str, Any]]) -> No
         raise VelaKubernetesError(f"Failed to apply HTTPRoute: {exc}") from exc
 
 
-def _build_kong_plugins(namespace: str) -> list[dict[str, Any]]:
+def _build_kong_plugins(namespace: str, tokens: list[str]) -> list[dict[str, Any]]:
     return [
         _build_cors_plugin(namespace),
         _build_check_encrypted_header_plugin(namespace),
-        _build_apikey_jwt_plugin(namespace),
+        _build_apikey_jwt_plugin(namespace, tokens),
     ]
 
 
@@ -868,7 +868,34 @@ def _build_check_encrypted_header_plugin(namespace: str) -> dict[str, Any]:
     }
 
 
-def _build_apikey_jwt_plugin(namespace: str) -> dict[str, Any]:
+def _build_apikey_jwt_plugin(namespace: str, tokens: list[str]) -> dict[str, Any]:
+    unique_tokens = [token for token in dict.fromkeys(tokens) if token]
+    if not unique_tokens:
+        raise VelaDeploymentError("No API tokens provided for Kong pre-function plugin")
+
+    allowed_tokens = ",\n            ".join(json.dumps(f"Bearer {token}") for token in unique_tokens)
+    lua_script = textwrap.dedent(
+        f"""
+        local auth_header = kong.request.get_header("Authorization")
+
+        if not auth_header then
+            return kong.response.exit(403, {{ message = "Missing Authorization header" }})
+        end
+
+        local allowed = {{
+            {allowed_tokens}
+        }}
+
+        for _, expected in ipairs(allowed) do
+            if auth_header == expected then
+                return
+            end
+        end
+
+        return kong.response.exit(401, {{ message = "Unauthorized" }})
+        """
+    ).strip()
+
     return {
         "apiVersion": "configuration.konghq.com/v1",
         "kind": "KongPlugin",
@@ -876,66 +903,9 @@ def _build_apikey_jwt_plugin(namespace: str) -> dict[str, Any]:
             "name": APIKEY_JWT_PLUGIN_NAME,
             "namespace": namespace,
         },
-        "plugin": "jwt",
+        "plugin": "pre-function",
         "config": {
-            "header_names": ["apikey"],
-            "uri_param_names": [],
-            "cookie_names": [],
-            "key_claim_name": "ref",
-            "claims_to_verify": ["exp"],
-            "secret_is_base64": False,
-            "run_on_preflight": True,
-        },
-    }
-
-
-def _consumer_resource_name(ref: str) -> str:
-    return f"{ref}-jwt-consumer"
-
-
-def _jwt_credential_secret_name(ref: str) -> str:
-    return f"{ref}-jwt-credential"
-
-
-def _build_kong_consumer(namespace: str, ref: str, branch_id: Identifier) -> dict[str, Any]:
-    consumer_name = _consumer_resource_name(ref)
-    return {
-        "apiVersion": "configuration.konghq.com/v1",
-        "kind": "KongConsumer",
-        "metadata": {
-            "name": consumer_name,
-            "namespace": namespace,
-        },
-        "username": consumer_name,
-        "custom_id": str(branch_id),
-    }
-
-
-def _build_kong_jwt_credential_secret(
-    namespace: str,
-    ref: str,
-    branch_id: Identifier,
-    jwt_secret: str,
-) -> dict[str, Any]:
-    credential_name = _jwt_credential_secret_name(ref)
-    consumer_name = _consumer_resource_name(ref)
-    branch_key = str(branch_id)
-    return {
-        "apiVersion": "v1",
-        "kind": "Secret",
-        "metadata": {
-            "name": credential_name,
-            "namespace": namespace,
-            "annotations": {
-                "konghq.com/credential": consumer_name,
-            },
-        },
-        "type": "Opaque",
-        "stringData": {
-            "kongCredType": "jwt",
-            "key": branch_key,
-            "secret": jwt_secret,
-            "algorithm": "HS256",
+            "access": [lua_script],
         },
     }
 
@@ -948,26 +918,12 @@ async def _apply_kong_plugin(namespace: str, plugin: dict[str, Any]) -> None:
         raise VelaKubernetesError(f"Failed to apply KongPlugin: {exc}") from exc
 
 
-async def _apply_kong_consumer(namespace: str, consumer: dict[str, Any]) -> None:
-    """Apply KongConsumer manifest without blocking the event loop."""
-    try:
-        await kube_service.apply_kong_consumer(namespace, consumer)
-    except Exception as exc:  # pragma: no cover - surfaced to caller
-        raise VelaKubernetesError(f"Failed to apply KongConsumer: {exc}") from exc
-
-
-async def _apply_secret(namespace: str, secret: dict[str, Any]) -> None:
-    """Apply Secret manifest without blocking the event loop."""
-    try:
-        await kube_service.apply_secret(namespace, secret)
-    except Exception as exc:  # pragma: no cover - surfaced to caller
-        raise VelaKubernetesError(f"Failed to apply Secret: {exc}") from exc
-
-
 async def provision_branch_endpoints(
     spec: BranchEndpointProvisionSpec,
     *,
     ref: str,
+    anon_key: str,
+    service_key: str,
 ) -> BranchEndpointResult:
     """Provision DNS + HTTPRoute resources (PostgREST + optional Storage + Realtime + PGMeta) for a branch."""
 
@@ -991,19 +947,8 @@ async def provision_branch_endpoints(
 
     await _create_dns_record(cf_cfg, domain)
 
-    consumer_manifest = _build_kong_consumer(gateway_cfg.namespace, ref, spec.branch_id)
-    await _apply_kong_consumer(gateway_cfg.namespace, consumer_manifest)
-
-    credential_secret = _build_kong_jwt_credential_secret(
-        gateway_cfg.namespace,
-        ref,
-        spec.branch_id,
-        spec.jwt_secret,
-    )
-    await _apply_secret(gateway_cfg.namespace, credential_secret)
-
     # Apply the KongPlugins required for the branch routes
-    kong_plugins = _build_kong_plugins(gateway_cfg.namespace)
+    kong_plugins = _build_kong_plugins(gateway_cfg.namespace, [anon_key, service_key])
     for plugin in kong_plugins:
         await _apply_kong_plugin(gateway_cfg.namespace, plugin)
 
@@ -1058,6 +1003,8 @@ async def deploy_branch_environment(
                 jwt_secret=jwt_secret,
             ),
             ref=ref,
+            anon_key=anon_key,
+            service_key=service_key,
         )
 
     results = await asyncio.gather(
