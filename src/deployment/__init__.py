@@ -142,12 +142,18 @@ def inject_branch_env(compose: dict[str, Any], branch_id: Identifier) -> dict[st
 class DeploymentParameters(BaseModel):
     database_password: DBPassword
     database_size: Annotated[int, Field(**DATABASE_SIZE_CONSTRAINTS)]
-    storage_size: Annotated[int, Field(**STORAGE_SIZE_CONSTRAINTS)]
+    storage_size: Annotated[int | None, Field(**STORAGE_SIZE_CONSTRAINTS)] = None
     milli_vcpu: Annotated[int, Field(**CPU_CONSTRAINTS)]  # units of milli vCPU
     memory_bytes: Annotated[int, Field(**MEMORY_CONSTRAINTS)]
     iops: Annotated[int, Field(**IOPS_CONSTRAINTS)]
     database_image_tag: Literal["15.1.0.147"]
     enable_file_storage: bool = True
+
+    @model_validator(mode="after")
+    def ensure_storage_requirements(self) -> "DeploymentParameters":
+        if self.enable_file_storage and self.storage_size is None:
+            raise ValueError("storage_size is required when file storage is enabled")
+        return self
 
 
 class DeploymentStatus(BaseModel):
@@ -381,7 +387,10 @@ def _configure_vela_values(
 
     storage_spec = values_content.setdefault("storage", {})
     storage_persistence = storage_spec.setdefault("persistence", {})
-    storage_persistence["size"] = f"{bytes_to_gb(parameters.storage_size)}G"
+    if parameters.storage_size is not None:
+        storage_persistence["size"] = f"{bytes_to_gb(parameters.storage_size)}G"
+    else:
+        storage_persistence.pop("size", None)
     storage_persistence["storageClassName"] = storage_class_name
     storage_spec["enabled"] = enable_file_storage
 

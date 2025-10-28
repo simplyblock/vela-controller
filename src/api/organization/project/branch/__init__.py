@@ -342,7 +342,7 @@ def _track_resize_change(
     *,
     parameter_key: CapaResizeKey,
     new_value: int | None,
-    current_value: int,
+    current_value: int | None,
     statuses: dict[str, dict[str, Any]],
     effective: dict[CapaResizeKey, int],
     timestamp: str,
