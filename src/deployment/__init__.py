@@ -34,7 +34,6 @@ from .._util import (
 )
 
 from ..exceptions import VelaCloudflareError, VelaDeployError, VelaDeploymentError, VelaKubernetesError
-from .deployment import DeploymentParameters, DeploymentStatus
 from .grafana import create_vela_grafana_obj, delete_vela_grafana_obj
 from .kubernetes import KubernetesService
 from .kubernetes.kubevirt import get_virtualmachine_status
