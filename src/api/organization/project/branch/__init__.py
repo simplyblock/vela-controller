@@ -47,6 +47,7 @@ from ...._util.resourcelimit import (
     check_available_resources_limits,
     create_or_update_branch_provisioning,
     delete_branch_provisioning,
+    format_limit_violation_details,
     get_current_branch_allocations,
 )
 from ...._util.role import clone_user_role_assignment
@@ -734,11 +735,12 @@ async def create(
     source = await lookup_branch(session, project, parameters.source.branch_id) if parameters.source else None
     source_id: Identifier | None = source.id if source is not None else None
     resource_requests = await _build_resource_request(session, parameters.deployment, source)
-    exceeded_limits = await check_available_resources_limits(
+    exceeded_limits, remaining_limits = await check_available_resources_limits(
         session, project.organization_id, project.id, resource_requests
     )
-    if len(exceeded_limits) > 0:
-        raise HTTPException(422, f"New branch will exceed limit(s): {exceeded_limits}")
+    if exceeded_limits:
+        violation_details = format_limit_violation_details(exceeded_limits, resource_requests, remaining_limits)
+        raise HTTPException(422, f"New branch will exceed limit(s): {violation_details}")
 
     copy_config = parameters.source.config_copy if parameters.source else False
     copy_data = parameters.source.data_copy if parameters.source else False
