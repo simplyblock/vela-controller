@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from datetime import UTC, datetime
 
 from sqlalchemy.dialects.mysql import insert
@@ -236,7 +237,7 @@ async def get_project_resource_usage(
 
 async def check_resource_limits(
     session: SessionDep, branch: Branch, provisioning_request: ResourceLimitsPublic
-) -> list[ResourceType]:
+) -> tuple[list[ResourceType], ResourceLimitsPublic]:
     project = await branch.awaitable_attrs.project
     project_id = branch.project_id
     organization_id = project.organization_id
@@ -245,7 +246,7 @@ async def check_resource_limits(
 
 async def check_available_resources_limits(
     session: SessionDep, organization_id: Identifier, project_id: Identifier, provisioning_request: ResourceLimitsPublic
-) -> list[ResourceType]:
+) -> tuple[list[ResourceType], ResourceLimitsPublic]:
     effective_branch_limits = await get_remaining_project_resources(session, organization_id, project_id)
     exceeded_limits: list[ResourceType] = []
     if provisioning_request.milli_vcpu:
@@ -259,7 +260,7 @@ async def check_available_resources_limits(
             exceeded_limits.append(ResourceType.database_size)
         if check_resource_limit(provisioning_request.storage_size, effective_branch_limits.storage_size):
             exceeded_limits.append(ResourceType.storage_size)
-    return exceeded_limits
+    return exceeded_limits, effective_branch_limits
 
 
 def check_resource_limit(requested: int | None, available: int | None) -> bool:
@@ -268,6 +269,21 @@ def check_resource_limit(requested: int | None, available: int | None) -> bool:
     if available is None:
         return True
     return requested <= available
+
+
+def format_limit_violation_details(
+    exceeded: Iterable[ResourceType],
+    requested: ResourceLimitsPublic,
+    limits: ResourceLimitsPublic,
+) -> str:
+    details: list[str] = []
+    for resource in exceeded:
+        requested_value = getattr(requested, resource.value, None)
+        limit_value = getattr(limits, resource.value, None)
+        requested_display = str(requested_value) if requested_value is not None else "unspecified"
+        limit_display = str(limit_value) if limit_value is not None else "unavailable"
+        details.append(f"{resource.value}: requested {requested_display}, remaining limit {limit_display}")
+    return "; ".join(details)
 
 
 async def get_effective_branch_limits(session: SessionDep, branch: Branch) -> ResourceLimitsPublic:

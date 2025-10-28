@@ -11,6 +11,7 @@ from ._util.resourcelimit import (
     check_resource_limits,
     create_or_update_branch_provisioning,
     dict_to_resource_limits,
+    format_limit_violation_details,
     get_current_branch_allocations,
     get_effective_branch_limits,
     get_organization_resource_usage,
@@ -73,9 +74,10 @@ async def set_branch_allocations(
     if not branch:
         raise HTTPException(404, "Branch not found")
 
-    exceeded_limits = await check_resource_limits(session, branch, ResourcesPayload.resources)
-    if len(exceeded_limits) > 0:
-        raise HTTPException(422, f"Branch {branch.id} limit(s) exceeded: {exceeded_limits}")
+    exceeded_limits, effective_limits = await check_resource_limits(session, branch, payload.resources)
+    if exceeded_limits:
+        violation_details = format_limit_violation_details(exceeded_limits, payload.resources, effective_limits)
+        raise HTTPException(422, f"Branch {branch.id} limit(s) exceeded: {violation_details}")
 
     await create_or_update_branch_provisioning(session, branch, payload.resources)
 
@@ -224,8 +226,9 @@ async def set_provisioning_limit(
         )
         session.add(limit)
 
+    limit_id = limit.id
     await session.commit()
-    return LimitResultPublic(status="ok", limit=limit.id)
+    return LimitResultPublic(status="ok", limit=limit_id)
 
 
 async def get_provisioning_limits(
@@ -282,8 +285,9 @@ async def set_consumption_limit(
         )
         session.add(limit)
 
+    limit_id = limit.id
     await session.commit()
-    return LimitResultPublic(status="ok", limit=limit.id)
+    return LimitResultPublic(status="ok", limit=limit_id)
 
 
 async def get_consumption_limits(
