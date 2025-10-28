@@ -21,7 +21,7 @@ from ...models.project import (
     ProjectPublic,
     ProjectUpdate,
 )
-from ...models.resources import ResourceType
+from ...models.resources import EntityType, ResourceLimit, ResourceType
 from . import branch as branch_module
 
 api = APIRouter(tags=["project"])
@@ -96,6 +96,7 @@ async def create(
 ) -> JSONResponse:
     org_limits = await get_organization_resource_limits(session, organization.id)
     requested_project_limits = parameters.project_limits.model_dump(exclude_unset=True, exclude_none=True)
+    requested_per_branch_limits = parameters.per_branch_limits.model_dump(exclude_unset=True, exclude_none=True)
     for resource_name, requested_limit in requested_project_limits.items():
         try:
             resource_type = ResourceType(resource_name)
@@ -125,6 +126,22 @@ async def create(
         max_backups=parameters.max_backups,
     )
     session.add(entity)
+    project_resource_limits: list[ResourceLimit] = []
+    for resource_name, project_limit in requested_project_limits.items():
+        resource_type = ResourceType(resource_name)
+        per_branch_limit = requested_per_branch_limits.get(resource_name, project_limit)
+        project_resource_limits.append(
+            ResourceLimit(
+                entity_type=EntityType.project,
+                org_id=organization.id,
+                project_id=entity.id,
+                resource=resource_type,
+                max_total=project_limit,
+                max_per_branch=per_branch_limit,
+            )
+        )
+    if project_resource_limits:
+        session.add_all(project_resource_limits)
     try:
         await session.commit()
     except IntegrityError as exc:

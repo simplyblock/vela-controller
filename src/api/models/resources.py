@@ -2,7 +2,8 @@ from datetime import datetime
 from enum import Enum as PyEnum
 from typing import Annotated, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
+from pydantic import Field as PydanticField
 from sqlalchemy import BigInteger, Column, DateTime
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field
@@ -79,11 +80,38 @@ ResourceTypePublic = Literal["milli_vcpu", "ram", "iops", "storage_size", "datab
 
 
 class ResourceLimitsPublic(BaseModel):
-    milli_vcpu: int | None = None
-    ram: int | None = None
-    iops: int | None = None
-    storage_size: int | None = None
-    database_size: int | None = None
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "milli_vcpu": None,
+                "ram": None,
+                "iops": None,
+                "storage_size": None,
+                "database_size": None,
+            }
+        }
+    )
+
+    milli_vcpu: int | None = PydanticField(
+        default=None,
+        description="Requested milli vCPU per branch; omit or null to inherit higher-level limit.",
+    )
+    ram: int | None = PydanticField(
+        default=None,
+        description="Requested RAM (bytes) per branch; omit or null to inherit higher-level limit.",
+    )
+    iops: int | None = PydanticField(
+        default=None,
+        description="Requested IOPS per branch; omit or null to inherit higher-level limit.",
+    )
+    storage_size: int | None = PydanticField(
+        default=None,
+        description="Requested storage size (bytes) per branch; omit or null to inherit higher-level limit.",
+    )
+    database_size: int | None = PydanticField(
+        default=None,
+        description="Requested database size (bytes) per branch; omit or null to inherit higher-level limit.",
+    )
 
 
 class ResourcesPayload(BaseModel):
