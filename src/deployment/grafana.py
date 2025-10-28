@@ -42,7 +42,8 @@ async def create_vela_grafana_obj(organization_id: Identifier, branch_id: Identi
 
     user_id = await get_user_via_jwt(credential)
     await add_user_to_team(team_id, user_id)
-    await create_dashboard(str(organization_id), folder_id, str(branch_id))
+
+    return await create_dashboard(str(organization_id), folder_id, str(branch_id))
 
 
 async def delete_vela_grafana_obj(branch_id: Identifier):
@@ -267,7 +268,7 @@ async def remove_user_from_team(team_id: int, user_id: int):
 
 
 # --- DASHBOARD CREATION ---
-async def create_dashboard(org_name: str, folder_uid: str, folder_name: str):
+async def create_dashboard(org_name: str, folder_uid: str, folder_name: str) -> str:
     dashboard_payload = {
         "dashboard": {
             "id": None,
@@ -317,8 +318,13 @@ async def create_dashboard(org_name: str, folder_uid: str, folder_name: str):
 
     async with _client() as client:
         try:
-            await client.post("dashboards/db", json=dashboard_payload)
+            response = await client.post("dashboards/db", json=dashboard_payload)
             logger.info(f"Dashboard created successfully in folder '{folder_name}'.")
+
+            data = response.json()
+            dashboard_url = f"{get_settings().grafana_url}{data.get('url')}"
+            return dashboard_url
+
         except httpx.HTTPError as exc:
             logger.error(f"Failed to create dashboard for folder '{folder_name}': {exc}")
             raise VelaGrafanaError(f"Failed to create dashboard: {exc}") from exc
