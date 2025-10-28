@@ -360,7 +360,14 @@ def _configure_vela_values(
     pgbouncer_values = values_content.setdefault("pgbouncer", {})
     pgbouncer_cfg = pgbouncer_values.setdefault("config", {})
     if pgbouncer_config:
-        for key in ("default_pool_size", "max_client_conn", "server_idle_timeout", "server_lifetime"):
+        for key in (
+            "default_pool_size",
+            "max_client_conn",
+            "reserve_pool_size",
+            "query_wait_timeout",
+            "server_idle_timeout",
+            "server_lifetime",
+        ):
             value = pgbouncer_config.get(key)
             if value is not None:
                 pgbouncer_cfg[key] = value

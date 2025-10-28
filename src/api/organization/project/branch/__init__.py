@@ -128,6 +128,8 @@ async def _copy_pgbouncer_config_from_source(source: Branch) -> PgbouncerConfig:
     return PgbouncerConfig(
         default_pool_size=config.default_pool_size,
         max_client_conn=config.max_client_conn,
+        query_wait_timeout=config.query_wait_timeout,
+        reserve_pool_size=config.reserve_pool_size,
         server_idle_timeout=config.server_idle_timeout,
         server_lifetime=config.server_lifetime,
     )
@@ -137,6 +139,8 @@ def _default_pgbouncer_config() -> PgbouncerConfig:
     return PgbouncerConfig(
         default_pool_size=PgbouncerConfig.DEFAULT_POOL_SIZE,
         max_client_conn=PgbouncerConfig.DEFAULT_MAX_CLIENT_CONN,
+        query_wait_timeout=PgbouncerConfig.DEFAULT_QUERY_WAIT_TIMEOUT,
+        reserve_pool_size=PgbouncerConfig.DEFAULT_RESERVE_POOL_SIZE,
         server_idle_timeout=PgbouncerConfig.DEFAULT_SERVER_IDLE_TIMEOUT,
         server_lifetime=PgbouncerConfig.DEFAULT_SERVER_LIFETIME,
     )
@@ -145,6 +149,8 @@ def _default_pgbouncer_config() -> PgbouncerConfig:
 class PgbouncerConfigSnapshot(TypedDict):
     default_pool_size: int
     max_client_conn: int | None
+    query_wait_timeout: int | None
+    reserve_pool_size: int | None
     server_idle_timeout: int | None
     server_lifetime: int | None
 
@@ -163,42 +169,62 @@ def snapshot_pgbouncer_config(config: PgbouncerConfig | None) -> PgbouncerConfig
     server_lifetime = (
         config.server_lifetime if config.server_lifetime is not None else PgbouncerConfig.DEFAULT_SERVER_LIFETIME
     )
+    query_wait_timeout = (
+        config.query_wait_timeout
+        if config.query_wait_timeout is not None
+        else PgbouncerConfig.DEFAULT_QUERY_WAIT_TIMEOUT
+    )
+    reserve_pool_size = (
+        config.reserve_pool_size if config.reserve_pool_size is not None else PgbouncerConfig.DEFAULT_RESERVE_POOL_SIZE
+    )
     return PgbouncerConfigSnapshot(
         default_pool_size=config.default_pool_size,
         max_client_conn=max_client_conn,
+        query_wait_timeout=query_wait_timeout,
+        reserve_pool_size=reserve_pool_size,
         server_idle_timeout=server_idle_timeout,
         server_lifetime=server_lifetime,
     )
 
 
+def _resolve_pgbouncer_setting(value: int | None, default: int | None, *, setting: str) -> int:
+    if value is not None:
+        return value
+    if default is None:
+        raise ValueError(f"PgBouncer default {setting} is not configured")
+    return default
+
+
 def pgbouncer_snapshot_to_mapping(snapshot: PgbouncerConfigSnapshot) -> dict[str, int]:
-    max_client_conn = snapshot["max_client_conn"]
-    if max_client_conn is None:
-        default_max = PgbouncerConfig.DEFAULT_MAX_CLIENT_CONN
-        if default_max is None:
-            raise ValueError("PgBouncer default max_client_conn is not configured")
-        max_client_conn = default_max
-
-    server_idle_timeout = snapshot["server_idle_timeout"]
-    if server_idle_timeout is None:
-        default_idle = PgbouncerConfig.DEFAULT_SERVER_IDLE_TIMEOUT
-        if default_idle is None:
-            raise ValueError("PgBouncer default server_idle_timeout is not configured")
-        server_idle_timeout = default_idle
-
-    server_lifetime = snapshot["server_lifetime"]
-    if server_lifetime is None:
-        default_lifetime = PgbouncerConfig.DEFAULT_SERVER_LIFETIME
-        if default_lifetime is None:
-            raise ValueError("PgBouncer default server_lifetime is not configured")
-        server_lifetime = default_lifetime
-
-    return {
-        "default_pool_size": snapshot["default_pool_size"],
-        "max_client_conn": max_client_conn,
-        "server_idle_timeout": server_idle_timeout,
-        "server_lifetime": server_lifetime,
+    resolved_settings = {
+        "max_client_conn": _resolve_pgbouncer_setting(
+            snapshot["max_client_conn"],
+            PgbouncerConfig.DEFAULT_MAX_CLIENT_CONN,
+            setting="max_client_conn",
+        ),
+        "query_wait_timeout": _resolve_pgbouncer_setting(
+            snapshot["query_wait_timeout"],
+            PgbouncerConfig.DEFAULT_QUERY_WAIT_TIMEOUT,
+            setting="query_wait_timeout",
+        ),
+        "reserve_pool_size": _resolve_pgbouncer_setting(
+            snapshot["reserve_pool_size"],
+            PgbouncerConfig.DEFAULT_RESERVE_POOL_SIZE,
+            setting="reserve_pool_size",
+        ),
+        "server_idle_timeout": _resolve_pgbouncer_setting(
+            snapshot["server_idle_timeout"],
+            PgbouncerConfig.DEFAULT_SERVER_IDLE_TIMEOUT,
+            setting="server_idle_timeout",
+        ),
+        "server_lifetime": _resolve_pgbouncer_setting(
+            snapshot["server_lifetime"],
+            PgbouncerConfig.DEFAULT_SERVER_LIFETIME,
+            setting="server_lifetime",
+        ),
     }
+
+    return {"default_pool_size": snapshot["default_pool_size"], **resolved_settings}
 
 
 def _deployment_parameters_from_source(source: Branch) -> DeploymentParameters:
@@ -1005,6 +1031,8 @@ async def update_pgbouncer_config(
         pool_mode="transaction",
         max_client_conn=config.max_client_conn,
         default_pool_size=config.default_pool_size,
+        query_wait_timeout=config.query_wait_timeout,
+        reserve_pool_size=config.reserve_pool_size,
         server_idle_timeout=config.server_idle_timeout,
         server_lifetime=config.server_lifetime,
     )
@@ -1213,6 +1241,8 @@ def _ensure_pgbouncer_config(session: SessionDep, branch: Branch) -> PgbouncerCo
         config = PgbouncerConfig(
             default_pool_size=PgbouncerConfig.DEFAULT_POOL_SIZE,
             max_client_conn=PgbouncerConfig.DEFAULT_MAX_CLIENT_CONN,
+            query_wait_timeout=PgbouncerConfig.DEFAULT_QUERY_WAIT_TIMEOUT,
+            reserve_pool_size=PgbouncerConfig.DEFAULT_RESERVE_POOL_SIZE,
             server_idle_timeout=PgbouncerConfig.DEFAULT_SERVER_IDLE_TIMEOUT,
             server_lifetime=PgbouncerConfig.DEFAULT_SERVER_LIFETIME,
         )
@@ -1231,6 +1261,10 @@ def _collect_pgbouncer_updates(parameters: BranchPgbouncerConfigUpdate) -> dict[
         updates["server_idle_timeout"] = parameters.server_idle_timeout
     if parameters.server_lifetime is not None:
         updates["server_lifetime"] = parameters.server_lifetime
+    if parameters.query_wait_timeout is not None:
+        updates["query_wait_timeout"] = parameters.query_wait_timeout
+    if parameters.reserve_pool_size is not None:
+        updates["reserve_pool_size"] = parameters.reserve_pool_size
     return updates
 
 

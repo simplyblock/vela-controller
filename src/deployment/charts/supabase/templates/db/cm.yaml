@@ -22,6 +22,7 @@ data:
     pool_mode = transaction
     max_client_conn = {{ $pgbouncerConfig.max_client_conn | default 100 }}
     default_pool_size = {{ $pgbouncerConfig.default_pool_size | default 20 }}
+    reserve_pool_size = {{ $pgbouncerConfig.reserve_pool_size | default 0 }}
     query_wait_timeout = {{ $pgbouncerConfig.query_wait_timeout | default 30 }}
     server_idle_timeout = {{ $pgbouncerConfig.server_idle_timeout | default 60 }}
     server_lifetime = {{ $pgbouncerConfig.server_lifetime | default 600 }}
