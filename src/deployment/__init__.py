@@ -16,7 +16,6 @@ import yaml
 from cloudflare import AsyncCloudflare, CloudflareError
 from kubernetes_asyncio.client.exceptions import ApiException
 from pydantic import BaseModel, Field, model_validator
-from sqlmodel.ext.asyncio.session import AsyncSession
 from ulid import ULID
 
 from .._util import (
@@ -33,9 +32,9 @@ from .._util import (
     bytes_to_mib,
     check_output,
 )
-from ..api.db import engine
-from ..api.models.branch import Branch
+
 from ..exceptions import VelaCloudflareError, VelaDeployError, VelaDeploymentError, VelaKubernetesError
+from .deployment import DeploymentParameters, DeploymentStatus
 from .grafana import create_vela_grafana_obj, delete_vela_grafana_obj
 from .kubernetes import KubernetesService
 from .kubernetes.kubevirt import get_virtualmachine_status
@@ -1143,16 +1142,14 @@ async def deploy_branch_environment(
             service_key=service_key,
         )
 
-    async with AsyncSession(engine) as branch_session:
-        branch = await branch_session.get(Branch, branch_id)
-        results = await asyncio.gather(
-            _serial_deploy(),
-            create_branch_logflare_objects(branch_id=branch_id),
-            create_vela_grafana_obj(
-                organization_id, branch_id, credential, branch, branch_session
-            ),  # FIXME: Fails with error: "certificate signed by unknown authority"
-            return_exceptions=True,
-        )
+    results = await asyncio.gather(
+        _serial_deploy(),
+        create_branch_logflare_objects(branch_id=branch_id),
+        create_vela_grafana_obj(
+            organization_id, branch_id, credential
+        ),  # FIXME: Fails with error: "certificate signed by unknown authority"
+        return_exceptions=True,
+    )
 
     if exceptions := [result for result in results if isinstance(result, Exception)]:
         raise VelaDeployError("Failed operations during vela deployment", exceptions)
