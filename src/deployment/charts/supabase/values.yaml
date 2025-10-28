@@ -130,6 +130,7 @@ pgbouncer:
   config:
     max_client_conn: 100
     default_pool_size: 20
+    reserve_pool_size: 0
     query_wait_timeout: 30
     server_idle_timeout: 60
     server_lifetime: 600

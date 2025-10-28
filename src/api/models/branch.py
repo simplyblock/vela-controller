@@ -18,6 +18,8 @@ from ..._util import (
     MEMORY_CONSTRAINTS,
     PGBOUNCER_DEFAULT_MAX_CLIENT_CONN,
     PGBOUNCER_DEFAULT_POOL_SIZE,
+    PGBOUNCER_DEFAULT_QUERY_WAIT_TIMEOUT,
+    PGBOUNCER_DEFAULT_RESERVE_POOL_SIZE,
     PGBOUNCER_DEFAULT_SERVER_IDLE_TIMEOUT,
     PGBOUNCER_DEFAULT_SERVER_LIFETIME,
     STORAGE_SIZE_CONSTRAINTS,
@@ -142,6 +144,8 @@ class Branch(AsyncAttrs, Model, table=True):
 class PgbouncerConfig(Model, table=True):
     DEFAULT_MAX_CLIENT_CONN: ClassVar[int | None] = PGBOUNCER_DEFAULT_MAX_CLIENT_CONN
     DEFAULT_POOL_SIZE: ClassVar[int] = PGBOUNCER_DEFAULT_POOL_SIZE
+    DEFAULT_QUERY_WAIT_TIMEOUT: ClassVar[int | None] = PGBOUNCER_DEFAULT_QUERY_WAIT_TIMEOUT
+    DEFAULT_RESERVE_POOL_SIZE: ClassVar[int | None] = PGBOUNCER_DEFAULT_RESERVE_POOL_SIZE
     DEFAULT_SERVER_IDLE_TIMEOUT: ClassVar[int | None] = PGBOUNCER_DEFAULT_SERVER_IDLE_TIMEOUT
     DEFAULT_SERVER_LIFETIME: ClassVar[int | None] = PGBOUNCER_DEFAULT_SERVER_LIFETIME
 
@@ -150,6 +154,8 @@ class PgbouncerConfig(Model, table=True):
 
     max_client_conn: Annotated[int | None, Field(default=None, ge=1)]
     default_pool_size: Annotated[int, Field(ge=1)]
+    query_wait_timeout: Annotated[int | None, Field(default=None, ge=0)]
+    reserve_pool_size: Annotated[int | None, Field(default=None, ge=0)]
     server_idle_timeout: Annotated[int | None, Field(default=None, ge=0)]
     server_lifetime: Annotated[int | None, Field(default=None, ge=0)]
 
@@ -202,6 +208,14 @@ class BranchPgbouncerConfigUpdate(BaseModel):
         int | None,
         PydanticField(ge=PGBOUNCER_DEFAULT_SERVER_LIFETIME),
     ] = None
+    query_wait_timeout: Annotated[
+        int | None,
+        PydanticField(ge=PGBOUNCER_DEFAULT_QUERY_WAIT_TIMEOUT),
+    ] = None
+    reserve_pool_size: Annotated[
+        int | None,
+        PydanticField(ge=PGBOUNCER_DEFAULT_RESERVE_POOL_SIZE),
+    ] = None
 
     @model_validator(mode="after")
     def ensure_updates(self) -> "BranchPgbouncerConfigUpdate":
@@ -210,6 +224,8 @@ class BranchPgbouncerConfigUpdate(BaseModel):
             and self.max_client_conn is None
             and self.server_idle_timeout is None
             and self.server_lifetime is None
+            and self.query_wait_timeout is None
+            and self.reserve_pool_size is None
         ):
             raise ValueError("Provide at least one PgBouncer parameter to update.")
         return self
@@ -223,6 +239,8 @@ class BranchPgbouncerConfigStatus(BaseModel):
     default_pool_size: int
     server_idle_timeout: int | None = None
     server_lifetime: int | None = None
+    query_wait_timeout: int | None = None
+    reserve_pool_size: int | None = None
 
 
 BranchSystemStatus = Literal[
