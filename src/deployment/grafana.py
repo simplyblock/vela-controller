@@ -33,7 +33,7 @@ async def _client(timeout: int = 10) -> AsyncGenerator[httpx.AsyncClient]:
 
 async def create_vela_grafana_obj(organization_id: Identifier, branch_id: Identifier, credential):
     logger.info(f"Creating Grafana object for organization={organization_id}, branch={branch_id}")
-    
+
     if branch is None:
         logger.warning(f"Branch not found for id={branch_id}; skipping Grafana object creation.")
         return None
