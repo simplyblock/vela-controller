@@ -34,10 +34,6 @@ async def _client(timeout: int = 10) -> AsyncGenerator[httpx.AsyncClient]:
 async def create_vela_grafana_obj(organization_id: Identifier, branch_id: Identifier, credential):
     logger.info(f"Creating Grafana object for organization={organization_id}, branch={branch_id}")
 
-    if branch is None:
-        logger.warning(f"Branch not found for id={branch_id}; skipping Grafana object creation.")
-        return None
-
     team_id = await create_team(str(branch_id))
     parent_folder_id = await create_folder(str(organization_id))
 
@@ -329,7 +325,6 @@ async def create_dashboard(org_name: str, folder_uid: str, folder_name: str) -> 
             data = response.json()
             dashboard_url = f"{get_settings().grafana_url}{data.get('url')}"
             return dashboard_url
-
         except httpx.HTTPError as exc:
             logger.error(f"Failed to create dashboard for folder '{folder_name}': {exc}")
             raise VelaGrafanaError(f"Failed to create dashboard: {exc}") from exc
