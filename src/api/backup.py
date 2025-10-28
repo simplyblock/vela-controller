@@ -311,7 +311,7 @@ async def list_schedules(
     result = await session.execute(stmt)
     schedules = result.scalars().all()
     if not schedules:
-        raise HTTPException(status_code=404, detail="No schedules found.")
+        return []
 
     out: list[BackupSchedulePublic] = []
     for schedule in schedules:
@@ -386,7 +386,7 @@ async def list_backups(
     result = await session.execute(stmt)
     backups = result.scalars().all()
     if not backups:
-        raise HTTPException(status_code=404, detail="No backups found.")
+        return []
 
     async def backup_mapper(backup: BackupEntry):
         branch = await backup.awaitable_attrs.branch
