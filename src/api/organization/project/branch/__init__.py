@@ -1043,6 +1043,40 @@ async def reset_password(
 
 
 # PgBouncer configuration
+@instance_api.get(
+    "/pgbouncer-config",
+    name="organizations:projects:branch:get-pgbouncer-config",
+    response_model=BranchPgbouncerConfigStatus,
+    responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
+)
+async def get_pgbouncer_config(
+    _organization: OrganizationDep,
+    _project: ProjectDep,
+    branch: BranchDep,
+) -> BranchPgbouncerConfigStatus:
+    config = await branch.awaitable_attrs.pgbouncer_config
+    config_snapshot = snapshot_pgbouncer_config(config)
+
+    namespace, _ = get_db_vmi_identity(branch.id)
+    pgbouncer_status = await _probe_service_socket(
+        host=_pgbouncer_host_for_namespace(namespace),
+        port=_PGBOUNCER_SERVICE_PORT,
+        label="pgbouncer",
+    )
+
+    return BranchPgbouncerConfigStatus(
+        pgbouncer_enabled=config is not None,
+        pgbouncer_status=pgbouncer_status,
+        pool_mode="transaction",
+        max_client_conn=config_snapshot["max_client_conn"],
+        default_pool_size=config_snapshot["default_pool_size"],
+        server_idle_timeout=config_snapshot["server_idle_timeout"],
+        server_lifetime=config_snapshot["server_lifetime"],
+        query_wait_timeout=config_snapshot["query_wait_timeout"],
+        reserve_pool_size=config_snapshot["reserve_pool_size"],
+    )
+
+
 @instance_api.patch(
     "/pgbouncer-config",
     name="organizations:projects:branch:update-pgbouncer-config",
