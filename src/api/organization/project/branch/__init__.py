@@ -80,7 +80,7 @@ from ....models.branch import (
 )
 from ....models.organization import OrganizationDep
 from ....models.project import ProjectDep
-from ....models.resources import ResourceLimitsPublic
+from ....models.resources import ResourceLimitsPublic, ResourceType
 from ....settings import settings
 from .auth import api as auth_api
 
@@ -724,6 +724,99 @@ _links = {
 }
 
 
+def _validate_branch_create_request(parameters: BranchCreate) -> None:
+    if parameters.source is None and parameters.deployment is None:
+        raise HTTPException(400, "Either source or deployment parameters must be provided")
+
+
+async def _resolve_source_branch(
+    session: SessionDep,
+    project: ProjectDep,
+    _organization: OrganizationDep,
+    parameters: BranchCreate,
+) -> Branch | None:
+    if parameters.source is None:
+        return None
+    return await lookup_branch(session, project, parameters.source.branch_id)
+
+
+def _ensure_branch_resource_limits(
+    exceeded_limits: Sequence[ResourceType],
+    resource_requests: ResourceLimitsPublic,
+    remaining_limits: ResourceLimitsPublic,
+) -> None:
+    if exceeded_limits:
+        violation_details = format_limit_violation_details(exceeded_limits, resource_requests, remaining_limits)
+        raise HTTPException(422, f"New branch will exceed limit(s): {violation_details}")
+
+
+async def _post_commit_branch_setup(
+    session: SessionDep,
+    source: Branch | None,
+    *,
+    copy_config: bool,
+    entity: Branch,
+) -> PgbouncerConfigSnapshot:
+    await session.refresh(entity)
+    if source is not None and copy_config:
+        await copy_branch_backup_schedules(session, source, entity)
+        await clone_user_role_assignment(session, source, entity)
+    return snapshot_pgbouncer_config(await entity.awaitable_attrs.pgbouncer_config)
+
+
+def _schedule_branch_environment_tasks(
+    *,
+    deployment_parameters: DeploymentParameters | None,
+    organization_id: Identifier,
+    project_id: Identifier,
+    credential: str,
+    branch: Branch,
+    clone_parameters: DeploymentParameters | None,
+    source_id: Identifier | None,
+    copy_data: bool,
+    jwt_secret: str,
+    anon_key: str,
+    service_key: str,
+    pgbouncer_admin_password: str,
+    pgbouncer_config: PgbouncerConfigSnapshot,
+) -> None:
+    if deployment_parameters is not None:
+        asyncio.create_task(
+            _deploy_branch_environment_task(
+                organization_id=organization_id,
+                project_id=project_id,
+                credential=credential,
+                branch_id=branch.id,
+                branch_slug=branch.name,
+                parameters=deployment_parameters,
+                jwt_secret=jwt_secret,
+                anon_key=anon_key,
+                service_key=service_key,
+                pgbouncer_admin_password=pgbouncer_admin_password,
+                pgbouncer_config=pgbouncer_config,
+            )
+        )
+        return
+    if source_id is not None and clone_parameters is not None:
+        asyncio.create_task(
+            _clone_branch_environment_task(
+                organization_id=organization_id,
+                project_id=project_id,
+                credential=credential,
+                branch_id=branch.id,
+                branch_slug=branch.name,
+                parameters=clone_parameters,
+                jwt_secret=jwt_secret,
+                anon_key=anon_key,
+                service_key=service_key,
+                pgbouncer_admin_password=pgbouncer_admin_password,
+                source_branch_id=source_id,
+                copy_data=copy_data,
+                pgbouncer_config=pgbouncer_config,
+            )
+        )
+
+
 @api.post(
     "/",
     name="organizations:projects:branch:create",
@@ -754,22 +847,17 @@ async def create(
     parameters: BranchCreate,
     response: Literal["empty", "full"] = "empty",
 ) -> JSONResponse:
-    # Either one must be set for a valid request (create or clone)
-    if parameters.source is None and parameters.deployment is None:
-        raise HTTPException(400, "Either source or deployment parameters must be provided")
-
-    source = await lookup_branch(session, project, parameters.source.branch_id) if parameters.source else None
-    source_id: Identifier | None = source.id if source is not None else None
+    _validate_branch_create_request(parameters)
+    source = await _resolve_source_branch(session, project, organization, parameters)
+    source_id: Identifier | None = getattr(source, "id", None)
     resource_requests = await _build_resource_request(session, parameters.deployment, source)
     exceeded_limits, remaining_limits = await check_available_resources_limits(
         session, project.organization_id, project.id, resource_requests
     )
-    if exceeded_limits:
-        violation_details = format_limit_violation_details(exceeded_limits, resource_requests, remaining_limits)
-        raise HTTPException(422, f"New branch will exceed limit(s): {violation_details}")
+    _ensure_branch_resource_limits(exceeded_limits, resource_requests, remaining_limits)
 
-    copy_config = parameters.source.config_copy if parameters.source else False
-    copy_data = parameters.source.data_copy if parameters.source else False
+    copy_config = bool(parameters.source and parameters.source.config_copy)
+    copy_data = bool(parameters.source and parameters.source.data_copy)
 
     entity, clone_parameters = await _build_branch_entity(
         project=project,
@@ -798,12 +886,12 @@ async def create(
         await session.rollback()
         logging.exception("Failed to connect to keycloak")
         raise
-
-    await session.refresh(entity)
-    if source is not None and copy_config:
-        await copy_branch_backup_schedules(session, source, entity)
-        await clone_user_role_assignment(session, source, entity)
-    pgbouncer_config_snapshot = snapshot_pgbouncer_config(await entity.awaitable_attrs.pgbouncer_config)
+    pgbouncer_config_snapshot = await _post_commit_branch_setup(
+        session,
+        source,
+        copy_config=copy_config,
+        entity=entity,
+    )
 
     # Configure allocations
     await create_or_update_branch_provisioning(session, entity, resource_requests)
@@ -815,40 +903,21 @@ async def create(
         project_id=await project.awaitable_attrs.id,
         branch_id=entity.id,
     )
-    if parameters.deployment is not None:
-        asyncio.create_task(
-            _deploy_branch_environment_task(
-                organization_id=organization.id,
-                project_id=project.id,
-                credential=credentials.credentials,
-                branch_id=entity.id,
-                branch_slug=entity.name,
-                parameters=parameters.deployment,
-                jwt_secret=entity.jwt_secret,
-                anon_key=entity.anon_key,
-                service_key=entity.service_key,
-                pgbouncer_admin_password=pgbouncer_admin_password,
-                pgbouncer_config=pgbouncer_config_snapshot,
-            )
-        )
-    elif source_id is not None and clone_parameters is not None:
-        asyncio.create_task(
-            _clone_branch_environment_task(
-                organization_id=organization.id,
-                project_id=project.id,
-                credential=credentials.credentials,
-                branch_id=entity.id,
-                branch_slug=entity.name,
-                parameters=clone_parameters,
-                jwt_secret=entity.jwt_secret,
-                anon_key=entity.anon_key,
-                service_key=entity.service_key,
-                pgbouncer_admin_password=pgbouncer_admin_password,
-                source_branch_id=source_id,
-                copy_data=copy_data,
-                pgbouncer_config=pgbouncer_config_snapshot,
-            )
-        )
+    _schedule_branch_environment_tasks(
+        deployment_parameters=parameters.deployment,
+        organization_id=organization.id,
+        project_id=project.id,
+        credential=credentials.credentials,
+        branch=entity,
+        clone_parameters=clone_parameters,
+        source_id=source_id,
+        copy_data=copy_data,
+        jwt_secret=entity.jwt_secret,
+        anon_key=entity.anon_key,
+        service_key=entity.service_key,
+        pgbouncer_admin_password=pgbouncer_admin_password,
+        pgbouncer_config=pgbouncer_config_snapshot,
+    )
 
     payload = (await _public(entity)).model_dump() if response == "full" else None
 
