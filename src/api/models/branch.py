@@ -66,7 +66,9 @@ class Branch(AsyncAttrs, Model, table=True):
     milli_vcpu: Annotated[int, Field(**CPU_CONSTRAINTS, sa_column=Column(BigInteger))]  # units of milli vCPU
     memory: Annotated[int, Field(**MEMORY_CONSTRAINTS, sa_column=Column(BigInteger))]
     iops: Annotated[int, Field(**IOPS_CONSTRAINTS, sa_column=Column(BigInteger))]
-    storage_size: Annotated[int, Field(**STORAGE_SIZE_CONSTRAINTS, sa_column=Column(BigInteger))]
+    storage_size: Annotated[
+        int | None, Field(**STORAGE_SIZE_CONSTRAINTS, sa_column=Column(BigInteger, nullable=True))
+    ] = None
     enable_file_storage: bool = True
     database_image_tag: str
     jwt_secret: Annotated[str, Field(default=None, sa_column=Column(Text, nullable=True))]
