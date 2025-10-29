@@ -67,6 +67,7 @@ from ....models.branch import (
     BranchResizeService,
     BranchResizeStatusEntry,
     BranchServiceStatus,
+    BranchSourceDeploymentParameters,
     BranchStatus,
     BranchUpdate,
     CapaResizeKey,
@@ -80,7 +81,7 @@ from ....models.branch import (
 )
 from ....models.organization import OrganizationDep
 from ....models.project import ProjectDep
-from ....models.resources import ResourceLimitsPublic, ResourceType
+from ....models.resources import BranchAllocationPublic, ResourceLimitsPublic, ResourceType
 from ....settings import settings
 from .auth import api as auth_api
 
@@ -94,6 +95,7 @@ _SNAPSHOT_POLL_INTERVAL_SECONDS = float(2)
 _PVC_TIMEOUT_SECONDS = float(600)
 _PVC_POLL_INTERVAL_SECONDS = float(2)
 _VOLUME_SNAPSHOT_CLASS = "simplyblock-csi-snapshotclass"
+_SUPPORTED_DATABASE_IMAGE_TAG = "15.1.0.147"
 
 _BRANCH_SERVICE_ENDPOINTS: dict[str, tuple[str, int]] = {
     "database": ("supabase-supabase-db", 5432),
@@ -227,25 +229,162 @@ def pgbouncer_snapshot_to_mapping(snapshot: PgbouncerConfigSnapshot) -> dict[str
     return {"default_pool_size": snapshot["default_pool_size"], **resolved_settings}
 
 
-def _deployment_parameters_from_source(source: Branch) -> DeploymentParameters:
-    image_tag = source.database_image_tag
-    if image_tag != "15.1.0.147":  # pragma: no cover - defensive guard against unsupported images
+class _DeploymentResourceValues(TypedDict):
+    database_size: int | None
+    storage_size: int | None
+    milli_vcpu: int | None
+    memory_bytes: int | None
+    iops: int | None
+
+
+def _normalize_database_image_tag(image_tag: str, branch_id: Identifier) -> str:
+    if image_tag != _SUPPORTED_DATABASE_IMAGE_TAG:  # pragma: no cover - defensive guard against unsupported images
         logger.warning(
             "Source branch %s has unexpected database image tag %s; defaulting to supported image",
-            source.id,
+            branch_id,
             image_tag,
         )
-        image_tag = "15.1.0.147"
+        return _SUPPORTED_DATABASE_IMAGE_TAG
+    return image_tag
+
+
+def _base_deployment_resources(
+    source: Branch,
+    source_limits: BranchAllocationPublic | None,
+) -> _DeploymentResourceValues:
+    def _value_from_limits(attribute: str, fallback: Any) -> Any:
+        if source_limits is None:
+            return fallback
+        limit_value = getattr(source_limits, attribute)
+        return fallback if limit_value is None else limit_value
+
+    return {
+        "database_size": _value_from_limits("database_size", source.database_size),
+        "storage_size": _value_from_limits("storage_size", source.storage_size),
+        "milli_vcpu": _value_from_limits("milli_vcpu", source.milli_vcpu),
+        "memory_bytes": _value_from_limits("ram", source.memory),
+        "iops": _value_from_limits("iops", source.iops),
+    }
+
+
+def _apply_overrides_to_resources(
+    base_values: _DeploymentResourceValues,
+    *,
+    overrides: BranchSourceDeploymentParameters | None,
+    enable_file_storage: bool,
+) -> tuple[_DeploymentResourceValues, bool]:
+    if overrides is None:
+        return base_values, enable_file_storage
+
+    def _with_minimum(
+        override_value: int | None,
+        current_value: int | None,
+        *,
+        error_detail: str,
+    ) -> int | None:
+        if override_value is None:
+            return current_value
+        if current_value is not None and override_value < current_value:
+            raise HTTPException(status_code=422, detail=error_detail)
+        return override_value
+
+    updated = dict(base_values)
+    updated["database_size"] = _with_minimum(
+        overrides.database_size,
+        base_values["database_size"],
+        error_detail="database_size override must be greater than or equal to the source branch allocation",
+    )
+    updated["storage_size"] = _with_minimum(
+        overrides.storage_size,
+        base_values["storage_size"],
+        error_detail="storage_size override must be greater than or equal to the source branch allocation",
+    )
+    if overrides.milli_vcpu is not None:
+        updated["milli_vcpu"] = overrides.milli_vcpu
+    if overrides.memory_bytes is not None:
+        updated["memory_bytes"] = overrides.memory_bytes
+    if overrides.iops is not None:
+        updated["iops"] = overrides.iops
+    if overrides.enable_file_storage is not None:
+        enable_file_storage = overrides.enable_file_storage
+
+    return cast("_DeploymentResourceValues", updated), enable_file_storage
+
+
+def _validate_deployment_requirements(
+    resources: _DeploymentResourceValues,
+    *,
+    enable_file_storage: bool,
+) -> None:
+    if resources["database_size"] is None:
+        raise HTTPException(
+            status_code=422,
+            detail="database_size is required when cloning from a source branch",
+        )
+    if resources["milli_vcpu"] is None:
+        raise HTTPException(
+            status_code=422,
+            detail="milli_vcpu is required when cloning from a source branch",
+        )
+    if resources["memory_bytes"] is None:
+        raise HTTPException(
+            status_code=422,
+            detail="memory_bytes is required when cloning from a source branch",
+        )
+    if resources["iops"] is None:
+        raise HTTPException(
+            status_code=422,
+            detail="iops is required when cloning from a source branch",
+        )
+    if enable_file_storage and resources["storage_size"] is None:
+        raise HTTPException(
+            status_code=422,
+            detail="storage_size must be provided when file storage is enabled for the new branch",
+        )
+
+
+def _deployment_parameters_from_source(
+    source: Branch,
+    *,
+    source_limits: BranchAllocationPublic | None = None,
+    overrides: BranchSourceDeploymentParameters | None = None,
+) -> DeploymentParameters:
+    image_tag = _normalize_database_image_tag(source.database_image_tag, source.id)
+    resource_values = _base_deployment_resources(source, source_limits)
+    enable_file_storage = source.enable_file_storage
+
+    resource_values, enable_file_storage = _apply_overrides_to_resources(
+        resource_values,
+        overrides=overrides,
+        enable_file_storage=enable_file_storage,
+    )
+
+    _validate_deployment_requirements(resource_values, enable_file_storage=enable_file_storage)
+    database_size = cast("int", resource_values["database_size"])
+    milli_vcpu = cast("int", resource_values["milli_vcpu"])
+    memory_bytes = cast("int", resource_values["memory_bytes"])
+    iops = cast("int", resource_values["iops"])
+    storage_size = resource_values["storage_size"] if enable_file_storage else None
 
     return DeploymentParameters(
         database_password=source.database_password,
-        database_size=source.database_size,
-        storage_size=source.storage_size,
-        milli_vcpu=source.milli_vcpu,
-        memory_bytes=source.memory,
-        iops=source.iops,
+        database_size=database_size,
+        storage_size=storage_size,
+        milli_vcpu=milli_vcpu,
+        memory_bytes=memory_bytes,
+        iops=iops,
         database_image_tag=cast("Literal['15.1.0.147']", image_tag),
-        enable_file_storage=source.enable_file_storage,
+        enable_file_storage=enable_file_storage,
+    )
+
+
+def _resource_limits_from_deployment(parameters: DeploymentParameters) -> ResourceLimitsPublic:
+    return ResourceLimitsPublic(
+        milli_vcpu=parameters.milli_vcpu,
+        ram=parameters.memory_bytes,
+        iops=parameters.iops,
+        database_size=parameters.database_size,
+        storage_size=parameters.storage_size,
     )
 
 
@@ -255,8 +394,11 @@ async def _build_branch_entity(
     parameters: BranchCreate,
     source: Branch | None,
     copy_config: bool,
-) -> tuple[Branch, DeploymentParameters | None]:
+    clone_parameters: DeploymentParameters | None,
+) -> Branch:
     if source is not None:
+        if clone_parameters is None:
+            raise AssertionError("clone_parameters required when cloning from a source branch")
         env_type = parameters.env_type if parameters.env_type is not None else ""
         entity = Branch(
             name=parameters.name,
@@ -264,21 +406,20 @@ async def _build_branch_entity(
             parent_id=source.id,
             database=DEFAULT_DB_NAME,
             database_user=DEFAULT_DB_USER,
-            database_size=source.database_size,
-            storage_size=source.storage_size,
-            milli_vcpu=source.milli_vcpu,
-            memory=source.memory,
-            iops=source.iops,
-            database_image_tag=source.database_image_tag,
+            database_size=clone_parameters.database_size,
+            storage_size=clone_parameters.storage_size if clone_parameters.enable_file_storage else None,
+            milli_vcpu=clone_parameters.milli_vcpu,
+            memory=clone_parameters.memory_bytes,
+            iops=clone_parameters.iops,
+            database_image_tag=clone_parameters.database_image_tag,
             env_type=env_type,
-            enable_file_storage=source.enable_file_storage,
+            enable_file_storage=clone_parameters.enable_file_storage,
         )
         entity.database_password = source.database_password
-        if copy_config:
-            entity.pgbouncer_config = await _copy_pgbouncer_config_from_source(source)
-        else:
-            entity.pgbouncer_config = _default_pgbouncer_config()
-        return entity, _deployment_parameters_from_source(source)
+        entity.pgbouncer_config = (
+            await _copy_pgbouncer_config_from_source(source) if copy_config else _default_pgbouncer_config()
+        )
+        return entity
 
     deployment_params = cast("DeploymentParameters", parameters.deployment)
     entity = Branch(
@@ -288,7 +429,7 @@ async def _build_branch_entity(
         database=DEFAULT_DB_NAME,
         database_user=DEFAULT_DB_USER,
         database_size=deployment_params.database_size,
-        storage_size=deployment_params.storage_size,
+        storage_size=deployment_params.storage_size if deployment_params.enable_file_storage else None,
         milli_vcpu=deployment_params.milli_vcpu,
         memory=deployment_params.memory_bytes,
         iops=deployment_params.iops,
@@ -297,7 +438,7 @@ async def _build_branch_entity(
     )
     entity.database_password = deployment_params.database_password
     entity.pgbouncer_config = _default_pgbouncer_config()
-    return entity, None
+    return entity
 
 
 async def _probe_service_socket(host: str, port: int, *, label: str) -> BranchServiceStatus:
@@ -643,47 +784,6 @@ async def _public(branch: Branch) -> BranchPublic:
     )
 
 
-async def _build_resource_request(
-    session: SessionDep, deployment_parameters: DeploymentParameters | None, source: Branch | None
-) -> ResourceLimitsPublic:
-    source_limits = await get_current_branch_allocations(session, source) if source is not None else None
-
-    millis_vcpu = (
-        deployment_parameters.milli_vcpu
-        if deployment_parameters
-        else source_limits.milli_vcpu
-        if source_limits
-        else None
-    )
-
-    ram = deployment_parameters.memory_bytes if deployment_parameters else source_limits.ram if source_limits else None
-    iops = deployment_parameters.iops if deployment_parameters else source_limits.iops if source_limits else None
-
-    database_size = (
-        deployment_parameters.database_size
-        if deployment_parameters
-        else source_limits.database_size
-        if source_limits
-        else None
-    )
-
-    storage_size = (
-        deployment_parameters.storage_size
-        if deployment_parameters
-        else source_limits.storage_size
-        if source_limits
-        else None
-    )
-
-    return ResourceLimitsPublic(
-        milli_vcpu=millis_vcpu,
-        ram=ram,
-        iops=iops,
-        database_size=database_size,
-        storage_size=storage_size,
-    )
-
-
 @api.get(
     "/",
     name="organizations:projects:branch:list",
@@ -850,7 +950,20 @@ async def create(
     _validate_branch_create_request(parameters)
     source = await _resolve_source_branch(session, project, organization, parameters)
     source_id: Identifier | None = getattr(source, "id", None)
-    resource_requests = await _build_resource_request(session, parameters.deployment, source)
+    clone_parameters: DeploymentParameters | None = None
+    if source is not None:
+        source_overrides = parameters.source.deployment_parameters if parameters.source else None
+        source_limits = await get_current_branch_allocations(session, source)
+        clone_parameters = _deployment_parameters_from_source(
+            source,
+            source_limits=source_limits,
+            overrides=source_overrides,
+        )
+        resource_requests = _resource_limits_from_deployment(clone_parameters)
+    else:
+        if parameters.deployment is None:
+            raise HTTPException(status_code=400, detail="Either source or deployment parameters must be provided")
+        resource_requests = _resource_limits_from_deployment(parameters.deployment)
     exceeded_limits, remaining_limits = await check_available_resources_limits(
         session, project.organization_id, project.id, resource_requests
     )
@@ -859,11 +972,12 @@ async def create(
     copy_config = bool(parameters.source and parameters.source.config_copy)
     copy_data = bool(parameters.source and parameters.source.data_copy)
 
-    entity, clone_parameters = await _build_branch_entity(
+    entity = await _build_branch_entity(
         project=project,
         parameters=parameters,
         source=source,
         copy_config=copy_config,
+        clone_parameters=clone_parameters,
     )
     jwt_secret, anon_key, service_key = generate_keys(str(entity.id))
     entity.jwt_secret = jwt_secret
