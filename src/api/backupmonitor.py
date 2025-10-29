@@ -3,7 +3,7 @@ import logging
 import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel, asc, select
@@ -99,7 +99,7 @@ class BackupMonitor:
         return self.branch_locks[branch_id]
 
     async def run_once(self, db: AsyncSession):
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
 
         # to-do: must match witch branch status!!! Only online branches must be processed!!!
 
@@ -229,13 +229,15 @@ class BackupMonitor:
 
     async def execute_backup(self, db: AsyncSession, branch: Branch, row: BackupScheduleRow, nb: NextBackup):
         next_due = nb.next_at + timedelta(seconds=interval_seconds(row.interval, row.unit))
+        backup_id = ULID()
+
         try:
             snapshot = await create_branch_snapshot(
                 branch.id,
                 snapshot_class=VOLUME_SNAPSHOT_CLASS,
-                timeout=SNAPSHOT_TIMEOUT_SEC,
                 poll_interval=SNAPSHOT_POLL_INTERVAL_SEC,
                 label=f"row-{row.row_index}",
+                timeout=SNAPSHOT_TIMEOUT_SEC,
             )
         except Exception:
             nb.next_at = next_due
@@ -244,10 +246,12 @@ class BackupMonitor:
             logger.exception("Failed to create backup snapshot for branch %s row %d", branch.id, row.row_index)
             return
 
+        created_at = datetime.now(UTC)
         be = BackupEntry(
+            id=backup_id,
             branch_id=branch.id,
             row_index=row.row_index,
-            created_at=datetime.utcnow(),
+            created_at=created_at,
             size_bytes=snapshot.size_bytes or 0,
             snapshot_name=snapshot.name,
             snapshot_namespace=snapshot.namespace,
@@ -256,7 +260,12 @@ class BackupMonitor:
         db.add(be)
         await db.flush()
 
-        log_entry = BackupLog(branch_id=branch.id, backup_uuid=str(be.id), action="taken", ts=datetime.utcnow())
+        log_entry = BackupLog(
+            branch_id=branch.id,
+            backup_uuid=str(backup_id),
+            action="taken",
+            ts=created_at,
+        )
         db.add(log_entry)
 
         nb.next_at = next_due
@@ -301,7 +310,12 @@ class BackupMonitor:
                 )
                 continue
 
-            log = BackupLog(branch_id=branch.id, backup_uuid=str(b.id), action="delete", ts=datetime.utcnow())
+            log = BackupLog(
+                branch_id=branch.id,
+                backup_uuid=str(b.id),
+                action="delete",
+                ts=datetime.now(UTC),
+            )
             db.add(log)
             await db.delete(b)
             deleted += 1
