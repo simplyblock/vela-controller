@@ -238,7 +238,7 @@ class _DeploymentResourceValues(TypedDict):
 
 
 def _normalize_database_image_tag(image_tag: str, branch_id: Identifier) -> str:
-    if image_tag != _SUPPORTED_DATABASE_IMAGE_TAG:  # pragma: no cover - defensive guard against unsupported images
+    if image_tag != _SUPPORTED_DATABASE_IMAGE_TAG:
         logger.warning(
             "Source branch %s has unexpected database image tag %s; defaulting to supported image",
             branch_id,
