@@ -65,6 +65,28 @@ _QUANTITY_SUFFIXES: dict[str, int] = {
     "t": TB,
 }
 
+_CPU_QUANTITY_FACTORS: dict[str, Decimal] = {
+    "n": Decimal("1e-9"),
+    "u": Decimal("1e-6"),
+    "m": Decimal("1e-3"),
+    "": Decimal("1"),
+    "k": Decimal("1e3"),
+    "K": Decimal("1e3"),
+    "M": Decimal("1e6"),
+    "G": Decimal("1e9"),
+    "T": Decimal("1e12"),
+    "P": Decimal("1e15"),
+    "E": Decimal("1e18"),
+}
+
+Slug = Annotated[
+    str,
+    StringConstraints(
+        pattern=r"^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$",
+        min_length=1,
+        max_length=_MAX_LENGTH,
+    ),
+]
 
 DEFAULT_DB_NAME = "postgres"
 DEFAULT_DB_USER = "postgres"
@@ -218,6 +240,45 @@ def mb_to_bytes(value: int) -> int:
     """Convert a MB count to bytes."""
 
     return value * MB
+
+
+def quantity_to_milli_cpu(value: str | None) -> int | None:
+    """Convert a CPU quantity (e.g. '250m', '62105876n') to milli vCPU units."""
+
+    if value is None:
+        return None
+
+    quantity = value.strip()
+    if not quantity:
+        return None
+
+    suffix = ""
+    number = quantity
+    if quantity[-1].isalpha():
+        candidate = quantity[-1]
+        if candidate in _CPU_QUANTITY_FACTORS:
+            suffix = candidate
+            number = quantity[:-1]
+        else:
+            # Unsupported suffix; fall back to parsing the entire value.
+            suffix = ""
+            number = quantity
+
+    try:
+        numeric = Decimal(number)
+    except (InvalidOperation, ValueError):
+        return None
+
+    try:
+        factor = _CPU_QUANTITY_FACTORS[suffix]
+    except KeyError:
+        return None
+
+    milli_value = numeric * factor * Decimal(1000)
+    try:
+        return int(milli_value)
+    except (ValueError, OverflowError):
+        return None
 
 
 def quantity_to_bytes(value: str | None) -> int | None:
