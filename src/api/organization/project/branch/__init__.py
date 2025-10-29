@@ -66,7 +66,6 @@ from .....models.branch import (
     CapaResizeKey,
     DatabaseInformation,
     PgbouncerConfig,
-    ResourceUsageDefinition,
     aggregate_resize_statuses,
 )
 from .....models.resources import BranchAllocationPublic, ResourceLimitsPublic, ResourceType
@@ -883,14 +882,7 @@ async def _public(branch: Branch) -> BranchPublic:
         has_replicas=False,
     )
 
-    # FIXME: Replace placeholder telemetry data once usage metrics and labels are wired in.
-    used_resources = ResourceUsageDefinition(
-        milli_vcpu=0,
-        ram_bytes=0,
-        nvme_bytes=0,
-        iops=0,
-        storage_bytes=None,
-    )
+    used_resources = branch.resource_usage_snapshot()
     branch_status = await _resolve_branch_status(branch)
 
     api_keys = BranchApiKeys(anon=branch.anon_key, service_role=branch.service_key)
