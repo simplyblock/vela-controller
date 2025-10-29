@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Any, ClassVar, Literal, Optional
 
 from fastapi import Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, ValidationError, model_validator
 from pydantic import Field as PydanticField
 from sqlalchemy import BigInteger, Column, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
@@ -162,10 +162,24 @@ class PgbouncerConfig(Model, table=True):
     server_lifetime: Annotated[int | None, Field(default=None, ge=0)]
 
 
+class BranchSourceDeploymentParameters(BaseModel):
+    database_size: Annotated[int | None, Field(default=None, **DATABASE_SIZE_CONSTRAINTS)] = None
+    storage_size: Annotated[int | None, Field(default=None, **STORAGE_SIZE_CONSTRAINTS)] = None
+    milli_vcpu: Annotated[int | None, Field(default=None, **CPU_CONSTRAINTS)] = None
+    memory_bytes: Annotated[int | None, Field(default=None, **MEMORY_CONSTRAINTS)] = None
+    iops: Annotated[int | None, Field(default=None, **IOPS_CONSTRAINTS)] = None
+    enable_file_storage: bool | None = None
+
+
 class BranchSourceParameters(BaseModel):
     branch_id: Identifier
     config_copy: bool = False
     data_copy: bool = False
+    deployment_parameters: BranchSourceDeploymentParameters | None = PydanticField(
+        default=None,
+        validation_alias=AliasChoices("deployment_parameters", "deploymentParameters"),
+        serialization_alias="deploymentParameters",
+    )
 
 
 class BranchCreate(BaseModel):
