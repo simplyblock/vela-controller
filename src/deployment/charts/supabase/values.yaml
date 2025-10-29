@@ -75,6 +75,8 @@ db:
   service:
     type: ClusterIP
     port: 5432
+    ipFamilies: []
+    ipFamilyPolicy: ""
   environment:
     POSTGRES_HOST: /var/run/postgresql
     PGPORT: "5432"
