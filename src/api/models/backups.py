@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from pydantic import BaseModel
-from sqlalchemy import Column, String, UniqueConstraint
+from sqlalchemy import Column, DateTime, String, UniqueConstraint
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship
 
@@ -45,14 +45,14 @@ class NextBackup(AsyncAttrs, Model, table=True):
     schedule_id: Identifier = Model.foreign_key_field("backupschedule")
     schedule: BackupSchedule = Relationship(back_populates="next_backups")
     row_index: int
-    next_at: datetime
+    next_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
 
 
 class BackupEntry(AsyncAttrs, Model, table=True):
     branch_id: Identifier = Model.foreign_key_field("branch")
     branch: Branch = Relationship()
     row_index: int
-    created_at: datetime
+    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
     size_bytes: int
     snapshot_name: str | None = Field(
         default=None,
@@ -74,7 +74,7 @@ class BackupLog(AsyncAttrs, Model, table=True):
     backup_uuid: str
     # backup: BackupEntry = Relationship(back_populates="backup_entries")
     action: str
-    ts: datetime
+    ts: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
 
 
 class BackupLogCreate(BaseModel):

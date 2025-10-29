@@ -1,7 +1,7 @@
 import logging
 import os
 from collections import Counter
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Literal, Self
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -36,9 +36,10 @@ router = APIRouter()
 # ---------------------------
 # Constants
 # ---------------------------
-VOLUME_SNAPSHOT_CLASS = os.environ.get("VOLUME_SNAPSHOT_CLASS", "csi-snapshot-class")
+VOLUME_SNAPSHOT_CLASS = os.environ.get("VOLUME_SNAPSHOT_CLASS", "simplyblock-csi-snapshotclass")
 SNAPSHOT_TIMEOUT_SEC = int(os.environ.get("SNAPSHOT_TIMEOUT_SEC", "120"))
 SNAPSHOT_POLL_INTERVAL_SEC = int(os.environ.get("SNAPSHOT_POLL_INTERVAL_SEC", "5"))
+MANUAL_BACKUP_TIMEOUT_SEC = int(os.environ.get("MANUAL_BACKUP_TIMEOUT_SEC", "10"))
 
 UNIT_MULTIPLIER = {
     "min": 60,
@@ -443,22 +444,26 @@ async def manual_backup(session: SessionDep, branch_id: Identifier) -> BackupCre
     if not branch:
         raise HTTPException(status_code=404, detail="Branch not found")
 
+    backup_id = ULID()
+    recorded_at = datetime.now(UTC)
+
     try:
         snapshot = await create_branch_snapshot(
             branch.id,
             snapshot_class=VOLUME_SNAPSHOT_CLASS,
-            timeout=SNAPSHOT_TIMEOUT_SEC,
             poll_interval=SNAPSHOT_POLL_INTERVAL_SEC,
             label="manual",
+            timeout=MANUAL_BACKUP_TIMEOUT_SEC,
         )
     except Exception as exc:
-        logger.exception("Failed to create manual backup snapshot for branch %s", branch.id)
-        raise HTTPException(status_code=500, detail="Failed to create backup snapshot") from exc
+        logger.exception("Manual backup failed for branch %s within timeout", branch.id)
+        raise HTTPException(status_code=500, detail="Manual backup failed") from exc
 
     backup = BackupEntry(
+        id=backup_id,
         branch_id=branch.id,
         row_index=-1,
-        created_at=datetime.utcnow(),
+        created_at=recorded_at,
         size_bytes=snapshot.size_bytes or 0,
         snapshot_name=snapshot.name,
         snapshot_namespace=snapshot.namespace,
@@ -466,16 +471,17 @@ async def manual_backup(session: SessionDep, branch_id: Identifier) -> BackupCre
     )
     session.add(backup)
     await session.flush()
+    backup_uuid = str(backup_id)
 
     log = BackupLog(
         branch_id=branch.id,
         action="manual-create",
-        ts=datetime.utcnow(),
-        backup_uuid=str(backup.id),
+        ts=recorded_at,
+        backup_uuid=backup_uuid,
     )
     session.add(log)
     await session.commit()
-    return BackupCreatePublic(status="manual backup created", backup_id=backup.id)
+    return BackupCreatePublic(status="manual backup created", backup_id=backup_id)
 
 
 # ---------------------------
@@ -506,7 +512,7 @@ async def delete_backup(session: SessionDep, backup_id: Identifier) -> BackupDel
         branch_id=backup.branch_id,
         backup_uuid=str(backup.id),
         action="manual-delete",
-        ts=datetime.utcnow(),
+        ts=datetime.now(UTC),
     )
     session.add(log)
     await session.commit()
