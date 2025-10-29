@@ -194,6 +194,15 @@ class KubernetesService:
                     return
                 raise
 
+    async def get_service(self, namespace: str, name: str) -> Any:
+        async with core_v1_client() as core_v1:
+            try:
+                return await core_v1.read_namespaced_service(name=name, namespace=namespace)
+            except client.exceptions.ApiException as exc:
+                if exc.status == 404:
+                    raise VelaKubernetesError(f"Service {namespace!r}/{name!r} not found") from exc
+                raise
+
     async def get_config_map(self, namespace: str, name: str) -> Any:
         async with core_v1_client() as core_v1:
             try:

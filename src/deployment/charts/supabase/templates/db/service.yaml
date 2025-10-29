@@ -7,6 +7,13 @@ metadata:
     {{- include "supabase.labels" . | nindent 4 }}
 spec:
   type: {{ .Values.db.service.type }}
+  {{- with .Values.db.service.ipFamilies }}
+  ipFamilies:
+{{ toYaml . | indent 4 }}
+  {{- end }}
+  {{- with .Values.db.service.ipFamilyPolicy }}
+  ipFamilyPolicy: {{ . }}
+  {{- end }}
   ports:
     - port: {{ .Values.db.service.port }}
       targetPort: 5432

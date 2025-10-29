@@ -44,6 +44,7 @@ logger = logging.getLogger(__name__)
 kube_service = KubernetesService()
 
 DEFAULT_DATABASE_VM_NAME = "supabase-supabase-db"
+DATABASE_SERVICE_NAME = DEFAULT_DATABASE_VM_NAME
 CHECK_ENCRYPTED_HEADER_PLUGIN_NAME = "check-x-connection-encrypted"
 APIKEY_JWT_PLUGIN_NAME = "apikey-jwt"
 CPU_REQUEST_FRACTION = 0.25  # request = 25% of limit
@@ -51,6 +52,10 @@ SIMPLYBLOCK_NAMESPACE = "simplyblock"
 SIMPLYBLOCK_CSI_CONFIGMAP = "simplyblock-csi-cm"
 SIMPLYBLOCK_CSI_SECRET = "simplyblock-csi-secret"
 DATABASE_PVC_SUFFIX = "-supabase-db-pvc"
+_LOAD_BALANCER_TIMEOUT_SECONDS = float(600)
+_LOAD_BALANCER_POLL_INTERVAL_SECONDS = float(2)
+DNSRecordType = Literal["AAAA", "CNAME"]
+DATABASE_DNS_RECORD_TYPE: Literal["AAAA"] = "AAAA"
 
 
 def branch_storage_class_name(branch_id: Identifier) -> str:
@@ -374,6 +379,10 @@ def _configure_vela_values(
 
     db_spec = values_content.setdefault("db", {})
     db_spec.setdefault("image", {})["tag"] = parameters.database_image_tag
+    service_cfg = db_spec.setdefault("service", {})
+    service_cfg["type"] = "LoadBalancer"
+    service_cfg["ipFamilies"] = ["IPv6"]
+    service_cfg["ipFamilyPolicy"] = "SingleStack"
 
     secrets = values_content.setdefault("secret", {})
     secrets.setdefault("jwt", {}).update(
@@ -667,6 +676,15 @@ class CloudflareConfig(BaseModel):
     domain_suffix: str
 
 
+def _cloudflare_config() -> CloudflareConfig:
+    return CloudflareConfig(
+        api_token=settings.cloudflare_api_token,
+        zone_id=settings.cloudflare_zone_id,
+        branch_ref_cname=settings.cloudflare_branch_ref_cname,
+        domain_suffix=settings.cloudflare_domain_suffix,
+    )
+
+
 class KubeGatewayConfig(BaseModel):
     namespace: str = ""
     gateway_name: str = settings.gateway_name
@@ -700,23 +718,119 @@ class BranchEndpointResult(BaseModel):
     domain: str
 
 
-async def _create_dns_record(cf: CloudflareConfig, domain: str) -> None:
+async def _create_dns_record(
+    cf: CloudflareConfig,
+    *,
+    domain: str,
+    record_type: DNSRecordType,
+    content: str,
+    proxied: bool,
+    ttl: int = 1,
+) -> None:
     try:
         async with AsyncCloudflare(api_token=cf.api_token) as client:
             await client.dns.records.create(
                 zone_id=cf.zone_id,
                 name=domain,
-                type="CNAME",
-                content=cf.branch_ref_cname,
-                ttl=1,  # Cloudflare API uses 1 to represent automatic TTL
-                proxied=False,
+                type=record_type,
+                content=content,
+                ttl=ttl,
+                proxied=proxied,
             )
     except CloudflareError as exc:
         raise VelaCloudflareError(f"Cloudflare API error: {exc}") from exc
     except Exception as exc:  # pragma: no cover - surfaced to caller
         raise VelaCloudflareError(f"Cloudflare request failed: {exc}") from exc
 
-    logger.info("Created DNS CNAME record %s -> %s", domain, cf.branch_ref_cname)
+    logger.info("Created DNS %s record %s -> %s", record_type, domain, content)
+
+
+def _get_value(obj: Any, *names: str) -> Any:
+    for name in names:
+        if isinstance(obj, dict):
+            value = obj.get(name)
+            if value is not None:
+                return value
+        value = getattr(obj, name, None)
+        if value is not None:
+            return value
+    return None
+
+
+def _extract_load_balancer_ipv6(service: Any) -> str | None:
+    status = _get_value(service, "status")
+    if not status:
+        return None
+
+    load_balancer = _get_value(status, "load_balancer", "loadBalancer")
+    if not load_balancer:
+        return None
+
+    ingress = _get_value(load_balancer, "ingress")
+    if not ingress:
+        return None
+
+    for entry in ingress:
+        ip_address = _get_value(entry, "ip")
+        if ip_address and ":" in ip_address:
+            return ip_address
+    return None
+
+
+async def _wait_for_service_ipv6(namespace: str, service_name: str) -> str:
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + _LOAD_BALANCER_TIMEOUT_SECONDS
+    last_error: Exception | None = None
+
+    while True:
+        try:
+            service = await kube_service.get_service(namespace, service_name)
+        except VelaKubernetesError as exc:
+            last_error = exc
+            service = None
+        else:
+            last_error = None
+
+        if service:
+            ipv6_address = _extract_load_balancer_ipv6(service)
+            if ipv6_address:
+                logger.info(
+                    "Service %s/%s assigned IPv6 LoadBalancer address %s",
+                    namespace,
+                    service_name,
+                    ipv6_address,
+                )
+                return ipv6_address
+
+        if loop.time() >= deadline:
+            timeout_msg = f"Timed out waiting for IPv6 LoadBalancer address on service {namespace!r}/{service_name!r}"
+            if last_error is not None:
+                raise VelaKubernetesError(timeout_msg) from last_error
+            raise VelaKubernetesError(timeout_msg)
+
+        await asyncio.sleep(_LOAD_BALANCER_POLL_INTERVAL_SECONDS)
+
+
+async def provision_branch_database_endpoint(branch_id: Identifier) -> None:
+    domain = branch_domain(branch_id)
+    if not domain:
+        logger.info(
+            "Skipping database %s record for branch_id=%s because Cloudflare domain suffix is not configured",
+            DATABASE_DNS_RECORD_TYPE,
+            branch_id,
+        )
+        return
+
+    namespace = deployment_namespace(branch_id)
+    ipv6_address = await _wait_for_service_ipv6(namespace, DATABASE_SERVICE_NAME)
+    cf_cfg = _cloudflare_config()
+    await _create_dns_record(
+        cf_cfg,
+        domain=domain,
+        record_type=DATABASE_DNS_RECORD_TYPE,
+        content=ipv6_address,
+        proxied=False,
+    )
 
 
 def _build_http_route(cfg: KubeGatewayConfig, spec: HTTPRouteSpec) -> dict[str, Any]:
@@ -943,12 +1057,7 @@ async def provision_branch_endpoints(
 ) -> BranchEndpointResult:
     """Provision DNS + HTTPRoute resources (PostgREST + optional Storage + Realtime + PGMeta) for a branch."""
 
-    cf_cfg = CloudflareConfig(
-        api_token=settings.cloudflare_api_token,
-        zone_id=settings.cloudflare_zone_id,
-        branch_ref_cname=settings.cloudflare_branch_ref_cname,
-        domain_suffix=settings.cloudflare_domain_suffix,
-    )
+    cf_cfg = _cloudflare_config()
 
     gateway_cfg = KubeGatewayConfig().for_namespace(deployment_namespace(spec.branch_id))
 
@@ -961,7 +1070,13 @@ async def provision_branch_endpoints(
         domain,
     )
 
-    await _create_dns_record(cf_cfg, domain)
+    await _create_dns_record(
+        cf_cfg,
+        domain=domain,
+        record_type="CNAME",
+        content=cf_cfg.branch_ref_cname,
+        proxied=False,
+    )
 
     # Apply the KongPlugins required for the branch routes
     kong_plugins = _build_kong_plugins(gateway_cfg.namespace, [anon_key, service_key])
@@ -975,6 +1090,7 @@ async def provision_branch_endpoints(
     route_specs += _pgmeta_route_specs(ref, domain, gateway_cfg.namespace)
     routes = [_build_http_route(gateway_cfg, route_spec) for route_spec in route_specs]
     await _apply_http_routes(gateway_cfg.namespace, routes)
+    await provision_branch_database_endpoint(spec.branch_id)
 
     return BranchEndpointResult(ref=ref, domain=domain)
 
