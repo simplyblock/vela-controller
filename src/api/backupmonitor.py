@@ -126,71 +126,109 @@ class BackupMonitor:
             logger.info("No schedule for branch %s", branch_local.id)
             return
 
-        # Load all schedule rows
-        result1 = await db.execute(select(BackupScheduleRow).where(BackupScheduleRow.schedule_id == schedule.id))
-        rows = result1.scalars().all()
+        rows = await self._get_schedule_rows(db, schedule.id)
+        rows_by_index = {row.row_index: row for row in rows}
 
-        # Ensure NextBackup exists for all schedule rows
-        for row in rows:
-            stmt4 = select(NextBackup).where(
-                NextBackup.branch_id == branch_local.id, NextBackup.row_index == row.row_index
-            )
-            res = await db.execute(stmt4)
+        await self._ensure_next_backups(db, branch_local, schedule.id, rows_by_index, now)
+        await db.commit()
+        await db.refresh(branch_local)
+
+        await self._process_due_backups(db, branch_local, rows_by_index, now)
+        await self._enforce_global_max_backups(db, branch_local)
+
+    async def _get_schedule_rows(self, db: AsyncSession, schedule_id: ULID) -> list[BackupScheduleRow]:
+        result = await db.execute(select(BackupScheduleRow).where(BackupScheduleRow.schedule_id == schedule_id))
+        return list(result.scalars().all())
+
+    async def _ensure_next_backups(
+        self,
+        db: AsyncSession,
+        branch: Branch,
+        schedule_id: ULID,
+        rows_by_index: dict[int, BackupScheduleRow],
+        now: datetime,
+    ):
+        for row in rows_by_index.values():
+            stmt = select(NextBackup).where(NextBackup.branch_id == branch.id, NextBackup.row_index == row.row_index)
+            res = await db.execute(stmt)
             nb = res.scalar_one_or_none()
             if nb is None:
                 nb = NextBackup(
-                    branch_id=branch_local.id,
-                    schedule_id=schedule.id,
+                    branch_id=branch.id,
+                    schedule_id=schedule_id,
                     row_index=row.row_index,
                     next_at=now + timedelta(seconds=interval_seconds(row.interval, row.unit)),
                 )
                 db.add(nb)
-        await db.commit()
-        await db.refresh(branch_local)
 
-        # Process due NextBackup entries
-        result = await db.execute(select(NextBackup).where(NextBackup.branch_id == branch_local.id))
+    async def _process_due_backups(
+        self,
+        db: AsyncSession,
+        branch: Branch,
+        rows_by_index: dict[int, BackupScheduleRow],
+        now: datetime,
+    ):
+        result = await db.execute(select(NextBackup).where(NextBackup.branch_id == branch.id))
         next_backups = result.scalars().all()
 
-        for nb1 in next_backups:
-            if nb1.next_at <= now:
-                stmt_row = select(BackupScheduleRow).where(
-                    BackupScheduleRow.schedule_id == schedule.id, BackupScheduleRow.row_index == nb1.row_index
+        for nb in next_backups:
+            if nb.next_at > now:
+                continue
+
+            row = rows_by_index.get(nb.row_index)
+            if not row:
+                continue
+
+            lock = self.get_branch_lock(branch.id)
+            if lock.locked():
+                logger.debug(
+                    "Skipping snapshot for %s row %d because another worker holds lock",
+                    branch.id,
+                    nb.row_index,
                 )
-                row_res = await db.execute(stmt_row)
-                row2 = row_res.scalar_one_or_none()
-                if not row2:
-                    continue
+                continue
 
-                lock = self.get_branch_lock(branch_local.id)
-                if not lock.locked():
-                    async with lock:
-                        await self.execute_backup(db, branch_local, row2, nb1)
-                else:
-                    logger.debug(
-                        "Skipping snapshot for %s row %d because another worker holds lock",
-                        branch_local.id,
-                        nb1.row_index,
-                    )
-        stmt1 = select(Project).where(Project.id == branch.project_id)
-        entries2 = await db.execute(stmt1)
-        proj = entries2.scalars().one()
+            async with lock:
+                await self.execute_backup(db, branch, row, nb)
 
-        stmt2 = select(Organization).where(Organization.id == (await branch.awaitable_attrs.project).organization_id)
-        entries3 = await db.execute(stmt2)
-        org = entries3.scalars().one()
+    async def _enforce_global_max_backups(self, db: AsyncSession, branch: Branch):
+        stmt_project = select(Project).where(Project.id == branch.project_id)
+        project_res = await db.execute(stmt_project)
+        project = project_res.scalars().one()
 
-        max_backups = min(proj.max_backups, org.max_backups)
+        stmt_org = select(Organization).where(Organization.id == project.organization_id)
+        org_res = await db.execute(stmt_org)
+        organization = org_res.scalars().one()
 
-        stmt3 = select(BackupEntry).where(BackupEntry.branch_id == branch.id).order_by(asc(BackupEntry.created_at))
-        entries1 = await db.execute(stmt3)
-        entry_rows = entries1.scalars().all()
+        max_backups = min(project.max_backups, organization.max_backups)
+
+        stmt_backups = (
+            select(BackupEntry).where(BackupEntry.branch_id == branch.id).order_by(asc(BackupEntry.created_at))
+        )
+        backup_res = await db.execute(stmt_backups)
+        entry_rows = backup_res.scalars().all()
         num_rows = len(entry_rows)
 
         to_delete = entry_rows[: num_rows - max_backups] if num_rows > max_backups else []
-        for row3 in to_delete:
-            await db.delete(row3)  # async delete
-        await db.commit()
+        deleted = 0
+        for row in to_delete:
+            try:
+                await delete_branch_snapshot(
+                    name=row.snapshot_name,
+                    namespace=row.snapshot_namespace,
+                    content_name=row.snapshot_content_name,
+                    time_limit=SNAPSHOT_TIMEOUT_SEC,
+                    poll_interval=SNAPSHOT_POLL_INTERVAL_SEC,
+                )
+            except Exception:
+                logger.exception("Failed to delete snapshot for backup %s (branch %s)", row.id, branch.id)
+                continue
+
+            await db.delete(row)  # async delete
+            deleted += 1
+
+        if deleted:
+            await db.commit()
 
     async def resolve_schedule(self, db: AsyncSession, branch: Branch) -> BackupSchedule | None:
         project = await branch.awaitable_attrs.project
