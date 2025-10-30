@@ -2,14 +2,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqlmodel import select
+from fastapi import HTTPException
+from sqlalchemy import func
+from sqlmodel import delete, select
 
-from ..models.backups import BackupSchedule, BackupScheduleRow
+from ..models.backups import BackupSchedule, BackupScheduleRow, NextBackup
+from ..models.branch import Branch
 
 if TYPE_CHECKING:
     from ..._util import Identifier
     from ..db import SessionDep
-    from ..models.branch import Branch
+    from ..models.organization import Organization
+    from ..models.project import Project
 
 
 async def copy_branch_backup_schedules(
@@ -42,3 +46,55 @@ async def copy_branch_backup_schedules(
                 ],
             )
         )
+
+
+async def _validate_project_retention_budget(
+    session: SessionDep,
+    project: Project | None,
+    schedule: BackupSchedule | None,
+    new_retention: int,
+) -> None:
+    if project is None:
+        return
+
+    stmt = (
+        select(func.coalesce(func.sum(BackupScheduleRow.retention), 0))
+        .select_from(BackupScheduleRow)
+        .join(BackupSchedule)
+        .join(Branch)
+        .where(Branch.project_id == project.id)
+    )
+    if schedule is not None:
+        stmt = stmt.where(BackupScheduleRow.schedule_id != schedule.id)
+
+    result = await session.execute(stmt)
+    existing_project_retention = result.scalar_one() or 0
+    combined_retention = existing_project_retention + new_retention
+    if combined_retention > project.max_backups:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Project {project.id} max backups {project.max_backups} exceeded by branch schedule:"
+                f" total retention {combined_retention}"
+            ),
+        )
+
+
+async def _remove_existing_schedule(
+    session: SessionDep,
+    schedule: BackupSchedule | None,
+    *,
+    organization: Organization | None,
+    branch: Branch | None,
+) -> None:
+    if schedule is None:
+        return
+
+    await session.execute(delete(BackupScheduleRow).where(BackupScheduleRow.schedule_id == schedule.id))  # type: ignore
+    await session.execute(delete(NextBackup).where(NextBackup.schedule_id == schedule.id))  # type: ignore
+    await session.execute(delete(BackupSchedule).where(BackupSchedule.id == schedule.id))  # type: ignore
+    await session.commit()
+    if organization is not None:
+        await session.refresh(organization)
+    if branch is not None:
+        await session.refresh(branch)
