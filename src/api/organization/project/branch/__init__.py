@@ -1079,7 +1079,11 @@ async def create(
     source_id: Identifier | None = getattr(source, "id", None)
     clone_parameters: DeploymentParameters | None = None
     if source is not None:
-        source_overrides = parameters.source.deployment_parameters if parameters.source else None
+        source_overrides = None
+        if parameters.source is not None:
+            source_overrides = parameters.source.deployment_parameters
+        elif parameters.restore is not None:
+            source_overrides = parameters.restore.deployment_parameters
         source_limits = await get_current_branch_allocations(session, source)
         clone_parameters = _deployment_parameters_from_source(
             source,
