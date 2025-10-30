@@ -181,6 +181,7 @@ class BranchSourceParameters(BaseModel):
 class BranchRestoreParameters(BaseModel):
     backup_id: Identifier
     config_copy: bool = True
+    deployment_parameters: BranchSourceDeploymentParameters | None = PydanticField(default=None)
 
 
 class BranchCreate(BaseModel):
