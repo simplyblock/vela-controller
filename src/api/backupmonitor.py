@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import os
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Sequence
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 
@@ -191,6 +191,58 @@ class BackupMonitor:
             async with lock:
                 await self.execute_backup(db, branch, row, nb)
 
+    async def _delete_many(
+        self,
+        db: AsyncSession,
+        backups: Sequence[BackupEntry],
+        branch: Branch,
+        *,
+        failure_template: str = "Failed to delete snapshot for backup {backup_id} (branch {branch_id})",
+        log_action: str | None = None,
+    ) -> int:
+        if not backups:
+            return 0
+
+        deleted = 0
+        for backup in backups:
+            try:
+                await delete_branch_snapshot(
+                    name=backup.snapshot_name,
+                    namespace=backup.snapshot_namespace,
+                    content_name=backup.snapshot_content_name,
+                    time_limit=SNAPSHOT_TIMEOUT_SEC,
+                    poll_interval=SNAPSHOT_POLL_INTERVAL_SEC,
+                )
+            except Exception:
+                context = {
+                    "backup_id": backup.id,
+                    "branch_id": branch.id,
+                    "row_index": getattr(backup, "row_index", None),
+                }
+                try:
+                    message = failure_template.format(**context)
+                except KeyError:
+                    message = failure_template
+                logger.exception(message)
+                continue
+
+            if log_action:
+                log_entry = BackupLog(
+                    branch_id=branch.id,
+                    backup_uuid=str(backup.id),
+                    action=log_action,
+                    ts=datetime.now(UTC),
+                )
+                db.add(log_entry)
+
+            await db.delete(backup)
+            deleted += 1
+
+        if deleted:
+            await db.commit()
+
+        return deleted
+
     async def _enforce_global_max_backups(self, db: AsyncSession, branch: Branch):
         stmt_project = select(Project).where(Project.id == branch.project_id)
         project_res = await db.execute(stmt_project)
@@ -210,25 +262,7 @@ class BackupMonitor:
         num_rows = len(entry_rows)
 
         to_delete = entry_rows[: num_rows - max_backups] if num_rows > max_backups else []
-        deleted = 0
-        for row in to_delete:
-            try:
-                await delete_branch_snapshot(
-                    name=row.snapshot_name,
-                    namespace=row.snapshot_namespace,
-                    content_name=row.snapshot_content_name,
-                    time_limit=SNAPSHOT_TIMEOUT_SEC,
-                    poll_interval=SNAPSHOT_POLL_INTERVAL_SEC,
-                )
-            except Exception:
-                logger.exception("Failed to delete snapshot for backup %s (branch %s)", row.id, branch.id)
-                continue
-
-            await db.delete(row)  # async delete
-            deleted += 1
-
-        if deleted:
-            await db.commit()
+        await self._delete_many(db, to_delete, branch)
 
     async def resolve_schedule(self, db: AsyncSession, branch: Branch) -> BackupSchedule | None:
         project = await branch.awaitable_attrs.project
@@ -333,34 +367,15 @@ class BackupMonitor:
             return
 
         to_delete = backups[: len(backups) - row.retention]
-        deleted = 0
-        for b in to_delete:
-            try:
-                await delete_branch_snapshot(
-                    name=b.snapshot_name,
-                    namespace=b.snapshot_namespace,
-                    content_name=b.snapshot_content_name,
-                    time_limit=SNAPSHOT_TIMEOUT_SEC,
-                    poll_interval=SNAPSHOT_POLL_INTERVAL_SEC,
-                )
-            except Exception:
-                logger.exception(
-                    "Failed to delete snapshot for backup %s (branch %s row %d)", b.id, branch.id, row.row_index
-                )
-                continue
-
-            log = BackupLog(
-                branch_id=branch.id,
-                backup_uuid=str(b.id),
-                action="delete",
-                ts=datetime.now(UTC),
-            )
-            db.add(log)
-            await db.delete(b)
-            deleted += 1
+        deleted = await self._delete_many(
+            db,
+            to_delete,
+            branch,
+            failure_template="Failed to delete snapshot for backup {backup_id} (branch {branch_id} row {row_index})",
+            log_action="delete",
+        )
 
         if deleted:
-            await db.commit()
             logger.info("Pruned %d old backups for branch %s row %d", deleted, branch.id, row.row_index)
 
 
