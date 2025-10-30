@@ -1,14 +1,17 @@
 import logging
 import os
 from collections import Counter
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Annotated, Literal, Self
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator, model_validator
+from sqlalchemy import func
 from sqlmodel import asc, delete, select
 from ulid import ULID
 
+from ._util.backups import _remove_existing_schedule, _validate_project_retention_budget
 from .backup_snapshots import create_branch_snapshot, delete_branch_snapshot
 from .db import SessionDep
 from .models._util import Identifier
@@ -81,10 +84,22 @@ type ResponseType = Literal["empty", "full"]
 # Pydantic Schemas
 # ---------------------------
 class ScheduleRow(BaseModel):
-    row_index: int
-    interval: int
-    unit: str
-    retention: int
+    row_index: int = Field(
+        ...,
+        description="Stable zero-based identifier for the schedule row; used to map backups and NextBackup records.",
+    )
+    interval: int = Field(
+        ...,
+        description="Number of time units between automatic backups for this row.",
+    )
+    unit: str = Field(
+        ...,
+        description="Time unit for interval",
+    )
+    retention: int = Field(
+        ...,
+        description="Maximum number of backups to retain for this row before pruning.",
+    )
 
     @field_validator("unit")
     @classmethod
@@ -102,6 +117,50 @@ class ScheduleRow(BaseModel):
 
 def _duplicates(xs):
     return [x for x, count in Counter(xs).items() if count > 1]
+
+
+@dataclass
+class ScheduleLimitContext:
+    max_allowed: int
+    entity_type: str
+    entity_id: Identifier
+    organization: Organization | None
+    project: Project | None
+
+
+async def _determine_limit_context(
+    organization: Organization | None,
+    branch: Branch | None,
+) -> ScheduleLimitContext:
+    if organization is not None:
+        return ScheduleLimitContext(
+            max_allowed=organization.max_backups,
+            entity_type="Organization",
+            entity_id=organization.id,
+            organization=organization,
+            project=None,
+        )
+
+    if branch is not None:
+        project = await branch.awaitable_attrs.project
+        org = await project.awaitable_attrs.organization
+        if project.max_backups > org.max_backups:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Project {project.id} max backups {project.max_backups} exceeds organization"
+                    f" limit {org.max_backups}"
+                ),
+            )
+        return ScheduleLimitContext(
+            max_allowed=project.max_backups,
+            entity_type="Project",
+            entity_id=project.id,
+            organization=org,
+            project=project,
+        )
+
+    raise AssertionError("unreachable")
 
 
 class SchedulePayload(BaseModel):
@@ -213,33 +272,25 @@ async def add_or_replace_backup_schedule(
     if organization is None and branch is None:
         raise HTTPException(status_code=404, detail="Valid branch or organization required.")
 
-    # Max backups validation
-    if organization is not None:
-        max_allowed = organization.max_backups
-        entity_type = "Organization"
-        entity_id = organization.id
-    elif branch is not None:
-        max_allowed = (await branch.awaitable_attrs.project).max_backups
-        entity_type = "Branch"
-        entity_id = branch.id
-    else:
-        raise AssertionError("unreachable")
+    limit_context = await _determine_limit_context(organization, branch)
 
-    if (total_retention := sum(row.retention for row in payload.rows)) > max_allowed:
+    if (total_retention := sum(row.retention for row in payload.rows)) > limit_context.max_allowed:
         raise HTTPException(
             status_code=422,
-            detail=f"Max Backups {max_allowed} of {entity_type} {entity_id} exceeded: {total_retention}",
+            detail=(
+                f"Max Backups {limit_context.max_allowed} of {limit_context.entity_type} {limit_context.entity_id}"
+                f" exceeded: {total_retention}"
+            ),
         )
 
-    if schedule is not None:
-        await session.execute(delete(BackupScheduleRow).where(BackupScheduleRow.schedule_id == schedule.id))  # type: ignore
-        await session.execute(delete(NextBackup).where(NextBackup.schedule_id == schedule.id))  # type: ignore
-        await session.execute(delete(BackupSchedule).where(BackupSchedule.id == schedule.id))  # type: ignore
-        await session.commit()
-        if organization is not None:
-            await session.refresh(organization)
-        if branch is not None:
-            await session.refresh(branch)
+    await _validate_project_retention_budget(session, limit_context.project, schedule, total_retention)
+
+    await _remove_existing_schedule(
+        session,
+        schedule,
+        organization=organization if organization is not None else None,
+        branch=branch if branch is not None else None,
+    )
 
     schedule = BackupSchedule(
         organization_id=organization.id if organization is not None else None,
@@ -443,6 +494,27 @@ async def manual_backup(session: SessionDep, branch_id: Identifier) -> BackupCre
     branch = result.scalars().first()
     if not branch:
         raise HTTPException(status_code=404, detail="Branch not found")
+
+    project = await branch.awaitable_attrs.project
+    organization = await project.awaitable_attrs.organization
+    if project.max_backups > organization.max_backups:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Project {project.id} max backups {project.max_backups} exceeds organization"
+            f" limit {organization.max_backups}",
+        )
+
+    stmt = select(func.count()).select_from(BackupEntry).join(Branch).where(Branch.project_id == project.id)
+    count_result = await session.execute(stmt)
+    project_backup_count = count_result.scalar_one() or 0
+    if project_backup_count >= project.max_backups:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Project {project.id} max backups {project.max_backups} reached:"
+                f" existing backups {project_backup_count}"
+            ),
+        )
 
     backup_id = ULID()
     recorded_at = datetime.now(UTC)
