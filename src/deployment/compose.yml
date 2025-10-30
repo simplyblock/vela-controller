@@ -10,10 +10,16 @@ services:
     volumes:
     - /mnt/postgres_data/pgdata:/var/lib/postgresql/data
     - ./pg_hba.conf:/etc/postgresql/pg_hba.conf:ro,z
+    - ./certs:/etc/postgresql/certs:ro,z
     networks:
     - supabase
     ports:
     - 5432:5432
+    command: >
+        -c ssl=on
+        -c listen_addresses='*'
+        -c ssl_cert_file=/etc/postgresql/certs/server.crt
+        -c ssl_key_file=/etc/postgresql/certs/server.key
   rest:
     container_name: vela-rest
     image: docker.io/postgrest/postgrest:v12.0.1
@@ -28,11 +34,11 @@ services:
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       DB_PASSWORD_ENC: ${POSTGRES_PASSWORD_ENC}
       DB_DRIVER: postgres
-      DB_SSL: disable
+      DB_SSL: require
       PGRST_DB_SCHEMAS: public,storage,graphql_public
       PGRST_DB_USE_LEGACY_GUCS: 'false'
       PGRST_APP_SETTINGS_JWT_EXP: '3600'
-      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD_ENC}@db:5432/${POSTGRES_DB}?sslmode=disable
+      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD_ENC}@db:5432/${POSTGRES_DB}?sslmode=require
       PGRST_JWT_SECRET: ${SUPABASE_JWT_SECRET}
       PGRST_APP_SETTINGS_JWT_SECRET: ${SUPABASE_JWT_SECRET}
     ports:
@@ -70,7 +76,7 @@ services:
       DB_NAME: ${POSTGRES_DB}
       DB_USER: supabase_admin
       DB_PASSWORD: ${POSTGRES_PASSWORD}
-      DB_SSL: disable
+      DB_SSL: require
       DB_AFTER_CONNECT_QUERY: SET search_path TO _realtime
       DB_ENC_KEY: supabaserealtime
       PORT: '4000'
@@ -99,7 +105,7 @@ services:
       PG_META_DB_USER: supabase_admin
       PG_META_DB_PASSWORD: ${POSTGRES_PASSWORD}
       PG_META_DB_DRIVER: postgres
-      PG_META_DB_SSL_MODE: disable
+      PG_META_DB_SSL_MODE: require
       PG_META_DB_URL: '' # DB URI is decrypted from x-connection-encrypted header
       CRYPTO_KEY: ${PGMETA_CRYPTO_KEY}
     ports:
@@ -121,7 +127,7 @@ services:
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       DB_PASSWORD_ENC: ${POSTGRES_PASSWORD_ENC}
       DB_DRIVER: postgres
-      DB_SSL: disable
+      DB_SSL: require
       FILE_SIZE_LIMIT: '52428800'
       STORAGE_BACKEND: file
       PGOPTIONS: -c search_path=storage,public
@@ -129,7 +135,7 @@ services:
       TENANT_ID: stub
       REGION: stub
       GLOBAL_S3_BUCKET: stub
-      DATABASE_URL: postgres://supabase_storage_admin:${POSTGRES_PASSWORD_ENC}@db:5432/${POSTGRES_DB}?sslmode=disable
+      DATABASE_URL: postgres://supabase_storage_admin:${POSTGRES_PASSWORD_ENC}@db:5432/${POSTGRES_DB}?sslmode=require
       PGRST_JWT_SECRET: ${SUPABASE_JWT_SECRET}
       ANON_KEY: ${SUPABASE_ANON_KEY}
       SERVICE_KEY: ${SUPABASE_SERVICE_KEY}

@@ -2,6 +2,7 @@ import asyncio
 import base64
 import json
 import logging
+import os
 import subprocess
 import tempfile
 import textwrap
@@ -33,6 +34,7 @@ from .._util import (
     check_output,
 )
 from ..exceptions import VelaCloudflareError, VelaDeployError, VelaDeploymentError, VelaKubernetesError
+from ..api._util.certs import TLSArtifacts, generate_tls_artifacts
 from .grafana import create_vela_grafana_obj, delete_vela_grafana_obj
 from .kubernetes import KubernetesService
 from .kubernetes.kubevirt import get_virtualmachine_status
@@ -56,6 +58,29 @@ _LOAD_BALANCER_TIMEOUT_SECONDS = float(600)
 _LOAD_BALANCER_POLL_INTERVAL_SECONDS = float(2)
 DNSRecordType = Literal["AAAA", "CNAME"]
 DATABASE_DNS_RECORD_TYPE: Literal["AAAA"] = "AAAA"
+DEFAULT_POSTGRES_SERVER_CN = "localhost"
+
+
+def _postgres_server_common_name(branch_id: Identifier) -> str:
+    host = branch_domain(branch_id)
+    if host:
+        return host
+    return DEFAULT_POSTGRES_SERVER_CN
+
+
+def _default_server_alt_names(branch_id: Identifier) -> set[str]:
+    names: set[str] = {
+        "localhost",
+        "db",
+        DEFAULT_DATABASE_VM_NAME,
+        "vela-db",
+        "127.0.0.1",
+        "::1",
+    }
+    branch_host = branch_domain(branch_id)
+    if branch_host:
+        names.add(branch_host)
+    return names
 
 
 def branch_storage_class_name(branch_id: Identifier) -> str:
@@ -361,6 +386,7 @@ def _configure_vela_values(
     use_existing_db_pvc: bool,
     pgbouncer_config: Mapping[str, int] | None,
     enable_file_storage: bool,
+    db_ssl: TLSArtifacts | None,
 ) -> dict[str, Any]:
     pgbouncer_values = values_content.setdefault("pgbouncer", {})
     pgbouncer_cfg = pgbouncer_values.setdefault("config", {})
@@ -393,6 +419,12 @@ def _configure_vela_values(
     secrets.update(pgmeta_crypto_key=settings.pgmeta_crypto_key)
     secrets.setdefault("db", {})["password"] = parameters.database_password
     secrets.setdefault("pgbouncer", {})["admin_password"] = pgbouncer_admin_password
+
+    if db_ssl:
+        secrets.setdefault("db", {})["ssl"] = {
+            "server_cert": db_ssl.server_cert,
+            "server_key": db_ssl.server_key,
+        }
 
     resource_cfg = db_spec.setdefault("resources", {})
     resource_cfg["guestMemory"] = f"{bytes_to_mib(parameters.memory_bytes)}Mi"
@@ -448,6 +480,19 @@ async def create_vela_config(
     pb_hba_conf = _require_asset(Path(__file__).with_name("pg_hba.conf"), "pg_hba.conf file")
     values_content = _load_chart_values(chart)
 
+    ca_cert_env = os.getenv("VELA_POSTGRES_SSL_ROOT_CA_CERT")
+    ca_key_env = os.getenv("VELA_POSTGRES_SSL_ROOT_CA_KEY")
+    if not ca_cert_env and not ca_key_env:
+        logger.info("Generating new Postgres TLS root CA for branch %s", branch_id)
+
+    db_ssl_artifacts: TLSArtifacts = generate_tls_artifacts(
+        server_common_name=_postgres_server_common_name(branch_id),
+        alt_names=sorted(_default_server_alt_names(branch_id)),
+        ca_common_name=f"vela-{str(branch_id).lower()}-ca",
+        existing_ca_cert_pem=ca_cert_env,
+        existing_ca_key_pem=ca_key_env,
+    )
+
     storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
     values_content = _configure_vela_values(
         values_content,
@@ -460,6 +505,7 @@ async def create_vela_config(
         use_existing_db_pvc=use_existing_db_pvc,
         pgbouncer_config=pgbouncer_config,
         enable_file_storage=parameters.enable_file_storage,
+        db_ssl=db_ssl_artifacts,
     )
 
     with (

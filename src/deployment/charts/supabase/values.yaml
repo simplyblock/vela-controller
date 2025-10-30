@@ -23,6 +23,9 @@ secret:
   # these fields must be provided even if using external database
   db:
     password: ""
+    ssl:
+      server_cert: ""
+      server_key: ""
   pgbouncer:
     admin_password: "pgadmin_pwd" # TODO: auto generate this in the next PR.
   # analytics Logflare API key
