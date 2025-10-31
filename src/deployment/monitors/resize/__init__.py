@@ -52,7 +52,7 @@ from ....api.models.branch import (
     should_transition_resize_status,
 )
 from ....deployment import deployment_branch
-from ....exceptions import VelaDeployError, VelaKubernetesError
+from ....exceptions import VelaDeploymentError, VelaKubernetesError
 from .memory_resize import poll_memory_resizes
 from .pvc_resize import (
     INITIAL_BACKOFF_SECONDS,
@@ -130,7 +130,7 @@ async def _handle_pvc_event(core_v1: CoreV1Api, event: CoreV1Event) -> None:
         return
     try:
         branch_id = deployment_branch(namespace)
-    except VelaDeployError:
+    except VelaDeploymentError:
         logger.debug("Ignoring resize event for namespace %s (not a branch namespace)", namespace)
         return
     resource = resource_from_pvc_name(name)
