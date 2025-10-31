@@ -6,13 +6,11 @@ from typing import Any
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.deployment import get_db_vmi_identity
-
 from ...._util import quantity_to_bytes
 from ....api.db import engine
 from ....api.models.branch import Branch, aggregate_resize_statuses
 from ....api.organization.project.branch import _sync_branch_cpu_resources
-from ....deployment import kube_service
+from ....deployment import get_db_vmi_identity, kube_service
 from ....exceptions import VelaKubernetesError
 
 logger = logging.getLogger(__name__)
