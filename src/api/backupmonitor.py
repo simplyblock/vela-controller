@@ -4,9 +4,10 @@ import os
 from collections.abc import AsyncGenerator, Sequence
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlmodel import SQLModel, asc, select
+from sqlmodel import SQLModel, asc, delete, select
 from ulid import ULID
 
 from ..check_branch_status import get_branch_status
@@ -153,6 +154,7 @@ class BackupMonitor:
             res = await db.execute(stmt)
             nb = res.scalar_one_or_none()
             if nb is None:
+                logger.warning(f"next backup is empty, creating one. branch: {branch.id}, schedule_id={schedule_id}")
                 nb = NextBackup(
                     branch_id=branch.id,
                     schedule_id=schedule_id,
@@ -203,7 +205,7 @@ class BackupMonitor:
         if not backups:
             return 0
 
-        deleted = 0
+        deleted_ids: list[ULID] = []
         for backup in backups:
             try:
                 await delete_branch_snapshot(
@@ -235,13 +237,15 @@ class BackupMonitor:
                 )
                 db.add(log_entry)
 
-            await db.delete(backup)
-            deleted += 1
+            deleted_ids.append(backup.id)
 
-        if deleted:
+        if deleted_ids:
+            id_column = cast("Any", BackupEntry.id)
+            stmt = delete(BackupEntry).where(id_column.in_(deleted_ids)).execution_options(synchronize_session="fetch")
+            await db.execute(stmt)
             await db.commit()
 
-        return deleted
+        return len(deleted_ids)
 
     async def _enforce_global_max_backups(self, db: AsyncSession, branch: Branch):
         stmt_project = select(Project).where(Project.id == branch.project_id)
