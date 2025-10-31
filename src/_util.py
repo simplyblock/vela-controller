@@ -68,7 +68,6 @@ _QUANTITY_SUFFIXES: dict[str, int] = {
 Slug = Annotated[
     str,
     StringConstraints(
-        pattern=r"^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$",
         min_length=1,
         max_length=_MAX_LENGTH,
     ),
