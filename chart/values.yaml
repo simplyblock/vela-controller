@@ -1,13 +1,15 @@
 postgresVersion: 17
 
-podSecurityContext: {}
-securityContext:
+podSecurityContext:
+  runAsNonRoot: false
+  seccompProfile:
+    type: 'RuntimeDefault'
+containerSecurityContext:
   allowPrivilegeEscalation: false
   capabilities:
     drop:
       - 'ALL'
-  runAsNonRoot: true
-  runAsUser: 65534
+  runAsNonRoot: false
   seccompProfile:
     type: 'RuntimeDefault'
 
@@ -20,14 +22,34 @@ controller:
   image:
     repository: docker.io/simplyblock/vela-controller
     tag: latest
+  database:
+    username: postgres
+    password: example123456
   env:
-    VELA_CORS_ORIGINS: '["http://localhost:3000"]'
+    VELA_ROOT_PATH: '/vela'
+    VELA_JWT_SECRET: 'http://vela-auth-service:8080/auth/realms/vela/protocol/openid-connect/certs'
+    VELA_POSTGRES_URL: 'postgresql+asyncpg://postgres:vela@database:5432/vela'
+    VELA_CORS_ORIGINS: '["http://localhost:3000"]' # TODO: remove this for prod
+    VELA_PGMETA_CRYPTO_KEY: 'secret'
+    VELA_KEYCLOAK_URL: 'http://vela-auth-service:8080/auth/'
+    VELA_KEYCLOAK_ADMIN_NAME: 'admin'
+    VELA_KEYCLOAK_ADMIN_SECRET: 'admin'
     VELA_CLOUDFLARE_API_TOKEN: 'your_cloudflare_api_token'
     VELA_CLOUDFLARE_ZONE_ID: 'your_cloudflare_zone_id'
     VELA_CLOUDFLARE_BRANCH_REF_CNAME: 'branch-ref.staging.vela.run'
     VELA_CLOUDFLARE_DOMAIN_SUFFIX: 'example.com'
+    VELA_DEPLOYMENT_NAMESPACE_PREFIX: 'vela'
+    VELA_LOGFLARE_PRIVATE_ACCESS_TOKEN: 'your-super-secret-and-long-logflare-key-private'
+    VELA_LOGFLARE_PUBLIC_ACCESS_TOKEN: 'my-super-secret-api-key'
     VELA_LOGFLARE_URL: "http://vela-logflare:4000"
     VELA_GRAFANA_URL: "http://vela-grafana:3000"
+    VELA_GRAFANA_SECURITY_ADMIN_USER: "admin"
+    VELA_GRAFANA_SECURITY_ADMIN_PASSWORD: "password"
+    VELA_SYSTEM_LIMIT_MILLIS_VCPU: '100000'
+    VELA_SYSTEM_LIMIT_RAM: '274877906944'
+    VELA_SYSTEM_LIMIT_IOPS: '1000000000'
+    VELA_SYSTEM_LIMIT_DATABASE_SIZE: '100000000000000'
+    VELA_SYSTEM_LIMIT_STORAGE_SIZE: '1000000000000'
 
 secret:
   pgmeta_crypto_key: "secret"
@@ -72,21 +94,22 @@ studio:
     AUTH_JWT_SECRET: 'secret'  # TODO
     NEXTAUTH_SECRET: 'super-long-random-nextauth-secret' # TODO
 
-    LOGFLARE_URL: 'http://analytics:4000'
-
-    VELA_PLATFORM_KEYCLOAK_ISSUER: 'http://staging.vela.run/auth/realms/vela'
+    LOGFLARE_URL: 'https://staging.vela.run:30336/logs'
+    VELA_PLATFORM_KEYCLOAK_ISSUER: 'https://staging.vela.run:30336/auth/realms/vela'
     VELA_PLATFORM_KEYCLOAK_CLIENT_ID: 'frontend'
-    VELA_PLATFORM_KEYCLOAK_CLIENT_SECRET: 'super-long-random-keycloak-secret'
-    VELA_PLATFORM_KEYCLOAK_AUTHORIZATION_ENDPOINT: 'http://staging.vela.run/auth/realms/vela/protocol/openid-connect/auth'
-    VELA_PLATFORM_KEYCLOAK_TOKEN_ENDPOINT: 'http://auth:8080/auth/realms/vela/protocol/openid-connect/token'
-    VELA_PLATFORM_KEYCLOAK_USERINFO_ENDPOINT: 'http://auth:8080/auth/realms/vela/protocol/openid-connect/userinfo'
-    VELA_PLATFORM_KEYCLOAK_LOGOUT_ENDPOINT: 'http://auth:8080/auth/protocol/openid-connect/logout'
-    VELA_PLATFORM_KEYCLOAK_JWKS_ENDPOINT: 'http://auth:8080/auth/realms/vela/protocol/openid-connect/certs'
-    VELA_PLATFORM_EXT_SIGN_IN_URL: 'http://staging.vela.run/sign-in'
-    VELA_PLATFORM_EXT_BASE_URL: 'http://staging.vela.run/'
-    VELA_PLATFORM_EXT_API_SERVICE_URL: 'http://staging.vela.run/api'
+    VELA_PLATFORM_KEYCLOAK_CLIENT_SECRET: 'client-secret' # generate this and match it with realm.json
+    VELA_PLATFORM_KEYCLOAK_AUTHORIZATION_ENDPOINT: 'https://staging.vela.run:30336/auth/realms/vela/protocol/openid-connect/auth'
+    VELA_PLATFORM_KEYCLOAK_TOKEN_ENDPOINT: 'http://vela-auth-service:8080/auth/realms/vela/protocol/openid-connect/token'
+    VELA_PLATFORM_KEYCLOAK_USERINFO_ENDPOINT: 'http://vela-auth-service:8080/auth/realms/vela/protocol/openid-connect/userinfo'
+    VELA_PLATFORM_KEYCLOAK_LOGOUT_ENDPOINT: 'http://vela-auth-service:8080/auth/protocol/openid-connect/logout'
+    VELA_PLATFORM_KEYCLOAK_JWKS_ENDPOINT: 'http://vela-auth-service:8080/auth/realms/vela/protocol/openid-connect/certs'
+    VELA_PLATFORM_EXT_SIGN_IN_URL: 'https://staging.vela.run:30336/sign-in'
+    VELA_PLATFORM_EXT_BASE_URL: 'https://staging.vela.run:30336/'
+    NEXTAUTH_URL: 'https://staging.vela.run:30336/'
+    VELA_PLATFORM_EXT_API_SERVICE_URL: 'https://staging.vela.run:30336/api'
 
     VELA_PLATFORM_URL: 'http://vela-controller-service:8000'
 
 vector:
   enabled: true
+  useHostPath: true

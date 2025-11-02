@@ -30,7 +30,7 @@ resource "kubectl_manifest" "kubevirt_cr" {
       configuration = {
         vmRolloutStrategy = "LiveUpdate"
         developerConfiguration = {
-          featureGates  = ["LiveMigration", "ExpandDisks"]
+          featureGates  = ["PasstIPStackMigrationEnabled", "ExpandDisks"]
         }
       }
       workloadUpdateStrategy = {

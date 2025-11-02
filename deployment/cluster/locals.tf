@@ -1,6 +1,6 @@
 locals {
   talos = {
-    version = "v1.7.4"
+    version = "v1.11.3"
   }
 
   # Calculate IP addresses based on start IP and node counts

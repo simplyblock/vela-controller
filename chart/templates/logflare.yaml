@@ -27,6 +27,18 @@ spec:
         app: vela-logflare
     spec:
       initContainers:
+        - name: prepare-tzdata
+          image: supabase/logflare:1.14.2
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              mkdir -p /tzdata
+              cp -R /opt/app/rel/logflare/lib/tzdata-1.1.2/priv/. /tzdata/
+          volumeMounts:
+            - name: logflare-tzdata
+              mountPath: /tzdata
 {{ include "vela.waitForPostgresInitContainer" (dict "host" .Values.analytics.DB_HOST "port" .Values.analytics.DB_PORT) | nindent 8 }}
         - name: init-db
           image: postgres:17-alpine
@@ -123,10 +135,15 @@ spec:
               value: $(DB_SCHEMA)
             - name: FEATURE_FLAG_OVERRIDE
               value: "{{ .Values.analytics.FEATURE_FLAG_OVERRIDE }}"
-            
           ports:
             - name: http
               containerPort: 4000
+          volumeMounts:
+            - name: logflare-tzdata
+              mountPath: /opt/app/rel/logflare/lib/tzdata-1.1.2/priv
+      volumes:
+        - name: logflare-tzdata
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
