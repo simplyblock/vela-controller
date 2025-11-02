@@ -1,27 +1,110 @@
-apiVersion: stackgres.io/v1
-kind: SGInstanceProfile
-metadata:
-  name: profile
-spec:
-  cpu: "1"
-  memory: "1Gi"
-
----
-apiVersion: stackgres.io/v1
-kind: SGCluster
+{{- $databaseConfig := default (dict) .Values.controller.database -}}
+{{- $superuserUsername := default "postgres" $databaseConfig.username -}}
+{{- $superuserPassword := default "example123456" $databaseConfig.password -}}
+apiVersion: v1
+kind: Secret
 metadata:
   name: database
   labels:
-    app.kubernetes.io/name: vela-db
-    app.kubernetes.io/instance: vela
-  annotations:
-    # Protects DB from being deleted on helm uninstall
-    "helm.sh/resource-policy": keep
+    app.kubernetes.io/name: database
+    app.kubernetes.io/instance: {{ .Release.Name }}
+type: Opaque
+data:
+  superuser-username: {{ $superuserUsername | b64enc | quote }}
+  superuser-password: {{ $superuserPassword | b64enc | quote }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: database-init-scripts
+  labels:
+    app.kubernetes.io/name: database
+    app.kubernetes.io/instance: {{ .Release.Name }}
+data:
+  01-wal-level.sql: |
+    ALTER SYSTEM SET wal_level = 'logical';
+    SELECT pg_reload_conf();
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: database
+  labels:
+    app.kubernetes.io/name: database
+    app.kubernetes.io/instance: {{ .Release.Name }}
 spec:
-  instances: 1
-  postgres:
-    version: {{ .Values.postgresVersion }}
-  pods:
-    persistentVolume:
-      size: '20Gi'
-  sgInstanceProfile: 'profile'
+  clusterIP: None
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: database
+    app.kubernetes.io/instance: {{ .Release.Name }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: database
+  labels:
+    app.kubernetes.io/name: database
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  serviceName: database
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: database
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: database
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: postgres
+          image: "postgres:{{ .Values.postgresVersion }}"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: postgres
+              containerPort: 5432
+              protocol: TCP
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: database
+                  key: superuser-username
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: database
+                  key: superuser-password
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: database-init-scripts
+              mountPath: /docker-entrypoint-initdb.d
+          args:
+            - "-c"
+            - "wal_level=logical"
+      volumes:
+        - name: database-init-scripts
+          configMap:
+            name: database-init-scripts
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app.kubernetes.io/name: database
+          app.kubernetes.io/instance: {{ .Release.Name }}
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: simplyblock-csi-sc
+        resources:
+          requests:
+            storage: 20Gi

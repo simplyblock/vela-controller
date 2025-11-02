@@ -28,7 +28,6 @@ spec:
           args:
             - --config
             - /etc/vector/vector.yml
-          securityContext: {}
           image: "timberio/vector:0.34.0-alpine"
           imagePullPolicy: IfNotPresent
           env:
@@ -48,17 +47,27 @@ spec:
             - mountPath: /etc/vector/vector.yml
               name: vector-config
               subPath: vector.yml
+            - mountPath: /var/lib/vector
+              name: vector-data
+          {{- if .Values.vector.useHostPath }}
             - mountPath: /var/log/pods
               name: pod-logs
+              readOnly: true
+          {{- end }}
           resources: {}
       volumes:
         - name: vector-config
           configMap:
             name: vela-vector-config
             defaultMode: 0777
+        - name: vector-data
+          emptyDir: {}
+        {{- if .Values.vector.useHostPath }}
         - name: pod-logs
           hostPath:
             path: /var/log/pods
+            type: Directory
+        {{- end }}
       nodeSelector: {}
       affinity: {}
       tolerations: []

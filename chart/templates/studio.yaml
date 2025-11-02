@@ -41,7 +41,7 @@ spec:
               path: /
               port: http
             initialDelaySeconds: 20
-          {{- with .Values.securityContext }}
+          {{- with .Values.containerSecurityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}

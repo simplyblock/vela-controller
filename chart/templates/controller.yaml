@@ -125,7 +125,7 @@ spec:
               path: /health
               port: http
             initialDelaySeconds: 10
-          {{- with .Values.securityContext }}
+          {{- with .Values.containerSecurityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}

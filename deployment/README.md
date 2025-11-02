@@ -12,6 +12,7 @@ cd cluster
 terraform init
 terraform apply
 terraform output -raw kubeconfig > kubeconfig.yaml
+terraform output -raw talosconfig > talosconfig.yaml
 
 cd ../addons
 terraform init
