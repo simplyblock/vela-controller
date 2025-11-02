@@ -1,8 +1,9 @@
 {{- if .Values.db.enabled -}}
+{{- $dbFullname := include "supabase.db.fullname" . -}}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "supabase.db.fullname" . }}
+  name: {{ printf "%s-ext" $dbFullname }}
   labels:
     {{- include "supabase.labels" . | nindent 4 }}
 spec:
@@ -20,5 +21,22 @@ spec:
       protocol: TCP
       name: postgres
   selector:
-    vm.kubevirt.io/name: {{ include "supabase.db.fullname" . }}
+    vm.kubevirt.io/name: {{ $dbFullname }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $dbFullname }}
+  labels:
+    {{- include "supabase.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  {{- with .Values.db.service.ipFamilies }}
+  ports:
+    - port: {{ .Values.db.service.port }}
+      targetPort: 5432
+      protocol: TCP
+      name: postgres
+  selector:
+    vm.kubevirt.io/name: {{ $dbFullname }}
 {{- end }}
