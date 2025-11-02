@@ -44,7 +44,8 @@ logger = logging.getLogger(__name__)
 kube_service = KubernetesService()
 
 DEFAULT_DATABASE_VM_NAME = "supabase-supabase-db"
-DATABASE_SERVICE_NAME = DEFAULT_DATABASE_VM_NAME
+DATABASE_CLUSTER_SERVICE_NAME = DEFAULT_DATABASE_VM_NAME
+DATABASE_LOAD_BALANCER_SERVICE_NAME = f"{DEFAULT_DATABASE_VM_NAME}-ext"
 CHECK_ENCRYPTED_HEADER_PLUGIN_NAME = "check-x-connection-encrypted"
 APIKEY_JWT_PLUGIN_NAME = "apikey-jwt"
 CPU_REQUEST_FRACTION = 0.25  # request = 25% of limit
@@ -822,7 +823,7 @@ async def provision_branch_database_endpoint(branch_id: Identifier) -> None:
         return
 
     namespace = deployment_namespace(branch_id)
-    ipv6_address = await _wait_for_service_ipv6(namespace, DATABASE_SERVICE_NAME)
+    ipv6_address = await _wait_for_service_ipv6(namespace, DATABASE_LOAD_BALANCER_SERVICE_NAME)
     cf_cfg = _cloudflare_config()
     await _create_dns_record(
         cf_cfg,
