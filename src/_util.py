@@ -65,13 +65,6 @@ _QUANTITY_SUFFIXES: dict[str, int] = {
     "t": TB,
 }
 
-Slug = Annotated[
-    str,
-    StringConstraints(
-        min_length=1,
-        max_length=_MAX_LENGTH,
-    ),
-]
 
 DEFAULT_DB_NAME = "postgres"
 DEFAULT_DB_USER = "postgres"
