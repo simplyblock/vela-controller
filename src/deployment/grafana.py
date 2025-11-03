@@ -5,8 +5,6 @@ from contextlib import asynccontextmanager
 import httpx
 
 from .._util import Identifier
-from ..api.db import engine
-from ..api.models.branch import Branch
 from ..exceptions import VelaGrafanaError
 from .settings import get_settings
 

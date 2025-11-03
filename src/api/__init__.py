@@ -186,7 +186,7 @@ app.include_router(roles_api)
 _use_route_names_as_operation_ids(app)
 
 
-_resize_monitor = ResizeMonitor()
+#_resize_monitor = ResizeMonitor()
 
 
 @app.on_event("startup")
