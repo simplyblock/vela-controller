@@ -1,0 +1,31 @@
+# Proxmox Configuration
+proxmox_endpoint = "https://65.109.18.97:8006/api2/json"
+proxmox_node     = "simplyblock-controlcenter"
+
+# VM configuration
+vm_count       = 3
+vm_base_name   = "ubuntu-vm"
+vm_cpu_cores   = 2
+vm_memory_mb   = 4096
+vm_disk_size_gb = 40
+vm_tags        = ["ubuntu", "lab"]
+
+# Networking
+network_bridge  = "vmbr0"
+default_gateway = "10.10.11.1"
+ip_range_start  = "10.10.11.100"
+network_cidr    = "24"
+dns_servers     = ["1.1.1.1", "8.8.8.8"]
+
+# Cloud-init user
+vm_username      = "ubuntu"
+ssh_public_keys  = ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEDR6Tw+3JRWcdXjcQouzErgyl0adhm4edXCAZvTLwpj"]
+
+# Storage
+datastore_id         = "local-lvm-thin"
+image_datastore_id   = "local"
+
+# Ubuntu image configuration
+ubuntu_cloud_image_url        = "https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img"
+ubuntu_cloud_image_file_name  = "jammy-server-cloudimg-amd64.img"
+ubuntu_cloud_image_file_format = "qcow2"

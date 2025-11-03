@@ -18,3 +18,7 @@ cd ../addons
 terraform init
 terraform apply
 ```
+
+## Ubuntu VMs
+
+To provision standalone Ubuntu VMs (no Talos), copy the example variables in `./ubuntu/terraform.tfvars.example`, adjust as needed, and run Terraform from the `./ubuntu` directory.
