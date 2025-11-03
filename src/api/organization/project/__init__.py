@@ -12,12 +12,10 @@ from ....deployment.kubernetes.kubevirt import call_kubevirt_subresource
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ..._util.resourcelimit import get_organization_resource_limits
 from ...auth import security
-from ...db import SessionDep
-from ...models.organization import OrganizationDep
+from ...dependencies import OrganizationDep, ProjectDep, SessionDep
 from ...models.project import (
     Project,
     ProjectCreate,
-    ProjectDep,
     ProjectPublic,
     ProjectUpdate,
 )

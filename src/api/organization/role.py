@@ -9,10 +9,8 @@ from sqlmodel import delete as dbdelete
 
 from ..._util import Identifier
 from .._util import Forbidden, NotFound, Unauthenticated, url_path_for
-from ..auth import UserDep, user_lookup
-from ..db import SessionDep
-from ..models.organization import OrganizationDep
-from ..models.role import Role, RoleDep, RoleUserLink
+from ..dependencies import OrganizationDep, RoleDep, SessionDep, UserDep, user_lookup
+from ..models.role import Role, RoleUserLink
 from ..models.user import UserPublic
 from ..user import public_list as public_user_list
 

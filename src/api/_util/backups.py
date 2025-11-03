@@ -11,7 +11,7 @@ from ..models.branch import Branch
 
 if TYPE_CHECKING:
     from ..._util import Identifier
-    from ..db import SessionDep
+    from ..dependencies import SessionDep
     from ..models.organization import Organization
     from ..models.project import Project
 
