@@ -25,7 +25,6 @@ from ..._util import (
     STORAGE_SIZE_CONSTRAINTS,
     DBPassword,
     Identifier,
-    Slug,
 )
 from ...deployment import DeploymentParameters
 from .._util.crypto import (
@@ -40,9 +39,9 @@ from .project import Project, ProjectDep
 
 
 class Branch(AsyncAttrs, Model, table=True):
-    DEFAULT_SLUG: ClassVar[Slug] = "main"
+    DEFAULT_SLUG: ClassVar[Name] = "main"
 
-    name: Slug
+    name: Name
     env_type: str | None = Field(default=None, sa_column=Column(String(255), nullable=True))
     project_id: Identifier = Model.foreign_key_field("project")
     project: Project | None = Relationship(back_populates="branches")
@@ -502,7 +501,7 @@ def aggregate_resize_statuses(
 
 class BranchPublic(BaseModel):
     id: Identifier
-    name: Slug
+    name: Name
     env_type: str | None
     project_id: Identifier
     organization_id: Identifier

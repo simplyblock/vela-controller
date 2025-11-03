@@ -26,12 +26,12 @@ from .._util import (
     STORAGE_SIZE_CONSTRAINTS,
     DBPassword,
     Identifier,
-    Slug,
     StatusType,
     bytes_to_gb,
     bytes_to_mib,
     check_output,
 )
+from ..api.models._util import Name
 from ..exceptions import VelaCloudflareError, VelaDeployError, VelaDeploymentError, VelaKubernetesError
 from .grafana import create_vela_grafana_obj, delete_vela_grafana_obj
 from .kubernetes import KubernetesService
@@ -423,7 +423,7 @@ def _configure_vela_values(
 async def create_vela_config(
     branch_id: Identifier,
     parameters: DeploymentParameters,
-    branch: Slug,
+    branch: Name,
     jwt_secret: str,
     anon_key: str,
     service_key: str,
@@ -1101,7 +1101,7 @@ async def deploy_branch_environment(
     organization_id: Identifier,
     project_id: Identifier,
     branch_id: Identifier,
-    branch_slug: Slug,
+    branch_slug: Name,
     credential: str,
     parameters: DeploymentParameters,
     jwt_secret: str,

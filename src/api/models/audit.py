@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, EmailStr
 
-from ..._util import Slug
+from ._util import Name
 
 
 class ActionMetadata(BaseModel):
@@ -23,8 +23,8 @@ class Actor(BaseModel):
 
 
 class TargetMetadata(BaseModel):
-    organization: Slug | None
-    project: Slug | None
+    organization: Name | None
+    project: Name | None
 
 
 class Target(BaseModel):
