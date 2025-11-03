@@ -9,7 +9,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship
 
-from ..._util import (
+from .._util import (
     CPU_CONSTRAINTS,
     DATABASE_SIZE_CONSTRAINTS,
     IOPS_CONSTRAINTS,
@@ -25,13 +25,13 @@ from ..._util import (
     Identifier,
     Name,
 )
-from ...deployment import DeploymentParameters
 from .._util.crypto import (
     decrypt_with_base64_key,
     decrypt_with_passphrase,
     encrypt_with_passphrase,
     encrypt_with_random_passphrase,
 )
+from ..deployment import DeploymentParameters
 from ._util import Model
 from .project import Project
 

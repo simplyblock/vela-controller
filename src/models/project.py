@@ -5,7 +5,7 @@ from sqlalchemy import Column, String, UniqueConstraint
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship
 
-from ..._util import (
+from .._util import (
     DB_SIZE_MIN,
     IOPS_MIN,
     MEMORY_MIN,

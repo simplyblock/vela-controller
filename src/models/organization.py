@@ -4,7 +4,7 @@ from pydantic import BaseModel, StrictBool
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship
 
-from ..._util import Name
+from .._util import Name
 from ._util import Model
 from .membership import Membership
 

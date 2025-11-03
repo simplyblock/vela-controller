@@ -2,10 +2,10 @@ import logging
 from typing import Final
 
 from ._util import Identifier, StatusType
-from .api.models.branch import BranchServiceStatus
 from .deployment import get_db_vmi_identity
 from .deployment.kubernetes.kubevirt import get_virtualmachine_status
 from .exceptions import VelaDeploymentError
+from .models.branch import BranchServiceStatus
 
 logger = logging.getLogger(__name__)
 

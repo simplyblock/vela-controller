@@ -123,7 +123,7 @@ class _FastAPI(FastAPI):
 
 
 async def _create_db_and_tables():
-    from . import models  # Ensure models are registered # noqa
+    from .. import models  # Ensure models are registered # noqa
 
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)

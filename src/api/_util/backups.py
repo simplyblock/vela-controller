@@ -6,14 +6,14 @@ from fastapi import HTTPException
 from sqlalchemy import func
 from sqlmodel import delete, select
 
-from ..models.backups import BackupSchedule, BackupScheduleRow, NextBackup
-from ..models.branch import Branch
+from ...models.backups import BackupSchedule, BackupScheduleRow, NextBackup
+from ...models.branch import Branch
 
 if TYPE_CHECKING:
     from ..._util import Identifier
+    from ...models.organization import Organization
+    from ...models.project import Project
     from ..dependencies import SessionDep
-    from ..models.organization import Organization
-    from ..models.project import Project
 
 
 async def copy_branch_backup_schedules(
