@@ -19,7 +19,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.13'
+        python-version: '3.x'
         cache: 'pip'
 
     - name: Install linter
@@ -42,7 +42,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.13'
+        python-version: '3.x'
         cache: 'pip'
 
     - name: Install linter
@@ -65,7 +65,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.13'
+        python-version: '3.x'
         cache: 'pip'
 
     - name: Install type checker
@@ -93,7 +93,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.13'
+        python-version: '3.x'
         cache: 'pip'
 
     - name: Set up chart-testing
