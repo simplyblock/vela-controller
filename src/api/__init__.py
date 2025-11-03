@@ -24,7 +24,7 @@ from .organization import api as organization_api
 from .resources import monitor_resources
 from .resources import router as resources_router
 from .roles_access_rights import router as roles_api
-from .settings import settings
+from .settings import get_settings
 from .system import api as system_api
 from .user import api as user_api
 
@@ -151,11 +151,11 @@ _tags = [
     {"name": "branch", "parent": "project"},
 ]
 
-app = _FastAPI(openapi_tags=_tags, root_path=settings.root_path)
+app = _FastAPI(openapi_tags=_tags, root_path=get_settings().root_path)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=get_settings().cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

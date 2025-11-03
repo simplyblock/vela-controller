@@ -1,3 +1,5 @@
+from functools import lru_cache
+
 from pydantic import HttpUrl, PostgresDsn
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -22,4 +24,6 @@ class Settings(BaseSettings):
     system_limit_database_size: int
 
 
-settings = Settings()  # type: ignore[call-arg]
+@lru_cache
+def get_settings():
+    return Settings()  # type: ignore[call-arg]

@@ -44,7 +44,7 @@ from .....deployment.kubernetes.volume_clone import (
     clone_branch_database_volume,
     restore_branch_database_volume_from_snapshot,
 )
-from .....deployment.settings import settings as deployment_settings
+from .....deployment.settings import get_settings as get_deployment_settings
 from .....exceptions import VelaError, VelaKubernetesError
 from .....models.backups import BackupEntry
 from .....models.branch import (
@@ -83,7 +83,7 @@ from ...._util.role import clone_user_role_assignment
 from ....auth import security
 from ....dependencies import BranchDep, OrganizationDep, ProjectDep, SessionDep, branch_lookup
 from ....keycloak import realm_admin
-from ....settings import settings
+from ....settings import get_settings as get_api_settings
 from .auth import api as auth_api
 
 api = APIRouter(tags=["branch"])
@@ -773,7 +773,7 @@ async def _restore_branch_environment_task(
 
 def _resolve_db_host(branch: Branch) -> str | None:
     host = branch.endpoint_domain or branch_domain(branch.id)
-    return host or deployment_settings.deployment_host
+    return host or get_deployment_settings().deployment_host
 
 
 def _build_connection_string(user: str, database: str, port: int) -> str:
@@ -802,7 +802,7 @@ def _service_endpoint_url(rest_endpoint: str | None, api_domain: str | None, db_
         candidate = f"https://{api_domain}"
     else:
         candidate = f"https://{db_host or ''}"
-    return _ensure_service_port(candidate, deployment_settings.deployment_service_port)
+    return _ensure_service_port(candidate, get_deployment_settings().deployment_service_port)
 
 
 def _normalize_resize_statuses(branch: Branch) -> dict[str, BranchResizeStatusEntry]:
@@ -876,7 +876,7 @@ async def _public(branch: Branch) -> BranchPublic:
         port=port,
         username=branch.database_user,
         name=branch.database,
-        encrypted_connection_string=encrypt_with_passphrase(connection_string, settings.pgmeta_crypto_key),
+        encrypted_connection_string=encrypt_with_passphrase(connection_string, get_api_settings().pgmeta_crypto_key),
         service_endpoint_uri=service_endpoint,
         version=branch.database_image_tag,
         has_replicas=False,
@@ -1377,7 +1377,7 @@ async def reset_password(
     admin_password = branch.database_password
     db_host = branch.endpoint_domain or branch_domain(branch.id)
     if not db_host:
-        db_host = deployment_settings.deployment_host
+        db_host = get_deployment_settings().deployment_host
     if not db_host:
         logging.error("Database host unavailable for branch %s", branch.id)
         raise HTTPException(status_code=500, detail="Branch database host is not configured.")
@@ -1729,7 +1729,7 @@ def _collect_pgbouncer_updates(parameters: BranchPgbouncerConfigUpdate) -> dict[
 
 
 def _pgbouncer_host_for_namespace(namespace: str) -> str:
-    return f"{deployment_settings.deployment_release_name}-pgbouncer.{namespace}.svc.cluster.local"
+    return f"{get_deployment_settings().deployment_release_name}-pgbouncer.{namespace}.svc.cluster.local"
 
 
 def _resolve_pgbouncer_password(branch: Branch) -> str:

@@ -11,7 +11,7 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from ..models.user import JWT, User
-from .settings import settings
+from .settings import get_settings
 
 # HTTPBearer returns 403 instead of 401. Avoid this by raising the error manually
 security = HTTPBearer(auto_error=False)
@@ -22,13 +22,13 @@ _HTTP_URL_PATTERN = re.compile(r"^https?://")
 
 def _decode(token: str):
     key: PyJWK | str
-    if re.match(_HTTP_URL_PATTERN, settings.jwt_secret):
-        jwks_client = PyJWKClient(settings.jwt_secret)
+    if re.match(_HTTP_URL_PATTERN, get_settings().jwt_secret):
+        jwks_client = PyJWKClient(get_settings().jwt_secret)
         key = jwks_client.get_signing_key_from_jwt(token)
     else:
-        key = settings.jwt_secret
+        key = get_settings().jwt_secret
 
-    return decode(token, key, algorithms=settings.jwt_algorithms, options={"verify_aud": False})
+    return decode(token, key, algorithms=get_settings().jwt_algorithms, options={"verify_aud": False})
 
 
 async def user_by_id(session: AsyncSession, id_: UUID):
