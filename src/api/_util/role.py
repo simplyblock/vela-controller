@@ -5,7 +5,7 @@ from sqlmodel import insert, select
 from ulid import ULID
 
 from ..._util import Identifier
-from ..db import SessionDep
+from ..dependencies import SessionDep
 from ..models.branch import Branch
 from ..models.role import AccessRight, AccessRightPublic, Organization, Role, RoleAccessRight, RoleType, RoleUserLink
 

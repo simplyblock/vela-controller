@@ -57,7 +57,7 @@ from ...._util.resourcelimit import (
 )
 from ...._util.role import clone_user_role_assignment
 from ....auth import security
-from ....db import SessionDep
+from ....dependencies import BranchDep, OrganizationDep, ProjectDep, SessionDep, branch_lookup
 from ....keycloak import realm_admin
 from ....models.backups import BackupEntry
 from ....models.branch import (
@@ -65,7 +65,6 @@ from ....models.branch import (
     Branch,
     BranchApiKeys,
     BranchCreate,
-    BranchDep,
     BranchPasswordReset,
     BranchPgbouncerConfigStatus,
     BranchPgbouncerConfigUpdate,
@@ -83,11 +82,6 @@ from ....models.branch import (
     ResourceUsageDefinition,
     aggregate_resize_statuses,
 )
-from ....models.branch import (
-    lookup as lookup_branch,
-)
-from ....models.organization import OrganizationDep
-from ....models.project import ProjectDep
 from ....models.resources import BranchAllocationPublic, ResourceLimitsPublic, ResourceType
 from ....settings import settings
 from .auth import api as auth_api
@@ -972,7 +966,7 @@ async def _resolve_source_branch(
     parameters: BranchCreate,
 ) -> tuple[Branch | None, BackupEntry | None]:
     if parameters.source is not None:
-        branch = await lookup_branch(session, project, parameters.source.branch_id)
+        branch = await branch_lookup(session, project, parameters.source.branch_id)
         return branch, None
 
     if parameters.restore is not None:
@@ -982,7 +976,7 @@ async def _resolve_source_branch(
         if backup is None:
             raise HTTPException(404, f"Backup {backup_id} not found")
         try:
-            branch = await lookup_branch(session, project, backup.branch_id)
+            branch = await branch_lookup(session, project, backup.branch_id)
         except HTTPException as exc:
             if exc.status_code == 404:
                 raise HTTPException(404, f"Backup {backup_id} not found") from exc

@@ -5,8 +5,8 @@ from fastapi.responses import JSONResponse
 from keycloak import KeycloakAdmin
 from keycloak.exceptions import KeycloakError
 
+from ....dependencies import BranchDep
 from ....keycloak import realm_admin
-from ....models.branch import BranchDep
 
 api = APIRouter()
 

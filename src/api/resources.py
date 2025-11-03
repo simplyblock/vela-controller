@@ -18,7 +18,7 @@ from ._util.resourcelimit import (
     get_project_resource_usage,
     make_usage_cycle,
 )
-from .db import SessionDep
+from .dependencies import SessionDep
 from .models._util import Identifier
 from .models.branch import Branch
 from .models.project import Project

@@ -6,9 +6,8 @@ from pydantic import BaseModel
 from sqlmodel import select
 
 from .access_right_utils import check_access
-from .db import SessionDep
+from .dependencies import OrganizationDep, RoleDep, SessionDep
 from .models._util import Identifier
-from .models.organization import OrganizationDep
 from .models.role import (
     AccessRight,
     PermissionAccessCheckPublic,
@@ -18,7 +17,6 @@ from .models.role import (
     RoleAssignmentPublic,
     RoleAssignmentsPublic,
     RoleDeletePublic,
-    RoleDep,
     RolePublic,
     RoleType,
     RoleTypePublic,

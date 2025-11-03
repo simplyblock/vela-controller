@@ -1,7 +1,5 @@
 from collections.abc import AsyncGenerator
-from typing import Annotated
 
-from fastapi import Depends
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -16,13 +14,6 @@ engine = create_async_engine(
     pool_recycle=3600,
 )
 
-
-async def _get_session():
-    async with AsyncSession(engine) as session:
-        yield session
-
-
-SessionDep = Annotated[AsyncSession, Depends(_get_session)]
 
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 

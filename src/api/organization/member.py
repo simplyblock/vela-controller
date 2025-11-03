@@ -7,9 +7,8 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
 from .._util import Forbidden, NotFound, Unauthenticated
-from ..auth import MemberDep, UserDep, authenticated_user, user_by_id
-from ..db import SessionDep
-from ..models.organization import OrganizationDep
+from ..auth import authenticated_user, user_by_id
+from ..dependencies import MemberDep, OrganizationDep, SessionDep, UserDep
 from ..models.user import UserID, UserPublic
 from ..user import public_list as public_user_list
 

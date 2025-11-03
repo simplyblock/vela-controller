@@ -20,7 +20,7 @@ from .._util import (
     VCPU_MILLIS_STEP,
 )
 from .auth import authenticated_user
-from .db import SessionDep
+from .dependencies import SessionDep
 from .models.resources import ResourceLimitDefinitionPublic
 from .models.role import AccessRight
 

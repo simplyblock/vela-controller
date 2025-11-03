@@ -2,14 +2,12 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Annotated, Any, ClassVar, Literal, Optional
 
-from fastapi import Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 from pydantic import Field as PydanticField
 from sqlalchemy import BigInteger, Column, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlmodel import Field, Relationship, select
+from sqlmodel import Field, Relationship
 
 from ..._util import (
     CPU_CONSTRAINTS,
@@ -34,9 +32,8 @@ from .._util.crypto import (
     encrypt_with_passphrase,
     encrypt_with_random_passphrase,
 )
-from ..db import SessionDep
 from ._util import Model
-from .project import Project, ProjectDep
+from .project import Project
 
 
 class Branch(AsyncAttrs, Model, table=True):
@@ -561,14 +558,3 @@ class BranchDetailResources(BaseModel):
             description="Database storage capacity in bytes (mirrors Branch.database_size).",
         ),
     ]
-
-
-async def lookup(session: SessionDep, project: ProjectDep, branch_id: Identifier) -> Branch:
-    try:
-        query = select(Branch).where(Branch.project_id == project.id, Branch.id == branch_id)
-        return (await session.execute(query)).scalars().one()
-    except NoResultFound as e:
-        raise HTTPException(404, f"Branch {branch_id} not found") from e
-
-
-BranchDep = Annotated[Branch, Depends(lookup)]
