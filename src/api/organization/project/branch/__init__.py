@@ -879,7 +879,9 @@ async def _public(branch: Branch) -> BranchPublic:
         name=branch.database,
         encrypted_connection_string=encrypt_with_passphrase(connection_string, get_api_settings().pgmeta_crypto_key),
         service_endpoint_uri=service_endpoint,
-        monitoring_endpoint_uri=f"{service_endpoint}/grafana/{branch.grafana_dashboard_url}",
+        monitoring_endpoint_uri=f"{service_endpoint}/grafana/{branch.grafana_dashboard_url}"
+        if branch.grafana_dashboard_url is not None
+        else None,
         version=branch.database_image_tag,
         has_replicas=False,
     )
