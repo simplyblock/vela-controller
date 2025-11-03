@@ -18,25 +18,31 @@ helm upgrade --install kong-operator kong/gateway-operator -n kong-system \
 
 ### Create GatewayConfiguration 
 ```sh
- kubectl apply -f - <<'EOF'
- apiVersion: gateway-operator.konghq.com/v1beta1
- kind: GatewayConfiguration
- metadata:
-   name: kong-gw-config
-   namespace: kong-system
- spec:
-   dataPlaneOptions:
-     network:
-       services:
-         ingress:
-           type: LoadBalancer
-   controlPlaneOptions:
-     deployment:
-       podTemplateSpec:
-         spec:
-           containers:
-             - name: controller
-               image: kong/kubernetes-ingress-controller:3.5
+kubectl apply -f - <<'EOF'
+apiVersion: gateway-operator.konghq.com/v1beta1
+kind: GatewayConfiguration
+metadata:
+  name: kong-gw-config
+  namespace: kong-system
+spec:
+  dataPlaneOptions:
+    network:
+      services:
+        ingress:
+          type: NodePort
+    deployment:
+      podTemplateSpec:
+        spec:
+          containers:
+            - name: proxy
+              image: kong/kong-gateway:3.9
+              env:
+                - name: KONG_NGINX_PROXY_PROXY_BUFFER_SIZE
+                  value: "128k"
+                - name: KONG_NGINX_PROXY_PROXY_BUFFERS
+                  value: "4 256k"
+                - name: KONG_NGINX_PROXY_PROXY_BUSY_BUFFERS_SIZE
+                  value: "256k"
 EOF
 ```
 

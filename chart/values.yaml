@@ -86,7 +86,7 @@ studio:
   enabled: true
   env:
     PLATFORM_PG_META_URL: 'http://meta:8080'
-    SUPABASE_URL: 'http://kong:8000'
+    SUPABASE_URL: 'https://staging.vela.run:30808'
 
     SUPABASE_ANON_KEY: "UpNVntn3cDxHJpq99YMc1T1AQgQpc8kfYTuRgBiYa15BLrx8etQoXz3gZv1/u2oq"
     SUPABASE_SERVICE_KEY: "" # TODO
@@ -94,19 +94,19 @@ studio:
     AUTH_JWT_SECRET: 'secret'  # TODO
     NEXTAUTH_SECRET: 'super-long-random-nextauth-secret' # TODO
 
-    LOGFLARE_URL: 'https://staging.vela.run:30336/logs'
-    VELA_PLATFORM_KEYCLOAK_ISSUER: 'https://staging.vela.run:30336/auth/realms/vela'
+    LOGFLARE_URL: 'https://staging.vela.run:30808/logs'
+    VELA_PLATFORM_KEYCLOAK_ISSUER: 'https://staging.vela.run:30808/auth/realms/vela'
     VELA_PLATFORM_KEYCLOAK_CLIENT_ID: 'frontend'
     VELA_PLATFORM_KEYCLOAK_CLIENT_SECRET: 'client-secret' # generate this and match it with realm.json
-    VELA_PLATFORM_KEYCLOAK_AUTHORIZATION_ENDPOINT: 'https://staging.vela.run:30336/auth/realms/vela/protocol/openid-connect/auth'
+    VELA_PLATFORM_KEYCLOAK_AUTHORIZATION_ENDPOINT: 'https://staging.vela.run:30808/auth/realms/vela/protocol/openid-connect/auth'
     VELA_PLATFORM_KEYCLOAK_TOKEN_ENDPOINT: 'http://vela-auth-service:8080/auth/realms/vela/protocol/openid-connect/token'
     VELA_PLATFORM_KEYCLOAK_USERINFO_ENDPOINT: 'http://vela-auth-service:8080/auth/realms/vela/protocol/openid-connect/userinfo'
     VELA_PLATFORM_KEYCLOAK_LOGOUT_ENDPOINT: 'http://vela-auth-service:8080/auth/protocol/openid-connect/logout'
     VELA_PLATFORM_KEYCLOAK_JWKS_ENDPOINT: 'http://vela-auth-service:8080/auth/realms/vela/protocol/openid-connect/certs'
-    VELA_PLATFORM_EXT_SIGN_IN_URL: 'https://staging.vela.run:30336/sign-in'
-    VELA_PLATFORM_EXT_BASE_URL: 'https://staging.vela.run:30336/'
-    NEXTAUTH_URL: 'https://staging.vela.run:30336/'
-    VELA_PLATFORM_EXT_API_SERVICE_URL: 'https://staging.vela.run:30336/api'
+    VELA_PLATFORM_EXT_SIGN_IN_URL: 'https://staging.vela.run:30808/sign-in'
+    VELA_PLATFORM_EXT_BASE_URL: 'https://staging.vela.run:30808/'
+    NEXTAUTH_URL: 'https://staging.vela.run:30808'
+    VELA_PLATFORM_EXT_API_SERVICE_URL: 'https://staging.vela.run:30808/api'
 
     VELA_PLATFORM_URL: 'http://vela-controller-service:8000'
 
