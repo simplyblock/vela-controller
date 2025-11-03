@@ -12,6 +12,7 @@ from .._util import (
     StatusType,
 )
 
+
 class DeploymentParameters(BaseModel):
     database_password: DBPassword
     database_size: Annotated[int, Field(**DATABASE_SIZE_CONSTRAINTS)]
@@ -25,4 +26,3 @@ class DeploymentParameters(BaseModel):
 
 class DeploymentStatus(BaseModel):
     status: StatusType
-    

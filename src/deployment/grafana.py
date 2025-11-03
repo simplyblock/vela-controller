@@ -1,6 +1,7 @@
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -322,8 +323,7 @@ async def create_dashboard(org_name: str, folder_uid: str, folder_name: str) -> 
             logger.info(f"Dashboard created successfully in folder '{folder_name}'.")
 
             data = response.json()
-            dashboard_url = f"{get_settings().grafana_url}{data.get('url')}"
-            return dashboard_url
+            return urlsplit(data.get('url')).path
         except httpx.HTTPError as exc:
             logger.error(f"Failed to create dashboard for folder '{folder_name}': {exc}")
             raise VelaGrafanaError(f"Failed to create dashboard: {exc}") from exc
