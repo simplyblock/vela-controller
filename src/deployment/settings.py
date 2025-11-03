@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     ]
     deployment_release_name: str = "supabase"
     deployment_host: str = "localhost"
+    deployment_service_port: int = 443
     pgmeta_crypto_key: str
     cloudflare_api_token: str
     cloudflare_zone_id: str

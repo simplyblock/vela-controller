@@ -28,7 +28,6 @@ controller:
   env:
     VELA_ROOT_PATH: '/vela'
     VELA_JWT_SECRET: 'http://vela-auth-service:8080/auth/realms/vela/protocol/openid-connect/certs'
-    VELA_POSTGRES_URL: 'postgresql+asyncpg://postgres:vela@database:5432/vela'
     VELA_CORS_ORIGINS: '["http://localhost:3000"]' # TODO: remove this for prod
     VELA_PGMETA_CRYPTO_KEY: 'secret'
     VELA_KEYCLOAK_URL: 'http://vela-auth-service:8080/auth/'
@@ -39,12 +38,9 @@ controller:
     VELA_CLOUDFLARE_BRANCH_REF_CNAME: 'staging.vela.run'
     VELA_CLOUDFLARE_DOMAIN_SUFFIX: 'staging.vela.run'
     VELA_DEPLOYMENT_NAMESPACE_PREFIX: 'vela'
-    VELA_LOGFLARE_PRIVATE_ACCESS_TOKEN: 'your-super-secret-and-long-logflare-key-private'
-    VELA_LOGFLARE_PUBLIC_ACCESS_TOKEN: 'my-super-secret-api-key'
+    VELA_DEPLOYMENT_SERVICE_PORT: '30808'
     VELA_LOGFLARE_URL: "http://vela-logflare:4000"
     VELA_GRAFANA_URL: "http://vela-grafana:3000"
-    VELA_GRAFANA_SECURITY_ADMIN_USER: "admin"
-    VELA_GRAFANA_SECURITY_ADMIN_PASSWORD: "password"
     VELA_SYSTEM_LIMIT_MILLIS_VCPU: '100000'
     VELA_SYSTEM_LIMIT_RAM: '274877906944'
     VELA_SYSTEM_LIMIT_IOPS: '1000000000'

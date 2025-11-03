@@ -1,5 +1,11 @@
 {{- if .Values.db.enabled -}}
 {{- $dbFullname := include "supabase.db.fullname" . -}}
+{{- $serviceCfg := .Values.db.service | default (dict) -}}
+{{- $lbIpFamilies := (index $serviceCfg "ipFamilies") | default (list "IPv6") -}}
+{{- $lbIpPolicy := (index $serviceCfg "ipFamilyPolicy") | default "SingleStack" -}}
+{{- $clusterCfg := (index $serviceCfg "clusterIP") | default (dict) -}}
+{{- $clusterIpFamilies := (index $clusterCfg "ipFamilies") | default (list "IPv4") -}}
+{{- $clusterIpPolicy := (index $clusterCfg "ipFamilyPolicy") | default "SingleStack" -}}
 apiVersion: v1
 kind: Service
 metadata:
@@ -8,13 +14,11 @@ metadata:
     {{- include "supabase.labels" . | nindent 4 }}
 spec:
   type: {{ .Values.db.service.type }}
-  {{- with .Values.db.service.ipFamilies }}
+  {{- if $lbIpFamilies }}
   ipFamilies:
-{{ toYaml . | indent 4 }}
+{{ toYaml $lbIpFamilies | indent 4 }}
   {{- end }}
-  {{- with .Values.db.service.ipFamilyPolicy }}
-  ipFamilyPolicy: {{ . }}
-  {{- end }}
+  ipFamilyPolicy: {{ $lbIpPolicy }}
   ports:
     - port: {{ .Values.db.service.port }}
       targetPort: 5432
@@ -31,7 +35,11 @@ metadata:
     {{- include "supabase.labels" . | nindent 4 }}
 spec:
   type: ClusterIP
-  {{- with .Values.db.service.ipFamilies }}
+  {{- if $clusterIpFamilies }}
+  ipFamilies:
+{{ toYaml $clusterIpFamilies | indent 4 }}
+  {{- end }}
+  ipFamilyPolicy: {{ $clusterIpPolicy }}
   ports:
     - port: {{ .Values.db.service.port }}
       targetPort: 5432
