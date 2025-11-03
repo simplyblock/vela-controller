@@ -323,7 +323,7 @@ async def create_dashboard(org_name: str, folder_uid: str, folder_name: str) -> 
             logger.info(f"Dashboard created successfully in folder '{folder_name}'.")
 
             data = response.json()
-            return urlsplit(data.get('url')).path
+            return urlsplit(data.get('url')).path[1:]
         except httpx.HTTPError as exc:
             logger.error(f"Failed to create dashboard for folder '{folder_name}': {exc}")
             raise VelaGrafanaError(f"Failed to create dashboard: {exc}") from exc
