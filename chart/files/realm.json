@@ -44,10 +44,10 @@
             "name": "Frontend Application",
             "enabled": true,
             "redirectUris": [
-                "https://staging.vela.run:30336/api/auth/callback/keycloak"
+                "https://staging.vela.run:30808/api/auth/callback/keycloak"
             ],
             "webOrigins": [
-                "https://staging.vela.run:30336"
+                "https://staging.vela.run:30808"
             ],
             "standardFlowEnabled": true,
             "directAccessGrantsEnabled": true,
