@@ -6,6 +6,7 @@ import secrets
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal, TypedDict, cast
+from urllib.parse import urlsplit, urlunsplit
 
 import asyncpg
 from asyncpg import exceptions as asyncpg_exceptions
@@ -776,6 +777,16 @@ async def _public(branch: Branch) -> BranchPublic:
 
     rest_endpoint = branch_rest_endpoint(branch.id)
     api_domain = branch_api_domain(branch.id)
+    service_port = deployment_settings.deployment_service_port
+
+    def _ensure_service_port(url: str) -> str:
+        if service_port == 443:
+            return url
+        split = urlsplit(url)
+        if not split.netloc or ":" in split.netloc:
+            return url
+        netloc = f"{split.netloc}:{service_port}"
+        return urlunsplit((split.scheme, netloc, split.path, split.query, split.fragment))
 
     if rest_endpoint:
         service_endpoint = rest_endpoint.removesuffix("/rest")
@@ -784,6 +795,7 @@ async def _public(branch: Branch) -> BranchPublic:
     else:
         # Fall back to using the same host as the database when dedicated domains are unavailable.
         service_endpoint = f"https://{db_host}"
+    service_endpoint = _ensure_service_port(service_endpoint)
 
     max_resources = branch.provisioned_resources()
 
@@ -1240,8 +1252,6 @@ async def delete(
     _project: ProjectDep,
     branch: BranchDep,
 ):
-    if branch.name == Branch.DEFAULT_SLUG:
-        raise HTTPException(400, "Default branch cannot be deleted")
     await delete_deployment(branch.id)
     await realm_admin("master").a_delete_realm(str(branch.id))
     await delete_branch_provisioning(session, branch)

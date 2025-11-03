@@ -89,30 +89,6 @@ spec:
               value: database
             - name: VELA_POSTGRES_URL
               value: 'postgresql+asyncpg://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):5432/postgres'
-            - name: VELA_DEPLOYMENT_NAMESPACE_PREFIX
-              value: {{ .Release.Namespace }}
-            - name: VELA_KEYCLOAK_URL
-              value: 'http://vela-auth-service:8080/auth/'
-            - name: VELA_KEYCLOAK_ADMIN_NAME
-              value: 'admin'
-            - name: VELA_KEYCLOAK_ADMIN_SECRET
-              value: 'admin'
-            - name: VELA_GRAFANA_URL
-              value: "http://vela-grafana:3000"
-            - name: VELA_LOGFLARE_URL
-              value: "http://vela-logflare:4000"
-            # The following limits are temporary and need to be adjusted when figured out
-            - name: VELA_SYSTEM_LIMIT_MILLIS_VCPU
-              value: '100000'
-            - name: VELA_SYSTEM_LIMIT_RAM
-              value: '274877906944'
-            - name: VELA_SYSTEM_LIMIT_IOPS
-              value: '1000000000'
-            - name: VELA_SYSTEM_LIMIT_DATABASE_SIZE
-              value: '100000000000000'
-            - name: VELA_SYSTEM_LIMIT_STORAGE_SIZE
-              value: '1000000000000'
-
           livenessProbe:
             httpGet:
               path: /health
@@ -139,16 +115,28 @@ kind: ConfigMap
 metadata:
   name: vela-controller-config
 data:
-  VELA_JWT_SECRET: "http://vela-auth-service:8080/auth/realms/vela/protocol/openid-connect/certs"
-  VELA_ROOT_PATH: "/vela"
-  VELA_GATEWAY_NAME: {{ .Values.gateway.name | quote }}
-  VELA_GATEWAY_NAMESPACE: {{ .Values.gateway.namespace | quote }}
-  VELA_PGMETA_CRYPTO_KEY: {{ default "" .Values.secret.pgmeta_crypto_key | quote }}
+  VELA_ROOT_PATH: {{ default "/vela" $controllerEnv.VELA_ROOT_PATH | quote }}
+  VELA_JWT_SECRET: {{ default "http://vela-auth-service:8080/auth/realms/vela/protocol/openid-connect/certs" $controllerEnv.VELA_JWT_SECRET | quote }}
+  VELA_GATEWAY_NAME: {{ default .Values.gateway.name $controllerEnv.VELA_GATEWAY_NAME | quote }}
+  VELA_GATEWAY_NAMESPACE: {{ default .Values.gateway.namespace $controllerEnv.VELA_GATEWAY_NAMESPACE | quote }}
+  VELA_PGMETA_CRYPTO_KEY: {{ default (default "" .Values.secret.pgmeta_crypto_key) $controllerEnv.VELA_PGMETA_CRYPTO_KEY | quote }}
   VELA_CORS_ORIGINS: {{ default "" $controllerEnv.VELA_CORS_ORIGINS | quote }}
+  VELA_KEYCLOAK_URL: {{ default "http://vela-auth-service:8080/auth/" $controllerEnv.VELA_KEYCLOAK_URL | quote }}
+  VELA_KEYCLOAK_ADMIN_NAME: {{ default "admin" $controllerEnv.VELA_KEYCLOAK_ADMIN_NAME | quote }}
+  VELA_KEYCLOAK_ADMIN_SECRET: {{ default "admin" $controllerEnv.VELA_KEYCLOAK_ADMIN_SECRET | quote }}
   VELA_CLOUDFLARE_API_TOKEN: {{ default "" $controllerEnv.VELA_CLOUDFLARE_API_TOKEN | quote }}
   VELA_CLOUDFLARE_ZONE_ID: {{ default "" $controllerEnv.VELA_CLOUDFLARE_ZONE_ID | quote }}
   VELA_CLOUDFLARE_BRANCH_REF_CNAME: {{ default "" $controllerEnv.VELA_CLOUDFLARE_BRANCH_REF_CNAME | quote }}
   VELA_CLOUDFLARE_DOMAIN_SUFFIX: {{ default "" $controllerEnv.VELA_CLOUDFLARE_DOMAIN_SUFFIX | quote }}
+  VELA_DEPLOYMENT_NAMESPACE_PREFIX: {{ default .Release.Namespace $controllerEnv.VELA_DEPLOYMENT_NAMESPACE_PREFIX | quote }}
+  VELA_DEPLOYMENT_SERVICE_PORT: {{ default "" $controllerEnv.VELA_DEPLOYMENT_SERVICE_PORT | quote }}
+  VELA_LOGFLARE_URL: {{ default "http://vela-logflare:4000" $controllerEnv.VELA_LOGFLARE_URL | quote }}
+  VELA_GRAFANA_URL: {{ default "http://vela-grafana:3000" $controllerEnv.VELA_GRAFANA_URL | quote }}
+  VELA_SYSTEM_LIMIT_MILLIS_VCPU: {{ default "" $controllerEnv.VELA_SYSTEM_LIMIT_MILLIS_VCPU | quote }}
+  VELA_SYSTEM_LIMIT_RAM: {{ default "" $controllerEnv.VELA_SYSTEM_LIMIT_RAM | quote }}
+  VELA_SYSTEM_LIMIT_IOPS: {{ default "" $controllerEnv.VELA_SYSTEM_LIMIT_IOPS | quote }}
+  VELA_SYSTEM_LIMIT_DATABASE_SIZE: {{ default "" $controllerEnv.VELA_SYSTEM_LIMIT_DATABASE_SIZE | quote }}
+  VELA_SYSTEM_LIMIT_STORAGE_SIZE: {{ default "" $controllerEnv.VELA_SYSTEM_LIMIT_STORAGE_SIZE | quote }}
 ---
 apiVersion: v1
 kind: Service

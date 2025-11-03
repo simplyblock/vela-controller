@@ -123,7 +123,10 @@ def branch_rest_endpoint(branch_id: Identifier) -> str | None:
     domain = branch_api_domain(branch_id)
     if not domain:
         return None
-    return f"https://{domain}/rest"
+    port = settings.deployment_service_port
+    if port == 443:
+        return f"https://{domain}/rest"
+    return f"https://{domain}:{port}/rest"
 
 
 def _release_name(namespace: str) -> str:
@@ -384,6 +387,9 @@ def _configure_vela_values(
     service_cfg["type"] = "LoadBalancer"
     service_cfg["ipFamilies"] = ["IPv6"]
     service_cfg["ipFamilyPolicy"] = "SingleStack"
+    cluster_service_cfg = service_cfg.setdefault("clusterIP", {})
+    cluster_service_cfg["ipFamilies"] = ["IPv4"]
+    cluster_service_cfg["ipFamilyPolicy"] = "SingleStack"
 
     secrets = values_content.setdefault("secret", {})
     secrets.setdefault("jwt", {}).update(

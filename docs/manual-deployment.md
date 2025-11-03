@@ -115,6 +115,26 @@ helm install kube-ovn kubeovn/kube-ovn --wait \
     --set cni_conf.MOUNT_LOCAL_BIN_DIR=false
 ```
 
+#### allow OVN to allocate IPv6 addresses to pods
+
+Make sure that the Talos cluster support IPv6 addresses. If the `cluster.network.podSubnets` and `cluster.network.serviceSubnets` has Ipv6 addresses, then the cluster support dual Stack. 
+
+Patch the `ovn-default` subnet to also support support IPv6.
+
+First off, get the current ipv4 subnets by running
+`kubectl get subnet ovn-default -o yaml | grep -E 'protocol|cidrBlock|gateway'` 
+
+```
+kubectl patch subnet ovn-default \
+  --type merge \
+  -p '{"spec":{
+    "protocol":"Dual",
+    "cidrBlock":"10.16.0.0/16,fd10:244::/56",
+    "gateway":"10.16.0.1,fd10:244::1",
+    "excludeIps":["10.16.0.1","fd10:244::1"]
+  }}'
+```
+
 # StackGres
 
 ```sh
@@ -127,8 +147,6 @@ helm upgrade --install stackgres-operator \
   --timeout 600s
 ```
 
-### Vanilla PG with postgres
-
 ### Cert Manager
 ```
 helm repo add jetstack https://charts.jetstack.io
@@ -136,5 +154,4 @@ helm repo update
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager --create-namespace \
   --version v1.13.0 --set installCRDs=true
-
 ```
