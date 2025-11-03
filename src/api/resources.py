@@ -38,7 +38,7 @@ from ._util.resourcelimit import (
     make_usage_cycle,
 )
 from .dependencies import SessionDep
-from .settings import settings
+from .settings import get_settings
 
 router = APIRouter(tags=["resource"])
 
@@ -47,7 +47,7 @@ router = APIRouter(tags=["resource"])
 # ---------------------------
 
 engine = create_async_engine(
-    str(settings.postgres_url),
+    str(get_settings().postgres_url),
     echo=False,
     pool_pre_ping=True,
     pool_recycle=3600,

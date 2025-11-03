@@ -25,7 +25,7 @@ from ...models.resources import (
     UsageCycle,
 )
 from ..dependencies import SessionDep
-from ..settings import settings
+from ..settings import get_settings
 
 if TYPE_CHECKING:
     from sqlalchemy.sql.elements import ColumnElement
@@ -155,11 +155,11 @@ async def create_system_resource_limits(conn: AsyncConnection):
 
     # Set up initial system resource limits if not yet existing
     resource_limits = ResourceLimitsPublic(
-        milli_vcpu=settings.system_limit_millis_vcpu,
-        ram=settings.system_limit_ram,
-        iops=settings.system_limit_iops,
-        database_size=settings.system_limit_database_size,
-        storage_size=settings.system_limit_storage_size,
+        milli_vcpu=get_settings().system_limit_millis_vcpu,
+        ram=get_settings().system_limit_ram,
+        iops=get_settings().system_limit_iops,
+        database_size=get_settings().system_limit_database_size,
+        storage_size=get_settings().system_limit_storage_size,
     )
     for resource_type, limit in resource_limits.model_dump(exclude_unset=True).items():
         if limit is not None:

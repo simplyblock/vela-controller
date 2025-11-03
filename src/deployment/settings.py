@@ -1,3 +1,4 @@
+from functools import lru_cache
 from typing import Annotated
 
 from pydantic import Field, HttpUrl, StringConstraints
@@ -44,4 +45,6 @@ class Settings(BaseSettings):
     grafana_security_admin_password: str = "password"
 
 
-settings = Settings()  # type: ignore[call-arg]
+@lru_cache
+def get_settings():
+    return Settings()  # type: ignore[call-arg]

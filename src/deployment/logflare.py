@@ -7,7 +7,7 @@ from httpx import Response
 
 from .._util import Identifier
 from ..exceptions import VelaLogflareError
-from .settings import settings
+from .settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -19,12 +19,12 @@ async def _raise_for_status(response: Response) -> None:
 @asynccontextmanager
 async def _client(timeout: int = 10) -> AsyncIterator[httpx.AsyncClient]:
     async with httpx.AsyncClient(
-        base_url=f"{settings.logflare_url}/api",
+        base_url=f"{get_settings().logflare_url}/api",
         timeout=timeout,
         headers={
             "Content-Type": "application/json",
             "Accept": "application/json",
-            "Authorization": f"Bearer {settings.logflare_private_access_token}",
+            "Authorization": f"Bearer {get_settings().logflare_private_access_token}",
         },
         event_hooks={
             "response": [_raise_for_status],

@@ -7,7 +7,7 @@ from typing import Any
 from ..._util import Identifier
 from ...exceptions import VelaKubernetesError
 from .. import DATABASE_PVC_SUFFIX, deployment_namespace, kube_service
-from ..settings import settings as deployment_settings
+from ..settings import get_settings
 from .pvc import (
     build_pvc_manifest_from_existing,
     create_pvc,
@@ -110,7 +110,7 @@ class _VolumeCloneOperation:
     created_content: bool = field(default=False, init=False)
 
     def __post_init__(self) -> None:
-        pvc_name = f"{deployment_settings.deployment_release_name}{DATABASE_PVC_SUFFIX}"
+        pvc_name = f"{get_settings().deployment_release_name}{DATABASE_PVC_SUFFIX}"
         source_ns = deployment_namespace(self.source_branch_id)
         target_ns = deployment_namespace(self.target_branch_id)
         timestamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
@@ -258,7 +258,7 @@ class _VolumeCloneOperation:
         if hasattr(new_manifest.spec, "storageClassName"):
             new_manifest.spec.storageClassName = self.storage_class_name
         annotations = dict(getattr(new_manifest.metadata, "annotations", {}) or {})
-        annotations["meta.helm.sh/release-name"] = deployment_settings.deployment_release_name
+        annotations["meta.helm.sh/release-name"] = get_settings().deployment_release_name
         annotations["meta.helm.sh/release-namespace"] = namespace
         new_manifest.metadata.annotations = annotations
 
@@ -306,7 +306,7 @@ class _SnapshotRestoreOperation:
     created_content: bool = field(default=False, init=False)
 
     def __post_init__(self) -> None:
-        pvc_name = f"{deployment_settings.deployment_release_name}{DATABASE_PVC_SUFFIX}"
+        pvc_name = f"{get_settings().deployment_release_name}{DATABASE_PVC_SUFFIX}"
         target_ns = deployment_namespace(self.target_branch_id)
         timestamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
         target_snapshot = f"{str(self.target_branch_id).lower()}-restore-{timestamp}"[:63]
@@ -418,7 +418,7 @@ class _SnapshotRestoreOperation:
         if hasattr(new_manifest.spec, "storageClassName"):
             new_manifest.spec.storageClassName = self.storage_class_name
         annotations = dict(getattr(new_manifest.metadata, "annotations", {}) or {})
-        annotations["meta.helm.sh/release-name"] = deployment_settings.deployment_release_name
+        annotations["meta.helm.sh/release-name"] = get_settings().deployment_release_name
         annotations["meta.helm.sh/release-namespace"] = self.ids.target_namespace
         new_manifest.metadata.annotations = annotations
 
