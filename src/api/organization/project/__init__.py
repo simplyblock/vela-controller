@@ -9,17 +9,17 @@ from sqlalchemy.exc import IntegrityError
 
 from ....deployment import delete_deployment, get_db_vmi_identity
 from ....deployment.kubernetes.kubevirt import call_kubevirt_subresource
-from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
-from ..._util.resourcelimit import get_organization_resource_limits
-from ...auth import security
-from ...dependencies import OrganizationDep, ProjectDep, SessionDep
-from ...models.project import (
+from ....models.project import (
     Project,
     ProjectCreate,
     ProjectPublic,
     ProjectUpdate,
 )
-from ...models.resources import EntityType, ResourceLimit, ResourceType
+from ....models.resources import EntityType, ResourceLimit, ResourceType
+from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
+from ..._util.resourcelimit import get_organization_resource_limits
+from ...auth import security
+from ...dependencies import OrganizationDep, ProjectDep, SessionDep
 from . import branch as branch_module
 
 api = APIRouter(tags=["project"])

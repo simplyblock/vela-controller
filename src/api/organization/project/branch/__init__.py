@@ -20,6 +20,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
 from ....._util import DEFAULT_DB_NAME, DEFAULT_DB_USER, Identifier
+from ....._util.crypto import encrypt_with_passphrase, generate_keys
 from .....check_branch_status import get_branch_status
 from .....deployment import (
     DeploymentParameters,
@@ -45,22 +46,8 @@ from .....deployment.kubernetes.volume_clone import (
 )
 from .....deployment.settings import settings as deployment_settings
 from .....exceptions import VelaError, VelaKubernetesError
-from ...._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
-from ...._util.backups import copy_branch_backup_schedules
-from ...._util.crypto import encrypt_with_passphrase, generate_keys
-from ...._util.resourcelimit import (
-    check_available_resources_limits,
-    create_or_update_branch_provisioning,
-    delete_branch_provisioning,
-    format_limit_violation_details,
-    get_current_branch_allocations,
-)
-from ...._util.role import clone_user_role_assignment
-from ....auth import security
-from ....dependencies import BranchDep, OrganizationDep, ProjectDep, SessionDep, branch_lookup
-from ....keycloak import realm_admin
-from ....models.backups import BackupEntry
-from ....models.branch import (
+from .....models.backups import BackupEntry
+from .....models.branch import (
     ApiKeyDetails,
     Branch,
     BranchApiKeys,
@@ -82,7 +69,20 @@ from ....models.branch import (
     ResourceUsageDefinition,
     aggregate_resize_statuses,
 )
-from ....models.resources import BranchAllocationPublic, ResourceLimitsPublic, ResourceType
+from .....models.resources import BranchAllocationPublic, ResourceLimitsPublic, ResourceType
+from ...._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
+from ...._util.backups import copy_branch_backup_schedules
+from ...._util.resourcelimit import (
+    check_available_resources_limits,
+    create_or_update_branch_provisioning,
+    delete_branch_provisioning,
+    format_limit_violation_details,
+    get_current_branch_allocations,
+)
+from ...._util.role import clone_user_role_assignment
+from ....auth import security
+from ....dependencies import BranchDep, OrganizationDep, ProjectDep, SessionDep, branch_lookup
+from ....keycloak import realm_admin
 from ....settings import settings
 from .auth import api as auth_api
 

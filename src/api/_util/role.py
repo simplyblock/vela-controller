@@ -5,9 +5,9 @@ from sqlmodel import insert, select
 from ulid import ULID
 
 from ..._util import Identifier
+from ...models.branch import Branch
+from ...models.role import AccessRight, AccessRightPublic, Organization, Role, RoleAccessRight, RoleType, RoleUserLink
 from ..dependencies import SessionDep
-from ..models.branch import Branch
-from ..models.role import AccessRight, AccessRightPublic, Organization, Role, RoleAccessRight, RoleType, RoleUserLink
 
 
 async def clone_user_role_assignment(

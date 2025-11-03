@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship, SQLModel
 
-from ..._util import Identifier
+from .._util import Identifier
 from ._util import Model
 from .organization import Organization
 

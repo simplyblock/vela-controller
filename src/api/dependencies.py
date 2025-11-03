@@ -7,13 +7,13 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from .._util import Identifier
+from ..models.branch import Branch
+from ..models.organization import Organization
+from ..models.project import Project
+from ..models.role import Role
+from ..models.user import User
 from .auth import authenticated_user
 from .db import engine
-from .models.branch import Branch
-from .models.organization import Organization
-from .models.project import Project
-from .models.role import Role
-from .models.user import User
 
 
 async def _get_session():

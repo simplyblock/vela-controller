@@ -10,11 +10,10 @@ from sqlmodel import select
 from ..._util import Identifier
 from ...check_branch_status import get_branch_status
 from ...exceptions import VelaResourceLimitError
-from ..dependencies import SessionDep
-from ..models.branch import Branch
-from ..models.organization import Organization
-from ..models.project import Project
-from ..models.resources import (
+from ...models.branch import Branch
+from ...models.organization import Organization
+from ...models.project import Project
+from ...models.resources import (
     BranchAllocationPublic,
     BranchProvisioning,
     EntityType,
@@ -25,6 +24,7 @@ from ..models.resources import (
     ResourceUsageMinute,
     UsageCycle,
 )
+from ..dependencies import SessionDep
 from ..settings import settings
 
 if TYPE_CHECKING:

@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from .models.user import JWT, User
+from ..models.user import JWT, User
 from .settings import settings
 
 # HTTPBearer returns 403 instead of 401. Avoid this by raising the error manually

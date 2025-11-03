@@ -5,10 +5,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from sqlmodel import select
 
-from .access_right_utils import check_access
-from .dependencies import OrganizationDep, RoleDep, SessionDep
-from .models._util import Identifier
-from .models.role import (
+from ..models._util import Identifier
+from ..models.role import (
     AccessRight,
     PermissionAccessCheckPublic,
     PermissionCheckContextPublic,
@@ -25,6 +23,8 @@ from .models.role import (
     RoleUserLinkPublic,
     RoleWithPermissionsPublic,
 )
+from .access_right_utils import check_access
+from .dependencies import OrganizationDep, RoleDep, SessionDep
 
 router = APIRouter(tags=["role"])
 
