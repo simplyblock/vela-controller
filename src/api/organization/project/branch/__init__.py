@@ -75,6 +75,7 @@ from ....models.branch import (
     BranchServiceStatus,
     BranchSourceDeploymentParameters,
     BranchStatus,
+    BranchStatusPublic,
     BranchUpdate,
     CapaResizeKey,
     DatabaseInformation,
@@ -878,12 +879,9 @@ async def _public(branch: Branch) -> BranchPublic:
         iops=0,
         storage_bytes=None,
     )
-    _service_status = await _branch_service_status(branch)
     branch_status = await _resolve_branch_status(branch)
 
     api_keys = BranchApiKeys(anon=branch.anon_key, service_role=branch.service_key)
-
-    normalized_resize_statuses = _normalize_resize_statuses(branch)
 
     return BranchPublic(
         id=branch.id,
@@ -893,13 +891,10 @@ async def _public(branch: Branch) -> BranchPublic:
         database=database_info,
         env_type=branch.env_type,
         max_resources=max_resources,
-        resize_status=branch.resize_status,
-        resize_statuses=normalized_resize_statuses,
         assigned_labels=[],
         used_resources=used_resources,
         api_keys=api_keys,
         status=branch_status,
-        service_status=_service_status,
         pitr_enabled=False,
         created_at=branch.created_datetime,
         created_by="system",  # TODO: update it when user management is in place
@@ -1238,6 +1233,26 @@ async def detail(
     branch: BranchDep,
 ) -> BranchPublic:
     return await _public(branch)
+
+
+@instance_api.get(
+    "/status",
+    name="organizations:projects:branch:status",
+    response_model=BranchStatusPublic,
+    responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
+)
+async def status(
+    _organization: OrganizationDep,
+    _project: ProjectDep,
+    branch: BranchDep,
+) -> BranchStatusPublic:
+    normalized_resize_statuses = _normalize_resize_statuses(branch)
+    service_status = await _branch_service_status(branch)
+    return BranchStatusPublic(
+        resize_status=branch.resize_status,
+        resize_statuses=normalized_resize_statuses,
+        service_status=service_status,
+    )
 
 
 @instance_api.put(

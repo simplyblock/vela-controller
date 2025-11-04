@@ -507,18 +507,21 @@ class BranchPublic(BaseModel):
     organization_id: Identifier
     database: DatabaseInformation
     max_resources: ResourcesDefinition
-    resize_status: BranchResizeStatus
-    resize_statuses: dict[str, BranchResizeStatusEntry]
     assigned_labels: list[str]
     used_resources: ResourceUsageDefinition
     api_keys: BranchApiKeys
     status: BranchSystemStatus
-    service_status: BranchStatus
     pitr_enabled: bool
     created_at: datetime
     created_by: str
     updated_at: datetime | None = None
     updated_by: str | None = None
+
+
+class BranchStatusPublic(BaseModel):
+    resize_status: BranchResizeStatus
+    resize_statuses: dict[str, BranchResizeStatusEntry]
+    service_status: BranchStatus
 
 
 class BranchDetailResources(BaseModel):
