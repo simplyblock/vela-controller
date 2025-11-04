@@ -31,6 +31,11 @@ async def delete_branch_provisioning(session: SessionDep, branch: Branch):
     allocations = result.scalars().all()
     for allocation in allocations:
         await session.delete(allocation)
+
+    logs_result = await session.execute(select(ProvisioningLog).where(ProvisioningLog.branch_id == branch.id))
+    for log_entry in logs_result.scalars().all():
+        log_entry.branch_id = None
+
     await session.commit()
     await session.refresh(branch)
 
