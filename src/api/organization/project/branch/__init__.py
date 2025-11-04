@@ -1253,7 +1253,13 @@ async def delete(
     branch: BranchDep,
 ):
     await delete_deployment(branch.id)
-    await realm_admin("master").a_delete_realm(str(branch.id))
+    try:
+        await realm_admin("master").a_delete_realm(str(branch.id))
+    except KeycloakError as exc:
+        if getattr(exc, "response_code", None) == 404:
+            logger.error("Keycloak realm not found for branch %s during delete; continuing.", branch.id, exc_info=True)
+        else:
+            raise
     await delete_branch_provisioning(session, branch)
     await session.delete(branch)
     await session.commit()
