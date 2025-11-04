@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlmodel import SQLModel, asc, delete, select
 from ulid import ULID
 
-from ..check_branch_status import get_branch_status
 from ..models.backups import (
     BackupEntry,
     BackupLog,
@@ -18,10 +17,11 @@ from ..models.backups import (
     BackupScheduleRow,
     NextBackup,
 )
-from ..models.branch import Branch
+from ..models.branch import Branch, BranchServiceStatus
 from ..models.organization import Organization
 from ..models.project import Project
 from .backup_snapshots import create_branch_snapshot, delete_branch_snapshot
+from .organization.project.branch import refresh_branch_status
 from .settings import get_settings
 
 # ---------------------------
@@ -109,8 +109,7 @@ class BackupMonitor:
         logger.info("Found %d branches", len(branches))
 
         for branch in branches:
-            status = await get_branch_status(branch.id)
-            if status == "ACTIVE_HEALTHY":
+            if await refresh_branch_status(branch.id) == BranchServiceStatus.ACTIVE_HEALTHY:
                 try:
                     await self.process_branch(db, branch, now)
                 except Exception:
