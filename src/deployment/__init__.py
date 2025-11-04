@@ -688,8 +688,8 @@ def _cloudflare_config() -> CloudflareConfig:
 
 class KubeGatewayConfig(BaseModel):
     namespace: str = ""
-    gateway_name: str = get_settings().gateway_name
-    gateway_namespace: str = get_settings().gateway_namespace
+    gateway_name: str = Field(default_factory=lambda: get_settings().gateway_name)
+    gateway_namespace: str = Field(default_factory=lambda: get_settings().gateway_namespace)
 
     def for_namespace(self, namespace: str) -> "KubeGatewayConfig":
         return self.model_copy(update={"namespace": namespace})
