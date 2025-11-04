@@ -1,6 +1,7 @@
 from collections.abc import Iterable
 from datetime import UTC, datetime
 
+from sqlalchemy import delete
 from sqlalchemy.dialects.mysql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 from sqlmodel import select
@@ -27,6 +28,8 @@ from ..settings import settings
 
 
 async def delete_branch_provisioning(session: SessionDep, branch: Branch):
+    await session.execute(delete(ResourceUsageMinute).where(ResourceUsageMinute.branch_id == branch.id))
+
     result = await session.execute(select(BranchProvisioning).where(BranchProvisioning.branch_id == branch.id))
     allocations = result.scalars().all()
     for allocation in allocations:
