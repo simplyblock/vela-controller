@@ -9,12 +9,12 @@ from .._util import Identifier
 from ..exceptions import VelaGrafanaError
 from .settings import get_settings
 
-
 logger = logging.getLogger(__name__)
 
 
 async def _raise_for_status(response: httpx.Response) -> None:
     response.raise_for_status()
+
 
 @asynccontextmanager
 async def _client(timeout: int = 10) -> AsyncGenerator[httpx.AsyncClient]:
@@ -323,7 +323,7 @@ async def create_dashboard(org_name: str, folder_uid: str, folder_name: str) -> 
             logger.info(f"Dashboard created successfully in folder '{folder_name}'.")
 
             data = response.json()
-            return urlsplit(data.get('url')).path[1:]
+            return urlsplit(data.get("url")).path[1:]
         except httpx.HTTPError as exc:
             logger.error(f"Failed to create dashboard for folder '{folder_name}': {exc}")
             raise VelaGrafanaError(f"Failed to create dashboard: {exc}") from exc

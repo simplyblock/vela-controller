@@ -31,7 +31,13 @@ from .._util import (
     bytes_to_mib,
     check_output,
 )
-from ..exceptions import VelaCloudflareError, VelaDeployError, VelaDeploymentError, VelaKubernetesError
+from ..exceptions import (
+    VelaCloudflareError,
+    VelaDeployError,
+    VelaDeploymentError,
+    VelaGrafanaError,
+    VelaKubernetesError,
+)
 from .deployment import DeploymentParameters, DeploymentStatus
 from .grafana import create_vela_grafana_obj, delete_vela_grafana_obj
 from .kubernetes import KubernetesService
@@ -506,13 +512,16 @@ async def delete_deployment(branch_id: Identifier) -> None:
     storage_class_name = branch_storage_class_name(branch_id)
     try:
         await delete_branch_logflare_objects(branch_id)
-        await delete_vela_grafana_obj(branch_id)
         await kube_service.delete_namespace(namespace)
     except ApiException as exc:
         if exc.status == 404:
             logger.info("Namespace %s not found", namespace)
         else:
             raise
+    try:
+        await delete_vela_grafana_obj(branch_id)
+    except VelaGrafanaError:
+        logger.info("Grafana dashboard for branch %s not found", branch_id)
     try:
         await kube_service.delete_storage_class(storage_class_name)
     except ApiException as exc:
