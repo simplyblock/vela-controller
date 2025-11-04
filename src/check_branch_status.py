@@ -43,8 +43,8 @@ async def get_branch_status(branch_id: Identifier) -> BranchServiceStatus:
     try:
         namespace, vmi_name = get_db_vmi_identity(branch_id)
         vm_status = await get_virtualmachine_status(namespace, vmi_name)
-    except VelaDeploymentError:
-        logger.exception("Failed to query VM status for branch %s", branch_id)
+    except VelaDeploymentError as exc:
+        logger.error("Failed to query VM status for branch %s: %s", branch_id, exc)
         return "UNKNOWN"
     except Exception:  # pragma: no cover - defensive guard
         logger.exception("Unexpected error resolving branch status for %s", branch_id)
