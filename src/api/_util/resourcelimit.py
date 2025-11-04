@@ -1,5 +1,6 @@
 from collections.abc import Iterable
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING, cast
 
 from sqlalchemy import delete
 from sqlalchemy.dialects.mysql import insert
@@ -26,9 +27,16 @@ from ..models.resources import (
 )
 from ..settings import settings
 
+if TYPE_CHECKING:
+    from sqlalchemy.sql.elements import ColumnElement
+
 
 async def delete_branch_provisioning(session: SessionDep, branch: Branch):
-    await session.execute(delete(ResourceUsageMinute).where(ResourceUsageMinute.branch_id == branch.id))
+    resource_usage_filter = cast(
+        "ColumnElement[bool]",
+        ResourceUsageMinute.branch_id == branch.id,
+    )
+    await session.execute(delete(ResourceUsageMinute).where(resource_usage_filter))
 
     result = await session.execute(select(BranchProvisioning).where(BranchProvisioning.branch_id == branch.id))
     allocations = result.scalars().all()

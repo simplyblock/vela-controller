@@ -759,43 +759,103 @@ async def _restore_branch_environment_task(
         )
 
 
+def _resolve_db_host(branch: Branch) -> str | None:
+    host = branch.endpoint_domain or branch_domain(branch.id)
+    return host or deployment_settings.deployment_host
+
+
+def _build_connection_string(user: str, database: str, port: int) -> str:
+    return "postgresql://{user}@{host}:{port}/{database}".format(  # noqa: UP032
+        user=user,
+        host="db",
+        port=port,
+        database=database,
+    )
+
+
+def _ensure_service_port(url: str, port: int) -> str:
+    if port == 443:
+        return url
+    split = urlsplit(url)
+    if not split.netloc or ":" in split.netloc:
+        return url
+    netloc = f"{split.netloc}:{port}"
+    return urlunsplit((split.scheme, netloc, split.path, split.query, split.fragment))
+
+
+def _service_endpoint_url(rest_endpoint: str | None, api_domain: str | None, db_host: str | None) -> str:
+    if rest_endpoint:
+        candidate = rest_endpoint.removesuffix("/rest")
+    elif api_domain:
+        candidate = f"https://{api_domain}"
+    else:
+        candidate = f"https://{db_host or ''}"
+    return _ensure_service_port(candidate, deployment_settings.deployment_service_port)
+
+
+def _normalize_resize_statuses(branch: Branch) -> dict[str, BranchResizeStatusEntry]:
+    statuses = branch.resize_statuses or {}
+    if not statuses:
+        return {}
+
+    normalized: dict[str, BranchResizeStatusEntry] = {}
+    for service, entry in statuses.items():
+        if isinstance(entry, BranchResizeStatusEntry):
+            normalized[service] = entry
+            continue
+        try:
+            normalized[service] = BranchResizeStatusEntry.model_validate(entry)
+        except ValidationError:
+            logger.warning(
+                "Skipping invalid resize status entry for branch %s service %s",
+                branch.id,
+                service,
+            )
+    return normalized
+
+
+_DEFAULT_SERVICE_STATUS = BranchStatus(
+    database="UNKNOWN",
+    realtime="UNKNOWN",
+    storage="UNKNOWN",
+    meta="UNKNOWN",
+    rest="UNKNOWN",
+)
+
+
+async def _branch_service_status(branch: Branch) -> BranchStatus:
+    namespace, _ = get_db_vmi_identity(branch.id)
+    try:
+        return await _collect_branch_service_health(namespace, storage_enabled=branch.enable_file_storage)
+    except Exception:  # pragma: no cover - defensive guard
+        logging.exception("Failed to determine service health via socket probes")
+        status = _DEFAULT_SERVICE_STATUS.model_copy(deep=True)
+        if not branch.enable_file_storage:
+            status.storage = "STOPPED"
+        return status
+
+
+async def _resolve_branch_status(branch: Branch) -> BranchServiceStatus:
+    try:
+        return await get_branch_status(branch.id)
+    except Exception:  # pragma: no cover - defensive guard
+        logger.exception("Failed to determine branch status for %s", branch.id)
+        return "UNKNOWN"
+
+
 async def _public(branch: Branch) -> BranchPublic:
     project = await branch.awaitable_attrs.project
 
-    db_host = branch.endpoint_domain or branch_domain(branch.id)
-    if not db_host:
-        db_host = deployment_settings.deployment_host
+    db_host = _resolve_db_host(branch) or ""
     port = 5432
 
     # pg-meta and pg are in the same network. So password is not required in connection string.
-    connection_string = "postgresql://{user}@{host}:{port}/{database}".format(  # noqa: UP032
-        user=branch.database_user,
-        host="db",
-        port=port,
-        database="postgres",
-    )
+    connection_string = _build_connection_string(branch.database_user, "postgres", port)
 
     rest_endpoint = branch_rest_endpoint(branch.id)
     api_domain = branch_api_domain(branch.id)
-    service_port = deployment_settings.deployment_service_port
-
-    def _ensure_service_port(url: str) -> str:
-        if service_port == 443:
-            return url
-        split = urlsplit(url)
-        if not split.netloc or ":" in split.netloc:
-            return url
-        netloc = f"{split.netloc}:{service_port}"
-        return urlunsplit((split.scheme, netloc, split.path, split.query, split.fragment))
-
-    if rest_endpoint:
-        service_endpoint = rest_endpoint.removesuffix("/rest")
-    elif api_domain:
-        service_endpoint = f"https://{api_domain}"
-    else:
-        # Fall back to using the same host as the database when dedicated domains are unavailable.
-        service_endpoint = f"https://{db_host}"
-    service_endpoint = _ensure_service_port(service_endpoint)
+    # Fall back to using the same host as the database when dedicated domains are unavailable.
+    service_endpoint = _service_endpoint_url(rest_endpoint, api_domain, db_host)
 
     max_resources = branch.provisioned_resources()
 
@@ -818,40 +878,12 @@ async def _public(branch: Branch) -> BranchPublic:
         iops=0,
         storage_bytes=None,
     )
-    namespace, _ = get_db_vmi_identity(branch.id)
-    try:
-        _service_status = await _collect_branch_service_health(namespace, storage_enabled=branch.enable_file_storage)
-    except Exception:
-        logging.exception("Failed to determine service health via socket probes")
-        _service_status = BranchStatus(
-            database="UNKNOWN",
-            realtime="UNKNOWN",
-            storage="STOPPED" if not branch.enable_file_storage else "UNKNOWN",
-            meta="UNKNOWN",
-            rest="UNKNOWN",
-        )
-
-    try:
-        branch_status = await get_branch_status(branch.id)
-    except Exception:
-        logger.exception("Failed to determine branch status for %s", branch.id)
-        branch_status = "UNKNOWN"
+    _service_status = await _branch_service_status(branch)
+    branch_status = await _resolve_branch_status(branch)
 
     api_keys = BranchApiKeys(anon=branch.anon_key, service_role=branch.service_key)
 
-    normalized_resize_statuses: dict[str, BranchResizeStatusEntry] = {}
-    for service, entry in (branch.resize_statuses or {}).items():
-        if isinstance(entry, BranchResizeStatusEntry):
-            normalized_resize_statuses[service] = entry
-            continue
-        try:
-            normalized_resize_statuses[service] = BranchResizeStatusEntry.model_validate(entry)
-        except ValidationError:
-            logger.warning(
-                "Skipping invalid resize status entry for branch %s service %s",
-                branch.id,
-                service,
-            )
+    normalized_resize_statuses = _normalize_resize_statuses(branch)
 
     return BranchPublic(
         id=branch.id,
