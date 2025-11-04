@@ -383,13 +383,7 @@ def _configure_vela_values(
 
     db_spec = values_content.setdefault("db", {})
     db_spec.setdefault("image", {})["tag"] = parameters.database_image_tag
-    service_cfg = db_spec.setdefault("service", {})
-    service_cfg["type"] = "LoadBalancer"
-    service_cfg["ipFamilies"] = ["IPv6"]
-    service_cfg["ipFamilyPolicy"] = "SingleStack"
-    cluster_service_cfg = service_cfg.setdefault("clusterIP", {})
-    cluster_service_cfg["ipFamilies"] = ["IPv4"]
-    cluster_service_cfg["ipFamilyPolicy"] = "SingleStack"
+    db_spec.setdefault("service", {})
 
     secrets = values_content.setdefault("secret", {})
     secrets.setdefault("jwt", {}).update(
