@@ -1471,15 +1471,15 @@ async def resize(
 ):
     branch_in_session = await session.merge(branch)
 
-    if parameters.memory_bytes is not None:
-        current_memory = branch_in_session.memory
-        requested_memory = parameters.memory_bytes
-        if current_memory is not None and requested_memory < current_memory:
+    if parameters.storage_size is not None:
+        current_storage = branch_in_session.storage_size
+        requested_storage = parameters.storage_size
+        if current_storage is not None and requested_storage < current_storage:
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    "Reducing branch memory is not supported. "
-                    f"Current allocation is {current_memory} bytes, requested {requested_memory} bytes."
+                    "Reducing branch storage is not supported. "
+                    f"Current allocation is {current_storage} bytes, requested {requested_storage} bytes."
                 ),
             )
 
