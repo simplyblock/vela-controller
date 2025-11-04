@@ -269,7 +269,7 @@ def check_resource_limit(requested: int | None, available: int | None) -> bool:
         return False
     if available is None:
         return True
-    return requested >= available
+    return requested > available
 
 
 def format_limit_violation_details(
