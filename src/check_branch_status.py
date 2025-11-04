@@ -1,53 +1,35 @@
 import logging
-from typing import Final
 
-from ._util import Identifier, StatusType
-from .deployment import get_db_vmi_identity
-from .deployment.kubernetes.kubevirt import get_virtualmachine_status
-from .exceptions import VelaDeploymentError
-from .models.branch import BranchServiceStatus
+from sqlmodel.ext.asyncio.session import AsyncSession
+
+from ._util import Identifier
+from .api.organization.project.branch import refresh_branch_status
+from .models.branch import Branch, BranchServiceStatus
 
 logger = logging.getLogger(__name__)
 
-_VM_STATUS_TO_BRANCH_STATUS: Final[dict[StatusType, BranchServiceStatus]] = {
-    "Stopped": "STOPPED",
-    "Provisioning": "STARTING",
-    "Starting": "STARTING",
-    "Running": "ACTIVE_HEALTHY",
-    "Paused": "STOPPED",
-    "Stopping": "STOPPING",
-    "Terminating": "DELETING",
-    "CrashLoopBackOff": "ACTIVE_UNHEALTHY",
-    "Migrating": "UPDATING",
-    "Unknown": "UNKNOWN",
-    "ErrorUnschedulable": "ERROR",
-    "ErrImagePull": "ERROR",
-    "ImagePullBackOff": "ERROR",
-    "ErrorPvcNotFound": "ERROR",
-    "DataVolumeError": "ERROR",
-    "WaitingForVolumeBinding": "STARTING",
-    "WaitingForReceiver": "STARTING",
-    "UNKNOWN": "UNKNOWN",
-}
+
+async def _resolve_branch_status(session: AsyncSession, branch_id: Identifier) -> BranchServiceStatus:
+    branch = await session.get(Branch, branch_id)
+    if branch is None:
+        logger.warning("Branch %s not found while resolving status; returning UNKNOWN", branch_id)
+        return BranchServiceStatus.UNKNOWN
+    status = branch.status or BranchServiceStatus.UNKNOWN
+    if isinstance(status, BranchServiceStatus):
+        return status
+    member = BranchServiceStatus._value2member_map_.get(status) if status else None
+    if member is None:
+        logger.warning("Encountered unknown branch status %s; returning UNKNOWN", status)
+        return BranchServiceStatus.UNKNOWN
+    return member
 
 
-def _map_vm_status_to_branch_status(status: StatusType) -> BranchServiceStatus:
-    mapped = _VM_STATUS_TO_BRANCH_STATUS.get(status)
-    if mapped is None:
-        logger.warning("Unmapped VM status '%s'; returning UNKNOWN", status)
-        return "UNKNOWN"
-    return mapped
+async def get_branch_status(
+    branch_id: Identifier,
+    *,
+    session: AsyncSession | None = None,
+) -> BranchServiceStatus:
+    if session is not None:
+        return await _resolve_branch_status(session, branch_id)
 
-
-async def get_branch_status(branch_id: Identifier) -> BranchServiceStatus:
-    try:
-        namespace, vmi_name = get_db_vmi_identity(branch_id)
-        vm_status = await get_virtualmachine_status(namespace, vmi_name)
-    except VelaDeploymentError as exc:
-        logger.error("Failed to query VM status for branch %s: %s", branch_id, exc)
-        return "UNKNOWN"
-    except Exception:  # pragma: no cover - defensive guard
-        logger.exception("Unexpected error resolving branch status for %s", branch_id)
-        return "UNKNOWN"
-
-    return _map_vm_status_to_branch_status(vm_status)
+    return await refresh_branch_status(branch_id)
