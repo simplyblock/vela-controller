@@ -51,9 +51,16 @@ async def refresh_memory_status(session: AsyncSession, branch: Branch) -> None:
     if target_memory is None:
         return
 
-    pod_satisfies_request = (
-        pod_memory_bytes is not None and target_memory is not None and pod_memory_bytes >= target_memory
-    )
+    reducing_memory = False
+    if branch.memory is not None and target_memory is not None:
+        reducing_memory = target_memory < branch.memory
+
+    pod_satisfies_request = False
+    if pod_memory_bytes is not None and target_memory is not None:
+        if reducing_memory:
+            pod_satisfies_request = pod_memory_bytes <= target_memory
+        else:
+            pod_satisfies_request = pod_memory_bytes >= target_memory
     new_status = "COMPLETED" if pod_satisfies_request else "RESIZING"
 
     branch_memory_needs_update = new_status == "COMPLETED" and branch.memory != target_memory
