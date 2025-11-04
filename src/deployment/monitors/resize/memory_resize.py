@@ -33,34 +33,13 @@ async def refresh_memory_status(session: AsyncSession, branch: Branch) -> None:
     requested_at = _parse_timestamp(entry_payload.get("requested_at") or entry_payload.get("timestamp"))
 
     namespace, vmi_name = get_db_vmi_identity(branch.id)
-    pod_memory_bytes: int | None = None
-
-    try:
-        _pod_name, pod_memory_quantity = await kube_service.get_vm_pod_name(
-            namespace,
-            vmi_name,
-            earliest_start_time=requested_at,
-        )
-    except VelaKubernetesError as exc:
-        logger.debug("Waiting for VM pod during memory resize for branch %s: %s", branch.id, exc)
-        pod_memory_quantity = None
-    else:
-        pod_memory_bytes = quantity_to_bytes(pod_memory_quantity)
+    pod_memory_bytes = await _resolve_pod_memory_bytes(namespace, vmi_name, requested_at, branch.id)
 
     target_memory = await kube_service.get_vm_memory_bytes(namespace, vmi_name)
     if target_memory is None:
         return
 
-    reducing_memory = False
-    if branch.memory is not None and target_memory is not None:
-        reducing_memory = target_memory < branch.memory
-
-    pod_satisfies_request = False
-    if pod_memory_bytes is not None and target_memory is not None:
-        if reducing_memory:
-            pod_satisfies_request = pod_memory_bytes <= target_memory
-        else:
-            pod_satisfies_request = pod_memory_bytes >= target_memory
+    pod_satisfies_request = _pod_memory_satisfies_request(target_memory, pod_memory_bytes, branch.memory)
     new_status = "COMPLETED" if pod_satisfies_request else "RESIZING"
 
     branch_memory_needs_update = new_status == "COMPLETED" and branch.memory != target_memory
@@ -97,6 +76,36 @@ async def refresh_memory_status(session: AsyncSession, branch: Branch) -> None:
 
 def _timestamp_now() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+async def _resolve_pod_memory_bytes(
+    namespace: str,
+    vmi_name: str,
+    requested_at: datetime | None,
+    branch_id: Any,
+) -> int | None:
+    try:
+        _pod_name, pod_memory_quantity = await kube_service.get_vm_pod_name(
+            namespace,
+            vmi_name,
+            earliest_start_time=requested_at,
+        )
+    except VelaKubernetesError as exc:
+        logger.debug("Waiting for VM pod during memory resize for branch %s: %s", branch_id, exc)
+        return None
+    return quantity_to_bytes(pod_memory_quantity)
+
+
+def _pod_memory_satisfies_request(
+    target_memory: int | None,
+    pod_memory_bytes: int | None,
+    previous_memory: int | None,
+) -> bool:
+    if pod_memory_bytes is None or target_memory is None:
+        return False
+    if previous_memory is not None and target_memory < previous_memory:
+        return pod_memory_bytes <= target_memory
+    return pod_memory_bytes >= target_memory
 
 
 def _parse_timestamp(value: Any) -> datetime | None:
