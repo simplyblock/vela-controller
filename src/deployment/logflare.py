@@ -1,5 +1,5 @@
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 import httpx
@@ -17,9 +17,9 @@ async def _raise_for_status(response: Response) -> None:
 
 
 @asynccontextmanager
-async def _client(timeout: int = 10) -> AsyncIterator[httpx.AsyncClient]:
+async def _client(timeout: int = 10) -> AsyncGenerator[httpx.AsyncClient]:
     async with httpx.AsyncClient(
-        base_url=f"{get_settings().logflare_url}/api",
+        base_url=f"{get_settings().logflare_url}/api/",
         timeout=timeout,
         headers={
             "Content-Type": "application/json",
