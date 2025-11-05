@@ -1,11 +1,12 @@
-import logging
 import json
+import logging
+from pathlib import Path
 
 import httpx
 
-from . import _require_asset
 from .._util import Identifier
 from ..exceptions import VelaGrafanaError
+from . import _require_asset
 from .settings import settings
 
 auth = (settings.grafana_security_admin_user, settings.grafana_security_admin_password)
@@ -293,13 +294,10 @@ async def remove_user_from_team(team_id: int, user_id: int):
 
 # --- DASHBOARD CREATION ---
 async def create_dashboard(org_name: str, folder_uid: str, folder_name: str):
-    """
-    Create a Grafana dashboard from a local JSON file and inject org/project variables.
-    """
     dashboard_path = _require_asset(Path(__file__).with_name("pgexporter.json"), "pgexporter json")
 
     try:
-        with open(dashboard_path, "r") as f:
+        with open(dashboard_path) as f:
             dashboard = json.load(f)
     except Exception as e:
         logger.error(f"Failed to load dashboard JSON from {dashboard_path}: {e}")
@@ -346,6 +344,5 @@ async def create_dashboard(org_name: str, folder_uid: str, folder_name: str):
             response.raise_for_status()
             logger.info(f"Dashboard '{dashboard['title']}' created successfully in folder '{folder_name}'.")
         except httpx.HTTPError as exc:
-            error_message = f"Failed to create dashboard for folder '{folder_name}': {exc.response.text if exc.response else str(exc)}"
-            logger.error(error_message)
-            raise VelaGrafanaError(error_message) from exc
+            logger.error(f"Failed to create dashboard for folder '{folder_name}': {exc}")
+            raise VelaGrafanaError(f"Failed to create dashboard: {exc}") from exc
