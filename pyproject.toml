@@ -24,10 +24,11 @@ dependencies = [
     'python-ulid',
     'requests',
     'cloudflare',
+    'alembic',
 ]
 
 [tool.setuptools]
-package-dir = {'simplyblock.vela' = 'src'}
+package-dir = {'simplyblock.vela' = 'src', 'simplyblock.vela.models.migrations' = 'migrations'}
 packages = ['simplyblock.vela']
 
 
@@ -53,11 +54,18 @@ labels = ['static']
 deps = ['ruff']
 commands = [['ruff', 'format', '--check']]
 
+[tool.tox.env.alembic]
+description = 'Manage migrations'
+deps = ['testcontainers', 'psycopg2']
+commands = [['python3', 'scripts/alembic.py', '{posargs}']]
+passenv = ['DOCKER_HOST']
+
 
 [tool.ruff]
 target-version = 'py313'
 line-length = 120
 src = ['src']
+extend-exclude = ["src/models/migrations/versions/*"]
 
 [tool.ruff.lint]
 select = [
@@ -88,3 +96,7 @@ select = [
 python_version = '3.13'
 check_untyped_defs = true
 follow_untyped_imports = true
+
+
+[tool.alembic]
+script_location = "%(here)s/src/models/migrations"
