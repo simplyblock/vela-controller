@@ -113,11 +113,23 @@ async def create(
             )
         if requested_limit > organization_limit.max_total:
             raise HTTPException(
-                422,
-                (
-                    f"project_limits.{resource_name} ({requested_limit}) exceeds organization's limit "
-                    f"({organization_limit.max_total})"
-                ),
+                422, {
+                    "detail": [
+                        {
+                            "type": "exceeded",
+                            "loc": [
+                                "body",
+                                "project_limits",
+                                str(resource_type)
+                            ],
+                            "msg": f"Requested limit {requested_limit} exceeds organization limit {organization_limit.max_total}",
+                            "input": requested_limit,
+                            "ctx": {
+                                "limit": organization_limit.max_total,
+                            }
+                        }
+                    ]
+                }
             )
 
     entity = Project(
