@@ -1,22 +1,14 @@
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Any
 from uuid import UUID
 
-from pydantic import StringConstraints
 from sqlalchemy import UUID as SQLAlchemyUUID  # noqa: N811
 from sqlalchemy import TypeDecorator
 from sqlmodel import Field as SQLField
 from sqlmodel import SQLModel
 from ulid import ULID
 
-from ..._util import Identifier, dbstr
-
-Name = Annotated[
-    dbstr,
-    StringConstraints(
-        min_length=1,
-    ),
-]
+from ..._util import Identifier
 
 
 class _DatabaseIdentifier(TypeDecorator):

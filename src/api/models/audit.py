@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, EmailStr
 
-from ._util import Name
+from ..._util import Name
 
 
 class ActionMetadata(BaseModel):
