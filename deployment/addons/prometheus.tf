@@ -34,4 +34,9 @@ resource "helm_release" "prometheus" {
     name  = "server.service.servicePort"
     value = 9090
   }
+  
+  set {
+    name  = "server.configMapOverrideName"
+    value = "vela-prometheus-config"
+  }
 }

@@ -8,6 +8,31 @@ type: Opaque
 stringData:
   VELA_GRAFANA_SECURITY_ADMIN_USER: "{{ .Values.monitoring.VELA_GRAFANA_SECURITY_ADMIN_USER }}"
   VELA_GRAFANA_SECURITY_ADMIN_PASSWORD: "{{ .Values.monitoring.VELA_GRAFANA_SECURITY_ADMIN_PASSWORD }}"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-vela-prometheus-config
+  labels:
+    app: vela-prometheus
+  namespace: {{ .Release.Namespace }}
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      external_labels:
+        monitor: 'codelab-monitor'
+
+    scrape_configs:
+      - job_name: "postgres"
+        kubernetes_sd_configs:
+          - role: service
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_label_app]
+            regex: pgexporter
+            action: keep
+
 ---
 apiVersion: v1
 kind: ConfigMap

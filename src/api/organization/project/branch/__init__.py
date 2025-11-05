@@ -111,6 +111,7 @@ _BRANCH_SERVICE_ENDPOINTS: dict[str, tuple[str, int]] = {
     "storage": ("supabase-supabase-storage", 5000),
     "meta": ("supabase-supabase-meta", 8080),
     "rest": ("supabase-supabase-rest", 3000),
+    "pgexporter": ("supabase-supabase-pgexporter", 9187),
 }
 
 _PGBOUNCER_ADMIN_USER = "pgbouncer_admin"

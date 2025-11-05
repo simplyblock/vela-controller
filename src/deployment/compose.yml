@@ -14,6 +14,13 @@ services:
     - supabase
     ports:
     - 5432:5432
+  pgexporter:
+    container_name: vela-pgexporter
+    image: prometheuscommunity/postgres-exporter:v0.17.1
+    environment:
+      DATA_SOURCE_NAME: "postgresql://postgres@db:5432/demo?sslmode=disable"
+    ports:
+    - 9187:9187
   rest:
     container_name: vela-rest
     image: docker.io/postgrest/postgrest:v12.0.1
