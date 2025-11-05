@@ -26,7 +26,7 @@ from ..._util import (
     DBPassword,
     Identifier,
 )
-from ...deployment import DeploymentParameters
+from ...deployment.deployment import DeploymentParameters
 from .._util.crypto import (
     decrypt_with_base64_key,
     decrypt_with_passphrase,
