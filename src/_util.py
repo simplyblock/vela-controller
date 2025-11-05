@@ -115,6 +115,13 @@ def single(xs):
 
 dbstr = Annotated[str, Field(pattern=r"^[^\x00]*$")]
 
+Name = Annotated[
+    dbstr,
+    StringConstraints(
+        min_length=1,
+    ),
+]
+
 DBPassword = Annotated[
     dbstr,
     StringConstraints(

@@ -6,9 +6,9 @@ from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship, select
 
-from ..._util import Identifier
+from ..._util import Identifier, Name
 from ..db import SessionDep
-from ._util import Model, Name
+from ._util import Model
 from .membership import Membership
 
 if TYPE_CHECKING:

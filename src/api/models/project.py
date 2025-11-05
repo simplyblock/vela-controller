@@ -14,9 +14,10 @@ from ..._util import (
     STORAGE_SIZE_MIN,
     VCPU_MILLIS_MIN,
     Identifier,
+    Name,
 )
 from ..db import SessionDep
-from ._util import Model, Name
+from ._util import Model
 from .organization import Organization, OrganizationDep
 from .resources import ResourceLimitsPublic
 

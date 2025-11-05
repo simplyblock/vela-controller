@@ -26,12 +26,12 @@ from .._util import (
     STORAGE_SIZE_CONSTRAINTS,
     DBPassword,
     Identifier,
+    Name,
     StatusType,
     bytes_to_gb,
     bytes_to_mib,
     check_output,
 )
-from ..api.models._util import Name
 from ..exceptions import VelaCloudflareError, VelaDeployError, VelaDeploymentError, VelaKubernetesError
 from .grafana import create_vela_grafana_obj, delete_vela_grafana_obj
 from .kubernetes import KubernetesService

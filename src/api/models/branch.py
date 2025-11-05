@@ -25,6 +25,7 @@ from ..._util import (
     STORAGE_SIZE_CONSTRAINTS,
     DBPassword,
     Identifier,
+    Name,
 )
 from ...deployment import DeploymentParameters
 from .._util.crypto import (
@@ -34,7 +35,7 @@ from .._util.crypto import (
     encrypt_with_random_passphrase,
 )
 from ..db import SessionDep
-from ._util import Model, Name
+from ._util import Model
 from .project import Project, ProjectDep
 
 
