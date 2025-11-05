@@ -120,7 +120,7 @@ async def create(
                             "loc": [
                                 "body",
                                 "project_limits",
-                                str(resource_type)
+                                resource_type.name
                             ],
                             "msg": f"Requested limit {requested_limit} exceeds organization limit {organization_limit.max_total}",
                             "input": requested_limit,
