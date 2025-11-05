@@ -1,7 +1,9 @@
 import logging
+import json
 
 import httpx
 
+from . import _require_asset
 from .._util import Identifier
 from ..exceptions import VelaGrafanaError
 from .settings import settings
@@ -291,49 +293,44 @@ async def remove_user_from_team(team_id: int, user_id: int):
 
 # --- DASHBOARD CREATION ---
 async def create_dashboard(org_name: str, folder_uid: str, folder_name: str):
-    dashboard_payload = {
-        "dashboard": {
-            "id": None,
-            "uid": None,
-            "title": f"{folder_name} Metrics",
-            "tags": [folder_name],
-            "timezone": "browser",
-            "schemaVersion": 36,
-            "version": 0,
-            "panels": [
-                {
-                    "type": "timeseries",
-                    "title": "Example Metric",
-                    "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0},
-                    "datasource": {"type": "prometheus", "uid": "eev2sidbr5ekgb"},
-                    "targets": [
-                        {
-                            "expr": 'custom_metric_value{org="$organization",proj="$project"}',
-                            "legendFormat": "{{instance}}",
-                            "refId": "A",
-                        }
-                    ],
-                }
-            ],
-            "templating": {
-                "list": [
-                    {
-                        "name": "organization",
-                        "type": "constant",
-                        "label": org_name,
-                        "query": org_name,
-                        "current": {"selected": True, "text": org_name, "value": org_name},
-                    },
-                    {
-                        "name": "project",
-                        "type": "constant",
-                        "label": folder_name,
-                        "query": folder_name,
-                        "current": {"selected": True, "text": folder_name, "value": folder_name},
-                    },
-                ]
+    """
+    Create a Grafana dashboard from a local JSON file and inject org/project variables.
+    """
+    dashboard_path = _require_asset(Path(__file__).with_name("pgexporter.json"), "pgexporter json")
+
+    try:
+        with open(dashboard_path, "r") as f:
+            dashboard = json.load(f)
+    except Exception as e:
+        logger.error(f"Failed to load dashboard JSON from {dashboard_path}: {e}")
+        raise
+
+    dashboard["id"] = None
+    dashboard["uid"] = None
+
+    dashboard["title"] = f"{folder_name} PostgreSQL Metrics"
+
+    dashboard["templating"] = {
+        "list": [
+            {
+                "name": "organization",
+                "type": "constant",
+                "label": "Organization",
+                "query": org_name,
+                "current": {"selected": True, "text": org_name, "value": org_name},
             },
-        },
+            {
+                "name": "project",
+                "type": "constant",
+                "label": "Project",
+                "query": folder_name,
+                "current": {"selected": True, "text": folder_name, "value": folder_name},
+            },
+        ]
+    }
+
+    dashboard_payload = {
+        "dashboard": dashboard,
         "folderUid": folder_uid,
         "overwrite": True,
     }
@@ -341,10 +338,14 @@ async def create_dashboard(org_name: str, folder_uid: str, folder_name: str):
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post(
-                f"{settings.grafana_url}/api/dashboards/db", auth=auth, headers=headers, json=dashboard_payload
+                f"{settings.grafana_url}/api/dashboards/db",
+                auth=auth,
+                headers=headers,
+                json=dashboard_payload,
             )
             response.raise_for_status()
-            logger.info(f"Dashboard created successfully in folder '{folder_name}'.")
+            logger.info(f"Dashboard '{dashboard['title']}' created successfully in folder '{folder_name}'.")
         except httpx.HTTPError as exc:
-            logger.error(f"Failed to create dashboard for folder '{folder_name}': {exc}")
-            raise VelaGrafanaError(f"Failed to create dashboard: {exc}") from exc
+            error_message = f"Failed to create dashboard for folder '{folder_name}': {exc.response.text if exc.response else str(exc)}"
+            logger.error(error_message)
+            raise VelaGrafanaError(error_message) from exc
