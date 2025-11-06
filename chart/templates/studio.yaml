@@ -1,5 +1,4 @@
 {{- if .Values.studio.enabled }}
-{{- $env := default (dict) .Values.studio.env }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -55,12 +54,28 @@ kind: ConfigMap
 metadata:
   name: vela-studio-config
 data:
-{{- with .Values.analytics.LOGFLARE_PRIVATE_ACCESS_TOKEN }}
-  LOGFLARE_PRIVATE_ACCESS_TOKEN: {{ . | quote }}
-{{- end }}
-{{- range $key, $value := $env }}
-  {{ $key }}: {{ $value | quote }}
-{{- end }}
+  LOGFLARE_PRIVATE_ACCESS_TOKEN: {{ .Values.analytics.LOGFLARE_PRIVATE_ACCESS_TOKEN | quote }}
+  PLATFORM_PG_META_URL: {{ .Values.studio.env.PLATFORM_PG_META_URL | quote }}
+  SUPABASE_URL: "https://{{ .Values.domain }}:{{ .Values.port }}"
+  SUPABASE_ANON_KEY: {{ .Values.studio.env.SUPABASE_ANON_KEY | quote }}
+  SUPABASE_SERVICE_KEY: {{ .Values.studio.env.SUPABASE_SERVICE_KEY | quote }}
+  OPENAI_API_KEY: {{ .Values.studio.env.OPENAI_API_KEY | quote }}
+  AUTH_JWT_SECRET: {{ .Values.studio.env.AUTH_JWT_SECRET | quote }}
+  NEXTAUTH_SECRET: {{ .Values.studio.env.NEXTAUTH_SECRET | quote }}
+  LOGFLARE_URL: "https://{{ .Values.domain }}:{{ .Values.port }}/logs"
+  VELA_PLATFORM_KEYCLOAK_ISSUER: "https://{{ .Values.domain }}:{{ .Values.port }}/auth/realms/vela"
+  VELA_PLATFORM_KEYCLOAK_CLIENT_ID: {{ .Values.studio.env.VELA_PLATFORM_KEYCLOAK_CLIENT_ID | quote }}
+  VELA_PLATFORM_KEYCLOAK_CLIENT_SECRET: {{ .Values.studio.env.VELA_PLATFORM_KEYCLOAK_CLIENT_SECRET | quote }}
+  VELA_PLATFORM_KEYCLOAK_AUTHORIZATION_ENDPOINT: "https://{{ .Values.domain }}:{{ .Values.port }}/auth/realms/vela/protocol/openid-connect/auth"
+  VELA_PLATFORM_KEYCLOAK_TOKEN_ENDPOINT: "http://vela-auth-service:8080/auth/realms/vela/protocol/openid-connect/token"
+  VELA_PLATFORM_KEYCLOAK_USERINFO_ENDPOINT: "http://vela-auth-service:8080/auth/realms/vela/protocol/openid-connect/userinfo"
+  VELA_PLATFORM_KEYCLOAK_LOGOUT_ENDPOINT: "http://vela-auth-service:8080/auth/protocol/openid-connect/logout"
+  VELA_PLATFORM_KEYCLOAK_JWKS_ENDPOINT: "http://vela-auth-service:8080/auth/realms/vela/protocol/openid-connect/certs"
+  VELA_PLATFORM_EXT_SIGN_IN_URL: "https://{{ .Values.domain }}:{{ .Values.port }}/sign-in"
+  VELA_PLATFORM_EXT_BASE_URL: "https://{{ .Values.domain }}:{{ .Values.port }}/"
+  NEXTAUTH_URL: "https://{{ .Values.domain }}:{{ .Values.port }}"
+  VELA_PLATFORM_EXT_API_SERVICE_URL: "https://{{ .Values.domain }}:{{ .Values.port }}/api"
+  VELA_PLATFORM_URL: "http://vela-controller-service:8000"
 ---
 apiVersion: v1
 kind: Service

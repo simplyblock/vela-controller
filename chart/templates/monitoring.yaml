@@ -80,7 +80,7 @@ spec:
             - name: "GF_USERS_ALLOW_SIGN_UP"
               value: "false"
             - name: "GF_AUTH_JWT_JWK_SET_URL" 
-              value: "https://{{ .Values.domain }}:30808/auth/realms/vela/protocol/openid-connect/certs"
+              value: "https://{{ .Values.domain }}:{{ .Values.port }}/auth/realms/vela/protocol/openid-connect/certs"
           volumeMounts:
             - name: datasource-config
               mountPath: /etc/grafana/provisioning/datasources
