@@ -6,7 +6,7 @@ import httpx
 
 from .._util import Identifier
 from ..exceptions import VelaGrafanaError
-from . import _require_asset
+from ._util import _require_asset
 from .settings import settings
 
 auth = (settings.grafana_security_admin_user, settings.grafana_security_admin_password)
@@ -313,14 +313,14 @@ async def create_dashboard(org_name: str, folder_uid: str, folder_name: str):
             {
                 "name": "organization",
                 "type": "constant",
-                "label": "Organization",
+                "label": org_name,
                 "query": org_name,
                 "current": {"selected": True, "text": org_name, "value": org_name},
             },
             {
                 "name": "project",
                 "type": "constant",
-                "label": "Project",
+                "label": folder_name,
                 "query": folder_name,
                 "current": {"selected": True, "text": folder_name, "value": folder_name},
             },
