@@ -14,6 +14,7 @@ containerSecurityContext:
     type: 'RuntimeDefault'
 
 domain: staging.vela.run
+port: 30808
 
 keycloak:
   realmFile: files/realm.json
@@ -27,20 +28,17 @@ controller:
     password: example123456
   env:
     VELA_ROOT_PATH: '/vela'
-    VELA_JWT_SECRET: 'http://vela-auth-service:8080/auth/realms/vela/protocol/openid-connect/certs'
     VELA_CORS_ORIGINS: '["http://localhost:3000"]' # TODO: remove this for prod
     VELA_PGMETA_CRYPTO_KEY: 'secret'
-    VELA_KEYCLOAK_URL: 'http://vela-auth-service:8080/auth/'
     VELA_KEYCLOAK_ADMIN_NAME: 'admin'
     VELA_KEYCLOAK_ADMIN_SECRET: 'admin'
     VELA_CLOUDFLARE_API_TOKEN: 'your_cloudflare_api_token'
     VELA_CLOUDFLARE_ZONE_ID: 'your_cloudflare_zone_id'
-    VELA_CLOUDFLARE_BRANCH_REF_CNAME: 'staging.vela.run'
-    VELA_CLOUDFLARE_DOMAIN_SUFFIX: 'staging.vela.run'
     VELA_DEPLOYMENT_NAMESPACE_PREFIX: 'vela'
-    VELA_DEPLOYMENT_SERVICE_PORT: '30808'
-    VELA_LOGFLARE_URL: "http://vela-logflare:4000"
-    VELA_GRAFANA_URL: "http://vela-grafana:3000"
+    VELA_KEYCLOAK_URL: 'http://vela-auth-service:8080/auth/'
+    VELA_JWT_SECRET: 'http://vela-auth-service:8080/auth/realms/vela/protocol/openid-connect/certs'
+    VELA_LOGFLARE_URL: 'http://vela-logflare:4000'
+    VELA_GRAFANA_URL: 'http://vela-grafana:3000'
     VELA_SYSTEM_LIMIT_MILLIS_VCPU: '100000'
     VELA_SYSTEM_LIMIT_RAM: '274877906944'
     VELA_SYSTEM_LIMIT_IOPS: '1000000000'
@@ -82,29 +80,13 @@ studio:
   enabled: true
   env:
     PLATFORM_PG_META_URL: 'http://meta:8080'
-    SUPABASE_URL: 'https://staging.vela.run:30808'
-
     SUPABASE_ANON_KEY: "UpNVntn3cDxHJpq99YMc1T1AQgQpc8kfYTuRgBiYa15BLrx8etQoXz3gZv1/u2oq"
     SUPABASE_SERVICE_KEY: "" # TODO
     OPENAI_API_KEY: "" # TODO Will eventually be removed
     AUTH_JWT_SECRET: 'secret'  # TODO
     NEXTAUTH_SECRET: 'super-long-random-nextauth-secret' # TODO
-
-    LOGFLARE_URL: 'https://staging.vela.run:30808/logs'
-    VELA_PLATFORM_KEYCLOAK_ISSUER: 'https://staging.vela.run:30808/auth/realms/vela'
     VELA_PLATFORM_KEYCLOAK_CLIENT_ID: 'frontend'
     VELA_PLATFORM_KEYCLOAK_CLIENT_SECRET: 'client-secret' # generate this and match it with realm.json
-    VELA_PLATFORM_KEYCLOAK_AUTHORIZATION_ENDPOINT: 'https://staging.vela.run:30808/auth/realms/vela/protocol/openid-connect/auth'
-    VELA_PLATFORM_KEYCLOAK_TOKEN_ENDPOINT: 'http://vela-auth-service:8080/auth/realms/vela/protocol/openid-connect/token'
-    VELA_PLATFORM_KEYCLOAK_USERINFO_ENDPOINT: 'http://vela-auth-service:8080/auth/realms/vela/protocol/openid-connect/userinfo'
-    VELA_PLATFORM_KEYCLOAK_LOGOUT_ENDPOINT: 'http://vela-auth-service:8080/auth/protocol/openid-connect/logout'
-    VELA_PLATFORM_KEYCLOAK_JWKS_ENDPOINT: 'http://vela-auth-service:8080/auth/realms/vela/protocol/openid-connect/certs'
-    VELA_PLATFORM_EXT_SIGN_IN_URL: 'https://staging.vela.run:30808/sign-in'
-    VELA_PLATFORM_EXT_BASE_URL: 'https://staging.vela.run:30808/'
-    NEXTAUTH_URL: 'https://staging.vela.run:30808'
-    VELA_PLATFORM_EXT_API_SERVICE_URL: 'https://staging.vela.run:30808/api'
-
-    VELA_PLATFORM_URL: 'http://vela-controller-service:8000'
 
 vector:
   enabled: true
