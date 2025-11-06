@@ -37,7 +37,7 @@ from ._util.resourcelimit import (
     get_project_resource_usage,
     make_usage_cycle,
 )
-from .dependencies import SessionDep
+from .db import SessionDep
 from .settings import get_settings
 
 router = APIRouter(tags=["resource"])

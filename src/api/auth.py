@@ -11,6 +11,7 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from ..models.user import JWT, User
+from .db import SessionDep
 from .settings import get_settings
 
 # HTTPBearer returns 403 instead of 401. Avoid this by raising the error manually
@@ -38,7 +39,7 @@ async def user_by_id(session: AsyncSession, id_: UUID):
 
 
 async def authenticated_user(
-    session: AsyncSession,
+    session: SessionDep,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
 ) -> User:
     if credentials is None:

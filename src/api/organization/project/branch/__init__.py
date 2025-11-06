@@ -81,7 +81,8 @@ from ...._util.resourcelimit import (
 )
 from ...._util.role import clone_user_role_assignment
 from ....auth import security
-from ....dependencies import BranchDep, OrganizationDep, ProjectDep, SessionDep, branch_lookup
+from ....db import SessionDep
+from ....dependencies import BranchDep, OrganizationDep, ProjectDep, branch_lookup
 from ....keycloak import realm_admin
 from ....settings import get_settings as get_api_settings
 from .auth import api as auth_api

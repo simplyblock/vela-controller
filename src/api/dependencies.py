@@ -4,7 +4,6 @@ from uuid import UUID
 from fastapi import Depends, HTTPException
 from sqlalchemy.exc import NoResultFound
 from sqlmodel import select
-from sqlmodel.ext.asyncio.session import AsyncSession
 
 from .._util import Identifier
 from ..models.branch import Branch
@@ -13,15 +12,7 @@ from ..models.project import Project
 from ..models.role import Role
 from ..models.user import User
 from .auth import authenticated_user
-from .db import engine
-
-
-async def _get_session():
-    async with AsyncSession(engine) as session:
-        yield session
-
-
-SessionDep = Annotated[AsyncSession, Depends(_get_session)]
+from .db import SessionDep
 
 
 async def _organization_lookup(session: SessionDep, organization_id: Identifier) -> Organization:

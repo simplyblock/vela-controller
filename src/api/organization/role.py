@@ -11,7 +11,8 @@ from ..._util import Identifier
 from ...models.role import Role, RoleUserLink
 from ...models.user import UserPublic
 from .._util import Forbidden, NotFound, Unauthenticated, url_path_for
-from ..dependencies import OrganizationDep, RoleDep, SessionDep, UserDep, user_lookup
+from ..db import SessionDep
+from ..dependencies import OrganizationDep, RoleDep, UserDep, user_lookup
 from ..user import public_list as public_user_list
 
 api = APIRouter(tags=["role"])

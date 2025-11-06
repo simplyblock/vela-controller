@@ -12,7 +12,7 @@ from ..models.role import AccessRight, Role, RoleAccessRight, RoleUserLink, Role
 from ..models.user import User, UserParameters, UserPublic
 from ._util import NotFound, Unauthenticated
 from .auth import authenticated_user
-from .dependencies import SessionDep
+from .db import SessionDep
 from .keycloak import realm_admin
 
 api = APIRouter(dependencies=[Depends(authenticated_user)], tags=["user"])

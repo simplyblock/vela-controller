@@ -22,7 +22,7 @@ from .._util import (
 from ..models.resources import ResourceLimitDefinitionPublic
 from ..models.role import AccessRight
 from .auth import authenticated_user
-from .dependencies import SessionDep
+from .db import SessionDep
 
 api = APIRouter(dependencies=[Depends(authenticated_user)], tags=["system"])
 

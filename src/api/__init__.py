@@ -124,12 +124,12 @@ class _FastAPI(FastAPI):
 
 
 async def _populate_db():
-    ## Python does not want us to get a string representation of this...
-    #migrations_path = str(files("simplyblock.vela.models.migrations")._paths[0])  # type: ignore[attr-defined]
+    # Python does not want us to get a string representation of this...
+    migrations_path = str(files("simplyblock.vela.models.migrations")._paths[0])  # type: ignore[attr-defined]
 
-    #config = Config()
-    #config.set_main_option("script_location", migrations_path)
-    #command.upgrade(config, "head")
+    config = Config()
+    config.set_main_option("script_location", migrations_path)
+    command.upgrade(config, "head")
 
     async with engine.begin() as conn:
         await create_access_rights_if_emtpy(conn)
