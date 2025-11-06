@@ -324,7 +324,6 @@ async def ensure_branch_storage_class(branch_id: Identifier, *, iops: int) -> st
     return storage_class_name
 
 
-
 def _load_compose_manifest(branch_id: Identifier) -> dict[str, Any]:
     compose_file_path = _require_asset(Path(__file__).with_name("compose.yml"), "docker-compose manifest")
     compose_content = yaml.safe_load(compose_file_path.read_text())
