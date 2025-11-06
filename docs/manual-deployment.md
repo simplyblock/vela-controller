@@ -156,6 +156,41 @@ helm install cert-manager jetstack/cert-manager \
   --version v1.13.0 --set installCRDs=true
 ```
 
+after installation, create create self-signed certificate issuer `ca-issuer`. For production we should use LetsEncrypt
+```sh
+kubectl apply -f - <<'EOF'
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-bootstrap
+spec:
+  selfSigned: {}
+
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ca-cert
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: vela-ca
+  secretName: ca-key-pair
+  issuerRef:
+    name: selfsigned-bootstrap
+    kind: ClusterIssuer
+
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: ca-issuer
+spec:
+  ca:
+    secretName: ca-key-pair
+EOF
+```
+
 ### Monitoring
 Disabled node exporter so ask to not to conflict with the onces already exists in cluster
 Ideally simplyblock should able to hook into the existing monitoring solution. But implementing that feedback was never
