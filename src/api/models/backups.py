@@ -1,7 +1,8 @@
 from datetime import datetime
+from typing import Annotated
 
 from pydantic import BaseModel
-from sqlalchemy import Column, DateTime, String, UniqueConstraint
+from sqlalchemy import BigInteger, Column, DateTime, String, UniqueConstraint
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship
 
@@ -53,7 +54,7 @@ class BackupEntry(AsyncAttrs, Model, table=True):
     branch: Branch = Relationship()
     row_index: int
     created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
-    size_bytes: int
+    size_bytes: Annotated[int, Field(sa_column=Column(BigInteger, nullable=True))]
     snapshot_name: str | None = Field(
         default=None,
         sa_column=Column(String(length=255), nullable=True),
