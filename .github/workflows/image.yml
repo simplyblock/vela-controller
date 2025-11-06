@@ -29,12 +29,52 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
+    - name: Set image metadata
+      id: meta
+      run: |
+        SHORT_SHA="${GITHUB_SHA::7}"
+        IMAGE_TAG="latest-${SHORT_SHA}"
+        echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+        echo "image_tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+
     - name: Build and push Docker image
       uses: docker/build-push-action@v6
       with:
         context: .
         file: containers/Containerfile
         push: true
-        tags: ${{ vars.REGISTRY }}/simplyblock/vela-controller:latest
+        tags: |
+          ${{ vars.REGISTRY }}/simplyblock/vela-controller:latest
+          ${{ vars.REGISTRY }}/simplyblock/vela-controller:${{ steps.meta.outputs.image_tag }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
+
+    - name: Set up Helm
+      uses: azure/setup-helm@v4
+
+    - name: Write kubeconfig
+      id: kubeconfig
+      env:
+        KUBE_CONFIG_DATA: ${{ secrets.KUBECONFIG }}
+      run: |
+        if [[ -z "$KUBE_CONFIG_DATA" ]]; then
+          echo "KUBECONFIG secret is not set" >&2
+          exit 1
+        fi
+        echo "$KUBE_CONFIG_DATA" | base64 --decode > kubeconfig.yaml 2>/dev/null || echo "$KUBE_CONFIG_DATA" > kubeconfig.yaml
+        chmod 600 kubeconfig.yaml
+        echo "path=$PWD/kubeconfig.yaml" >> "$GITHUB_OUTPUT"
+
+    - name: Deploy with Helm
+      env:
+        KUBECONFIG: ${{ steps.kubeconfig.outputs.path }}
+        IMAGE_TAG: ${{ steps.meta.outputs.image_tag }}
+        CLOUDFLARE_API_TOKEN: ${{ secrets.VELA_CLOUDFLARE_API_TOKEN }}
+        CLOUDFLARE_ZONE_ID: ${{ secrets.VELA_CLOUDFLARE_ZONE_ID }}
+      run: |
+        helm upgrade --install vela ./chart \
+          --namespace vela \
+          --create-namespace \
+          --set-string controller.image.tag="$IMAGE_TAG" \
+          --set-string controller.env.VELA_CLOUDFLARE_API_TOKEN="$CLOUDFLARE_API_TOKEN" \
+          --set-string controller.env.VELA_CLOUDFLARE_ZONE_ID="$CLOUDFLARE_ZONE_ID"
