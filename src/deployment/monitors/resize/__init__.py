@@ -43,6 +43,7 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from ulid import ULID
 
+from ....api._util.resourcelimit import create_or_update_branch_provisioning
 from ....api.db import engine
 from ....api.models.branch import (
     RESIZE_STATUS_PRIORITY,
@@ -51,6 +52,7 @@ from ....api.models.branch import (
     aggregate_resize_statuses,
     should_transition_resize_status,
 )
+from ....api.models.resources import ResourceLimitsPublic
 from ....deployment import deployment_branch
 from ....exceptions import VelaDeploymentError, VelaKubernetesError
 from .memory_resize import poll_memory_resizes
@@ -114,8 +116,20 @@ async def _apply_volume_status(
 
         if status_updated and status == "COMPLETED" and capacity is not None:
             if resource == "storage":
+                await create_or_update_branch_provisioning(
+                    session,
+                    branch,
+                    ResourceLimitsPublic(storage_size=capacity),
+                    commit=False,
+                )
                 branch.storage_size = capacity
             elif resource == "database":
+                await create_or_update_branch_provisioning(
+                    session,
+                    branch,
+                    ResourceLimitsPublic(database_size=capacity),
+                    commit=False,
+                )
                 branch.database_size = capacity
 
         await session.commit()

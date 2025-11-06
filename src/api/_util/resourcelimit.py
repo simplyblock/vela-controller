@@ -1,4 +1,4 @@
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
@@ -86,8 +86,12 @@ async def audit_new_branch_resource_provisioning(
 
 
 async def create_or_update_branch_provisioning(
-    session: SessionDep, branch: Branch, resource_requests: ResourceLimitsPublic
-):
+    session: SessionDep,
+    branch: Branch,
+    resource_requests: ResourceLimitsPublic,
+    *,
+    commit: bool = True,
+) -> None:
     requests = resource_limits_to_dict(resource_requests)
     for resource_type, amount in requests.items():
         if amount is None:
@@ -119,8 +123,9 @@ async def create_or_update_branch_provisioning(
             session, branch, resource_type, amount, "create" if new_allocation else "update"
         )
 
-    await session.commit()
-    await session.refresh(branch)
+    if commit:
+        await session.commit()
+        await session.refresh(branch)
 
 
 async def clone_branch_provisioning(session: SessionDep, source: Branch, target: Branch):
@@ -261,9 +266,19 @@ async def check_resource_limits(
 
 
 async def check_available_resources_limits(
-    session: SessionDep, organization_id: Identifier, project_id: Identifier, provisioning_request: ResourceLimitsPublic
+    session: SessionDep,
+    organization_id: Identifier,
+    project_id: Identifier,
+    provisioning_request: ResourceLimitsPublic,
+    *,
+    exclude_branch_ids: Sequence[Identifier] | None = None,
 ) -> tuple[list[ResourceType], ResourceLimitsPublic]:
-    effective_branch_limits = await get_remaining_project_resources(session, organization_id, project_id)
+    effective_branch_limits = await get_remaining_project_resources(
+        session,
+        organization_id,
+        project_id,
+        exclude_branch_ids=exclude_branch_ids,
+    )
     exceeded_limits: list[ResourceType] = []
     if provisioning_request.milli_vcpu:
         if check_resource_limit(provisioning_request.milli_vcpu, effective_branch_limits.milli_vcpu):
@@ -309,14 +324,26 @@ async def get_effective_branch_limits(session: SessionDep, branch: Branch) -> Re
 
 
 async def get_remaining_project_resources(
-    session: SessionDep, organization_id: Identifier, project_id: Identifier
+    session: SessionDep,
+    organization_id: Identifier,
+    project_id: Identifier,
+    *,
+    exclude_branch_ids: Sequence[Identifier] | None = None,
 ) -> ResourceLimitsPublic:
     system_limits = await get_system_resource_limits(session)
     organization_limits = await get_organization_resource_limits(session, organization_id)
     project_limits = await get_project_resource_limits(session, organization_id, project_id)
 
-    organization_allocations = await get_current_organization_allocations(session, organization_id)
-    project_allocations = await get_current_project_allocations(session, project_id)
+    organization_allocations = await get_current_organization_allocations(
+        session,
+        organization_id,
+        exclude_branch_ids=exclude_branch_ids,
+    )
+    project_allocations = await get_current_project_allocations(
+        session,
+        project_id,
+        exclude_branch_ids=exclude_branch_ids,
+    )
 
     effective_limits: dict[ResourceType, int] = {}
     for resource_type in ResourceType:
@@ -402,21 +429,35 @@ def _map_resource_limits(limits: list[ResourceLimit]) -> dict[ResourceType, Reso
 
 
 async def get_current_organization_allocations(
-    session: SessionDep, organization_id: Identifier
+    session: SessionDep,
+    organization_id: Identifier,
+    *,
+    exclude_branch_ids: Sequence[Identifier] | None = None,
 ) -> dict[ResourceType, int]:
     result = await session.execute(
         select(BranchProvisioning).join(Branch).join(Project).where(Project.organization_id == organization_id)
     )
     rows = list(result.scalars().all())
+    if exclude_branch_ids:
+        excluded = set(exclude_branch_ids)
+        rows = [row for row in rows if row.branch_id not in excluded]
 
     grouped = _group_by_resource_type(rows)
     branch_statuses = await _collect_branch_statuses(rows)
     return _aggregate_group_by_resource_type(grouped, branch_statuses)
 
 
-async def get_current_project_allocations(session: SessionDep, project_id: Identifier) -> dict[ResourceType, int]:
+async def get_current_project_allocations(
+    session: SessionDep,
+    project_id: Identifier,
+    *,
+    exclude_branch_ids: Sequence[Identifier] | None = None,
+) -> dict[ResourceType, int]:
     result = await session.execute(select(BranchProvisioning).join(Branch).where(Branch.project_id == project_id))
     rows = list(result.scalars().all())
+    if exclude_branch_ids:
+        excluded = set(exclude_branch_ids)
+        rows = [row for row in rows if row.branch_id not in excluded]
 
     grouped = _group_by_resource_type(rows)
     branch_statuses = await _collect_branch_statuses(rows)
