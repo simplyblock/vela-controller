@@ -19,7 +19,8 @@ from ....models.resources import EntityType, ResourceLimit, ResourceType
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ..._util.resourcelimit import get_organization_resource_limits
 from ...auth import security
-from ...dependencies import OrganizationDep, ProjectDep, SessionDep
+from ...db import SessionDep
+from ...dependencies import OrganizationDep, ProjectDep
 from . import branch as branch_module
 
 api = APIRouter(tags=["project"])

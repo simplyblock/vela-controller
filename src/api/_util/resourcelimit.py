@@ -24,7 +24,7 @@ from ...models.resources import (
     ResourceUsageMinute,
     UsageCycle,
 )
-from ..dependencies import SessionDep
+from ..db import SessionDep
 from ..settings import get_settings
 
 if TYPE_CHECKING:

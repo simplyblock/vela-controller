@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from ..._util import Identifier
     from ...models.organization import Organization
     from ...models.project import Project
-    from ..dependencies import SessionDep
+    from ..db import SessionDep
 
 
 async def copy_branch_backup_schedules(

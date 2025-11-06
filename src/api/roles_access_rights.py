@@ -24,7 +24,8 @@ from ..models.role import (
     RoleWithPermissionsPublic,
 )
 from .access_right_utils import check_access
-from .dependencies import OrganizationDep, RoleDep, SessionDep
+from .db import SessionDep
+from .dependencies import OrganizationDep, RoleDep
 
 router = APIRouter(tags=["role"])
 

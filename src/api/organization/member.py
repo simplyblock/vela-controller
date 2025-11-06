@@ -9,7 +9,8 @@ from sqlalchemy.exc import IntegrityError
 from ...models.user import UserID, UserPublic
 from .._util import Forbidden, NotFound, Unauthenticated
 from ..auth import authenticated_user, user_by_id
-from ..dependencies import MemberDep, OrganizationDep, SessionDep, UserDep
+from ..db import SessionDep
+from ..dependencies import MemberDep, OrganizationDep, UserDep
 from ..user import public_list as public_user_list
 
 api = APIRouter(dependencies=[Depends(authenticated_user)])

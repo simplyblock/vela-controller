@@ -32,7 +32,8 @@ from ..models.organization import Organization
 from ..models.project import Project
 from ._util.backups import _remove_existing_schedule, _validate_project_retention_budget
 from .backup_snapshots import create_branch_snapshot, delete_branch_snapshot
-from .dependencies import OrganizationDep, SessionDep
+from .db import SessionDep
+from .dependencies import OrganizationDep
 
 router = APIRouter()
 
