@@ -18,6 +18,20 @@
     "issuer": {
       "type": "string"
     },
+    "db": {
+      "type": "object",
+      "properties": {
+        "service": {
+          "type": "object",
+          "properties": {
+            "externalEnabled": {
+              "type": "boolean",
+              "description": "Expose the Postgres service externally. Disable for clusters without external IPv6 support."
+            }
+          }
+        }
+      }
+    },
     "prometheus": {
       "type": "object",
       "required": ["name", "namespace"],
