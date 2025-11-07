@@ -11,6 +11,7 @@ dependencies = [
     'uvicorn',
     'sqlmodel',
     'asyncpg',
+    'psycopg2-binary>=2.9',
     'pyjwt',
     'pydantic==2.11.10',
     'pydantic-core==2.33.2',
