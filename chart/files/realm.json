@@ -40,7 +40,7 @@
     ],
     "clients": [
         {
-            "clientId": "frontend",
+            "clientId": "{{ .Values.studio.env.VELA_PLATFORM_KEYCLOAK_CLIENT_ID }}",
             "name": "Frontend Application",
             "enabled": true,
             "redirectUris": [
