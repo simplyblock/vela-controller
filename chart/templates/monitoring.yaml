@@ -32,6 +32,9 @@ data:
           - source_labels: [__meta_kubernetes_service_label_app]
             regex: pgexporter
             action: keep
+            
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
 
 ---
 apiVersion: v1

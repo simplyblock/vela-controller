@@ -33,7 +33,7 @@ from .._util import (
     check_output,
 )
 from ..exceptions import VelaCloudflareError, VelaDeployError, VelaDeploymentError, VelaKubernetesError
-from ._util import _require_asset
+from ._util import _require_asset, deployment_namespace
 from .grafana import create_vela_grafana_obj, delete_vela_grafana_obj
 from .kubernetes import KubernetesService
 from .kubernetes.kubevirt import get_virtualmachine_status
@@ -62,16 +62,6 @@ DATABASE_DNS_RECORD_TYPE: Literal["AAAA"] = "AAAA"
 
 def branch_storage_class_name(branch_id: Identifier) -> str:
     return f"sc-{str(branch_id).lower()}"
-
-
-def deployment_namespace(branch_id: Identifier) -> str:
-    """Return the Kubernetes namespace for a branch using `<prefix>-<branch_id>` format."""
-
-    branch_value = str(branch_id).lower()
-    prefix = settings.deployment_namespace_prefix
-    if prefix:
-        return f"{prefix}-{branch_value}"
-    return branch_value
 
 
 def deployment_branch(namespace: str) -> ULID:

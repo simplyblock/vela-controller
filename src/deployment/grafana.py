@@ -6,7 +6,7 @@ import httpx
 
 from .._util import Identifier
 from ..exceptions import VelaGrafanaError
-from ._util import _require_asset
+from ._util import _require_asset, deployment_namespace
 from .settings import settings
 
 auth = (settings.grafana_security_admin_user, settings.grafana_security_admin_password)
@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 async def create_vela_grafana_obj(organization_id: Identifier, branch_id: Identifier, credential):
     logger.info(f"Creating Grafana object for organization={organization_id}, branch={branch_id}")
 
+    namespace = deployment_namespace(branch_id)
+
     team_id = await create_team(str(branch_id))
     parent_folder_id = await create_folder(str(organization_id))
 
@@ -27,7 +29,7 @@ async def create_vela_grafana_obj(organization_id: Identifier, branch_id: Identi
 
     user_id = await get_user_via_jwt(credential)
     await add_user_to_team(team_id, user_id)
-    await create_dashboard(str(organization_id), folder_id, str(branch_id))
+    await create_dashboard(str(organization_id), folder_id, str(branch_id), namespace)
 
 
 async def delete_vela_grafana_obj(branch_id: Identifier):
@@ -293,7 +295,7 @@ async def remove_user_from_team(team_id: int, user_id: int):
 
 
 # --- DASHBOARD CREATION ---
-async def create_dashboard(org_name: str, folder_uid: str, folder_name: str):
+async def create_dashboard(org_name: str, folder_uid: str, folder_name: str, namespace: str):
     dashboard_path = _require_asset(Path(__file__).with_name("pgexporter.json"), "pgexporter json")
 
     try:
@@ -302,7 +304,7 @@ async def create_dashboard(org_name: str, folder_uid: str, folder_name: str):
     except Exception as e:
         logger.error(f"Failed to load dashboard JSON from {dashboard_path}: {e}")
         raise
-
+    
     dashboard["id"] = None
     dashboard["uid"] = None
 
@@ -311,18 +313,11 @@ async def create_dashboard(org_name: str, folder_uid: str, folder_name: str):
     dashboard["templating"] = {
         "list": [
             {
-                "name": "organization",
+                "name": "namespace",
                 "type": "constant",
-                "label": org_name,
-                "query": org_name,
-                "current": {"selected": True, "text": org_name, "value": org_name},
-            },
-            {
-                "name": "project",
-                "type": "constant",
-                "label": folder_name,
-                "query": folder_name,
-                "current": {"selected": True, "text": folder_name, "value": folder_name},
+                "label": "Namespace",
+                "query": namespace,
+                "current": {"selected": True, "text": namespace, "value": namespace},
             },
         ]
     }

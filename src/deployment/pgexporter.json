@@ -512,7 +512,7 @@
                     },
                     "editorMode": "code",
                     "exemplar": false,
-                    "expr": "max by (ins) (pg_exporter_agent_up{cls=\"$cls\"})",
+                    "expr": "max by (ins) (pg_exporter_agent_up{cls=\"$cls\", namespace=\"$namespace\"})",
                     "format": "table",
                     "hide": false,
                     "instant": true,
@@ -527,7 +527,7 @@
                     },
                     "editorMode": "code",
                     "exemplar": false,
-                    "expr": "max by (ins) (pgbouncer_exporter_agent_up{cls=\"$cls\"})",
+                    "expr": "max by (ins) (pgbouncer_exporter_agent_up{cls=\"$cls\", namespace=\"$namespace\"})",
                     "format": "table",
                     "hide": false,
                     "instant": true,
@@ -542,7 +542,7 @@
                     },
                     "editorMode": "code",
                     "exemplar": false,
-                    "expr": "max by (ins) (pgbackrest_exporter_agent_up{cls=\"$cls\"})",
+                    "expr": "max by (ins) (pgbackrest_exporter_agent_up{cls=\"$cls\", namespace=\"$namespace\"})",
                     "format": "table",
                     "hide": false,
                     "instant": true,
@@ -557,7 +557,7 @@
                     },
                     "editorMode": "code",
                     "exemplar": false,
-                    "expr": "max by (ins) (pg_exporter_uptime{cls=\"$cls\"})",
+                    "expr": "max by (ins) (pg_exporter_uptime{cls=\"$cls\", namespace=\"$namespace\"})",
                     "format": "table",
                     "hide": false,
                     "instant": true,
@@ -572,7 +572,7 @@
                     },
                     "editorMode": "code",
                     "exemplar": false,
-                    "expr": "max by (ins) (pgbouncer_exporter_uptime{cls=\"$cls\"})",
+                    "expr": "max by (ins) (pgbouncer_exporter_uptime{cls=\"$cls\", namespace=\"$namespace\"})",
                     "format": "table",
                     "hide": false,
                     "instant": true,
@@ -819,7 +819,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "pg_exporter_agent_up{ins=\"$ins\"}",
+                    "expr": "pg_exporter_agent_up{ins=\"$ins\", namespace=\"$namespace\"}",
                     "legendFormat": "pg_exporter",
                     "range": true,
                     "refId": "A"
@@ -830,7 +830,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "pgbouncer_exporter_agent_up{ins=\"$ins\"}",
+                    "expr": "pgbouncer_exporter_agent_up{ins=\"$ins\", namespace=\"$namespace\"}",
                     "legendFormat": "pgbouncer_exporter",
                     "range": true,
                     "refId": "B"
@@ -841,7 +841,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "pg_up{ins=\"$ins\"}",
+                    "expr": "pg_up{ins=\"$ins\", namespace=\"$namespace\"}",
                     "hide": false,
                     "legendFormat": "postgres",
                     "range": true,
@@ -853,7 +853,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "pgbouncer_up{ins=\"$ins\"}",
+                    "expr": "pgbouncer_up{ins=\"$ins\", namespace=\"$namespace\"}",
                     "hide": false,
                     "legendFormat": "pgbouncer",
                     "range": true,
@@ -865,7 +865,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "patroni_up{ins=\"$ins\"}",
+                    "expr": "patroni_up{ins=\"$ins\", namespace=\"$namespace\"}",
                     "hide": false,
                     "legendFormat": "patroni",
                     "range": true,
@@ -877,7 +877,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "pgbackrest_exporter_agent_up{ins=\"$ins\"}",
+                    "expr": "pgbackrest_exporter_agent_up{ins=\"$ins\", namespace=\"$namespace\"}",
                     "hide": false,
                     "legendFormat": "pgbackrest_exporter",
                     "range": true,
@@ -889,7 +889,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "up{ins=\"$ins\", job=~\"pgsql|pgrds\"}",
+                    "expr": "up{ins=\"$ins\", namespace=\"$namespace\", job=~\"pgsql|pgrds\"}",
                     "hide": true,
                     "legendFormat": "{{ instance }}",
                     "range": true,
@@ -1050,7 +1050,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "pg_exporter_agent_up{}",
+                    "expr": "pg_exporter_agent_up{namespace=\"$namespace\"}",
                     "legendFormat": "{{ instance }}",
                     "range": true,
                     "refId": "A"
@@ -1061,7 +1061,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "pgbouncer_exporter_agent_up{}",
+                    "expr": "pgbouncer_exporter_agent_up{namespace=\"$namespace\"}",
                     "legendFormat": "{{ instance }}",
                     "range": true,
                     "refId": "B"
@@ -1215,7 +1215,7 @@
                     },
                     "editorMode": "code",
                     "exemplar": false,
-                    "expr": "max by (ins) (pg_exporter_agent_up{})",
+                    "expr": "max by (ins) (pg_exporter_agent_up{namespace=\"$namespace\"})",
                     "format": "table",
                     "hide": false,
                     "instant": true,
@@ -1230,7 +1230,7 @@
                     },
                     "editorMode": "code",
                     "exemplar": false,
-                    "expr": "max by (ins) (pgbouncer_exporter_agent_up{})",
+                    "expr": "max by (ins) (pgbouncer_exporter_agent_up{namespace=\"$namespace\"})",
                     "format": "table",
                     "hide": false,
                     "instant": true,
@@ -1245,7 +1245,7 @@
                     },
                     "editorMode": "code",
                     "exemplar": false,
-                    "expr": "max by (ins) (pg_exporter_uptime{})",
+                    "expr": "max by (ins) (pg_exporter_uptime{namespace=\"$namespace\"})",
                     "format": "table",
                     "hide": false,
                     "instant": true,
@@ -1260,7 +1260,7 @@
                     },
                     "editorMode": "code",
                     "exemplar": false,
-                    "expr": "max by (ins) (pgbouncer_exporter_uptime{})",
+                    "expr": "max by (ins) (pgbouncer_exporter_uptime{namespace=\"$namespace\"})",
                     "format": "table",
                     "hide": false,
                     "instant": true,
@@ -1459,7 +1459,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "pg_exporter_scrape_duration{}",
+                    "expr": "pg_exporter_scrape_duration{namespace=\"$namespace\"}",
                     "legendFormat": "{{ ins }}",
                     "range": true,
                     "refId": "A"
@@ -1591,7 +1591,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "pg_exporter_uptime{}",
+                    "expr": "pg_exporter_uptime{namespace=\"$namespace\"}",
                     "legendFormat": "{{ ins }}",
                     "range": true,
                     "refId": "A"
@@ -1602,7 +1602,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "pgbouncer_exporter_uptime{}",
+                    "expr": "pgbouncer_exporter_uptime{namespace=\"$namespace\"}",
                     "hide": false,
                     "legendFormat": "{{ ins }}",
                     "range": true,
@@ -1734,7 +1734,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "increase(pg_exporter_scrape_error_count{}[1m])",
+                    "expr": "increase(pg_exporter_scrape_error_count{namespace=\"$namespace\"}[1m])",
                     "legendFormat": "{{ ins }}",
                     "range": true,
                     "refId": "A"
@@ -1745,7 +1745,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "increase(pgbouncer_exporter_scrape_error_count{}[1m])",
+                    "expr": "increase(pgbouncer_exporter_scrape_error_count{namespace=\"$namespace\"}[1m])",
                     "legendFormat": "{{ ins }}",
                     "range": true,
                     "refId": "B"
@@ -1890,7 +1890,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "pg_exporter_uptime{ins=\"$ins\"}",
+                    "expr": "pg_exporter_uptime{ins=\"$ins\", namespace=\"$namespace\"}",
                     "legendFormat": "postgres",
                     "range": true,
                     "refId": "A"
@@ -1901,7 +1901,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "pgbouncer_exporter_uptime{ins=\"$ins\"}",
+                    "expr": "pgbouncer_exporter_uptime{ins=\"$ins\", namespace=\"$namespace\"}",
                     "hide": false,
                     "legendFormat": "pgbouncer",
                     "range": true,
@@ -2049,7 +2049,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "pg_exporter_agent_up{ins=\"$ins\"}",
+                    "expr": "pg_exporter_agent_up{ins=\"$ins\", namespace=\"$namespace\"}",
                     "legendFormat": "postgres",
                     "range": true,
                     "refId": "A"
@@ -2060,7 +2060,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "pgbouncer_exporter_agent_up{ins=\"$ins\"}",
+                    "expr": "pgbouncer_exporter_agent_up{ins=\"$ins\", namespace=\"$namespace\"}",
                     "legendFormat": "pgbouncer",
                     "range": true,
                     "refId": "B"
@@ -2071,7 +2071,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "pgbackrest_exporter_agent_up{ins=\"$ins\"}",
+                    "expr": "pgbackrest_exporter_agent_up{ins=\"$ins\", namespace=\"$namespace\"}",
                     "hide": false,
                     "legendFormat": "pgbackrest",
                     "range": true,
@@ -2083,7 +2083,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "up{ins=\"$ins\", job=~\"pgsql|pgrds\"}",
+                    "expr": "up{ins=\"$ins\", namespace=\"$namespace\", job=~\"pgsql|pgrds\"}",
                     "hide": true,
                     "legendFormat": "{{ instance }}",
                     "range": true,
@@ -2213,7 +2213,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "pg_exporter_scrape_duration{ins=\"$ins\"}",
+                    "expr": "pg_exporter_scrape_duration{ins=\"$ins\", namespace=\"$namespace\"}",
                     "legendFormat": "postgres",
                     "range": true,
                     "refId": "A"
@@ -2224,7 +2224,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "pgbouncer_exporter_scrape_duration{ins=\"$ins\"}",
+                    "expr": "pgbouncer_exporter_scrape_duration{ins=\"$ins\", namespace=\"$namespace\"}",
                     "hide": false,
                     "legendFormat": "pgbouncer",
                     "range": true,
@@ -2356,7 +2356,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "increase(pg_exporter_scrape_error_count{ins=\"$ins\"}[1m])",
+                    "expr": "increase(pg_exporter_scrape_error_count{ins=\"$ins\", namespace=\"$namespace\"}[1m])",
                     "legendFormat": "postgres",
                     "range": true,
                     "refId": "A"
@@ -2367,7 +2367,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "increase(pgbouncer_exporter_scrape_error_count{ins=\"$ins\"}[1m])",
+                    "expr": "increase(pgbouncer_exporter_scrape_error_count{ins=\"$ins\", namespace=\"$namespace\"}[1m])",
                     "legendFormat": "pgbouncer",
                     "range": true,
                     "refId": "B"
@@ -2481,7 +2481,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "pg_exporter_server_scrape_duration{ins=\"$ins\"}",
+                    "expr": "pg_exporter_server_scrape_duration{ins=\"$ins\", namespace=\"$namespace\"}",
                     "legendFormat": "{{ datname }}",
                     "range": true,
                     "refId": "A"
@@ -2492,7 +2492,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "pgbouncer_exporter_server_scrape_duration{ins=\"$ins\"}",
+                    "expr": "pgbouncer_exporter_server_scrape_duration{ins=\"$ins\", namespace=\"$namespace\"}",
                     "hide": false,
                     "legendFormat": "pgbouncer",
                     "range": true,
@@ -2621,7 +2621,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "increase(pg_exporter_server_scrape_total_count{ins=\"$ins\"}[1m])",
+                    "expr": "increase(pg_exporter_server_scrape_total_count{ins=\"$ins\", namespace=\"$namespace\"}[1m])",
                     "legendFormat": "{{ datname }}",
                     "range": true,
                     "refId": "A"
@@ -2632,7 +2632,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "increase(pgbouncer_exporter_server_scrape_total_count{ins=\"$ins\"}[1m])",
+                    "expr": "increase(pgbouncer_exporter_server_scrape_total_count{ins=\"$ins\", namespace=\"$namespace\"}[1m])",
                     "legendFormat": "pgbouncer",
                     "range": true,
                     "refId": "B"
@@ -2744,7 +2744,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "sum by (query) (increase(pg_exporter_query_scrape_error_count{ins=\"$ins\"}[1m]))",
+                    "expr": "sum by (query) (increase(pg_exporter_query_scrape_error_count{ins=\"$ins\", namespace=\"$namespace\"}[1m]))",
                     "legendFormat": "{{query}}",
                     "range": true,
                     "refId": "A"
@@ -2843,7 +2843,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "sum by (query) (pg_exporter_query_scrape_metric_count{ins=\"$ins\"})",
+                    "expr": "sum by (query) (pg_exporter_query_scrape_metric_count{ins=\"$ins\", namespace=\"$namespace\"})",
                     "legendFormat": "{{query}}",
                     "range": true,
                     "refId": "A"
@@ -2854,7 +2854,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "sum by (query) (pgbouncer_exporter_query_scrape_metric_count{ins=\"$ins\"})",
+                    "expr": "sum by (query) (pgbouncer_exporter_query_scrape_metric_count{ins=\"$ins\", namespace=\"$namespace\"})",
                     "hide": false,
                     "legendFormat": "{{query}}",
                     "range": true,
@@ -2960,7 +2960,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "increase(pg_exporter_query_scrape_duration{ins=\"$ins\"}[1m]) / \nincrease(pg_exporter_query_scrape_total_count{ins=\"$ins\"}[1m])",
+                    "expr": "increase(pg_exporter_query_scrape_duration{ins=\"$ins\", namespace=\"$namespace\"}[1m]) / \nincrease(pg_exporter_query_scrape_total_count{ins=\"$ins\", namespace=\"$namespace\"}[1m])",
                     "legendFormat": "{{ datname }}.{{ query }}",
                     "range": true,
                     "refId": "A"
@@ -2971,7 +2971,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "increase(pgbouncer_exporter_query_scrape_duration{ins=\"$ins\"}[1m]) / \nincrease(pgbouncer_exporter_query_scrape_total_count{ins=\"$ins\"}[1m])",
+                    "expr": "increase(pgbouncer_exporter_query_scrape_duration{ins=\"$ins\", namespace=\"$namespace\"}[1m]) / \nincrease(pgbouncer_exporter_query_scrape_total_count{ins=\"$ins\", namespace=\"$namespace\"}[1m])",
                     "hide": false,
                     "legendFormat": "pgbouncer.{{ query }}",
                     "range": true,
@@ -3079,7 +3079,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "increase(pg_exporter_query_scrape_hit_count{ins=\"$ins\"}[5m]) / \nincrease(pg_exporter_query_scrape_total_count{ins=\"$ins\"}[5m])",
+                    "expr": "increase(pg_exporter_query_scrape_hit_count{ins=\"$ins\", namespace=\"$namespace\"}[5m]) / \nincrease(pg_exporter_query_scrape_total_count{ins=\"$ins\", namespace=\"$namespace\"}[5m])",
                     "legendFormat": "{{ datname }}.{{query}}",
                     "range": true,
                     "refId": "A"
@@ -3090,7 +3090,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "increase(pgbouncer_exporter_query_scrape_hit_count{ins=\"$ins\"}[5m]) / \nincrease(pgbouncer_exporter_query_scrape_total_count{ins=\"$ins\"}[5m])",
+                    "expr": "increase(pgbouncer_exporter_query_scrape_hit_count{ins=\"$ins\", namespace=\"$namespace\"}[5m]) / \nincrease(pgbouncer_exporter_query_scrape_total_count{ins=\"$ins\", namespace=\"$namespace\"}[5m])",
                     "hide": false,
                     "legendFormat": "{{ datname }}.{{query}}",
                     "range": true,
@@ -3205,7 +3205,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "pg_exporter_query_cache_ttl{ins=\"$ins\"}",
+                    "expr": "pg_exporter_query_cache_ttl{ins=\"$ins\", namespace=\"$namespace\"}",
                     "legendFormat": "{{ datname }}.{{ query }}",
                     "range": true,
                     "refId": "A"
@@ -3216,7 +3216,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "pgbouncer_exporter_query_cache_ttl{ins=\"$ins\"}",
+                    "expr": "pgbouncer_exporter_query_cache_ttl{ins=\"$ins\", namespace=\"$namespace\"}",
                     "hide": false,
                     "legendFormat": "pgbouncer. {{ query }}",
                     "range": true,
@@ -3398,7 +3398,7 @@
                         "uid": "ds-loki"
                     },
                     "editorMode": "code",
-                    "expr": "count_over_time(({ip=\"$ip\", src=\"syslog\"} |~ \"pg_exporter\")[$__interval])",
+                    "expr": "count_over_time(({ip=\"$ip\", src=\"syslog\"} |~ \"pg_exporter\", namespace=\"$namespace\")[$__interval])",
                     "legendFormat": "",
                     "queryType": "range",
                     "refId": "A"
@@ -3443,7 +3443,7 @@
                         "uid": "ds-loki"
                     },
                     "editorMode": "code",
-                    "expr": "{ip=\"$ip\"} |~ \"pg_exporter\"",
+                    "expr": "{ip=\"$ip\"} |~ \"pg_exporter\", namespace=\"$namespace\"",
                     "instant": false,
                     "queryType": "range",
                     "range": true,
@@ -3491,7 +3491,7 @@
                     "type": "prometheus",
                     "uid": "PBFA97CFB590B2093"
                 },
-                "definition": "label_values(pg_up{ins=\"$ins\"} , ip)",
+                "definition": "label_values(pg_up{ins=\"$ins\", namespace=\"$namespace\"} , ip)",
                 "description": "IP address of this postgres instance",
                 "hide": 2,
                 "includeAll": false,
@@ -3499,7 +3499,7 @@
                 "name": "ip",
                 "options": [],
                 "query": {
-                    "query": "label_values(pg_up{ins=\"$ins\"} , ip)",
+                    "query": "label_values(pg_up{ins=\"$ins\", namespace=\"$namespace\"} , ip)",
                     "refId": "StandardVariableQuery"
                 },
                 "refresh": 1,
@@ -3513,7 +3513,7 @@
                     "type": "prometheus",
                     "uid": "PBFA97CFB590B2093"
                 },
-                "definition": "label_values(pg_up{ins=\"$ins\"},  ins)",
+                "definition": "label_values(pg_up{ins=\"$ins\", namespace=\"$namespace\"},  ins)",
                 "description": "Sequence number of this instance, which is an unique integer among a postgres cluster",
                 "hide": 2,
                 "includeAll": false,
@@ -3521,7 +3521,7 @@
                 "name": "seq",
                 "options": [],
                 "query": {
-                    "query": "label_values(pg_up{ins=\"$ins\"},  ins)",
+                    "query": "label_values(pg_up{ins=\"$ins\", namespace=\"$namespace\"},  ins)",
                     "refId": "StandardVariableQuery"
                 },
                 "refresh": 1,
@@ -3535,7 +3535,7 @@
                     "type": "prometheus",
                     "uid": "PBFA97CFB590B2093"
                 },
-                "definition": "label_values(pg_up{ins=\"$ins\"}, cls)",
+                "definition": "label_values(pg_up{ins=\"$ins\", namespace=\"$namespace\"}, cls)",
                 "description": "Cluster identifier for this postgres instance, cls should be unique among entire environment. such as pg-meta, pg-test",
                 "hide": 2,
                 "includeAll": false,
@@ -3543,7 +3543,7 @@
                 "name": "cls",
                 "options": [],
                 "query": {
-                    "query": "label_values(pg_up{ins=\"$ins\"}, cls)",
+                    "query": "label_values(pg_up{ins=\"$ins\", namespace=\"$namespace\"}, cls)",
                     "refId": "StandardVariableQuery"
                 },
                 "refresh": 1,
@@ -3579,7 +3579,7 @@
                     "type": "prometheus",
                     "uid": "PBFA97CFB590B2093"
                 },
-                "definition": "label_values(pg_db_age{ins=\"$ins\",datname!~'postgres|template0|template1'}, datname)",
+                "definition": "label_values(pg_db_age{ins=\"$ins\", namespace=\"$namespace\",datname!~'postgres|template0|template1'}, datname)",
                 "description": "Non-trivial database in this instance",
                 "hide": 2,
                 "includeAll": false,
@@ -3587,7 +3587,7 @@
                 "name": "datname",
                 "options": [],
                 "query": {
-                    "query": "label_values(pg_db_age{ins=\"$ins\",datname!~'postgres|template0|template1'}, datname)",
+                    "query": "label_values(pg_db_age{ins=\"$ins\", namespace=\"$namespace\",datname!~'postgres|template0|template1'}, datname)",
                     "refId": "StandardVariableQuery"
                 },
                 "refresh": 1,
