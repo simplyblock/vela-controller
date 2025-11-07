@@ -2,7 +2,7 @@ import asyncio
 import logging
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlmodel import select
 
@@ -37,10 +37,11 @@ from ._util.resourcelimit import (
     get_project_resource_usage,
     make_usage_cycle,
 )
+from .auth import authenticated_user
 from .db import SessionDep
 from .settings import get_settings
 
-router = APIRouter(tags=["resource"])
+router = APIRouter(dependencies=[Depends(authenticated_user)], tags=["resource"])
 
 # ---------------------------
 # Helper functions
