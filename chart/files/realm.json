@@ -52,7 +52,7 @@
             "standardFlowEnabled": true,
             "directAccessGrantsEnabled": true,
             "publicClient": false,
-            "secret": "client-secret",
+            "secret": "{{ .Values.studio.env.VELA_PLATFORM_KEYCLOAK_CLIENT_SECRET }}",
             "protocol": "openid-connect",
             "attributes": {
                 "access.token.lifespan": "3600"
