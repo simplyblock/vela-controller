@@ -39,4 +39,24 @@ resource "helm_release" "prometheus" {
     name  = "server.configMapOverrideName"
     value = "vela-prometheus-config"
   }
+  
+  set {
+    name  = "alertmanager.enabled"
+    value = false
+  }
+
+  set {
+    name  = "prometheus-pushgateway.enabled"
+    value = false
+  }
+
+  set {
+    name  = "prometheus-node-exporter.enabled"
+    value = false
+  }
+
+  set {
+    name  = "kube-state-metrics.enabled"
+    value = false
+  }
 }
