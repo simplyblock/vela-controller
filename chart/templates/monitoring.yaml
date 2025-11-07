@@ -13,7 +13,7 @@ stringData:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ .Release.Name }}-vela-prometheus-config
+  name: prometheus-vela-prometheus-config
   labels:
     app: vela-prometheus
   namespace: {{ .Release.Namespace }}
@@ -32,7 +32,7 @@ data:
           - source_labels: [__meta_kubernetes_service_label_app]
             regex: pgexporter
             action: keep
-            
+
           - source_labels: [__meta_kubernetes_namespace]
             target_label: namespace
 
