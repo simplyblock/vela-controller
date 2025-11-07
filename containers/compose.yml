@@ -73,7 +73,7 @@ services:
       KC_HEALTH_ENABLED: 'true'
     command: start-dev --import-realm --verbose
     volumes:
-    - ../chart/files/realm.json:/opt/keycloak/data/import/vela-realm.json:ro
+    - ../chart/files/local.realm.json:/opt/keycloak/data/import/vela-realm.json:ro
     healthcheck:
       test: ["CMD-SHELL", "timeout 10 bash -c '</dev/tcp/localhost/8080' || exit 1"]  # This should do a proper request, but the container doesn't ship curl, wget, or telnet and using bash builtins is nasty
       interval: 30s
