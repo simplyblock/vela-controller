@@ -26,7 +26,7 @@ def render_item(_type, obj, _autogen_context):
 
 def run_migrations_offline() -> None:
     context.configure(
-        url=str(settings.postgres_url).replace("+asyncpg", "+psycopg2"),
+        url=str(settings.postgres_url).replace("+asyncpg", "+psycopg"),
         target_metadata=SQLModel.metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -37,7 +37,7 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    engine = create_engine(str(settings.postgres_url).replace("+asyncpg", "+psycopg2"))
+    engine = create_engine(str(settings.postgres_url).replace("+asyncpg", "+psycopg"))
 
     with engine.connect() as connection:
         context.configure(connection=connection, target_metadata=SQLModel.metadata, render_item=render_item)

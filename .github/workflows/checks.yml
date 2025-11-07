@@ -92,7 +92,7 @@ jobs:
         cache: 'pip'
 
     - name: Install type checker
-      run: pip install testcontainers alembic psycopg2 .
+      run: pip install testcontainers alembic 'psycopg[binary]' .
 
     - name: Execute type checker
       run: python3 scripts/alembic.py check

@@ -8,12 +8,12 @@ from testcontainers.postgres import PostgresContainer
 
 
 def _run_alembic(args: list[str], postgres, **kwargs):
-    driver = "psycopg2"
+    driver = "psycopg"
     return run(
         ["alembic"] + args,
         env={
             **os.environ,
-            "VELA_POSTGRES_URL": postgres.get_connection_url().replace("postgresql://", f"postgresql+{driver}://"),
+            "VELA_POSTGRES_URL": postgres.get_connection_url(driver=driver),
         },
         **kwargs,
     )

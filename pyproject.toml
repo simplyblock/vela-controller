@@ -11,7 +11,7 @@ dependencies = [
     'uvicorn',
     'sqlmodel',
     'asyncpg',
-    'psycopg2-binary>=2.9',
+    'psycopg[binary]>=3.1',
     'pyjwt',
     'pydantic==2.11.10',
     'pydantic-core==2.33.2',
@@ -57,7 +57,7 @@ commands = [['ruff', 'format', '--check']]
 
 [tool.tox.env.alembic]
 description = 'Manage migrations'
-deps = ['testcontainers', 'psycopg2']
+deps = ['testcontainers', 'psycopg[binary]']
 commands = [['python3', 'scripts/alembic.py', '{posargs}']]
 passenv = ['DOCKER_HOST']
 
