@@ -575,14 +575,25 @@ async def _sync_branch_cpu_resources(
         raise last_error
 
 
-async def _apply_resize_operations(branch: Branch, effective_parameters: dict[CapaResizeKey, int]) -> None:
+async def _apply_resize_operations(
+    session: SessionDep,
+    branch: Branch,
+    effective_parameters: dict[CapaResizeKey, int],
+) -> None:
     resize_params = ResizeParameters(**{str(key): value for key, value in effective_parameters.items()})
     resize_deployment(branch.id, resize_params)
 
     if "iops" in effective_parameters:
-        await update_branch_volume_iops(branch.id, effective_parameters["iops"])
+        new_iops = effective_parameters["iops"]
+        await update_branch_volume_iops(branch.id, new_iops)
+        branch.iops = new_iops
+        await create_or_update_branch_provisioning(
+            session,
+            branch,
+            ResourceLimitsPublic(iops=new_iops),
+            commit=False,
+        )
 
-    # TODO: as a part of memory monitor, after memory resize is complete, run _sync_branch_cpu_resources
     milli_vcpu = effective_parameters.get("milli_vcpu")
     if milli_vcpu is not None:
         await _sync_branch_cpu_resources(
@@ -590,6 +601,12 @@ async def _apply_resize_operations(branch: Branch, effective_parameters: dict[Ca
             desired_milli_vcpu=milli_vcpu,
         )
         branch.milli_vcpu = milli_vcpu
+        await create_or_update_branch_provisioning(
+            session,
+            branch,
+            ResourceLimitsPublic(milli_vcpu=milli_vcpu),
+            commit=False,
+        )
 
 
 async def _deploy_branch_environment_task(
@@ -986,6 +1003,37 @@ def _ensure_branch_resource_limits(
     if exceeded_limits:
         violation_details = format_limit_violation_details(exceeded_limits, resource_requests, remaining_limits)
         raise HTTPException(422, f"New branch will exceed limit(s): {violation_details}")
+
+
+def _build_target_allocations(branch: Branch, updates: dict[CapaResizeKey, int]) -> ResourceLimitsPublic:
+    storage_override = updates.get("storage_size")
+    return ResourceLimitsPublic(
+        milli_vcpu=updates.get("milli_vcpu", branch.milli_vcpu),
+        ram=updates.get("memory_bytes", branch.memory),
+        iops=updates.get("iops", branch.iops),
+        database_size=updates.get("database_size", branch.database_size),
+        storage_size=storage_override if storage_override is not None else branch.storage_size,
+    )
+
+
+async def _ensure_resize_resource_limits(
+    session: SessionDep,
+    branch: Branch,
+    updates: dict[CapaResizeKey, int],
+) -> None:
+    if not updates:
+        return
+
+    project = await branch.awaitable_attrs.project
+    target_allocations = _build_target_allocations(branch, updates)
+    exceeded_limits, remaining_limits = await check_available_resources_limits(
+        session,
+        project.organization_id,
+        project.id,
+        target_allocations,
+        exclude_branch_ids=[branch.id],
+    )
+    _ensure_branch_resource_limits(exceeded_limits, target_allocations, remaining_limits)
 
 
 async def _post_commit_branch_setup(
@@ -1531,7 +1579,8 @@ async def resize(
     )
 
     if effective_parameters:
-        await _apply_resize_operations(branch_in_session, effective_parameters)
+        await _ensure_resize_resource_limits(session, branch_in_session, effective_parameters)
+        await _apply_resize_operations(session, branch_in_session, effective_parameters)
         completion_timestamp = datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
         if "milli_vcpu" in effective_parameters:
             updated_statuses["database_cpu_resize"] = {

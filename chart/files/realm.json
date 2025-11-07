@@ -40,19 +40,19 @@
     ],
     "clients": [
         {
-            "clientId": "frontend",
+            "clientId": "{{ .Values.studio.env.VELA_PLATFORM_KEYCLOAK_CLIENT_ID }}",
             "name": "Frontend Application",
             "enabled": true,
             "redirectUris": [
-                "https://staging.vela.run:30808/api/auth/callback/keycloak"
+                "https://{{ .Values.domain }}:{{ .Values.port }}/api/auth/callback/keycloak"
             ],
             "webOrigins": [
-                "https://staging.vela.run:30808"
+                "https://{{ .Values.domain }}:{{ .Values.port }}"
             ],
             "standardFlowEnabled": true,
             "directAccessGrantsEnabled": true,
             "publicClient": false,
-            "secret": "client-secret",
+            "secret": "{{ .Values.studio.env.VELA_PLATFORM_KEYCLOAK_CLIENT_SECRET }}",
             "protocol": "openid-connect",
             "attributes": {
                 "access.token.lifespan": "3600"

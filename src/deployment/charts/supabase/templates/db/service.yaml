@@ -1,11 +1,16 @@
 {{- if .Values.db.enabled -}}
 {{- $dbFullname := include "supabase.db.fullname" . -}}
 {{- $serviceCfg := .Values.db.service | default (dict) -}}
+{{- $externalSvcEnabled := true -}}
+{{- if hasKey $serviceCfg "externalEnabled" }}
+{{- $externalSvcEnabled = (index $serviceCfg "externalEnabled") -}}
+{{- end }}
 {{- $lbIpFamilies := (index $serviceCfg "ipFamilies") | default (list "IPv6") -}}
 {{- $lbIpPolicy := (index $serviceCfg "ipFamilyPolicy") | default "SingleStack" -}}
 {{- $clusterCfg := (index $serviceCfg "clusterIP") | default (dict) -}}
 {{- $clusterIpFamilies := (index $clusterCfg "ipFamilies") | default (list "IPv4") -}}
 {{- $clusterIpPolicy := (index $clusterCfg "ipFamilyPolicy") | default "SingleStack" -}}
+{{- if $externalSvcEnabled }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -27,6 +32,7 @@ spec:
   selector:
     vm.kubevirt.io/name: {{ $dbFullname }}
 ---
+{{- end }}
 apiVersion: v1
 kind: Service
 metadata:

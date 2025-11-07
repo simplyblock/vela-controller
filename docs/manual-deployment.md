@@ -155,3 +155,57 @@ helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager --create-namespace \
   --version v1.13.0 --set installCRDs=true
 ```
+
+after installation, create create self-signed certificate issuer `ca-issuer`. For production we should use LetsEncrypt
+```sh
+kubectl apply -f - <<'EOF'
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-bootstrap
+spec:
+  selfSigned: {}
+
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ca-cert
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: vela-ca
+  secretName: ca-key-pair
+  issuerRef:
+    name: selfsigned-bootstrap
+    kind: ClusterIssuer
+
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: ca-issuer
+spec:
+  ca:
+    secretName: ca-key-pair
+EOF
+```
+
+### Monitoring
+Disabled node exporter so ask to not to conflict with the onces already exists in cluster
+Ideally simplyblock should able to hook into the existing monitoring solution. But implementing that feedback was never
+prioritised: https://github.com/simplyblock/sbcli/pull/408#issuecomment-2991065338
+
+```
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+
+helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+  --namespace monitoring \
+  --create-namespace \
+  --set grafana.enabled=false \
+  --set alertmanager.enabled=false \
+  --set nodeExporter.enabled=false \
+  --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.storageClassName=openebs-local-hostpath \
+  --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage=5Gi
+```

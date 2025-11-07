@@ -48,7 +48,7 @@ services:
     - supabase
   pgbouncer:
     container_name: vela-pgbouncer
-    image: docker.io/edoburu/pgbouncer:v1.24.1-p0
+    image: docker.io/edoburu/pgbouncer:v1.24.1-p1
     volumes:
       - ./pgbouncer:/etc/pgbouncer:Z
     depends_on:

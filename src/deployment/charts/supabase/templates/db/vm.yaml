@@ -69,7 +69,7 @@ spec:
       volumes:
         - name: rootdisk
           containerDisk:
-            image: manoharbrm/kubevirt:alpine-{{ .Values.db.image.tag }}-compose
+            image: manoharbrm/kubevirt:alpine-{{ .Values.db.image.tag }}
         - name: datadisk # vdb
           persistentVolumeClaim:
             claimName: {{ include "supabase.db.fullname" . }}-pvc

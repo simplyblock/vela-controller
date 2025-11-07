@@ -8,8 +8,10 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from ...._util import quantity_to_bytes
+from ....api._util.resourcelimit import create_or_update_branch_provisioning
 from ....api.db import engine
 from ....api.models.branch import Branch, BranchResizeStatus, aggregate_resize_statuses
+from ....api.models.resources import ResourceLimitsPublic
 from ....api.organization.project.branch import _sync_branch_cpu_resources
 from ....deployment import get_db_vmi_identity, kube_service
 from ....exceptions import VelaKubernetesError
@@ -67,6 +69,12 @@ async def refresh_memory_status(session: AsyncSession, branch: Branch) -> None:
     logger.info("1. Memory resize for branch %s completed to %d bytes", branch_id, target_memory)
 
     if new_status == "COMPLETED":
+        await create_or_update_branch_provisioning(
+            session,
+            branch,
+            ResourceLimitsPublic(ram=target_memory),
+            commit=False,
+        )
         branch.memory = target_memory
         logger.info("2. Memory resize for branch %s completed to %d bytes", branch_id, target_memory)
         try:
