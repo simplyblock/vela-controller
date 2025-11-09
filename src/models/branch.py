@@ -73,7 +73,7 @@ class Branch(AsyncAttrs, Model, table=True):
     jwt_secret: Annotated[str, Field(default=None, sa_column=Column(Text, nullable=True))]
     anon_key: Annotated[str, Field(default=None, sa_column=Column(Text, nullable=True))]
     service_key: Annotated[str, Field(default=None, sa_column=Column(Text, nullable=True))]
-    grafana_dashboard_url: Annotated[str | None, Field(default=None, sa_column=Column(String(512), nullable=True))]
+    grafana_dashboard_url: Annotated[str | None, Field(default=None, sa_column=Column(Text, nullable=True))]
     resize_status: "BranchResizeStatus" = Field(
         default="NONE",
         sa_column=Column(String(length=48), nullable=False),
