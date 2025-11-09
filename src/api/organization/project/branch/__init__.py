@@ -16,6 +16,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from keycloak.exceptions import KeycloakError
 from kubernetes_asyncio.client.exceptions import ApiException
 from pydantic import ValidationError
+from sqlalchemy import inspect
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
@@ -118,8 +119,10 @@ def _parse_branch_status(value: BranchServiceStatus | str | None) -> BranchServi
 
 
 def _apply_local_branch_status(branch: Branch, status: BranchServiceStatus) -> bool:
-    if _parse_branch_status(branch.status) == status:
-        return False
+    state = inspect(branch)
+    if state is not None and "status" in state.dict:
+        if _parse_branch_status(state.dict["status"]) == status:
+            return False
     branch.status = status
     return True
 
