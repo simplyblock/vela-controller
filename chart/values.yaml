@@ -23,9 +23,6 @@ controller:
   image:
     repository: docker.io/simplyblock/vela-controller
     tag: latest
-  database:
-    username: postgres
-    password: example123456
   env:
     VELA_ROOT_PATH: '/vela'
     VELA_CORS_ORIGINS: '["http://localhost:3000"]' # TODO: remove this for prod
