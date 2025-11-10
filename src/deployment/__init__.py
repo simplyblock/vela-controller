@@ -368,7 +368,8 @@ def _configure_vela_values(
 
     db_spec = values_content.setdefault("db", {})
     db_spec.setdefault("image", {})["tag"] = parameters.database_image_tag
-    db_spec.setdefault("service", {})
+    db_service_cfg = db_spec.setdefault("service", {})
+    db_service_cfg["externalEnabled"] = get_settings().enable_db_external_ipv6_loadbalancer
 
     secrets = values_content.setdefault("secret", {})
     secrets.setdefault("jwt", {}).update(

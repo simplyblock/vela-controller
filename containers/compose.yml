@@ -39,6 +39,7 @@ services:
       VELA_LOGFLARE_PUBLIC_ACCESS_TOKEN: 'my-super-secret-api-key'
       VELA_LOGFLARE_URL: 'http://logflare:4000'
       VELA_GRAFANA_URL: 'http://grafana:3000'
+      VELA_ENABLE_DB_EXTERNAL_IPV6_LOADBALANCER: 'false'
       VELA_GRAFANA_SECURITY_ADMIN_USER: "admin"
       VELA_GRAFANA_SECURITY_ADMIN_PASSWORD: "password"
       VELA_SYSTEM_LIMIT_MILLIS_VCPU: '100000'

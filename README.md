@@ -29,4 +29,3 @@ echo $TOKEN
 - `tox -e lint` – Ruff lint checks
 - `tox -e format-check` – Formatting verification
 - `tox -e type-check` – mypy static type analysis
-

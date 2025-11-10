@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     deployment_release_name: str = "supabase"
     deployment_host: str = "localhost"
     deployment_service_port: int = 443
+    enable_db_external_ipv6_loadbalancer: bool = True  # Expose Vela Postgres via external IPv6 LB when true
     pgmeta_crypto_key: str
     cloudflare_api_token: str
     cloudflare_zone_id: str
