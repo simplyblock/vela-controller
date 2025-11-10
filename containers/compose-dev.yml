@@ -15,6 +15,7 @@ services:
       VELA_SYSTEM_LIMIT_IOPS: '1000000000'
       VELA_SYSTEM_LIMIT_DATABASE_SIZE: '100000000000000'
       VELA_SYSTEM_LIMIT_STORAGE_SIZE: '1000000000000'
+      VELA_ENABLE_DB_EXTERNAL_IPV6_LOADBALANCER: 'false'
     ports:
       - 8000:8000
     command: 'bash -c "python -m venv /tmp/venv && source /tmp/venv/bin/activate && pip install -e . && uvicorn --host 0.0.0.0 --reload simplyblock.vela.api:app"'

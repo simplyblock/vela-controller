@@ -129,6 +129,7 @@ data:
   VELA_CLOUDFLARE_DOMAIN_SUFFIX: {{ .Values.domain | quote }}
   VELA_DEPLOYMENT_NAMESPACE_PREFIX: {{ .Values.controller.env.VELA_DEPLOYMENT_NAMESPACE_PREFIX | quote }}
   VELA_DEPLOYMENT_SERVICE_PORT: {{ .Values.port | quote }}
+  VELA_ENABLE_DB_EXTERNAL_IPV6_LOADBALANCER: {{ .Values.controller.env.VELA_ENABLE_DB_EXTERNAL_IPV6_LOADBALANCER | quote }}
   VELA_LOGFLARE_URL: {{ .Values.controller.env.VELA_LOGFLARE_URL | quote }}
   VELA_GRAFANA_URL: {{ .Values.controller.env.VELA_GRAFANA_URL | quote }}
   VELA_SYSTEM_LIMIT_MILLIS_VCPU: {{ .Values.controller.env.VELA_SYSTEM_LIMIT_MILLIS_VCPU | quote }}

@@ -36,6 +36,7 @@ controller:
     VELA_JWT_SECRET: 'http://vela-auth-service:8080/auth/realms/vela/protocol/openid-connect/certs'
     VELA_LOGFLARE_URL: 'http://vela-logflare:4000'
     VELA_GRAFANA_URL: 'http://vela-grafana:3000'
+    VELA_ENABLE_DB_EXTERNAL_IPV6_LOADBALANCER: 'true'
     VELA_SYSTEM_LIMIT_MILLIS_VCPU: '100000'
     VELA_SYSTEM_LIMIT_RAM: '274877906944'
     VELA_SYSTEM_LIMIT_IOPS: '1000000000'
