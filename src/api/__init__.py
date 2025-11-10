@@ -111,8 +111,6 @@ class _FastAPI(FastAPI):
             return path_spec
 
         openapi_schema = super().openapi()
-        security_schemes = openapi_schema.setdefault("components", {}).setdefault("securitySchemes", {})
-        security_schemes.setdefault("HTTPBearer", {"type": "http", "scheme": "bearer"})
         keycloak_openapi_schema = json.loads(files(__package__).joinpath("keycloak-26.4.0-api.json").read_text())
 
         openapi_schema["paths"].update(
