@@ -17,6 +17,7 @@ dependencies = [
     'pydantic-core==2.33.2',
     'pydantic-settings',
     'kubernetes-asyncio>=22.6.0',
+    'kubernetes>=30.1.0',
     'pyyaml',
     'email-validator',  # pydantic.EmailStr
     'cryptography',  # JWT algorithms

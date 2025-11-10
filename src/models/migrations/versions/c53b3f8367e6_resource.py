@@ -1,8 +1,8 @@
 """resource
 
-Revision ID: 93c0d0a536e7
-Revises: 82469a97a796
-Create Date: 2025-11-07 16:59:13.356175
+Revision ID: c53b3f8367e6
+Revises: bb1e1450fd9f
+Create Date: 2025-11-10 14:56:19.426238
 
 """
 from typing import Sequence, Union
@@ -13,8 +13,8 @@ import sqlmodel
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = '93c0d0a536e7'
-down_revision: Union[str, Sequence[str], None] = '82469a97a796'
+revision: str = 'c53b3f8367e6'
+down_revision: Union[str, Sequence[str], None] = 'bb1e1450fd9f'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

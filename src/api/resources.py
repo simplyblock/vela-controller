@@ -358,19 +358,19 @@ async def _collect_branch_resource_usage(branch: Branch) -> ResourceUsageDefinit
         logger.exception("Unexpected error retrieving metrics for pod %s/%s", namespace, pod_name)
         return default_usage
 
-    containers = cast("Sequence[dict[str, Any]]", metrics.get("containers") or [])
-    compute_usage = next((container for container in containers if container.get("name") == "compute"), None)
-    if compute_usage is None:
-        logger.debug("Metrics for pod %s/%s missing compute container usage", namespace, pod_name)
-        return default_usage
+    containers = cast("Sequence[dict[str, Any]]", metrics["containers"])
+    compute_usage = next(container for container in containers if container.get("name") == "compute")
 
-    usage = cast("dict[str, Any]", compute_usage.get("usage") or {})
-    cpu_usage = quantity_to_milli_cpu(usage.get("cpu"))
-    memory_usage = quantity_to_bytes(usage.get("memory"))
+    usage = cast("dict[str, Any]", compute_usage["usage"])
+    cpu_usage = quantity_to_milli_cpu(usage["cpu"])
+    memory_usage = quantity_to_bytes(usage["memory"])
+
+    if cpu_usage is None or memory_usage is None:
+        raise ValueError("Metrics API returned empty resource usage for compute container")
 
     return ResourceUsageDefinition(
-        milli_vcpu=cpu_usage if cpu_usage is not None else 0,
-        ram_bytes=memory_usage if memory_usage is not None else 0,
+        milli_vcpu=cpu_usage,
+        ram_bytes=memory_usage,
         nvme_bytes=0,
         iops=0,
         storage_bytes=None,
