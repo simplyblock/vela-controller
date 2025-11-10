@@ -9,7 +9,7 @@ dynamic = ['version']
 dependencies = [
     'fastapi',
     'uvicorn',
-    'sqlmodel',
+    'sqlmodel>=0.0.25',
     'asyncpg',
     'psycopg[binary]>=3.1',
     'pyjwt',
@@ -26,6 +26,7 @@ dependencies = [
     'requests',
     'cloudflare',
     'alembic',
+    'httpx',
 ]
 
 [tool.setuptools]

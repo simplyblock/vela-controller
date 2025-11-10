@@ -209,3 +209,16 @@ helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheu
   --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.storageClassName=openebs-local-hostpath \
   --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage=5Gi
 ```
+
+### stackgres
+
+```
+hehelm upgrade --install stackgres-operator \
+  stackgres-operator \
+  --repo https://stackgres.io/downloads/stackgres-k8s/stackgres/helm/ \
+  --namespace stackgres \
+  --create-namespace \
+  --wait \
+  --timeout 600s \
+  --version 1.17.4
+```

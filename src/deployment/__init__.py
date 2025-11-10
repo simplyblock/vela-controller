@@ -24,7 +24,6 @@ from .._util import (
     IOPS_CONSTRAINTS,
     MEMORY_CONSTRAINTS,
     STORAGE_SIZE_CONSTRAINTS,
-    DBPassword,
     Identifier,
     Name,
     StatusType,
@@ -32,8 +31,19 @@ from .._util import (
     bytes_to_mib,
     check_output,
 )
+<<<<<<< HEAD
 from ..exceptions import VelaCloudflareError, VelaDeployError, VelaDeploymentError, VelaKubernetesError
 from ._util import _require_asset, deployment_namespace
+=======
+from ..exceptions import (
+    VelaCloudflareError,
+    VelaDeployError,
+    VelaDeploymentError,
+    VelaGrafanaError,
+    VelaKubernetesError,
+)
+from .deployment import DeploymentParameters, DeploymentStatus
+>>>>>>> main
 from .grafana import create_vela_grafana_obj, delete_vela_grafana_obj
 from .kubernetes import KubernetesService
 from .kubernetes.kubevirt import get_virtualmachine_status
@@ -137,27 +147,6 @@ def inject_branch_env(compose: dict[str, Any], branch_id: Identifier) -> dict[st
     vector_env["VELA_BRANCH"] = str(branch_id).lower()
 
     return compose
-
-
-class DeploymentParameters(BaseModel):
-    database_password: DBPassword
-    database_size: Annotated[int, Field(**DATABASE_SIZE_CONSTRAINTS)]
-    storage_size: Annotated[int | None, Field(**STORAGE_SIZE_CONSTRAINTS)] = None
-    milli_vcpu: Annotated[int, Field(**CPU_CONSTRAINTS)]  # units of milli vCPU
-    memory_bytes: Annotated[int, Field(**MEMORY_CONSTRAINTS)]
-    iops: Annotated[int, Field(**IOPS_CONSTRAINTS)]
-    database_image_tag: Literal["15.1.0.147"]
-    enable_file_storage: bool = True
-
-    @model_validator(mode="after")
-    def ensure_storage_requirements(self) -> "DeploymentParameters":
-        if self.enable_file_storage and self.storage_size is None:
-            raise ValueError("storage_size is required when file storage is enabled")
-        return self
-
-
-class DeploymentStatus(BaseModel):
-    status: StatusType
 
 
 def _build_storage_class_manifest(*, storage_class_name: str, iops: int, base_storage_class: Any) -> dict[str, Any]:
@@ -512,13 +501,16 @@ async def delete_deployment(branch_id: Identifier) -> None:
     storage_class_name = branch_storage_class_name(branch_id)
     try:
         await delete_branch_logflare_objects(branch_id)
-        await delete_vela_grafana_obj(branch_id)
         await kube_service.delete_namespace(namespace)
     except ApiException as exc:
         if exc.status == 404:
             logger.info("Namespace %s not found", namespace)
         else:
             raise
+    try:
+        await delete_vela_grafana_obj(branch_id)
+    except VelaGrafanaError:
+        logger.info("Grafana dashboard for branch %s not found", branch_id)
     try:
         await kube_service.delete_storage_class(storage_class_name)
     except ApiException as exc:

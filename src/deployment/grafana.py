@@ -141,7 +141,7 @@ async def create_folder(folder_name: str, parent_uid: str | None = None) -> str:
 
 # --- PERMISSIONS ---
 async def set_folder_permissions(folder_uid: str, team_id: int):
-    async with httpx.AsyncClient() as client:
+    async with _client() as client:
         try:
             payload = {"items": [{"teamId": team_id, "permission": 1}]}
             await client.post(f"folders/{folder_uid}/permissions", json=payload)
@@ -233,7 +233,7 @@ async def remove_team(team_id: int):
 
 
 async def remove_folder(folder_uid: str):
-    async with httpx.AsyncClient() as client:
+    async with _client() as client:
         try:
             await client.delete(f"folders/{folder_uid}")
             logger.info(f"Folder {folder_uid} removed.")
@@ -252,7 +252,7 @@ async def remove_folder(folder_uid: str):
 
 
 async def remove_user_from_team(team_id: int, user_id: int):
-    async with httpx.AsyncClient() as client:
+    async with _client() as client:
         try:
             await client.delete(f"teams/{team_id}/members/{user_id}")
             logger.info(f"User {user_id} removed from team {team_id}.")

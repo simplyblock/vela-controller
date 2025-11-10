@@ -1,5 +1,6 @@
 from collections.abc import Mapping
 from datetime import UTC, datetime
+from enum import Enum
 from typing import Annotated, Any, ClassVar, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
@@ -70,6 +71,10 @@ class Branch(AsyncAttrs, Model, table=True):
     ] = None
     enable_file_storage: bool = True
     database_image_tag: str
+    status: "BranchServiceStatus" = Field(
+        default="UNKNOWN",
+        sa_column=Column(String(length=64), nullable=False, server_default="UNKNOWN"),
+    )
     jwt_secret: Annotated[str, Field(default=None, sa_column=Column(Text, nullable=True))]
     anon_key: Annotated[str, Field(default=None, sa_column=Column(Text, nullable=True))]
     service_key: Annotated[str, Field(default=None, sa_column=Column(Text, nullable=True))]
@@ -259,34 +264,29 @@ class BranchPgbouncerConfigStatus(BaseModel):
     reserve_pool_size: int | None = None
 
 
-BranchSystemStatus = Literal[
-    "ACTIVE_HEALTHY",
-    "STOPPED",
-    "STARTING",
-    "ACTIVE_UNHEALTHY",
-    "CREATING",
-    "DELETING",
-    "UPDATING",
-    "RESTARTING",
-    "STOPPING",
-    "UNKNOWN",
-    "ERROR",
-]
+class BranchServiceStatus(str, Enum):
+    description: str
 
+    ACTIVE_HEALTHY = "ACTIVE_HEALTHY", "All branch services report healthy and are serving traffic."
+    STOPPED = "STOPPED", "Branch is stopped and its services are offline."
+    STARTING = "STARTING", "Branch is booting after a stop; services are coming online."
+    ACTIVE_UNHEALTHY = "ACTIVE_UNHEALTHY", "At least one branch service is reporting an unhealthy state."
+    CREATING = "CREATING", "Branch is being created, cloned, or restarted and resources are provisioning."
+    DELETING = "DELETING", "Branch resources are being torn down as part of a delete operation."
+    UPDATING = "UPDATING", "Branch is undergoing a resource update such as CPU, memory, storage, or engine upgrades."
+    RESTARTING = "RESTARTING", "Branch is restarting services without additional side effects (placeholder state)."
+    STOPPING = "STOPPING", "Branch is in the process of stopping; services are shutting down."
+    PAUSING = "PAUSING", "Branch is being hibernated and workloads are suspending."
+    PAUSED = "PAUSED", "Branch is hibernated and workloads are suspended."
+    RESUMING = "RESUMING", "Branch is resuming from hibernation and services are being restored."
+    UNKNOWN = "UNKNOWN", "Branch status is currently indeterminate or unavailable."
+    ERROR = "ERROR", "An internal error prevented the branch state from being determined."
 
-BranchServiceStatus = Literal[
-    "ACTIVE_HEALTHY",
-    "STOPPED",
-    "STARTING",
-    "ACTIVE_UNHEALTHY",
-    "CREATING",
-    "DELETING",
-    "UPDATING",
-    "RESTARTING",
-    "STOPPING",
-    "UNKNOWN",
-    "ERROR",
-]
+    def __new__(cls, value: str, description: str):
+        obj = str.__new__(cls, value)
+        obj._value_ = value
+        obj.description = description
+        return obj
 
 
 class DatabaseInformation(BaseModel):
@@ -296,6 +296,7 @@ class DatabaseInformation(BaseModel):
     name: str
     encrypted_connection_string: str
     service_endpoint_uri: str
+    monitoring_endpoint_uri: str | None
     version: str
     has_replicas: bool
 
@@ -508,7 +509,7 @@ class BranchPublic(BaseModel):
     assigned_labels: list[str]
     used_resources: ResourceUsageDefinition
     api_keys: BranchApiKeys
-    status: BranchSystemStatus
+    status: BranchServiceStatus
     pitr_enabled: bool
     created_at: datetime
     created_by: str

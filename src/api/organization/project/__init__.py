@@ -7,6 +7,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from kubernetes_asyncio.client.exceptions import ApiException
 from sqlalchemy.exc import IntegrityError
 
+from ...._util import Identifier
 from ....deployment import delete_deployment, get_db_vmi_identity
 from ....deployment.kubernetes.kubevirt import call_kubevirt_subresource
 from ....models.project import (
@@ -64,6 +65,76 @@ _links = {
 }
 
 
+def _resource_type_from_name(resource_name: str) -> ResourceType:
+    try:
+        return ResourceType(resource_name)
+    except ValueError as exc:  # pragma: no cover - defensive coding against invalid payloads
+        raise HTTPException(422, f"Unknown resource type {resource_name!r}") from exc
+
+
+def _validate_project_limits(
+    requested_project_limits: dict[str, int],
+    org_limits: dict[ResourceType, ResourceLimit],
+) -> dict[str, ResourceType]:
+    resource_type_by_name: dict[str, ResourceType] = {}
+    for resource_name, requested_limit in requested_project_limits.items():
+        resource_type = _resource_type_from_name(resource_name)
+        organization_limit = org_limits.get(resource_type)
+        if organization_limit is None or organization_limit.max_total is None:
+            raise HTTPException(
+                422,
+                (
+                    f"Organization limit for {resource_name} is not configured; "
+                    f"cannot set project limit to {requested_limit}"
+                ),
+            )
+        if requested_limit > organization_limit.max_total:
+            raise HTTPException(
+                422,
+                (
+                    f"project_limits.{resource_name} ({requested_limit}) exceeds organization's limit "
+                    f"({organization_limit.max_total})"
+                ),
+            )
+        resource_type_by_name[resource_name] = resource_type
+    return resource_type_by_name
+
+
+def _build_project_resource_limits(
+    organization_id: Identifier,
+    project_id: Identifier,
+    requested_project_limits: dict[str, int],
+    requested_per_branch_limits: dict[str, int],
+    resource_type_by_name: dict[str, ResourceType],
+) -> list[ResourceLimit]:
+    project_resource_limits: list[ResourceLimit] = []
+    for resource_name, project_limit in requested_project_limits.items():
+        resource_type = resource_type_by_name[resource_name]
+        per_branch_limit = requested_per_branch_limits.get(resource_name, project_limit)
+        project_resource_limits.append(
+            ResourceLimit(
+                entity_type=EntityType.project,
+                org_id=organization_id,
+                project_id=project_id,
+                resource=resource_type,
+                max_total=project_limit,
+                max_per_branch=per_branch_limit,
+            )
+        )
+    return project_resource_limits
+
+
+async def _commit_project(session: SessionDep, project_name: str) -> None:
+    try:
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        error = str(exc)
+        if ("asyncpg.exceptions.UniqueViolationError" in error) and ("unique_project_name" in error):
+            raise HTTPException(409, f"Organization already has project named {project_name}") from exc
+        raise
+
+
 @api.post(
     "/",
     name="organizations:projects:create",
@@ -96,28 +167,7 @@ async def create(
     org_limits = await get_organization_resource_limits(session, organization.id)
     requested_project_limits = parameters.project_limits.model_dump(exclude_unset=True, exclude_none=True)
     requested_per_branch_limits = parameters.per_branch_limits.model_dump(exclude_unset=True, exclude_none=True)
-    for resource_name, requested_limit in requested_project_limits.items():
-        try:
-            resource_type = ResourceType(resource_name)
-        except ValueError as exc:  # pragma: no cover - defensive coding against invalid payloads
-            raise HTTPException(422, f"Unknown resource type {resource_name!r}") from exc
-        organization_limit = org_limits.get(resource_type)
-        if organization_limit is None or organization_limit.max_total is None:
-            raise HTTPException(
-                422,
-                (
-                    f"Organization limit for {resource_name} is not configured; "
-                    f"cannot set project limit to {requested_limit}"
-                ),
-            )
-        if requested_limit > organization_limit.max_total:
-            raise HTTPException(
-                422,
-                (
-                    f"project_limits.{resource_name} ({requested_limit}) exceeds organization's limit "
-                    f"({organization_limit.max_total})"
-                ),
-            )
+    resource_type_by_name = _validate_project_limits(requested_project_limits, org_limits)
 
     entity = Project(
         organization=organization,
@@ -127,30 +177,16 @@ async def create(
     session.add(entity)
     # Ensure the project exists in the database before inserting dependent limits.
     await session.flush()
-    project_resource_limits: list[ResourceLimit] = []
-    for resource_name, project_limit in requested_project_limits.items():
-        resource_type = ResourceType(resource_name)
-        per_branch_limit = requested_per_branch_limits.get(resource_name, project_limit)
-        project_resource_limits.append(
-            ResourceLimit(
-                entity_type=EntityType.project,
-                org_id=organization.id,
-                project_id=entity.id,
-                resource=resource_type,
-                max_total=project_limit,
-                max_per_branch=per_branch_limit,
-            )
-        )
+    project_resource_limits = _build_project_resource_limits(
+        organization.id,
+        entity.id,
+        requested_project_limits,
+        requested_per_branch_limits,
+        resource_type_by_name,
+    )
     if project_resource_limits:
         session.add_all(project_resource_limits)
-    try:
-        await session.commit()
-    except IntegrityError as exc:
-        await session.rollback()
-        error = str(exc)
-        if ("asyncpg.exceptions.UniqueViolationError" in error) and ("unique_project_name" in error):
-            raise HTTPException(409, f"Organization already has project named {parameters.name}") from exc
-        raise
+    await _commit_project(session, parameters.name)
 
     await session.refresh(entity)
     await session.refresh(organization)

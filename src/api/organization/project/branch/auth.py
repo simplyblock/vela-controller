@@ -5,10 +5,11 @@ from fastapi.responses import JSONResponse
 from keycloak import KeycloakAdmin
 from keycloak.exceptions import KeycloakError
 
+from ....auth import authenticated_user
 from ....dependencies import BranchDep
 from ....keycloak import realm_admin
 
-api = APIRouter()
+api = APIRouter(dependencies=[Depends(authenticated_user)])
 
 
 def _branch_realm(branch: BranchDep):
