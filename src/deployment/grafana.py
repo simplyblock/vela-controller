@@ -42,7 +42,8 @@ async def create_vela_grafana_obj(organization_id: Identifier, branch_id: Identi
 
     user_id = await get_user_via_jwt(credential)
     await add_user_to_team(team_id, user_id)
-    await create_dashboard(str(organization_id), folder_id, str(branch_id))
+
+    return await create_dashboard(str(organization_id), folder_id, str(branch_id))
 
 
 async def delete_vela_grafana_obj(branch_id: Identifier):
@@ -267,20 +268,19 @@ async def remove_user_from_team(team_id: int, user_id: int):
 
 
 # --- DASHBOARD CREATION ---
-async def create_dashboard(org_name: str, folder_uid: str, folder_name: str):
+async def create_dashboard(org_name: str, folder_uid: str, branch_id: str) -> None:
     dashboard_payload = {
         "dashboard": {
-            "id": None,
-            "uid": None,
-            "title": f"{folder_name} Metrics",
-            "tags": [folder_name],
+            "uid": branch_id,
+            "title": "Metrics",
+            "tags": [branch_id],
             "timezone": "browser",
             "schemaVersion": 36,
             "version": 0,
             "panels": [
                 {
                     "type": "timeseries",
-                    "title": "Example Metric",
+                    "title": "Metric",
                     "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0},
                     "datasource": {"type": "prometheus", "uid": "eev2sidbr5ekgb"},
                     "targets": [
@@ -304,9 +304,9 @@ async def create_dashboard(org_name: str, folder_uid: str, folder_name: str):
                     {
                         "name": "project",
                         "type": "constant",
-                        "label": folder_name,
-                        "query": folder_name,
-                        "current": {"selected": True, "text": folder_name, "value": folder_name},
+                        "label": branch_id,
+                        "query": branch_id,
+                        "current": {"selected": True, "text": branch_id, "value": branch_id},
                     },
                 ]
             },
@@ -318,7 +318,7 @@ async def create_dashboard(org_name: str, folder_uid: str, folder_name: str):
     async with _client() as client:
         try:
             await client.post("dashboards/db", json=dashboard_payload)
-            logger.info(f"Dashboard created successfully in folder '{folder_name}'.")
+            logger.info(f"Dashboard created successfully in folder '{branch_id}'.")
         except httpx.HTTPError as exc:
-            logger.error(f"Failed to create dashboard for folder '{folder_name}': {exc}")
+            logger.error(f"Failed to create dashboard for folder '{branch_id}': {exc}")
             raise VelaGrafanaError(f"Failed to create dashboard: {exc}") from exc

@@ -59,12 +59,17 @@ async def _create_sources(sources: list[str], prefix: str | None = None) -> list
                 created_sources.append(full_name)
                 continue
 
-            payload = {"name": full_name}
             try:
-                await client.post("/sources", json=payload)
+                payload = {"name": full_name, "default_ingest_backend_enabled": True}
+                source = await client.post("/sources", json=payload)
+
+                # Chris: I hate this. I really hate this. You wouldn't believe how much I hate this.
+                # But it forces the underlying source table to create. That's all that's required 🤷‍♂️
+                payload = {"message": "Successfully created log source"}
+                await client.post(f"/logs?source={source.json()['token']}", json=payload)
+
                 logger.info(f"Logflare source '{full_name}' created successfully.")
                 created_sources.append(full_name)
-
             except httpx.HTTPError as exc:
                 raise VelaLogflareError(f"Failed to create Logflare source '{full_name}'") from exc
 

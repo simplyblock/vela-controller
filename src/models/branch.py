@@ -296,6 +296,7 @@ class DatabaseInformation(BaseModel):
     name: str
     encrypted_connection_string: str
     service_endpoint_uri: str
+    monitoring_endpoint_uri: str | None
     version: str
     has_replicas: bool
 
