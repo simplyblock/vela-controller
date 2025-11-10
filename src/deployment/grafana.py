@@ -1,7 +1,6 @@
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from urllib.parse import urlsplit
 
 import httpx
 
@@ -272,7 +271,6 @@ async def remove_user_from_team(team_id: int, user_id: int):
 async def create_dashboard(org_name: str, folder_uid: str, branch_id: str) -> str:
     dashboard_payload = {
         "dashboard": {
-            "id": None,
             "uid": branch_id,
             "title": "Metrics",
             "tags": [branch_id],
@@ -319,11 +317,8 @@ async def create_dashboard(org_name: str, folder_uid: str, branch_id: str) -> st
 
     async with _client() as client:
         try:
-            response = await client.post("dashboards/db", json=dashboard_payload)
+            await client.post("dashboards/db", json=dashboard_payload)
             logger.info(f"Dashboard created successfully in folder '{branch_id}'.")
-
-            data = response.json()
-            return urlsplit(data.get("url")).path[1:]
         except httpx.HTTPError as exc:
             logger.error(f"Failed to create dashboard for folder '{branch_id}': {exc}")
             raise VelaGrafanaError(f"Failed to create dashboard: {exc}") from exc
