@@ -22,7 +22,7 @@ keycloak:
 controller: 
   image:
     repository: docker.io/simplyblock/vela-controller
-    tag: pgexport
+    tag: latest
   database:
     username: postgres
     password: example123456
