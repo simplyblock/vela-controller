@@ -6,9 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlmodel import select
 
-from ..check_branch_status import get_branch_status
 from ..models._util import Identifier
-from ..models.branch import Branch
+from ..models.branch import Branch, BranchServiceStatus
 from ..models.project import Project
 from ..models.resources import (
     BranchAllocationPublic,
@@ -39,6 +38,7 @@ from ._util.resourcelimit import (
 )
 from .auth import authenticated_user
 from .db import SessionDep
+from .organization.project.branch import refresh_branch_status
 from .settings import get_settings
 
 router = APIRouter(dependencies=[Depends(authenticated_user)], tags=["resource"])
@@ -318,8 +318,8 @@ async def monitor_resources(interval_seconds: int = 60):
                 logger.info("Found %d active branches", len(branches))
 
                 for branch in branches:
-                    status = await get_branch_status(branch.id)
-                    if status == "ACTIVE_HEALTHY":
+                    status = await refresh_branch_status(branch.id)
+                    if status == BranchServiceStatus.ACTIVE_HEALTHY:
                         prov_result = await db.execute(
                             select(BranchProvisioning).where(BranchProvisioning.branch_id == branch.id)
                         )

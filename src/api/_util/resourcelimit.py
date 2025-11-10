@@ -8,9 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from sqlmodel import select
 
 from ..._util import Identifier
-from ...check_branch_status import get_branch_status
 from ...exceptions import VelaResourceLimitError
-from ...models.branch import Branch
+from ...models.branch import Branch, BranchServiceStatus
 from ...models.organization import Organization
 from ...models.project import Project
 from ...models.resources import (
@@ -443,7 +442,7 @@ async def get_current_organization_allocations(
         rows = [row for row in rows if row.branch_id not in excluded]
 
     grouped = _group_by_resource_type(rows)
-    branch_statuses = await _collect_branch_statuses(rows)
+    branch_statuses = await _collect_branch_statuses(session, rows)
     return _aggregate_group_by_resource_type(grouped, branch_statuses)
 
 
@@ -460,31 +459,37 @@ async def get_current_project_allocations(
         rows = [row for row in rows if row.branch_id not in excluded]
 
     grouped = _group_by_resource_type(rows)
-    branch_statuses = await _collect_branch_statuses(rows)
+    branch_statuses = await _collect_branch_statuses(session, rows)
     return _aggregate_group_by_resource_type(grouped, branch_statuses)
 
 
 def _aggregate_group_by_resource_type(
-    grouped: dict[ResourceType, list[BranchProvisioning]], branch_statuses: dict[Identifier, str]
+    grouped: dict[ResourceType, list[BranchProvisioning]], branch_statuses: dict[Identifier, BranchServiceStatus]
 ) -> dict[ResourceType, int]:
     result: dict[ResourceType, int] = {}
     for resource_type, allocations in grouped.items():
         aggregated_allocations = 0
         for allocation in allocations:
             branch_status = branch_statuses.get(allocation.branch_id)
-            if branch_status != "STOPPED" and branch_status != "DELETING":
+            if branch_status not in {BranchServiceStatus.STOPPED, BranchServiceStatus.DELETING}:
                 aggregated_allocations += allocation.amount
         result[resource_type] = aggregated_allocations
     return result
 
 
-async def _collect_branch_statuses(rows: list[BranchProvisioning]) -> dict[Identifier, str]:
-    result: dict[Identifier, str] = {}
-    for row in rows:
-        branch_id = row.branch_id
-        if branch_id not in result:
-            result[branch_id] = await get_branch_status(branch_id)
-    return result
+async def _collect_branch_statuses(
+    _session: SessionDep, rows: list[BranchProvisioning]
+) -> dict[Identifier, BranchServiceStatus]:
+    branch_ids = {row.branch_id for row in rows if row.branch_id is not None}
+    if not branch_ids:
+        return {}
+
+    from ..organization.project import branch as branch_module
+
+    statuses: dict[Identifier, BranchServiceStatus] = {}
+    for branch_id in branch_ids:
+        statuses[branch_id] = await branch_module.refresh_branch_status(branch_id)
+    return statuses
 
 
 def _group_by_resource_type(allocations: list[BranchProvisioning]) -> dict[ResourceType, list[BranchProvisioning]]:
