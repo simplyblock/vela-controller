@@ -1,13 +1,11 @@
-from typing import TYPE_CHECKING, Annotated, Literal
+from typing import TYPE_CHECKING, Literal
 
-from fastapi import Depends, HTTPException
 from pydantic import BaseModel, model_validator
 from sqlalchemy import Column, String, UniqueConstraint
-from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlmodel import Field, Relationship, select
+from sqlmodel import Field, Relationship
 
-from ..._util import (
+from .._util import (
     DB_SIZE_MIN,
     IOPS_MIN,
     MEMORY_MIN,
@@ -16,9 +14,8 @@ from ..._util import (
     Identifier,
     Name,
 )
-from ..db import SessionDep
 from ._util import Model
-from .organization import Organization, OrganizationDep
+from .organization import Organization
 from .resources import ResourceLimitsPublic
 
 if TYPE_CHECKING:
@@ -105,14 +102,3 @@ class ProjectPublic(BaseModel):
     max_backups: int
     status: ProjectStatus
     default_branch_id: Identifier | None  # TODO @Manohar please fill in the correct value
-
-
-async def _lookup(session: SessionDep, organization: OrganizationDep, project_id: Identifier) -> Project:
-    try:
-        query = select(Project).where(Project.organization_id == organization.id, Project.id == project_id)
-        return (await session.execute(query)).scalars().one()
-    except NoResultFound as e:
-        raise HTTPException(404, f"Project {project_id} not found") from e
-
-
-ProjectDep = Annotated[Project, Depends(_lookup)]

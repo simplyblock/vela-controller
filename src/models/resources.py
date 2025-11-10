@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field
 from ulid import ULID
 
-from ..._util import Identifier
+from .._util import Identifier
 from ._util import Model
 
 

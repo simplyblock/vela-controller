@@ -8,7 +8,7 @@ from sqlmodel import Field as SQLField
 from sqlmodel import SQLModel
 from ulid import ULID
 
-from ..._util import Identifier
+from .._util import Identifier
 
 
 class _DatabaseIdentifier(TypeDecorator):

@@ -45,16 +45,16 @@ from ulid import ULID
 
 from ....api._util.resourcelimit import create_or_update_branch_provisioning
 from ....api.db import engine
-from ....api.models.branch import (
+from ....deployment import deployment_branch
+from ....exceptions import VelaDeploymentError, VelaKubernetesError
+from ....models.branch import (
     RESIZE_STATUS_PRIORITY,
     Branch,
     BranchResizeStatus,
     aggregate_resize_statuses,
     should_transition_resize_status,
 )
-from ....api.models.resources import ResourceLimitsPublic
-from ....deployment import deployment_branch
-from ....exceptions import VelaDeploymentError, VelaKubernetesError
+from ....models.resources import ResourceLimitsPublic
 from .memory_resize import poll_memory_resizes
 from .pvc_resize import (
     INITIAL_BACKOFF_SECONDS,

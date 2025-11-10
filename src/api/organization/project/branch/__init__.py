@@ -20,6 +20,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
 from ....._util import DEFAULT_DB_NAME, DEFAULT_DB_USER, Identifier
+from ....._util.crypto import encrypt_with_passphrase, generate_keys
 from .....check_branch_status import get_branch_status
 from .....deployment import (
     DeploymentParameters,
@@ -43,29 +44,14 @@ from .....deployment.kubernetes.volume_clone import (
     clone_branch_database_volume,
     restore_branch_database_volume_from_snapshot,
 )
-from .....deployment.settings import settings as deployment_settings
+from .....deployment.settings import get_settings as get_deployment_settings
 from .....exceptions import VelaError, VelaKubernetesError
-from ...._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
-from ...._util.backups import copy_branch_backup_schedules
-from ...._util.crypto import encrypt_with_passphrase, generate_keys
-from ...._util.resourcelimit import (
-    check_available_resources_limits,
-    create_or_update_branch_provisioning,
-    delete_branch_provisioning,
-    format_limit_violation_details,
-    get_current_branch_allocations,
-)
-from ...._util.role import clone_user_role_assignment
-from ....auth import security
-from ....db import SessionDep
-from ....keycloak import realm_admin
-from ....models.backups import BackupEntry
-from ....models.branch import (
+from .....models.backups import BackupEntry
+from .....models.branch import (
     ApiKeyDetails,
     Branch,
     BranchApiKeys,
     BranchCreate,
-    BranchDep,
     BranchPasswordReset,
     BranchPgbouncerConfigStatus,
     BranchPgbouncerConfigUpdate,
@@ -83,13 +69,22 @@ from ....models.branch import (
     ResourceUsageDefinition,
     aggregate_resize_statuses,
 )
-from ....models.branch import (
-    lookup as lookup_branch,
+from .....models.resources import BranchAllocationPublic, ResourceLimitsPublic, ResourceType
+from ...._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
+from ...._util.backups import copy_branch_backup_schedules
+from ...._util.resourcelimit import (
+    check_available_resources_limits,
+    create_or_update_branch_provisioning,
+    delete_branch_provisioning,
+    format_limit_violation_details,
+    get_current_branch_allocations,
 )
-from ....models.organization import OrganizationDep
-from ....models.project import ProjectDep
-from ....models.resources import BranchAllocationPublic, ResourceLimitsPublic, ResourceType
-from ....settings import settings
+from ...._util.role import clone_user_role_assignment
+from ....auth import security
+from ....db import SessionDep
+from ....dependencies import BranchDep, OrganizationDep, ProjectDep, branch_lookup
+from ....keycloak import realm_admin
+from ....settings import get_settings as get_api_settings
 from .auth import api as auth_api
 
 api = APIRouter(tags=["branch"])
@@ -780,7 +775,7 @@ async def _restore_branch_environment_task(
 
 def _resolve_db_host(branch: Branch) -> str | None:
     host = branch.endpoint_domain or branch_domain(branch.id)
-    return host or deployment_settings.deployment_host
+    return host or get_deployment_settings().deployment_host
 
 
 def _build_connection_string(user: str, database: str, port: int) -> str:
@@ -809,7 +804,7 @@ def _service_endpoint_url(rest_endpoint: str | None, api_domain: str | None, db_
         candidate = f"https://{api_domain}"
     else:
         candidate = f"https://{db_host or ''}"
-    return _ensure_service_port(candidate, deployment_settings.deployment_service_port)
+    return _ensure_service_port(candidate, get_deployment_settings().deployment_service_port)
 
 
 def _normalize_resize_statuses(branch: Branch) -> dict[str, BranchResizeStatusEntry]:
@@ -883,7 +878,7 @@ async def _public(branch: Branch) -> BranchPublic:
         port=port,
         username=branch.database_user,
         name=branch.database,
-        encrypted_connection_string=encrypt_with_passphrase(connection_string, settings.pgmeta_crypto_key),
+        encrypted_connection_string=encrypt_with_passphrase(connection_string, get_api_settings().pgmeta_crypto_key),
         service_endpoint_uri=service_endpoint,
         version=branch.database_image_tag,
         has_replicas=False,
@@ -973,7 +968,7 @@ async def _resolve_source_branch(
     parameters: BranchCreate,
 ) -> tuple[Branch | None, BackupEntry | None]:
     if parameters.source is not None:
-        branch = await lookup_branch(session, project, parameters.source.branch_id)
+        branch = await branch_lookup(session, project, parameters.source.branch_id)
         return branch, None
 
     if parameters.restore is not None:
@@ -983,7 +978,7 @@ async def _resolve_source_branch(
         if backup is None:
             raise HTTPException(404, f"Backup {backup_id} not found")
         try:
-            branch = await lookup_branch(session, project, backup.branch_id)
+            branch = await branch_lookup(session, project, backup.branch_id)
         except HTTPException as exc:
             if exc.status_code == 404:
                 raise HTTPException(404, f"Backup {backup_id} not found") from exc
@@ -1384,7 +1379,7 @@ async def reset_password(
     admin_password = branch.database_password
     db_host = branch.endpoint_domain or branch_domain(branch.id)
     if not db_host:
-        db_host = deployment_settings.deployment_host
+        db_host = get_deployment_settings().deployment_host
     if not db_host:
         logging.error("Database host unavailable for branch %s", branch.id)
         raise HTTPException(status_code=500, detail="Branch database host is not configured.")
@@ -1736,7 +1731,7 @@ def _collect_pgbouncer_updates(parameters: BranchPgbouncerConfigUpdate) -> dict[
 
 
 def _pgbouncer_host_for_namespace(namespace: str) -> str:
-    return f"{deployment_settings.deployment_release_name}-pgbouncer.{namespace}.svc.cluster.local"
+    return f"{get_deployment_settings().deployment_release_name}-pgbouncer.{namespace}.svc.cluster.local"
 
 
 def _resolve_pgbouncer_password(branch: Branch) -> str:

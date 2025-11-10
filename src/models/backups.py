@@ -6,7 +6,7 @@ from sqlalchemy import BigInteger, Column, DateTime, String, UniqueConstraint
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship
 
-from ..._util import Identifier
+from .._util import Identifier
 from ._util import Model
 from .branch import Branch
 from .organization import Organization

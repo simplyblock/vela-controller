@@ -15,7 +15,7 @@ from ..deployment.kubernetes.snapshot import (
     read_snapshot,
     wait_snapshot_ready,
 )
-from ..deployment.settings import settings as deployment_settings
+from ..deployment.settings import get_settings as get_deployment_settings
 
 if TYPE_CHECKING:
     from ulid import ULID
@@ -65,7 +65,7 @@ async def create_branch_snapshot(
     time_limit: float,
 ) -> SnapshotDetails:
     namespace = deployment_namespace(branch_id)
-    pvc_name = f"{deployment_settings.deployment_release_name}{DATABASE_PVC_SUFFIX}"
+    pvc_name = f"{get_deployment_settings().deployment_release_name}{DATABASE_PVC_SUFFIX}"
     snapshot_name = _build_snapshot_name(label=label, backup_id=backup_id)
 
     logger.info("Creating VolumeSnapshot %s/%s for branch %s", namespace, snapshot_name, branch_id)

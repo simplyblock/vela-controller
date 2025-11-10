@@ -7,13 +7,13 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
 from ...deployment import delete_deployment
+from ...models.audit import OrganizationAuditLog
+from ...models.organization import Organization, OrganizationCreate, OrganizationUpdate
 from .._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from .._util.resourcelimit import initialize_organization_resource_limits
 from .._util.role import create_organization_admin_role
-from ..auth import AuthUserDep, authenticated_user
-from ..db import SessionDep
-from ..models.audit import OrganizationAuditLog
-from ..models.organization import Organization, OrganizationCreate, OrganizationDep, OrganizationUpdate
+from ..auth import authenticated_user
+from ..dependencies import AuthUserDep, OrganizationDep, SessionDep
 from .member import api as member_api
 from .project import api as project_api
 from .role import RoleUserLink

@@ -19,10 +19,10 @@ from .._util import (
     VCPU_MILLIS_MIN,
     VCPU_MILLIS_STEP,
 )
+from ..models.resources import ResourceLimitDefinitionPublic
+from ..models.role import AccessRight
 from .auth import authenticated_user
 from .db import SessionDep
-from .models.resources import ResourceLimitDefinitionPublic
-from .models.role import AccessRight
 
 api = APIRouter(dependencies=[Depends(authenticated_user)], tags=["system"])
 

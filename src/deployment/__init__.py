@@ -38,7 +38,7 @@ from .grafana import create_vela_grafana_obj, delete_vela_grafana_obj
 from .kubernetes import KubernetesService
 from .kubernetes.kubevirt import get_virtualmachine_status
 from .logflare import create_branch_logflare_objects, delete_branch_logflare_objects
-from .settings import settings
+from .settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -63,11 +63,10 @@ DATABASE_DNS_RECORD_TYPE: Literal["AAAA"] = "AAAA"
 def branch_storage_class_name(branch_id: Identifier) -> str:
     return f"sc-{str(branch_id).lower()}"
 
-
 def deployment_branch(namespace: str) -> ULID:
     """Return the branch ULID for a given deployment namespace."""
 
-    prefix = settings.deployment_namespace_prefix.strip().lower()
+    prefix = get_settings().deployment_namespace_prefix.strip().lower()
     normalized = namespace.strip().lower()
     if prefix:
         prefix_token = f"{prefix}-"
@@ -93,7 +92,7 @@ def branch_dns_label(branch_id: Identifier) -> str:
 def branch_domain(branch_id: Identifier) -> str | None:
     """Return the database host domain for a branch."""
 
-    suffix = settings.cloudflare_domain_suffix.strip()
+    suffix = get_settings().cloudflare_domain_suffix.strip()
     if not suffix:
         return None
     return f"db.{branch_dns_label(branch_id)}.{suffix}".lower()
@@ -102,7 +101,7 @@ def branch_domain(branch_id: Identifier) -> str | None:
 def branch_api_domain(branch_id: Identifier) -> str | None:
     """Return the API host domain for a branch."""
 
-    suffix = settings.cloudflare_domain_suffix.strip()
+    suffix = get_settings().cloudflare_domain_suffix.strip()
     if not suffix:
         return None
     return f"{branch_dns_label(branch_id)}.{suffix}".lower()
@@ -114,7 +113,7 @@ def branch_rest_endpoint(branch_id: Identifier) -> str | None:
     domain = branch_api_domain(branch_id)
     if not domain:
         return None
-    port = settings.deployment_service_port
+    port = get_settings().deployment_service_port
     if port == 443:
         return f"https://{domain}/rest"
     return f"https://{domain}:{port}/rest"
@@ -122,7 +121,7 @@ def branch_rest_endpoint(branch_id: Identifier) -> str | None:
 
 def _release_name(namespace: str) -> str:
     _ = namespace  # kept for call-site clarity; release name is namespace-independent
-    return settings.deployment_release_name
+    return get_settings().deployment_release_name
 
 
 def inject_branch_env(compose: dict[str, Any], branch_id: Identifier) -> dict[str, Any]:
@@ -132,8 +131,8 @@ def inject_branch_env(compose: dict[str, Any], branch_id: Identifier) -> dict[st
         raise RuntimeError("Failed to inject branch env into compose file: missing services.vector") from e
 
     vector_env = vector_service.setdefault("environment", {})
-    vector_env["LOGFLARE_PUBLIC_ACCESS_TOKEN"] = settings.logflare_public_access_token
-    vector_env["NAMESPACE"] = settings.deployment_namespace_prefix
+    vector_env["LOGFLARE_PUBLIC_ACCESS_TOKEN"] = get_settings().logflare_public_access_token
+    vector_env["NAMESPACE"] = get_settings().deployment_namespace_prefix
     vector_env["VELA_BRANCH"] = str(branch_id).lower()
 
     return compose
@@ -376,7 +375,7 @@ def _configure_vela_values(
         anonKey=anon_key,
         serviceKey=service_key,
     )
-    secrets.update(pgmeta_crypto_key=settings.pgmeta_crypto_key)
+    secrets.update(pgmeta_crypto_key=get_settings().pgmeta_crypto_key)
     secrets.setdefault("db", {})["password"] = parameters.database_password
     secrets.setdefault("pgbouncer", {})["admin_password"] = pgbouncer_admin_password
 
@@ -533,7 +532,7 @@ def get_db_vmi_identity(branch_id: Identifier) -> tuple[str, str]:
     Return the (namespace, vmi_name) for the project's database VirtualMachineInstance.
 
     The Helm chart defines the DB VM fullname as "{Release.Name}-{ChartName}-db" when no overrides
-    are provided. With the configurable release name (`settings.deployment_release_name`, default
+    are provided. With the configurable release name (`Settings.deployment_release_name`, default
     "supabase") and chart name "supabase", the VMI resolves to
     f"{_release_name(namespace)}-supabase-db".
     """
@@ -664,17 +663,17 @@ class CloudflareConfig(BaseModel):
 
 def _cloudflare_config() -> CloudflareConfig:
     return CloudflareConfig(
-        api_token=settings.cloudflare_api_token,
-        zone_id=settings.cloudflare_zone_id,
-        branch_ref_cname=settings.cloudflare_branch_ref_cname,
-        domain_suffix=settings.cloudflare_domain_suffix,
+        api_token=get_settings().cloudflare_api_token,
+        zone_id=get_settings().cloudflare_zone_id,
+        branch_ref_cname=get_settings().cloudflare_branch_ref_cname,
+        domain_suffix=get_settings().cloudflare_domain_suffix,
     )
 
 
 class KubeGatewayConfig(BaseModel):
     namespace: str = ""
-    gateway_name: str = settings.gateway_name
-    gateway_namespace: str = settings.gateway_namespace
+    gateway_name: str = Field(default_factory=lambda: get_settings().gateway_name)
+    gateway_namespace: str = Field(default_factory=lambda: get_settings().gateway_namespace)
 
     def for_namespace(self, namespace: str) -> "KubeGatewayConfig":
         return self.model_copy(update={"namespace": namespace})

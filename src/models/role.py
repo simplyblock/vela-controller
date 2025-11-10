@@ -1,17 +1,14 @@
 from enum import Enum as PyEnum
-from typing import TYPE_CHECKING, Annotated, Literal
+from typing import TYPE_CHECKING, Literal
 from uuid import UUID
 
-from fastapi import Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlmodel import Field, Relationship, SQLModel, select
+from sqlmodel import Field, Relationship, SQLModel
 
-from ..._util import Identifier
-from ..db import SessionDep
+from .._util import Identifier
 from ._util import Model
-from .organization import Organization, OrganizationDep
+from .organization import Organization
 
 if TYPE_CHECKING:
     from .user import User
@@ -203,14 +200,3 @@ class UserPermissionPublic(BaseModel):
     project_id: Identifier | None
     branch_id: Identifier | None
     env_type: str | None
-
-
-async def _lookup(session: SessionDep, organization: OrganizationDep, role_id: Identifier) -> Role:
-    try:
-        query = select(Role).where(Role.id == role_id, Role.organization_id == organization.id)
-        return (await session.exec(query)).one()
-    except NoResultFound as e:
-        raise HTTPException(404, f"Role {role_id} not found") from e
-
-
-RoleDep = Annotated[Role, Depends(_lookup)]

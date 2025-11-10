@@ -11,18 +11,18 @@ from sqlmodel import SQLModel, asc, delete, select
 from ulid import ULID
 
 from ..check_branch_status import get_branch_status
-from .backup_snapshots import create_branch_snapshot, delete_branch_snapshot
-from .models.backups import (
+from ..models.backups import (
     BackupEntry,
     BackupLog,
     BackupSchedule,
     BackupScheduleRow,
     NextBackup,
 )
-from .models.branch import Branch
-from .models.organization import Organization
-from .models.project import Project
-from .settings import settings
+from ..models.branch import Branch
+from ..models.organization import Organization
+from ..models.project import Project
+from .backup_snapshots import create_branch_snapshot, delete_branch_snapshot
+from .settings import get_settings
 
 # ---------------------------
 # Config
@@ -63,7 +63,7 @@ def interval_seconds(interval: int, unit: str) -> int:
 # Async DB setup
 # ---------------------------
 engine = create_async_engine(
-    str(settings.postgres_url),
+    str(get_settings().postgres_url),
     echo=False,
     pool_pre_ping=True,
     pool_recycle=3600,

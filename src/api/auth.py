@@ -8,11 +8,11 @@ from jwt import PyJWK, PyJWKClient, decode
 from jwt.exceptions import PyJWTError
 from pydantic import ValidationError
 from sqlmodel import select
+from sqlmodel.ext.asyncio.session import AsyncSession
 
+from ..models.user import JWT, User
 from .db import SessionDep
-from .models.organization import OrganizationDep
-from .models.user import JWT, User
-from .settings import settings
+from .settings import get_settings
 
 # HTTPBearer returns 403 instead of 401. Avoid this by raising the error manually
 security = HTTPBearer(auto_error=False)
@@ -23,16 +23,16 @@ _HTTP_URL_PATTERN = re.compile(r"^https?://")
 
 def _decode(token: str):
     key: PyJWK | str
-    if re.match(_HTTP_URL_PATTERN, settings.jwt_secret):
-        jwks_client = PyJWKClient(settings.jwt_secret)
+    if re.match(_HTTP_URL_PATTERN, get_settings().jwt_secret):
+        jwks_client = PyJWKClient(get_settings().jwt_secret)
         key = jwks_client.get_signing_key_from_jwt(token)
     else:
-        key = settings.jwt_secret
+        key = get_settings().jwt_secret
 
-    return decode(token, key, algorithms=settings.jwt_algorithms, options={"verify_aud": False})
+    return decode(token, key, algorithms=get_settings().jwt_algorithms, options={"verify_aud": False})
 
 
-async def user_by_id(session: SessionDep, id_: UUID):
+async def user_by_id(session: AsyncSession, id_: UUID):
     query = select(User).where(User.id == id_)
     db_user = (await session.execute(query)).unique().scalars().one_or_none()
     return db_user if db_user is not None else User(id=id_)
@@ -58,26 +58,3 @@ async def authenticated_user(
     user = await user_by_id(session, id_=token.sub)
     user.token = token
     return user
-
-
-AuthUserDep = Annotated[User, Depends(authenticated_user)]
-
-
-async def user_lookup(session: SessionDep, user_id: UUID) -> User:
-    query = select(User).where(User.id == user_id)
-    user = (await session.execute(query)).scalars().one_or_none()
-    if user is None:
-        raise HTTPException(404, f"User {user_id} not found")
-    return user
-
-
-UserDep = Annotated[User, Depends(user_lookup)]
-
-
-async def _memberdep_lookup(organization: OrganizationDep, user: UserDep) -> User:
-    if user not in await organization.awaitable_attrs.users:
-        raise HTTPException(404, "User is not a member of this organization")
-    return user
-
-
-MemberDep = Annotated[User, Depends(_memberdep_lookup)]

@@ -1,13 +1,10 @@
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING
 
-from fastapi import Depends, HTTPException
 from pydantic import BaseModel, StrictBool
-from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlmodel import Field, Relationship, select
+from sqlmodel import Field, Relationship
 
-from ..._util import Identifier, Name
-from ..db import SessionDep
+from .._util import Name
 from ._util import Model
 from .membership import Membership
 
@@ -42,13 +39,3 @@ class OrganizationUpdate(BaseModel):
     require_mfa: StrictBool | None = None
     max_backups: int | None = None
     environments: str | None = None
-
-
-async def _lookup(session: SessionDep, organization_id: Identifier) -> Organization:
-    try:
-        return (await session.execute(select(Organization).where(Organization.id == organization_id))).scalars().one()
-    except NoResultFound as e:
-        raise HTTPException(404, f"Organization {organization_id} not found") from e
-
-
-OrganizationDep = Annotated[Organization, Depends(_lookup)]

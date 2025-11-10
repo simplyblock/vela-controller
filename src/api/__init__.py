@@ -5,12 +5,13 @@ import re
 from importlib.resources import files
 from typing import Any, Literal
 
+from alembic import command
+from alembic.config import Config
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
 from httpx import TimeoutException
 from pydantic import BaseModel
-from sqlmodel import SQLModel
 
 from ..deployment.logflare import create_global_logflare_objects
 from ..deployment.monitors.resize import ResizeMonitor
@@ -24,7 +25,7 @@ from .organization import api as organization_api
 from .resources import monitor_resources
 from .resources import router as resources_router
 from .roles_access_rights import router as roles_api
-from .settings import settings
+from .settings import get_settings
 from .system import api as system_api
 from .user import api as user_api
 
@@ -122,11 +123,15 @@ class _FastAPI(FastAPI):
         return openapi_schema
 
 
-async def _create_db_and_tables():
-    from . import models  # Ensure models are registered # noqa
+async def _populate_db():
+    # Python does not want us to get a string representation of this...
+    migrations_path = str(files("simplyblock.vela.models.migrations")._paths[0])  # type: ignore[attr-defined]
+
+    config = Config()
+    config.set_main_option("script_location", migrations_path)
+    command.upgrade(config, "head")
 
     async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.create_all)
         await create_access_rights_if_emtpy(conn)
         await create_system_resource_limits(conn)
 
@@ -151,11 +156,11 @@ _tags = [
     {"name": "branch", "parent": "project"},
 ]
 
-app = _FastAPI(openapi_tags=_tags, root_path=settings.root_path)
+app = _FastAPI(openapi_tags=_tags, root_path=get_settings().root_path)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=get_settings().cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -186,7 +191,7 @@ _resize_monitor = ResizeMonitor()
 
 @app.on_event("startup")
 async def on_startup():
-    await _create_db_and_tables()
+    await _populate_db()
     try:
         await create_global_logflare_objects()
     except VelaLogflareError as exc:

@@ -3,7 +3,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from .models.role import AccessRight, PermissionCheckContextPublic, Role, RoleAccessRight, RoleUserLink
+from ..models.role import AccessRight, PermissionCheckContextPublic, Role, RoleAccessRight, RoleUserLink
 
 
 # Wildcard matcher
