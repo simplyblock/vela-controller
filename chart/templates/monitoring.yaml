@@ -27,7 +27,23 @@ data:
       isDefault: true
       access: proxy
       uid: PBFA97CFB590B2093
-      editable: true      
+      editable: true 
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vela-grafana-pvc
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: vela-grafana
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: simplyblock-csi-sc
+  resources:
+    requests:
+      storage: 10Gi     
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -92,7 +108,8 @@ spec:
           configMap:
             name: vela-grafana-datasource
         - name: grafana-data
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: vela-grafana-pvc
 
 ---
 apiVersion: v1
