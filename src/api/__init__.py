@@ -42,6 +42,7 @@ class _FastAPI(FastAPI):
 
         def convert_method(method_spec: dict) -> dict:
             method_spec["tags"] = ["branch-auth"]
+            method_spec["security"] = [{"HTTPBearer": []}]
             return method_spec
 
         def convert_path_spec(path_spec: dict) -> dict:

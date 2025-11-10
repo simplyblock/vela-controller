@@ -1,7 +1,7 @@
 from typing import cast
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlmodel import select
 
@@ -24,10 +24,11 @@ from ..models.role import (
     RoleWithPermissionsPublic,
 )
 from .access_right_utils import check_access
+from .auth import authenticated_user
 from .db import SessionDep
 from .dependencies import OrganizationDep, RoleDep
 
-router = APIRouter(tags=["role"])
+router = APIRouter(dependencies=[Depends(authenticated_user)], tags=["role"])
 
 
 class AccessCheckRequest(BaseModel):
