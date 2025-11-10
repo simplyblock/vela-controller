@@ -222,3 +222,15 @@ hehelm upgrade --install stackgres-operator \
   --timeout 600s \
   --version 1.17.4
 ```
+
+### Metrics API 
+
+Deploy the Metrics Server API to provide CPU and memory usage.
+
+```
+helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/
+helm repo update
+helm upgrade --install metrics-server metrics-server/metrics-server \
+  --namespace kube-system \
+  --set args="{--kubelet-insecure-tls,--kubelet-preferred-address-types=InternalIP,--metric-resolution=15s}"
+```
