@@ -1,8 +1,8 @@
 import json
 import logging
-from pathlib import Path
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import httpx
 
@@ -308,7 +308,7 @@ async def create_dashboard(folder_uid: str, folder_name: str, namespace: str):
     async with _client() as client:
         try:
             response = await client.post(
-                f"api/dashboards/db",
+                "api/dashboards/db",
                 json=dashboard_payload,
             )
             response.raise_for_status()

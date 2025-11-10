@@ -63,6 +63,7 @@ DATABASE_DNS_RECORD_TYPE: Literal["AAAA"] = "AAAA"
 def branch_storage_class_name(branch_id: Identifier) -> str:
     return f"sc-{str(branch_id).lower()}"
 
+
 def deployment_branch(namespace: str) -> ULID:
     """Return the branch ULID for a given deployment namespace."""
 
