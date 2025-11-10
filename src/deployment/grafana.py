@@ -272,7 +272,7 @@ async def remove_user_from_team(team_id: int, user_id: int):
 
 
 # --- DASHBOARD CREATION ---
-async def create_dashboard(folder_uid: str, folder_name: str, namespace: str):
+async def create_dashboard(folder_uid: str, branch_id: str, namespace: str):
     dashboard_path = _require_asset(Path(__file__).with_name("pgexporter.json"), "pgexporter json")
 
     try:
@@ -283,9 +283,10 @@ async def create_dashboard(folder_uid: str, folder_name: str, namespace: str):
         raise
 
     dashboard["id"] = None
-    dashboard["uid"] = None
+    dashboard["uid"] = branch_id
 
-    dashboard["title"] = f"{folder_name} PostgreSQL Metrics"
+    dashboard["title"] = f"{branch_id} PostgreSQL Metrics"
+    dashboard["tags"] = [branch_id]
 
     dashboard["templating"] = {
         "list": [
@@ -312,7 +313,7 @@ async def create_dashboard(folder_uid: str, folder_name: str, namespace: str):
                 json=dashboard_payload,
             )
             response.raise_for_status()
-            logger.info(f"Dashboard '{dashboard['title']}' created successfully in folder '{folder_name}'.")
+            logger.info(f"Dashboard '{dashboard['title']}' created successfully in folder '{branch_id}'.")
         except httpx.HTTPError as exc:
-            logger.error(f"Failed to create dashboard for folder '{folder_name}': {exc}")
+            logger.error(f"Failed to create dashboard for folder '{branch_id}': {exc}")
             raise VelaGrafanaError(f"Failed to create dashboard: {exc}") from exc
