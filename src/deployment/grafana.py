@@ -309,7 +309,7 @@ async def create_dashboard(folder_uid: str, branch_id: str, namespace: str):
     async with _client() as client:
         try:
             response = await client.post(
-                "api/dashboards/db",
+                "dashboards/db",
                 json=dashboard_payload,
             )
             response.raise_for_status()
