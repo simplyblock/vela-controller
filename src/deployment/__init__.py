@@ -31,10 +31,6 @@ from .._util import (
     bytes_to_mib,
     check_output,
 )
-<<<<<<< HEAD
-from ..exceptions import VelaCloudflareError, VelaDeployError, VelaDeploymentError, VelaKubernetesError
-from ._util import _require_asset, deployment_namespace
-=======
 from ..exceptions import (
     VelaCloudflareError,
     VelaDeployError,
@@ -42,8 +38,8 @@ from ..exceptions import (
     VelaGrafanaError,
     VelaKubernetesError,
 )
+from ._util import _require_asset, deployment_namespace
 from .deployment import DeploymentParameters, DeploymentStatus
->>>>>>> main
 from .grafana import create_vela_grafana_obj, delete_vela_grafana_obj
 from .kubernetes import KubernetesService
 from .kubernetes.kubevirt import get_virtualmachine_status
