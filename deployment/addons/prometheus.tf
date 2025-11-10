@@ -60,3 +60,64 @@ resource "helm_release" "prometheus" {
     value = false
   }
 }
+
+resource "kubernetes_cluster_role" "vela_prometheus" {
+  metadata {
+    name = "vela-prometheus"
+  }
+
+  rule {
+    api_groups = [""]
+    resources  = ["services", "endpoints"]
+    verbs      = ["get", "list", "watch"]
+  }
+}
+
+resource "kubernetes_cluster_role_binding" "vela_prometheus" {
+  metadata {
+    name = "vela-prometheus"
+  }
+
+  role_ref {
+    api_group = "rbac.authorization.k8s.io"
+    kind      = "ClusterRole"
+    name      = kubernetes_cluster_role.vela_prometheus.metadata[0].name
+  }
+
+  subject {
+    kind      = "ServiceAccount"
+    name      = "vela-prometheus"
+    namespace = "monitoring"
+  }
+}
+
+resource "kubernetes_config_map" "vela_prometheus_config" {
+  metadata {
+    name      = "prometheus-vela-prometheus-config"
+    namespace = "monitoring"
+    labels = {
+      app = "vela-prometheus"
+    }
+  }
+
+  data = {
+    "prometheus.yml" = <<-YAML
+      global:
+        scrape_interval: 15s
+        external_labels:
+          monitor: 'codelab-monitor'
+
+      scrape_configs:
+        - job_name: "postgres"
+          kubernetes_sd_configs:
+            - role: service
+          relabel_configs:
+            - source_labels: [__meta_kubernetes_service_label_app]
+              regex: pgexporter
+              action: keep
+
+            - source_labels: [__meta_kubernetes_namespace]
+              target_label: namespace
+    YAML
+  }
+}

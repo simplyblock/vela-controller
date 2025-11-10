@@ -13,33 +13,6 @@ stringData:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: prometheus-vela-prometheus-config
-  labels:
-    app: vela-prometheus
-  namespace: {{ .Release.Namespace }}
-data:
-  prometheus.yml: |
-    global:
-      scrape_interval: 15s
-      external_labels:
-        monitor: 'codelab-monitor'
-
-    scrape_configs:
-      - job_name: "postgres"
-        kubernetes_sd_configs:
-          - role: service
-        relabel_configs:
-          - source_labels: [__meta_kubernetes_service_label_app]
-            regex: pgexporter
-            action: keep
-
-          - source_labels: [__meta_kubernetes_namespace]
-            target_label: namespace
-
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
   name: vela-grafana-datasource
   labels:
     app: vela-grafana
@@ -94,7 +67,7 @@ spec:
             - name: GF_PATHS_PROVISIONING
               value: "/etc/grafana/provisioning"
             - name: GF_SERVER_ROOT_URL
-              value: "http://localhost/grafana"
+              value: "http://localhost"
             - name: GF_AUTH_JWT_ENABLED
               value: "true"
             - name: "GF_AUTH_JWT_HEADER_NAME"
