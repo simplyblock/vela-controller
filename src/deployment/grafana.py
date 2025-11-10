@@ -268,7 +268,7 @@ async def remove_user_from_team(team_id: int, user_id: int):
 
 
 # --- DASHBOARD CREATION ---
-async def create_dashboard(org_name: str, folder_uid: str, branch_id: str) -> str:
+async def create_dashboard(org_name: str, folder_uid: str, branch_id: str) -> None:
     dashboard_payload = {
         "dashboard": {
             "uid": branch_id,
