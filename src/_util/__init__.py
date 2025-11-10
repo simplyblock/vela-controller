@@ -56,15 +56,6 @@ DATABASE_SIZE_CONSTRAINTS = {"ge": DB_SIZE_MIN, "le": DB_SIZE_MAX, "multiple_of"
 STORAGE_SIZE_CONSTRAINTS = {"ge": STORAGE_SIZE_MIN, "le": STORAGE_SIZE_MAX, "multiple_of": STORAGE_SIZE_STEP}
 IOPS_CONSTRAINTS = {"ge": IOPS_MIN, "le": IOPS_MAX}
 
-Slug = Annotated[
-    str,
-    StringConstraints(
-        pattern=r"^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$",
-        min_length=1,
-        max_length=_MAX_LENGTH,
-    ),
-]
-
 DEFAULT_DB_NAME = "postgres"
 DEFAULT_DB_USER = "postgres"
 
