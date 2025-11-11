@@ -18,7 +18,7 @@ from ....models.project import (
 )
 from ....models.resources import EntityType, ResourceLimit, ResourceType
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
-from ..._util.resourcelimit import get_organization_resource_limits
+from ..._util.resourcelimit import get_organization_resource_limits, get_project_limit_totals
 from ...auth import security
 from ...db import SessionDep
 from ...dependencies import OrganizationDep, ProjectDep
@@ -72,45 +72,126 @@ def _resource_type_from_name(resource_name: str) -> ResourceType:
         raise HTTPException(422, f"Unknown resource type {resource_name!r}") from exc
 
 
-def _validate_project_limits(
-    requested_project_limits: dict[str, int],
+def _normalize_limits(limit_payload: dict[str, int]) -> dict[ResourceType, int]:
+    normalized: dict[ResourceType, int] = {}
+    for resource_name, value in limit_payload.items():
+        normalized[_resource_type_from_name(resource_name)] = value
+    return normalized
+
+
+async def _get_consumed_project_limits(
+    session: SessionDep,
+    organization_id: Identifier,
+    project_limits: dict[ResourceType, int],
+) -> dict[ResourceType, int]:
+    if not project_limits:
+        return {}
+    return await get_project_limit_totals(
+        session,
+        organization_id,
+        resource_types=tuple(project_limits.keys()),
+    )
+
+
+def _calculate_project_limits(
+    project_limits: dict[ResourceType, int],
+    per_branch_limits: dict[ResourceType, int],
     org_limits: dict[ResourceType, ResourceLimit],
-) -> dict[str, ResourceType]:
-    resource_type_by_name: dict[str, ResourceType] = {}
-    for resource_name, requested_limit in requested_project_limits.items():
-        resource_type = _resource_type_from_name(resource_name)
-        organization_limit = org_limits.get(resource_type)
-        if organization_limit is None or organization_limit.max_total is None:
-            raise HTTPException(
-                422,
-                (
-                    f"Organization limit for {resource_name} is not configured; "
-                    f"cannot set project limit to {requested_limit}"
-                ),
-            )
-        if requested_limit > organization_limit.max_total:
-            raise HTTPException(
-                422,
-                (
-                    f"project_limits.{resource_name} ({requested_limit}) exceeds organization's limit "
-                    f"({organization_limit.max_total})"
-                ),
-            )
-        resource_type_by_name[resource_name] = resource_type
-    return resource_type_by_name
+    consumed_limits: dict[ResourceType, int],
+) -> dict[ResourceType, tuple[int, int]]:
+    """Return the validated project/per-branch limits for each requested resource."""
+
+    calculated_limits: dict[ResourceType, tuple[int, int]] = {}
+    for resource_type, requested_limit in project_limits.items():
+        calculated_limits[resource_type] = _calculate_project_limit_pair(
+            resource_type,
+            requested_limit,
+            org_limits.get(resource_type),
+            per_branch_limits.get(resource_type),
+            consumed_limits.get(resource_type, 0),
+        )
+    return calculated_limits
 
 
-def _build_project_resource_limits(
+def _calculate_project_limit_pair(
+    resource_type: ResourceType,
+    requested_limit: int,
+    organization_limit: ResourceLimit | None,
+    per_branch_override: int | None,
+    consumed_total: int,
+) -> tuple[int, int]:
+    """Ensure the requested project limit fits the remaining org capacity."""
+
+    resource_name = resource_type.value
+    if organization_limit is None or organization_limit.max_total is None:
+        raise HTTPException(
+            422,
+            (
+                f"Organization limit for {resource_name} is not configured; "
+                f"cannot set project limit to {requested_limit}"
+            ),
+        )
+
+    # Remaining capacity is what's left once other projects have reserved their share.
+    remaining_capacity = max(organization_limit.max_total - consumed_total, 0)
+    if requested_limit > remaining_capacity:
+        raise HTTPException(
+            422,
+            (
+                f"project_limits.{resource_name} ({requested_limit}) exceeds "
+                f"organization's remaining capacity ({remaining_capacity} "
+                f"available of {organization_limit.max_total})"
+            ),
+        )
+
+    per_branch_limit = _resolve_per_branch_limit(
+        resource_name,
+        requested_limit,
+        per_branch_override,
+        organization_limit.max_per_branch,
+    )
+    return requested_limit, per_branch_limit
+
+
+def _resolve_per_branch_limit(
+    resource_name: str,
+    requested_limit: int,
+    per_branch_override: int | None,
+    org_per_branch_limit: int | None,
+) -> int:
+    """Pick the per-branch limit, keeping it within org policy and project total."""
+
+    if (
+        per_branch_override is not None
+        and org_per_branch_limit is not None
+        and per_branch_override > org_per_branch_limit
+    ):
+        raise HTTPException(
+            422,
+            (
+                f"per_branch_limits.{resource_name} ({per_branch_override}) exceeds "
+                f"organization's per-branch limit ({org_per_branch_limit})"
+            ),
+        )
+
+    if per_branch_override is not None:
+        per_branch_limit = per_branch_override
+    elif org_per_branch_limit is not None:
+        per_branch_limit = org_per_branch_limit
+    else:
+        per_branch_limit = requested_limit
+
+    # A branch cannot exceed the total resources allocated to the project.
+    return min(per_branch_limit, requested_limit)
+
+
+def _resource_limits_from_limits(
     organization_id: Identifier,
     project_id: Identifier,
-    requested_project_limits: dict[str, int],
-    requested_per_branch_limits: dict[str, int],
-    resource_type_by_name: dict[str, ResourceType],
+    calculated_limits: dict[ResourceType, tuple[int, int]],
 ) -> list[ResourceLimit]:
     project_resource_limits: list[ResourceLimit] = []
-    for resource_name, project_limit in requested_project_limits.items():
-        resource_type = resource_type_by_name[resource_name]
-        per_branch_limit = requested_per_branch_limits.get(resource_name, project_limit)
+    for resource_type, (project_limit, per_branch_limit) in calculated_limits.items():
         project_resource_limits.append(
             ResourceLimit(
                 entity_type=EntityType.project,
@@ -124,14 +205,33 @@ def _build_project_resource_limits(
     return project_resource_limits
 
 
-async def _commit_project(session: SessionDep, project_name: str) -> None:
+async def _persist_project_with_limits(
+    session: SessionDep,
+    organization: OrganizationDep,
+    parameters: ProjectCreate,
+    calculated_limits: dict[ResourceType, tuple[int, int]],
+) -> Project:
+    entity = Project(
+        organization=organization,
+        name=parameters.name,
+        max_backups=parameters.max_backups,
+    )
+    session.add(entity)
+    await session.flush()
+    project_resource_limits = _resource_limits_from_limits(organization.id, entity.id, calculated_limits)
+    if project_resource_limits:
+        session.add_all(project_resource_limits)
+    await _commit_project(session)
+    await session.refresh(entity)
+    await session.refresh(organization)
+    return entity
+
+
+async def _commit_project(session: SessionDep) -> None:
     try:
         await session.commit()
-    except IntegrityError as exc:
+    except IntegrityError:
         await session.rollback()
-        error = str(exc)
-        if ("asyncpg.exceptions.UniqueViolationError" in error) and ("unique_project_name" in error):
-            raise HTTPException(409, f"Organization already has project named {project_name}") from exc
         raise
 
 
@@ -165,31 +265,15 @@ async def create(
     response: Literal["empty", "full"] = "empty",
 ) -> JSONResponse:
     org_limits = await get_organization_resource_limits(session, organization.id)
-    requested_project_limits = parameters.project_limits.model_dump(exclude_unset=True, exclude_none=True)
-    requested_per_branch_limits = parameters.per_branch_limits.model_dump(exclude_unset=True, exclude_none=True)
-    resource_type_by_name = _validate_project_limits(requested_project_limits, org_limits)
-
-    entity = Project(
-        organization=organization,
-        name=parameters.name,
-        max_backups=parameters.max_backups,
+    requested_project_limits_raw = parameters.project_limits.model_dump(exclude_unset=True, exclude_none=True)
+    requested_per_branch_limits_raw = parameters.per_branch_limits.model_dump(exclude_unset=True, exclude_none=True)
+    project_limits = _normalize_limits(requested_project_limits_raw)
+    per_branch_limits = _normalize_limits(requested_per_branch_limits_raw)
+    consumed_project_limits = await _get_consumed_project_limits(session, organization.id, project_limits)
+    calculated_limits = _calculate_project_limits(
+        project_limits, per_branch_limits, org_limits, consumed_project_limits
     )
-    session.add(entity)
-    # Ensure the project exists in the database before inserting dependent limits.
-    await session.flush()
-    project_resource_limits = _build_project_resource_limits(
-        organization.id,
-        entity.id,
-        requested_project_limits,
-        requested_per_branch_limits,
-        resource_type_by_name,
-    )
-    if project_resource_limits:
-        session.add_all(project_resource_limits)
-    await _commit_project(session, parameters.name)
-
-    await session.refresh(entity)
-    await session.refresh(organization)
+    entity = await _persist_project_with_limits(session, organization, parameters, calculated_limits)
     entity_url = url_path_for(
         request,
         "organizations:projects:detail",

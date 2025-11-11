@@ -2,7 +2,7 @@ from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
-from sqlalchemy import delete
+from sqlalchemy import delete, func
 from sqlalchemy.dialects.mysql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 from sqlmodel import select
@@ -418,6 +418,48 @@ async def get_project_resource_limits(
         )
     )
     return _map_resource_limits(list(result.scalars().all()))
+
+
+async def get_project_limit_totals(
+    session: SessionDep,
+    organization_id: Identifier,
+    *,
+    resource_types: Iterable[ResourceType] | None = None,
+    exclude_project_id: Identifier | None = None,
+) -> dict[ResourceType, int]:
+    """Aggregate project-level max_total limits for an organization, grouped by resource."""
+
+    resource_filter: tuple[ResourceType, ...] | None = None
+    if resource_types is not None:
+        resource_filter = tuple(resource_types)
+        if not resource_filter:
+            return {}
+
+    resource_column = cast("ColumnElement[ResourceType]", ResourceLimit.resource)
+    max_total_column = cast("ColumnElement[int]", ResourceLimit.max_total)
+
+    query = (
+        select(
+            resource_column,
+            func.sum(max_total_column).label("reserved_total"),
+        )
+        .where(
+            ResourceLimit.entity_type == EntityType.project,
+            ResourceLimit.org_id == organization_id,
+        )
+        .group_by(resource_column)
+    )
+    if resource_filter is not None:
+        resource_filter_clause = cast("ColumnElement[bool]", resource_column.in_(resource_filter))
+        query = query.where(resource_filter_clause)
+    if exclude_project_id is not None:
+        query = query.where(ResourceLimit.project_id != exclude_project_id)
+
+    totals: dict[ResourceType, int] = {}
+    rows = await session.execute(query)
+    for resource, reserved_total in rows.all():
+        totals[resource] = int(reserved_total or 0)
+    return totals
 
 
 def _map_resource_limits(limits: list[ResourceLimit]) -> dict[ResourceType, ResourceLimit]:
