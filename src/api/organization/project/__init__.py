@@ -93,7 +93,7 @@ async def _get_consumed_project_limits(
     )
 
 
-def _build_project_limit_plan(
+def _calculate_project_limits(
     project_limits: dict[ResourceType, int],
     per_branch_limits: dict[ResourceType, int],
     org_limits: dict[ResourceType, ResourceLimit],
@@ -101,16 +101,16 @@ def _build_project_limit_plan(
 ) -> dict[ResourceType, tuple[int, int]]:
     """Return the validated project/per-branch limits for each requested resource."""
 
-    limit_plan: dict[ResourceType, tuple[int, int]] = {}
+    calculated_limits: dict[ResourceType, tuple[int, int]] = {}
     for resource_type, requested_limit in project_limits.items():
-        limit_plan[resource_type] = _calculate_project_limit_pair(
+        calculated_limits[resource_type] = _calculate_project_limit_pair(
             resource_type,
             requested_limit,
             org_limits.get(resource_type),
             per_branch_limits.get(resource_type),
             consumed_limits.get(resource_type, 0),
         )
-    return limit_plan
+    return calculated_limits
 
 
 def _calculate_project_limit_pair(
@@ -185,13 +185,13 @@ def _resolve_per_branch_limit(
     return min(per_branch_limit, requested_limit)
 
 
-def _resource_limits_from_plan(
+def _resource_limits_from_limits(
     organization_id: Identifier,
     project_id: Identifier,
-    limit_plan: dict[ResourceType, tuple[int, int]],
+    calculated_limits: dict[ResourceType, tuple[int, int]],
 ) -> list[ResourceLimit]:
     project_resource_limits: list[ResourceLimit] = []
-    for resource_type, (project_limit, per_branch_limit) in limit_plan.items():
+    for resource_type, (project_limit, per_branch_limit) in calculated_limits.items():
         project_resource_limits.append(
             ResourceLimit(
                 entity_type=EntityType.project,
@@ -209,7 +209,7 @@ async def _persist_project_with_limits(
     session: SessionDep,
     organization: OrganizationDep,
     parameters: ProjectCreate,
-    limit_plan: dict[ResourceType, tuple[int, int]],
+    calculated_limits: dict[ResourceType, tuple[int, int]],
 ) -> Project:
     entity = Project(
         organization=organization,
@@ -218,7 +218,7 @@ async def _persist_project_with_limits(
     )
     session.add(entity)
     await session.flush()
-    project_resource_limits = _resource_limits_from_plan(organization.id, entity.id, limit_plan)
+    project_resource_limits = _resource_limits_from_limits(organization.id, entity.id, calculated_limits)
     if project_resource_limits:
         session.add_all(project_resource_limits)
     await _commit_project(session)
@@ -270,8 +270,10 @@ async def create(
     project_limits = _normalize_limits(requested_project_limits_raw)
     per_branch_limits = _normalize_limits(requested_per_branch_limits_raw)
     consumed_project_limits = await _get_consumed_project_limits(session, organization.id, project_limits)
-    limit_plan = _build_project_limit_plan(project_limits, per_branch_limits, org_limits, consumed_project_limits)
-    entity = await _persist_project_with_limits(session, organization, parameters, limit_plan)
+    calculated_limits = _calculate_project_limits(
+        project_limits, per_branch_limits, org_limits, consumed_project_limits
+    )
+    entity = await _persist_project_with_limits(session, organization, parameters, calculated_limits)
     entity_url = url_path_for(
         request,
         "organizations:projects:detail",
