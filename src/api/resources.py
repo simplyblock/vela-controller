@@ -1,13 +1,20 @@
 import asyncio
 import logging
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException
+from kubernetes_asyncio.client.exceptions import ApiException
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlmodel import select
 
+from .._util import quantity_to_bytes, quantity_to_milli_cpu
+from ..check_branch_status import get_branch_status
+from ..deployment import get_db_vmi_identity, kube_service
+from ..deployment.kubernetes._util import custom_api_client
+from ..exceptions import VelaKubernetesError
 from ..models._util import Identifier
-from ..models.branch import Branch, BranchServiceStatus
+from ..models.branch import Branch, BranchServiceStatus, ResourceUsageDefinition
 from ..models.project import Project
 from ..models.resources import (
     BranchAllocationPublic,
@@ -42,6 +49,10 @@ from .organization.project.branch import refresh_branch_status
 from .settings import get_settings
 
 router = APIRouter(dependencies=[Depends(authenticated_user)], tags=["resource"])
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+router = APIRouter(tags=["resource"])
 
 # ---------------------------
 # Helper functions
@@ -307,6 +318,65 @@ async def get_consumption_limits(
     ]
 
 
+async def _collect_branch_resource_usage(branch: Branch) -> ResourceUsageDefinition:
+    namespace, vm_name = get_db_vmi_identity(branch.id)
+    default_usage = ResourceUsageDefinition(
+        milli_vcpu=0,
+        ram_bytes=0,
+        nvme_bytes=0,
+        iops=0,
+        storage_bytes=None,
+    )
+
+    try:
+        pod_ref = await kube_service.get_vm_pod_name(namespace, vm_name)
+    except VelaKubernetesError as exc:
+        logger.debug("Unable to resolve VM pod for %s/%s: %s", namespace, vm_name, exc)
+        return default_usage
+
+    pod_name = pod_ref[0] if isinstance(pod_ref, tuple) else pod_ref
+
+    try:
+        async with custom_api_client() as custom_client:
+            metrics = await custom_client.get_namespaced_custom_object(
+                group="metrics.k8s.io",
+                version="v1beta1",
+                namespace=namespace,
+                plural="pods",
+                name=pod_name,
+            )
+    except ApiException as exc:
+        if exc.status != 404:
+            logger.debug(
+                "Failed to fetch metrics for pod %s/%s: %s",
+                namespace,
+                pod_name,
+                exc,
+            )
+        return default_usage
+    except Exception:  # pragma: no cover - defensive guard for unexpected failures
+        logger.exception("Unexpected error retrieving metrics for pod %s/%s", namespace, pod_name)
+        return default_usage
+
+    containers = cast("Sequence[dict[str, Any]]", metrics["containers"])
+    compute_usage = next(container for container in containers if container.get("name") == "compute")
+
+    usage = cast("dict[str, Any]", compute_usage["usage"])
+    cpu_usage = quantity_to_milli_cpu(usage["cpu"])
+    memory_usage = quantity_to_bytes(usage["memory"])
+
+    if cpu_usage is None or memory_usage is None:
+        raise ValueError("Metrics API returned empty resource usage for compute container")
+
+    return ResourceUsageDefinition(
+        milli_vcpu=cpu_usage,
+        ram_bytes=memory_usage,
+        nvme_bytes=0,
+        iops=0,
+        storage_bytes=None,
+    )
+
+
 async def monitor_resources(interval_seconds: int = 60):
     while True:
         try:
@@ -315,10 +385,14 @@ async def monitor_resources(interval_seconds: int = 60):
 
                 result = await db.execute(select(Branch))
                 branches = result.scalars().all()
-                logger.info("Found %d active branches", len(branches))
+                logger.info("Found %d branches", len(branches))
 
                 for branch in branches:
                     status = await refresh_branch_status(branch.id)
+                    usage = await _collect_branch_resource_usage(branch)
+                    branch.store_resource_usage(usage)
+
+                    status = await get_branch_status(branch.id)
                     if status == BranchServiceStatus.ACTIVE_HEALTHY:
                         prov_result = await db.execute(
                             select(BranchProvisioning).where(BranchProvisioning.branch_id == branch.id)
@@ -327,7 +401,7 @@ async def monitor_resources(interval_seconds: int = 60):
 
                         for p in provisionings:
                             project = await branch.awaitable_attrs.project
-                            usage = ResourceUsageMinute(
+                            minute_usage = ResourceUsageMinute(
                                 ts_minute=ts_minute,
                                 org_id=project.organization_id,
                                 project_id=branch.project_id,
@@ -335,7 +409,7 @@ async def monitor_resources(interval_seconds: int = 60):
                                 resource=p.resource,
                                 amount=p.amount,
                             )
-                            db.add(usage)
+                            db.add(minute_usage)
 
                 await db.commit()
         except Exception:  # noqa: BLE001

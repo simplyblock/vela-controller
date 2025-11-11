@@ -1,8 +1,9 @@
 import asyncio
 import subprocess
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Annotated, Any, Final, Literal
 
+from kubernetes.utils import parse_quantity
 from pydantic import BeforeValidator, Field, PlainSerializer, StringConstraints, WithJsonSchema
 from ulid import ULID
 
@@ -54,17 +55,6 @@ MEMORY_CONSTRAINTS = {"ge": MEMORY_MIN, "le": MEMORY_MAX, "multiple_of": MEMORY_
 DATABASE_SIZE_CONSTRAINTS = {"ge": DB_SIZE_MIN, "le": DB_SIZE_MAX, "multiple_of": DB_SIZE_STEP}
 STORAGE_SIZE_CONSTRAINTS = {"ge": STORAGE_SIZE_MIN, "le": STORAGE_SIZE_MAX, "multiple_of": STORAGE_SIZE_STEP}
 IOPS_CONSTRAINTS = {"ge": IOPS_MIN, "le": IOPS_MAX}
-_QUANTITY_SUFFIXES: dict[str, int] = {
-    "ki": KIB,
-    "mi": MIB,
-    "gi": GIB,
-    "ti": TIB,
-    "k": KB,
-    "m": MB,
-    "g": GB,
-    "t": TB,
-}
-
 
 DEFAULT_DB_NAME = "postgres"
 DEFAULT_DB_USER = "postgres"
@@ -177,6 +167,8 @@ Identifier = Annotated[
     ),
 ]
 
+Quantity = Annotated[Decimal, BeforeValidator(parse_quantity)]
+
 
 def bytes_to_kb(value: int) -> int:
     """Convert a byte count to the nearest whole KB using floor division."""
@@ -220,29 +212,37 @@ def mb_to_bytes(value: int) -> int:
     return value * MB
 
 
-def quantity_to_bytes(value: str | None) -> int | None:
-    """Convert a Kubernetes-style quantity string (e.g. '10Gi', '512Mi') to bytes.
-
-    Returns ``None`` for empty values and logs no errors, leaving caller responsible for handling
-    unexpected formats.
-    """
+def _normalize_quantity(value: str | Decimal | None) -> Decimal | None:
+    """Return the parsed decimal quantity or ``None`` when the input is empty."""
 
     if value is None:
         return None
+
+    if isinstance(value, Decimal):
+        return value
 
     quantity = value.strip()
     if not quantity:
         return None
 
-    for suffix, factor in _QUANTITY_SUFFIXES.items():
-        if quantity.lower().endswith(suffix):
-            number = quantity[: -len(suffix)]
-            try:
-                return int(Decimal(number) * factor)
-            except (InvalidOperation, ValueError):
-                return None
+    return parse_quantity(quantity)
 
-    try:
-        return int(Decimal(quantity))
-    except (InvalidOperation, ValueError):
+
+def quantity_to_milli_cpu(value: str | Decimal | None) -> int | None:
+    """Convert a CPU quantity (e.g. '250m', '62105876n') to milli vCPU units."""
+
+    quantity = _normalize_quantity(value)
+    if quantity is None:
         return None
+
+    return int(quantity * Decimal(1000))
+
+
+def quantity_to_bytes(value: str | Decimal | None) -> int | None:
+    """Convert a Kubernetes-style quantity string (e.g. '10Gi', '512Mi') to bytes."""
+
+    quantity = _normalize_quantity(value)
+    if quantity is None:
+        return None
+
+    return int(quantity)

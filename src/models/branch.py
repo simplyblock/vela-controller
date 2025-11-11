@@ -37,6 +37,16 @@ from ._util import Model
 from .project import Project
 
 
+def _default_resource_usage_payload() -> dict[str, Any]:
+    return {
+        "milli_vcpu": 0,
+        "ram_bytes": 0,
+        "nvme_bytes": 0,
+        "iops": 0,
+        "storage_bytes": None,
+    }
+
+
 class Branch(AsyncAttrs, Model, table=True):
     DEFAULT_SLUG: ClassVar[Name] = "main"
 
@@ -84,6 +94,10 @@ class Branch(AsyncAttrs, Model, table=True):
     )
     resize_statuses: dict[str, dict[str, Any]] = Field(
         default_factory=dict,
+        sa_column=Column(JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    )
+    resource_usage: dict[str, Any] = Field(
+        default_factory=_default_resource_usage_payload,
         sa_column=Column(JSONB, nullable=False, server_default=text("'{}'::jsonb")),
     )
 
@@ -143,6 +157,20 @@ class Branch(AsyncAttrs, Model, table=True):
             self.encryption_key = key
             return
         self.encrypted_pgbouncer_admin_password = encrypt_with_passphrase(password, self.encryption_key)
+
+    def store_resource_usage(self, usage: "ResourceUsageDefinition") -> None:
+        self.resource_usage = usage.model_dump()
+
+    def resource_usage_snapshot(self) -> "ResourceUsageDefinition":
+        payload = self.resource_usage or {}
+        storage_value = payload.get("storage_bytes")
+        return ResourceUsageDefinition(
+            milli_vcpu=int(payload.get("milli_vcpu") or 0),
+            ram_bytes=int(payload.get("ram_bytes") or 0),
+            nvme_bytes=int(payload.get("nvme_bytes") or 0),
+            iops=int(payload.get("iops") or 0),
+            storage_bytes=None if storage_value is None else int(storage_value),
+        )
 
 
 class PgbouncerConfig(Model, table=True):
