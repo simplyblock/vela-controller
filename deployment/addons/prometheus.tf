@@ -61,36 +61,6 @@ resource "helm_release" "prometheus" {
   }
 }
 
-resource "kubernetes_cluster_role" "vela_prometheus" {
-  metadata {
-    name = "vela-prometheus"
-  }
-
-  rule {
-    api_groups = [""]
-    resources  = ["services", "endpoints"]
-    verbs      = ["get", "list", "watch"]
-  }
-}
-
-resource "kubernetes_cluster_role_binding" "vela_prometheus" {
-  metadata {
-    name = "vela-prometheus"
-  }
-
-  role_ref {
-    api_group = "rbac.authorization.k8s.io"
-    kind      = "ClusterRole"
-    name      = kubernetes_cluster_role.vela_prometheus.metadata[0].name
-  }
-
-  subject {
-    kind      = "ServiceAccount"
-    name      = "vela-prometheus"
-    namespace = "monitoring"
-  }
-}
-
 resource "kubernetes_config_map" "vela_prometheus_config" {
   metadata {
     name      = "prometheus-vela-prometheus-config"
