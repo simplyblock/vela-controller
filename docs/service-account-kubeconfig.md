@@ -63,22 +63,10 @@ subjects:
 EOF
 ```
 
-## 2. Create the token Secret
+## 2. Create the token
 
 ```sh
-kubectl -n vela apply -f - <<'EOF'
-apiVersion: v1
-kind: Secret
-metadata:
-  name: github-actions-token
-  annotations:
-    kubernetes.io/service-account.name: github-actions
-type: kubernetes.io/service-account-token
-EOF
-```
-
-```sh
-TOKEN=$(kubectl -n vela get secret github-actions-token -o jsonpath='{.data.token}' | base64 -d)
+TOKEN=$(kubectl -n vela create token github-actions --duration=87660h) # 10 years
 echo "$TOKEN"
 ```
 
