@@ -1,0 +1,63 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: ['Publish image']
+    types:
+      - completed
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.workflow_run.head_sha }}
+        fetch-depth: 0
+
+    - name: Set image metadata
+      id: meta
+      env:
+        WORKFLOW_SHA: ${{ github.event.workflow_run.head_sha }}
+      run: |
+        SHORT_SHA="${WORKFLOW_SHA::7}"
+        IMAGE_TAG="latest-${SHORT_SHA}"
+        echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+        echo "image_tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+
+    - name: Set up Helm
+      uses: azure/setup-helm@v4
+
+    - name: Write kubeconfig
+      # Instructions for generating the KUBECONFIG secret live in docs/service-account-kubeconfig.md
+      id: kubeconfig
+      env:
+        KUBE_CONFIG_DATA: ${{ secrets.KUBECONFIG }}
+      run: |
+        if [[ -z "$KUBE_CONFIG_DATA" ]]; then
+          echo "KUBECONFIG secret is not set" >&2
+          exit 1
+        fi
+        echo "$KUBE_CONFIG_DATA" | base64 --decode > kubeconfig.yaml 2>/dev/null || echo "$KUBE_CONFIG_DATA" > kubeconfig.yaml
+        chmod 600 kubeconfig.yaml
+        echo "path=$PWD/kubeconfig.yaml" >> "$GITHUB_OUTPUT"
+
+    - name: Deploy with Helm
+      env:
+        KUBECONFIG: ${{ steps.kubeconfig.outputs.path }}
+        IMAGE_TAG: ${{ steps.meta.outputs.image_tag }}
+        CLOUDFLARE_API_TOKEN: ${{ secrets.VELA_CLOUDFLARE_API_TOKEN }}
+        CLOUDFLARE_ZONE_ID: ${{ secrets.VELA_CLOUDFLARE_ZONE_ID }}
+      run: |
+        helm upgrade --install vela ./chart \
+          --namespace vela \
+          --create-namespace \
+          --set-string controller.image.tag="$IMAGE_TAG" \
+          --set-string controller.env.VELA_CLOUDFLARE_API_TOKEN="$CLOUDFLARE_API_TOKEN" \
+          --set-string controller.env.VELA_CLOUDFLARE_ZONE_ID="$CLOUDFLARE_ZONE_ID"

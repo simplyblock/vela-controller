@@ -48,33 +48,3 @@ jobs:
           ${{ vars.REGISTRY }}/simplyblock/vela-controller:${{ steps.meta.outputs.image_tag }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
-
-    - name: Set up Helm
-      uses: azure/setup-helm@v4
-
-    - name: Write kubeconfig
-      id: kubeconfig
-      env:
-        KUBE_CONFIG_DATA: ${{ secrets.KUBECONFIG }}
-      run: |
-        if [[ -z "$KUBE_CONFIG_DATA" ]]; then
-          echo "KUBECONFIG secret is not set" >&2
-          exit 1
-        fi
-        echo "$KUBE_CONFIG_DATA" | base64 --decode > kubeconfig.yaml 2>/dev/null || echo "$KUBE_CONFIG_DATA" > kubeconfig.yaml
-        chmod 600 kubeconfig.yaml
-        echo "path=$PWD/kubeconfig.yaml" >> "$GITHUB_OUTPUT"
-
-    - name: Deploy with Helm
-      env:
-        KUBECONFIG: ${{ steps.kubeconfig.outputs.path }}
-        IMAGE_TAG: ${{ steps.meta.outputs.image_tag }}
-        CLOUDFLARE_API_TOKEN: ${{ secrets.VELA_CLOUDFLARE_API_TOKEN }}
-        CLOUDFLARE_ZONE_ID: ${{ secrets.VELA_CLOUDFLARE_ZONE_ID }}
-      run: |
-        helm upgrade --install vela ./chart \
-          --namespace vela \
-          --create-namespace \
-          --set-string controller.image.tag="$IMAGE_TAG" \
-          --set-string controller.env.VELA_CLOUDFLARE_API_TOKEN="$CLOUDFLARE_API_TOKEN" \
-          --set-string controller.env.VELA_CLOUDFLARE_ZONE_ID="$CLOUDFLARE_ZONE_ID"

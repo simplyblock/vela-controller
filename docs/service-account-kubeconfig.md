@@ -1,6 +1,6 @@
 # GitHub Actions kubeconfig generation
 
-Vela controller deployment workflow in `.github/workflows/image.yml` expects a kubeconfig stored in the `KUBECONFIG` GitHub secret.  
+Vela controller deployment workflow in `.github/workflows/deploy.yml` expects a kubeconfig stored in the `KUBECONFIG` GitHub secret.  
 This document guides how the KUBECONFIG was generated
 
 ## 1. Create the service account and permissions
