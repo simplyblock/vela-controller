@@ -1,3 +1,5 @@
+import os
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlmodel import select
@@ -24,7 +26,7 @@ from ..models.role import AccessRight
 from .auth import authenticated_user
 from .db import SessionDep
 
-api = APIRouter(dependencies=[Depends(authenticated_user)], tags=["system"])
+api = APIRouter(tags=["system"])
 
 
 class AvailablePostgresqlVersion(BaseModel):
@@ -33,7 +35,22 @@ class AvailablePostgresqlVersion(BaseModel):
     default: bool
 
 
-@api.get("/available-permissions/")
+class SystemVersion(BaseModel):
+    commit_hash: str = ""
+    timestamp: str = ""
+
+
+@api.get("/version", response_model=SystemVersion)
+async def get_system_version() -> SystemVersion:
+    """
+    Provide build metadata for the running controller instance.
+    """
+    commit_hash = os.getenv("VELA_GIT_COMMIT", "")
+    timestamp = os.getenv("VELA_BUILD_TIMESTAMP", "")
+    return SystemVersion(commit_hash=commit_hash, timestamp=timestamp)
+
+
+@api.get("/available-permissions/", dependencies=[Depends(authenticated_user)])
 async def list_available_permissions(
     session: SessionDep,
 ) -> list[str]:
@@ -46,7 +63,7 @@ async def list_available_permissions(
     return entries
 
 
-@api.get("/resource-limit-definitions")
+@api.get("/resource-limit-definitions", dependencies=[Depends(authenticated_user)])
 async def list_resource_limit_definitions() -> list[ResourceLimitDefinitionPublic]:
     return [
         ResourceLimitDefinitionPublic(
@@ -65,7 +82,7 @@ async def list_resource_limit_definitions() -> list[ResourceLimitDefinitionPubli
     ]
 
 
-@api.get("/available-postgresql-versions")
+@api.get("/available-postgresql-versions", dependencies=[Depends(authenticated_user)])
 async def list_available_postgresql_versions() -> list[AvailablePostgresqlVersion]:
     return [
         AvailablePostgresqlVersion(
