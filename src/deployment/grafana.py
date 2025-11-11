@@ -276,8 +276,7 @@ async def create_dashboard(folder_uid: str, branch_id: str, namespace: str):
     dashboard_path = _require_asset(Path(__file__).with_name("pgexporter.json"), "pgexporter json")
 
     try:
-        with open(dashboard_path) as f:
-            dashboard = json.load(f)
+        dashboard = json.loads(dashboard_path.read_text(encoding="utf-8"))
     except Exception as e:
         logger.error(f"Failed to load dashboard JSON from {dashboard_path}: {e}")
         raise
@@ -312,7 +311,6 @@ async def create_dashboard(folder_uid: str, branch_id: str, namespace: str):
                 "dashboards/db",
                 json=dashboard_payload,
             )
-            response.raise_for_status()
             logger.info(f"Dashboard '{dashboard['title']}' created successfully in folder '{branch_id}'.")
         except httpx.HTTPError as exc:
             logger.error(f"Failed to create dashboard for folder '{branch_id}': {exc}")
