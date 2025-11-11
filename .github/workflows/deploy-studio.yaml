@@ -1,0 +1,44 @@
+name: Deploy Studio
+
+on:
+  repository_dispatch:
+    types: [public-merged]
+
+jobs:
+  deploy-studio:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      PAYLOAD_TAG: ${{ github.event.client_payload.tag }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Write kubeconfig
+        # Instructions for generating the KUBECONFIG secret live in docs/service-account-kubeconfig.md
+        id: kubeconfig
+        env:
+          KUBE_CONFIG_DATA: ${{ secrets.KUBECONFIG }}
+        run: |
+          if [[ -z "$KUBE_CONFIG_DATA" ]]; then
+            echo "KUBECONFIG secret is not set" >&2
+            exit 1
+          fi
+          echo "$KUBE_CONFIG_DATA" | base64 --decode > kubeconfig.yaml 2>/dev/null || echo "$KUBE_CONFIG_DATA" > kubeconfig.yaml
+          chmod 600 kubeconfig.yaml
+          echo "path=$PWD/kubeconfig.yaml" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy Studio
+        env:
+          KUBECONFIG: ${{ steps.kubeconfig.outputs.path }}
+        run: |
+          helm upgrade --install vela ./chart \
+            --namespace vela \
+            --create-namespace \
+            --reuse-values \
+            --set-string studio.image.tag="${PAYLOAD_TAG}"

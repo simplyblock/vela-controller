@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: vela-studio
-          image: simplyblock/vela-studio:latest
+          image: "{{ .Values.studio.image.repository }}:{{ .Values.studio.image.tag }}"
           imagePullPolicy: Always
           ports:
             - name: http
