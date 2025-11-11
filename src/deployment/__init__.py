@@ -996,6 +996,11 @@ def _build_apikey_jwt_plugin(namespace: str, tokens: list[str]) -> dict[str, Any
     allowed_tokens = ",\n            ".join(json.dumps(f"Bearer {token}") for token in unique_tokens)
     lua_script = textwrap.dedent(
         f"""
+        local method = kong.request.get_method()
+        if method == "OPTIONS" then
+            return
+        end
+
         local auth_header = kong.request.get_header("Authorization")
 
         if not auth_header then
