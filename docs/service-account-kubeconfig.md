@@ -6,30 +6,55 @@ This document guides how the KUBECONFIG was generated
 ## 1. Create the service account and permissions
 
 ```sh
-kubectl -n vela apply -f - <<'EOF'
+kubectl apply -f - <<'EOF'
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: github-actions
+  namespace: vela
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: ClusterRole
 metadata:
   name: github-actions-deployer
-  namespace: vela
 rules:
+- apiGroups: [""]
+  resources: [ "namespaces" ]
+  verbs: [ "get", "list", "watch", "create" ]
+- apiGroups: [""]
+  resources:
+    - serviceaccounts
+    - services
+    - secrets
+    - configmaps
+  verbs: [ "get", "list", "watch", "create", "update", "patch", "delete" ]
 - apiGroups: [ "apps" ]
-  resources: [ "deployments" ]
-  verbs: [ "get", "list", "watch", "patch", "update" ]
+  resources:
+    - deployments
+    - daemonsets
+  verbs: [ "get", "list", "watch", "create", "update", "patch", "delete" ]
+- apiGroups: [ "gateway.networking.k8s.io" ]
+  resources: [ "httproutes" ]
+  verbs: [ "get", "list", "watch", "create", "update", "patch", "delete" ]
+- apiGroups: [ "cert-manager.io" ]
+  resources: [ "certificates" ]
+  verbs: [ "get", "list", "watch", "create", "update", "patch", "delete" ]
+- apiGroups: [ "stackgres.io" ]
+  resources: [ "sgclusters", "sginstanceprofiles" ]
+  verbs: [ "get", "list", "watch", "create", "update", "patch", "delete" ]
+- apiGroups: [ "rbac.authorization.k8s.io" ]
+  resources:
+    - clusterroles
+    - clusterrolebindings
+  verbs: [ "get", "list", "watch", "create", "update", "patch", "delete" ]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
+kind: ClusterRoleBinding
 metadata:
   name: github-actions-deployer
-  namespace: vela
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: Role
+  kind: ClusterRole
   name: github-actions-deployer
 subjects:
 - kind: ServiceAccount
