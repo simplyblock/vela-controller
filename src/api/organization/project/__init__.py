@@ -1,5 +1,5 @@
 from collections.abc import Sequence
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
@@ -65,17 +65,44 @@ _links = {
 }
 
 
-def _resource_type_from_name(resource_name: str) -> ResourceType:
+def _validation_error_detail(
+    error_type: str,
+    loc: Sequence[str],
+    msg: str,
+    input_value: Any | None = None,
+    ctx: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    detail: dict[str, Any] = {"type": error_type, "loc": list(loc), "msg": msg}
+    if input_value is not None:
+        detail["input"] = input_value
+    if ctx:
+        detail["ctx"] = ctx
+    return detail
+
+
+def _resource_type_from_name(resource_name: str, field_name: str) -> ResourceType:
     try:
         return ResourceType(resource_name)
     except ValueError as exc:  # pragma: no cover - defensive coding against invalid payloads
-        raise HTTPException(422, f"Unknown resource type {resource_name!r}") from exc
+        raise HTTPException(
+            422,
+            {
+                "detail": [
+                    _validation_error_detail(
+                        "unknown_resource",
+                        ["body", field_name, resource_name],
+                        f"Unknown resource type {resource_name!r}",
+                        input_value=resource_name,
+                    )
+                ]
+            },
+        ) from exc
 
 
-def _normalize_limits(limit_payload: dict[str, int]) -> dict[ResourceType, int]:
+def _normalize_limits(limit_payload: dict[str, int], field_name: str) -> dict[ResourceType, int]:
     normalized: dict[ResourceType, int] = {}
     for resource_name, value in limit_payload.items():
-        normalized[_resource_type_from_name(resource_name)] = value
+        normalized[_resource_type_from_name(resource_name, field_name)] = value
     return normalized
 
 
@@ -102,14 +129,20 @@ def _calculate_project_limits(
     """Return the validated project/per-branch limits for each requested resource."""
 
     calculated_limits: dict[ResourceType, tuple[int, int]] = {}
+    errors: list[dict[str, Any]] = []
     for resource_type, requested_limit in project_limits.items():
-        calculated_limits[resource_type] = _calculate_project_limit_pair(
+        limit_pair = _calculate_project_limit_pair(
             resource_type,
             requested_limit,
             org_limits.get(resource_type),
             per_branch_limits.get(resource_type),
             consumed_limits.get(resource_type, 0),
+            errors,
         )
+        if limit_pair is not None:
+            calculated_limits[resource_type] = limit_pair
+    if errors:
+        raise HTTPException(422, {"detail": errors})
     return calculated_limits
 
 
@@ -119,37 +152,51 @@ def _calculate_project_limit_pair(
     organization_limit: ResourceLimit | None,
     per_branch_override: int | None,
     consumed_total: int,
-) -> tuple[int, int]:
+    errors: list[dict[str, Any]],
+) -> tuple[int, int] | None:
     """Ensure the requested project limit fits the remaining org capacity."""
 
     resource_name = resource_type.value
     if organization_limit is None or organization_limit.max_total is None:
-        raise HTTPException(
-            422,
-            (
-                f"Organization limit for {resource_name} is not configured; "
-                f"cannot set project limit to {requested_limit}"
-            ),
+        errors.append(
+            _validation_error_detail(
+                "limit_unconfigured",
+                ["body", "project_limits", resource_name],
+                (
+                    f"Organization limit for {resource_name} is not configured; "
+                    f"cannot set project limit to {requested_limit}"
+                ),
+                input_value=requested_limit,
+            )
         )
+        return None
 
     # Remaining capacity is what's left once other projects have reserved their share.
     remaining_capacity = max(organization_limit.max_total - consumed_total, 0)
     if requested_limit > remaining_capacity:
-        raise HTTPException(
-            422,
-            (
-                f"project_limits.{resource_name} ({requested_limit}) exceeds "
-                f"organization's remaining capacity ({remaining_capacity} "
-                f"available of {organization_limit.max_total})"
-            ),
+        errors.append(
+            _validation_error_detail(
+                "exceeded",
+                ["body", "project_limits", resource_name],
+                (f"Requested limit {requested_limit} exceeds organization limit {organization_limit.max_total}"),
+                input_value=requested_limit,
+                ctx={
+                    "limit": organization_limit.max_total,
+                    "remaining_capacity": remaining_capacity,
+                },
+            )
         )
+        return None
 
     per_branch_limit = _resolve_per_branch_limit(
         resource_name,
         requested_limit,
         per_branch_override,
         organization_limit.max_per_branch,
+        errors,
     )
+    if per_branch_limit is None:
+        return None
     return requested_limit, per_branch_limit
 
 
@@ -158,7 +205,8 @@ def _resolve_per_branch_limit(
     requested_limit: int,
     per_branch_override: int | None,
     org_per_branch_limit: int | None,
-) -> int:
+    errors: list[dict[str, Any]],
+) -> int | None:
     """Pick the per-branch limit, keeping it within org policy and project total."""
 
     if (
@@ -166,13 +214,16 @@ def _resolve_per_branch_limit(
         and org_per_branch_limit is not None
         and per_branch_override > org_per_branch_limit
     ):
-        raise HTTPException(
-            422,
-            (
-                f"per_branch_limits.{resource_name} ({per_branch_override}) exceeds "
-                f"organization's per-branch limit ({org_per_branch_limit})"
-            ),
+        errors.append(
+            _validation_error_detail(
+                "exceeded",
+                ["body", "per_branch_limits", resource_name],
+                (f"Requested per-branch limit {per_branch_override} exceeds organization limit {org_per_branch_limit}"),
+                input_value=per_branch_override,
+                ctx={"limit": org_per_branch_limit},
+            )
         )
+        return None
 
     if per_branch_override is not None:
         per_branch_limit = per_branch_override
@@ -267,8 +318,8 @@ async def create(
     org_limits = await get_organization_resource_limits(session, organization.id)
     requested_project_limits_raw = parameters.project_limits.model_dump(exclude_unset=True, exclude_none=True)
     requested_per_branch_limits_raw = parameters.per_branch_limits.model_dump(exclude_unset=True, exclude_none=True)
-    project_limits = _normalize_limits(requested_project_limits_raw)
-    per_branch_limits = _normalize_limits(requested_per_branch_limits_raw)
+    project_limits = _normalize_limits(requested_project_limits_raw, "project_limits")
+    per_branch_limits = _normalize_limits(requested_per_branch_limits_raw, "per_branch_limits")
     consumed_project_limits = await _get_consumed_project_limits(session, organization.id, project_limits)
     calculated_limits = _calculate_project_limits(
         project_limits, per_branch_limits, org_limits, consumed_project_limits
