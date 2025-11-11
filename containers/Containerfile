@@ -1,8 +1,13 @@
 FROM python:3.13-slim
 
+ARG GIT_COMMIT_SHA=unknown
+ARG GIT_COMMIT_TIMESTAMP=unknown
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app
+    PYTHONPATH=/app \
+    VELA_GIT_COMMIT=${GIT_COMMIT_SHA} \
+    VELA_BUILD_TIMESTAMP=${GIT_COMMIT_TIMESTAMP}
 
 RUN --mount=type=cache,target=/var/cache/apt \
     --mount=type=cache,target=/var/lib/apt \
