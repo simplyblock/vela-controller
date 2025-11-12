@@ -219,7 +219,11 @@ def _calculate_project_limit_pair(
             _validation_error_detail(
                 "exceeded",
                 ["body", "project_limits", resource_name],
-                (f"Requested limit {requested_limit} exceeds organization limit {organization_limit.max_total}"),
+                (
+                    f"Requested limit {requested_limit} exceeds remaining organization "
+                    f"capacity {remaining_capacity} "
+                    f"(limit {organization_limit.max_total})"
+                ),
                 input_value=requested_limit,
                 ctx={
                     "limit": organization_limit.max_total,
