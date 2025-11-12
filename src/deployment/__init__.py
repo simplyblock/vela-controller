@@ -769,17 +769,20 @@ async def cleanup_branch_dns(branch_id: Identifier) -> None:
     Delete Cloudflare DNS records for a branch.
 
     Removes both the API CNAME record and database AAAA record for the given branch.
-    If records don't exist or deletion fails, warnings are logged but no exceptions are raised.
+    Record deletions themselves log warnings instead of raising, but errors resolving
+    Cloudflare configuration or branch domains still propagate to the caller.
 
     Args:
         branch_id: The branch identifier to clean up DNS records for
     """
     cf_cfg = _cloudflare_config()
     deletions = []
+    record_types = []
 
     api_domain = branch_api_domain(branch_id)
     if api_domain:
         deletions.append(_delete_dns_records(cf_cfg, domain=api_domain, record_type="CNAME"))
+        record_types.append(f"API CNAME ({api_domain})")
 
     db_domain = branch_domain(branch_id)
     if db_domain:
@@ -790,6 +793,7 @@ async def cleanup_branch_dns(branch_id: Identifier) -> None:
                 record_type=DATABASE_DNS_RECORD_TYPE,
             )
         )
+        record_types.append(f"database AAAA ({db_domain})")
 
     if not deletions:
         logger.info(
@@ -799,14 +803,9 @@ async def cleanup_branch_dns(branch_id: Identifier) -> None:
         return
 
     results = await asyncio.gather(*deletions, return_exceptions=True)
-    record_types = []
-    if api_domain:
-        record_types.append(f"API CNAME ({api_domain})")
-    if db_domain:
-        record_types.append(f"database AAAA ({db_domain})")
-    for i, result in enumerate(results):
+    for record_type, result in zip(record_types, results, strict=True):
         if isinstance(result, Exception):
-            logger.warning("DNS deletion failed for %s: %s", record_types[i], result)
+            logger.error("DNS deletion failed for %s: %s", record_type, result)
 
 
 def _get_value(obj: Any, *names: str) -> Any:
