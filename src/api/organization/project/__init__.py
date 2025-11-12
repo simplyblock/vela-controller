@@ -5,11 +5,14 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials
 from kubernetes_asyncio.client.exceptions import ApiException
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
+from sqlmodel import select
 
 from ...._util import Identifier
 from ....deployment import delete_deployment, get_db_vmi_identity
 from ....deployment.kubernetes.kubevirt import call_kubevirt_subresource
+from ....models.organization import Organization
 from ....models.project import (
     Project,
     ProjectCreate,
@@ -78,6 +81,44 @@ def _validation_error_detail(
     if ctx:
         detail["ctx"] = ctx
     return detail
+
+
+async def _validate_project_backup_budget(
+    session: SessionDep,
+    organization: Organization,
+    requested_max_backups: int,
+    *,
+    exclude_project_id: Identifier | None = None,
+) -> None:
+    stmt = select(func.coalesce(func.sum(Project.max_backups), 0)).where(Project.organization_id == organization.id)
+    if exclude_project_id is not None:
+        stmt = stmt.where(Project.id != exclude_project_id)
+
+    result = await session.execute(stmt)
+    allocated = int(result.scalar_one() or 0)
+    remaining_capacity = max(organization.max_backups - allocated, 0)
+
+    if requested_max_backups > remaining_capacity:
+        raise HTTPException(
+            422,
+            {
+                "detail": [
+                    _validation_error_detail(
+                        "exceeded",
+                        ["body", "max_backups"],
+                        (
+                            f"Requested max_backups {requested_max_backups} exceeds the organization's remaining backup"
+                            f" capacity {remaining_capacity} (limit {organization.max_backups})"
+                        ),
+                        input_value=requested_max_backups,
+                        ctx={
+                            "limit": organization.max_backups,
+                            "remaining_capacity": remaining_capacity,
+                        },
+                    )
+                ]
+            },
+        )
 
 
 def _resource_type_from_name(resource_name: str, field_name: str) -> ResourceType:
@@ -315,6 +356,8 @@ async def create(
     parameters: ProjectCreate,
     response: Literal["empty", "full"] = "empty",
 ) -> JSONResponse:
+    await _validate_project_backup_budget(session, organization, parameters.max_backups)
+
     org_limits = await get_organization_resource_limits(session, organization.id)
     requested_project_limits_raw = parameters.project_limits.model_dump(exclude_unset=True, exclude_none=True)
     requested_per_branch_limits_raw = parameters.per_branch_limits.model_dump(exclude_unset=True, exclude_none=True)
@@ -381,7 +424,17 @@ async def update(
     project: ProjectDep,
     parameters: ProjectUpdate,
 ):
-    for key, value in parameters.model_dump(exclude_unset=True, exclude_none=True).items():
+    update_values = parameters.model_dump(exclude_unset=True, exclude_none=True)
+    if "max_backups" in update_values:
+        project_id = await project.awaitable_attrs.id
+        await _validate_project_backup_budget(
+            session,
+            organization,
+            update_values["max_backups"],
+            exclude_project_id=project_id,
+        )
+
+    for key, value in update_values.items():
         assert hasattr(project, key)
         setattr(project, key, value)
     try:
