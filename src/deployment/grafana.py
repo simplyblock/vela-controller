@@ -1,11 +1,14 @@
+import json
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import httpx
 
 from .._util import Identifier
 from ..exceptions import VelaGrafanaError
+from ._util import _require_asset, deployment_namespace
 from .settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -33,6 +36,8 @@ async def _client(timeout: int = 10) -> AsyncGenerator[httpx.AsyncClient]:
 async def create_vela_grafana_obj(organization_id: Identifier, branch_id: Identifier, credential):
     logger.info(f"Creating Grafana object for organization={organization_id}, branch={branch_id}")
 
+    namespace = deployment_namespace(branch_id)
+
     team_id = await create_team(str(branch_id))
     parent_folder_id = await create_folder(str(organization_id))
 
@@ -42,8 +47,7 @@ async def create_vela_grafana_obj(organization_id: Identifier, branch_id: Identi
 
     user_id = await get_user_via_jwt(credential)
     await add_user_to_team(team_id, user_id)
-
-    return await create_dashboard(str(organization_id), folder_id, str(branch_id))
+    await create_dashboard(folder_id, str(branch_id), namespace)
 
 
 async def delete_vela_grafana_obj(branch_id: Identifier):
@@ -268,57 +272,46 @@ async def remove_user_from_team(team_id: int, user_id: int):
 
 
 # --- DASHBOARD CREATION ---
-async def create_dashboard(org_name: str, folder_uid: str, branch_id: str) -> None:
-    dashboard_payload = {
-        "dashboard": {
-            "uid": branch_id,
-            "title": "Metrics",
-            "tags": [branch_id],
-            "timezone": "browser",
-            "schemaVersion": 36,
-            "version": 0,
-            "panels": [
-                {
-                    "type": "timeseries",
-                    "title": "Metric",
-                    "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0},
-                    "datasource": {"type": "prometheus", "uid": "eev2sidbr5ekgb"},
-                    "targets": [
-                        {
-                            "expr": 'custom_metric_value{org="$organization",proj="$project"}',
-                            "legendFormat": "{{instance}}",
-                            "refId": "A",
-                        }
-                    ],
-                }
-            ],
-            "templating": {
-                "list": [
-                    {
-                        "name": "organization",
-                        "type": "constant",
-                        "label": org_name,
-                        "query": org_name,
-                        "current": {"selected": True, "text": org_name, "value": org_name},
-                    },
-                    {
-                        "name": "project",
-                        "type": "constant",
-                        "label": branch_id,
-                        "query": branch_id,
-                        "current": {"selected": True, "text": branch_id, "value": branch_id},
-                    },
-                ]
+async def create_dashboard(folder_uid: str, branch_id: str, namespace: str):
+    dashboard_path = _require_asset(Path(__file__).with_name("pgexporter.json"), "pgexporter json")
+
+    try:
+        dashboard = json.loads(dashboard_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        logger.error(f"Failed to load dashboard JSON from {dashboard_path}: {e}")
+        raise
+
+    dashboard["id"] = None
+    dashboard["uid"] = branch_id
+
+    dashboard["title"] = f"{branch_id} PostgreSQL Metrics"
+    dashboard["tags"] = [branch_id]
+
+    dashboard["templating"] = {
+        "list": [
+            {
+                "name": "namespace",
+                "type": "constant",
+                "label": "Namespace",
+                "query": namespace,
+                "current": {"selected": True, "text": namespace, "value": namespace},
             },
-        },
+        ]
+    }
+
+    dashboard_payload = {
+        "dashboard": dashboard,
         "folderUid": folder_uid,
         "overwrite": True,
     }
 
     async with _client() as client:
         try:
-            await client.post("dashboards/db", json=dashboard_payload)
-            logger.info(f"Dashboard created successfully in folder '{branch_id}'.")
+            await client.post(
+                "dashboards/db",
+                json=dashboard_payload,
+            )
+            logger.info(f"Dashboard '{dashboard['title']}' created successfully in folder '{branch_id}'.")
         except httpx.HTTPError as exc:
             logger.error(f"Failed to create dashboard for folder '{branch_id}': {exc}")
             raise VelaGrafanaError(f"Failed to create dashboard: {exc}") from exc

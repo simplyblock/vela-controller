@@ -38,6 +38,7 @@ from ..exceptions import (
     VelaGrafanaError,
     VelaKubernetesError,
 )
+from ._util import _require_asset, deployment_namespace
 from .deployment import DeploymentParameters, DeploymentStatus
 from .grafana import create_vela_grafana_obj, delete_vela_grafana_obj
 from .kubernetes import KubernetesService
@@ -67,16 +68,6 @@ DATABASE_DNS_RECORD_TYPE: Literal["AAAA"] = "AAAA"
 
 def branch_storage_class_name(branch_id: Identifier) -> str:
     return f"sc-{str(branch_id).lower()}"
-
-
-def deployment_namespace(branch_id: Identifier) -> str:
-    """Return the Kubernetes namespace for a branch using `<prefix>-<branch_id>` format."""
-
-    branch_value = str(branch_id).lower()
-    prefix = get_settings().deployment_namespace_prefix
-    if prefix:
-        return f"{prefix}-{branch_value}"
-    return branch_value
 
 
 def deployment_branch(namespace: str) -> ULID:
@@ -306,12 +297,6 @@ async def ensure_branch_storage_class(branch_id: Identifier, *, iops: int) -> st
     )
     await kube_service.apply_storage_class(storage_class_manifest)
     return storage_class_name
-
-
-def _require_asset(path: Path, description: str) -> Path:
-    if not path.exists():
-        raise FileNotFoundError(f"{description} not found at {path}")
-    return path
 
 
 def _load_compose_manifest(branch_id: Identifier) -> dict[str, Any]:

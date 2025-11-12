@@ -8,6 +8,7 @@ type: Opaque
 stringData:
   VELA_GRAFANA_SECURITY_ADMIN_USER: "{{ .Values.monitoring.VELA_GRAFANA_SECURITY_ADMIN_USER }}"
   VELA_GRAFANA_SECURITY_ADMIN_PASSWORD: "{{ .Values.monitoring.VELA_GRAFANA_SECURITY_ADMIN_PASSWORD }}"
+
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -26,7 +27,23 @@ data:
       isDefault: true
       access: proxy
       uid: PBFA97CFB590B2093
-      editable: true      
+      editable: true 
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vela-grafana-pvc
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: vela-grafana
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: simplyblock-csi-sc
+  resources:
+    requests:
+      storage: 10Gi     
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -66,7 +83,7 @@ spec:
             - name: GF_PATHS_PROVISIONING
               value: "/etc/grafana/provisioning"
             - name: GF_SERVER_ROOT_URL
-              value: "http://localhost/grafana"
+              value: "http://localhost"
             - name: GF_AUTH_JWT_ENABLED
               value: "true"
             - name: "GF_AUTH_JWT_HEADER_NAME"
@@ -91,7 +108,8 @@ spec:
           configMap:
             name: vela-grafana-datasource
         - name: grafana-data
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: vela-grafana-pvc
 
 ---
 apiVersion: v1

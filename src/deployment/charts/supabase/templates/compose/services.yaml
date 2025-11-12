@@ -64,4 +64,21 @@ spec:
       name: http
   selector:
     vm.kubevirt.io/name: {{ include "supabase.db.fullname" . }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: supabase-supabase-pgexporter
+  labels:
+    app: pgexporter
+    {{- include "supabase.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.pgexporter.service.type | default "ClusterIP" }}
+  ports:
+    - port: {{ .Values.pgexporter.service.port | default 9187 }}
+      targetPort: 9187
+      protocol: TCP
+      name: http
+  selector:
+    vm.kubevirt.io/name: {{ include "supabase.db.fullname" . }}
 {{- end }}
