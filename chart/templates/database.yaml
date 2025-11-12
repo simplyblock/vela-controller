@@ -24,4 +24,5 @@ spec:
   pods:
     persistentVolume:
       size: '20Gi'
+      storageClass: simplyblock-csi-sc
   sgInstanceProfile: 'profile'

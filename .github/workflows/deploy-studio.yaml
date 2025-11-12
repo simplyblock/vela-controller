@@ -1,0 +1,53 @@
+name: Deploy Studio
+
+on:
+  repository_dispatch:
+    types: [update-vela-studio]
+
+jobs:
+  deploy-studio:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Set image metadata
+        id: meta
+        env:
+          PAYLOAD_TAG: ${{ github.event.client_payload.sha }}
+        run: |
+          SHORT_SHA="${PAYLOAD_TAG::7}"
+          IMAGE_TAG="latest-${SHORT_SHA}"
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          echo "image_tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Write kubeconfig
+        # Instructions for generating the KUBECONFIG secret live in docs/service-account-kubeconfig.md
+        id: kubeconfig
+        env:
+          KUBE_CONFIG_DATA: ${{ secrets.KUBECONFIG }}
+        run: |
+          if [[ -z "$KUBE_CONFIG_DATA" ]]; then
+            echo "KUBECONFIG secret is not set" >&2
+            exit 1
+          fi
+          echo "$KUBE_CONFIG_DATA" | base64 --decode > kubeconfig.yaml 2>/dev/null || echo "$KUBE_CONFIG_DATA" > kubeconfig.yaml
+          chmod 600 kubeconfig.yaml
+          echo "path=$PWD/kubeconfig.yaml" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy Studio
+        env:
+          KUBECONFIG: ${{ steps.kubeconfig.outputs.path }}
+          IMAGE_TAG: ${{ steps.meta.outputs.image_tag }}
+        run: |
+          helm upgrade --install vela ./chart \
+            --namespace vela \
+            --create-namespace \
+            --reuse-values \
+            --set-string studio.image.tag="${IMAGE_TAG}"

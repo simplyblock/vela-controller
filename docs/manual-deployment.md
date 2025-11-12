@@ -213,7 +213,7 @@ helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheu
 ### stackgres
 
 ```
-hehelm upgrade --install stackgres-operator \
+helm upgrade --install stackgres-operator \
   stackgres-operator \
   --repo https://stackgres.io/downloads/stackgres-k8s/stackgres/helm/ \
   --namespace stackgres \

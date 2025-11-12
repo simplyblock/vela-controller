@@ -76,6 +76,9 @@ monitoring:
   
 studio:
   enabled: true
+  image:
+    repository: docker.io/simplyblock/vela-studio
+    tag: latest
   env:
     PLATFORM_PG_META_URL: 'http://meta:8080'
     SUPABASE_ANON_KEY: "UpNVntn3cDxHJpq99YMc1T1AQgQpc8kfYTuRgBiYa15BLrx8etQoXz3gZv1/u2oq"
