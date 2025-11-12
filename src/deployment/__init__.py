@@ -8,7 +8,7 @@ import textwrap
 from collections.abc import Mapping
 from importlib import resources
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import TYPE_CHECKING, Annotated, Any, Literal, cast
 
 import asyncpg
 import httpx
@@ -45,6 +45,9 @@ from .kubernetes import KubernetesService
 from .kubernetes.kubevirt import get_virtualmachine_status
 from .logflare import create_branch_logflare_objects, delete_branch_logflare_objects
 from .settings import get_settings
+
+if TYPE_CHECKING:
+    from cloudflare.types.dns.record_list_params import Name as CloudflareRecordName
 
 logger = logging.getLogger(__name__)
 
@@ -496,6 +499,7 @@ async def get_deployment_status(branch_id: Identifier) -> DeploymentStatus:
 async def delete_deployment(branch_id: Identifier) -> None:
     namespace, _ = get_db_vmi_identity(branch_id)
     storage_class_name = branch_storage_class_name(branch_id)
+    await cleanup_branch_dns(branch_id)
     try:
         await delete_branch_logflare_objects(branch_id)
         await kube_service.delete_namespace(namespace)
@@ -718,6 +722,91 @@ async def _create_dns_record(
         raise VelaCloudflareError(f"Cloudflare request failed: {exc}") from exc
 
     logger.info("Created DNS %s record %s -> %s", record_type, domain, content)
+
+
+async def _delete_dns_records(cf: CloudflareConfig, *, domain: str, record_type: DNSRecordType) -> None:
+    """
+    Delete all Cloudflare DNS records matching the given domain and type.
+
+    Args:
+        cf: Cloudflare configuration
+        domain: The fully qualified domain name to delete records for
+        record_type: The DNS record type (AAAA or CNAME)
+
+    Raises:
+        VelaCloudflareError: If the Cloudflare API request fails
+    """
+    try:
+        async with AsyncCloudflare(api_token=cf.api_token) as client:
+            records = await client.dns.records.list(
+                zone_id=cf.zone_id,
+                name=cast("CloudflareRecordName", domain),
+                type=record_type,
+            )
+            if not records:
+                logger.info("No Cloudflare DNS %s records found for %s", record_type, domain)
+                return
+            for record in records:
+                record_id = getattr(record, "id", None)
+                if not record_id:
+                    logger.warning("Skipping Cloudflare DNS record for %s with missing id", domain)
+                    continue
+                await client.dns.records.delete(zone_id=cf.zone_id, dns_record_id=record_id)
+                logger.info(
+                    "Deleted Cloudflare DNS %s record %s (id=%s)",
+                    record_type,
+                    domain,
+                    record_id,
+                )
+    except CloudflareError as exc:
+        raise VelaCloudflareError(f"Cloudflare API error while deleting DNS record for {domain!r}: {exc}") from exc
+    except Exception as exc:  # pragma: no cover - surfaced to caller
+        raise VelaCloudflareError(f"Cloudflare request failed while deleting DNS record for {domain!r}: {exc}") from exc
+
+
+async def cleanup_branch_dns(branch_id: Identifier) -> None:
+    """
+    Delete Cloudflare DNS records for a branch.
+
+    Removes both the API CNAME record and database AAAA record for the given branch.
+    If records don't exist or deletion fails, warnings are logged but no exceptions are raised.
+
+    Args:
+        branch_id: The branch identifier to clean up DNS records for
+    """
+    cf_cfg = _cloudflare_config()
+    deletions = []
+
+    api_domain = branch_api_domain(branch_id)
+    if api_domain:
+        deletions.append(_delete_dns_records(cf_cfg, domain=api_domain, record_type="CNAME"))
+
+    db_domain = branch_domain(branch_id)
+    if db_domain:
+        deletions.append(
+            _delete_dns_records(
+                cf_cfg,
+                domain=db_domain,
+                record_type=DATABASE_DNS_RECORD_TYPE,
+            )
+        )
+
+    if not deletions:
+        logger.info(
+            "Skipping Cloudflare DNS cleanup for branch %s because domain suffix is not configured",
+            branch_id,
+        )
+        return
+
+    results = await asyncio.gather(*deletions, return_exceptions=True)
+    record_types = []
+    if api_domain:
+        record_types.append(f"API CNAME ({api_domain})")
+    if db_domain:
+        record_types.append(f"database AAAA ({db_domain})")
+    for i, result in enumerate(results):
+        if isinstance(result, Exception):
+            logger.warning("DNS deletion failed for %s: %s", record_types[i], result)
 
 
 def _get_value(obj: Any, *names: str) -> Any:
