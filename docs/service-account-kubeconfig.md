@@ -27,6 +27,7 @@ rules:
     - services
     - secrets
     - configmaps
+    - persistentvolumeclaims
   verbs: [ "get", "list", "watch", "create", "update", "patch", "delete" ]
 - apiGroups: [ "apps" ]
   resources:
