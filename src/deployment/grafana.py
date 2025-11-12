@@ -2,13 +2,13 @@ import json
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from pathlib import Path
+from importlib import resources
 
 import httpx
 
 from .._util import Identifier
 from ..exceptions import VelaGrafanaError
-from ._util import _require_asset, deployment_namespace
+from ._util import deployment_namespace
 from .settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -273,12 +273,12 @@ async def remove_user_from_team(team_id: int, user_id: int):
 
 # --- DASHBOARD CREATION ---
 async def create_dashboard(folder_uid: str, branch_id: str, namespace: str):
-    dashboard_path = _require_asset(Path(__file__).with_name("pgexporter.json"), "pgexporter json")
+    dashboard_resource = resources.files(__package__).joinpath("pgexporter.json")
 
     try:
-        dashboard = json.loads(dashboard_path.read_text(encoding="utf-8"))
+        dashboard = json.loads(dashboard_resource.read_text(encoding="utf-8"))
     except Exception as e:
-        logger.error(f"Failed to load dashboard JSON from {dashboard_path}: {e}")
+        logger.error(f"Failed to load dashboard JSON from {dashboard_resource}: {e}")
         raise
 
     dashboard["id"] = None
