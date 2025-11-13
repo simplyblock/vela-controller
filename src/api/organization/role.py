@@ -1,170 +1,395 @@
-from collections.abc import Sequence
-from typing import Literal
+from typing import cast
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Request, Response
-from fastapi.responses import JSONResponse
-from sqlmodel import and_
-from sqlmodel import delete as dbdelete
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlmodel import select
 
-from ..._util import Identifier
-from ...models.role import Role, RoleUserLink
-from ...models.user import UserPublic
-from .._util import Forbidden, NotFound, Unauthenticated, url_path_for
+from ...models._util import Identifier
+from ...models.role import (
+    AccessRight,
+    PermissionAccessCheckPublic,
+    PermissionCheckContextPublic,
+    Role,
+    RoleAccessRight,
+    RoleAssignmentPublic,
+    RoleAssignmentsPublic,
+    RoleCreate,
+    RoleDeletePublic,
+    RolePublic,
+    RoleType,
+    RoleTypePublic,
+    RoleUnassignmentPublic,
+    RoleUpdate,
+    RoleUserLink,
+    RoleUserLinkPublic,
+    RoleWithPermissionsPublic,
+)
+from ..access_right_utils import check_access
+from ..auth import authenticated_user
 from ..db import SessionDep
-from ..dependencies import OrganizationDep, RoleDep, UserDep, user_lookup
-from ..user import public_list as public_user_list
+from ..dependencies import OrganizationDep, RoleDep
 
-api = APIRouter(tags=["role"])
-
-
-@api.get(
-    "/",
-    name="organizations:roles:list",
-    responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
-)
-async def list_(organization: OrganizationDep) -> Sequence[Role]:
-    return await organization.awaitable_attrs.roles
+router = APIRouter(dependencies=[Depends(authenticated_user)], tags=["role"])
 
 
-@api.post(
-    "/",
-    name="organizations:roles:create",
-    status_code=201,
-    response_model=Role | None,
-    responses={
-        201: {
-            "headers": {
-                "Location": {
-                    "description": "URL of the created item",
-                    "schema": {"type": "string"},
-                },
-            },
-            "links": {
-                "detail": {
-                    "operationId": "organizations:roles:detail",
-                    "parameters": {"role_id": "$response.header.Location#regex:/roles/(.+)/"},
-                },
-                "update": {
-                    "operationId": "organizations:roles:update",
-                    "parameters": {"role_id": "$response.header.Location#regex:/roles/(.+)/"},
-                },
-                "delete": {
-                    "operationId": "organizations:roles:delete",
-                    "parameters": {"role_id": "$response.header.Location#regex:/roles/(.+)/"},
-                },
-            },
-        },
-        401: Unauthenticated,
-        403: Forbidden,
-        404: NotFound,
-    },
-)
-async def create(
+class AccessCheckRequest(BaseModel):
+    access: str  # e.g., "project:settings:update"
+    project_id: Identifier | None = None
+    branch_id: Identifier | None = None
+    env_type: str | None = None
+
+
+class RoleAssignmentPayload(BaseModel):
+    # Single or multiple projects/branches/environments
+    project_ids: list[Identifier] | None = None
+    branch_ids: list[Identifier] | None = None
+    env_types: list[str] | None = None
+
+
+# ----------------------
+# Create role
+# ----------------------
+@router.post("/")
+async def create_role(
     session: SessionDep,
-    request: Request,
-    organization: OrganizationDep,
-    user: UserDep,
-    response: Literal["empty", "full"] = "empty",
-) -> JSONResponse:
-    entity = Role(organization=organization, user=user)
-    session.add(entity)
+    organization_id: Identifier,
+    payload: RoleCreate,
+) -> RolePublic:
+    role = Role(
+        role_type=RoleType(payload.role_type),
+        is_active=payload.is_active,
+        is_deletable=payload.is_deletable,
+        name=payload.name,
+        description=payload.description,
+    )
+    role.organization_id = organization_id
+    session.add(role)
     await session.commit()
-    await session.refresh(entity)
-    entity_url = url_path_for(
-        request,
-        "organizations:roles:detail",
-        organization_id=await organization.awaitable_attrs.id,
-        role_id=entity.id,
+    await session.refresh(role)
+
+    # Add access rights if provided
+    if payload.access_rights:
+        for ar_payload in payload.access_rights:
+            stmt = select(AccessRight).where(AccessRight.entry == ar_payload)
+            result = await session.execute(stmt)
+            ar = result.scalar_one_or_none()
+            role_access_right = RoleAccessRight(
+                organization_id=organization_id, role_id=role.id, access_right_id=ar.id if ar is not None else None
+            )
+            session.add(role_access_right)
+        await session.commit()
+        await session.refresh(role)
+
+    count = len(await role.awaitable_attrs.users)
+    return RolePublic(
+        id=role.id,
+        organization_id=role.organization_id,
+        name=role.name,
+        role_type=role.role_type.name,  # type: ignore[arg-type]
+        is_active=role.is_active,
+        is_deletable=role.is_deletable,
+        description=role.description,
+        user_count=count,
     )
-    return JSONResponse(
-        content=entity.model_dump() if response == "full" else None,
-        status_code=201,
-        headers={"Location": entity_url},
+
+
+# ----------------------
+# Modify role
+# ----------------------
+@router.put("/{role_id}/")
+async def modify_role(
+    session: SessionDep,
+    organization_id: Identifier,
+    role: RoleDep,
+    payload: RoleUpdate,
+) -> RolePublic:
+    if not role.is_deletable:
+        raise HTTPException(403, "Role cannot be modified")
+
+    role.is_active = payload.is_active
+    role.name = payload.name
+    role.description = payload.description
+
+    if payload.access_rights is not None:
+        # Clear existing access rights and add new ones
+
+        stmt = select(RoleAccessRight).where(
+            RoleAccessRight.role_id == role.id, RoleAccessRight.organization_id == organization_id
+        )
+        result = await session.execute(stmt)
+        ar = result.scalars().all()
+        if ar:
+            for a in ar:
+                await session.delete(a)
+            await session.commit()
+        for ar_payload in payload.access_rights:
+            stmt2 = select(AccessRight).where(AccessRight.entry == ar_payload)
+            result2 = await session.execute(stmt2)
+            ar2 = result2.scalar_one()
+            role_access_right = RoleAccessRight(
+                organization_id=organization_id, role_id=role.id, access_right_id=ar2.id
+            )
+            session.add(role_access_right)
+        await session.commit()
+        await session.refresh(role)
+
+    session.add(role)
+    await session.commit()
+    await session.refresh(role)
+
+    count = len(await role.awaitable_attrs.users)
+    return RolePublic(
+        id=role.id,
+        organization_id=role.organization_id,  # type: ignore[arg-type]
+        name=role.name,
+        role_type=role.role_type,  # type: ignore[arg-type]
+        is_active=role.is_active,
+        is_deletable=role.is_deletable,
+        description=role.description,
+        user_count=count,
     )
 
 
-instance_api = APIRouter(prefix="/{role_id}", tags=["role"])
+# ----------------------
+# Delete role
+# ----------------------
+@router.delete("/{role_id}/")
+async def delete_role(
+    session: SessionDep,
+    organization_id: Identifier,
+    role_id: Identifier,
+) -> RoleDeletePublic:
+    stmt = select(Role).where(Role.id == role_id, Role.organization_id == organization_id)
+    result = await session.execute(stmt)
+    role = result.scalar_one_or_none()
+    if not role:
+        raise HTTPException(404, f"Role {role_id} not found")
 
-
-@instance_api.get(
-    "/",
-    name="organizations:roles:detail",
-    responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
-)
-async def detail(_organization: OrganizationDep, role: RoleDep) -> Role:
-    return role
-
-
-@instance_api.put(
-    "/",
-    name="organizations:roles:update",
-    status_code=204,
-    responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
-)
-async def update(_organization: OrganizationDep, _role: RoleDep):
-    return Response(content="", status_code=204)
-
-
-@instance_api.delete(
-    "/",
-    name="organizations:roles:delete",
-    status_code=204,
-    responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
-)
-async def delete(session: SessionDep, _organization: OrganizationDep, role: RoleDep):
     await session.delete(role)
     await session.commit()
-    return Response(status_code=204)
+    return RoleDeletePublic(status="deleted")
 
 
-@instance_api.get(
-    "/users/",
-    name="organizations:roles:users:list",
-    status_code=200,
-    responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
-)
-async def list_users(
+# ----------------------
+# Assign role to user (with context)
+# ----------------------
+@router.post("/{role_id}/assign/{user_id}/")
+async def assign_role(
+    session: SessionDep,
+    organization: OrganizationDep,
     role: RoleDep,
-    response: Literal["shallow", "deep"] = "shallow",
-) -> Sequence[UUID | UserPublic]:
-    return await public_user_list(await role.awaitable_attrs.users, response)
+    user_id: UUID,
+    payload: RoleAssignmentPayload,
+) -> RoleAssignmentPublic:
+    """
+    Assign a role to a user in one or more contexts. The context is passed as JSON.
+    """
+    # Prepare combinations of context assignments
+    project_ids = payload.project_ids or None
+    branch_ids = payload.branch_ids or None
+    env_types = payload.env_types or None
 
+    created_links = []
 
-@instance_api.post(
-    "/users/",
-    name="organizations:roles:users:add",
-    status_code=201,
-    responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
-)
-async def add_user(session: SessionDep, role: RoleDep, user_id: UUID) -> Response:
-    user = await user_lookup(session, user_id)
-    role.users.append(user)
-    await session.commit()
-    return Response("", status_code=201)
+    # Create RoleUserLink for every combination
+    def has_values(lst):
+        return lst is not None and any(x is not None for x in lst)
 
-
-@instance_api.delete(
-    "/users/{user_id}/",
-    name="organizations:roles:users:delete",
-    status_code=204,
-    responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
-)
-async def remove_user(session: SessionDep, role_id: Identifier, user_id: UUID):
-    statement = dbdelete(RoleUserLink).where(
-        and_(
-            RoleUserLink.user_id == user_id,
-            RoleUserLink.role_id == role_id,
+    if (
+        (has_values(project_ids) and int(role.role_type.value) != 2)
+        or (has_values(env_types) and int(role.role_type.value) != 1)
+        or (has_values(branch_ids) and int(role.role_type.value) != 3)
+        or (
+            not has_values(project_ids)
+            and not has_values(env_types)
+            and not has_values(branch_ids)
+            and int(role.role_type.value) != 0
         )
-    )
-    result = await session.exec(statement)
+    ):
+        raise HTTPException(
+            422, f"Role type {role.role_type.name} does not match entities: {project_ids}, {branch_ids}, {env_types}"
+        )
+
+    if project_ids:
+        for project_id in project_ids:
+            link = RoleUserLink(
+                organization_id=organization.id, role_id=role.id, user_id=user_id, project_id=project_id
+            )
+            session.add(link)
+            created_links.append(link)
+
+    if env_types:
+        for env_type in env_types:
+            link = RoleUserLink(organization_id=organization.id, role_id=role.id, user_id=user_id, env_type=env_type)
+            session.add(link)
+            created_links.append(link)
+
+    if branch_ids:
+        for branch_id in branch_ids:
+            link = RoleUserLink(organization_id=organization.id, role_id=role.id, user_id=user_id, branch_id=branch_id)
+            session.add(link)
+            created_links.append(link)
+
     await session.commit()
-    if result.rowcount == 0:
-        raise HTTPException(404, f"User {user_id} not part of role {role_id}")
-    elif result.rowcount == 1:
-        return Response("", status_code=204)
-    else:
-        raise AssertionError("Unreachable")
+
+    # Refresh all links
+    for link in created_links:
+        await session.refresh(link)
+
+    result_links = [
+        RoleUserLinkPublic(
+            organization_id=link.organization_id,
+            project_id=link.project_id,
+            branch_id=link.branch_id,
+            role_id=link.role_id,
+            user_id=link.user_id,
+            env_type=link.env_type,
+        )
+        for link in created_links
+    ]
+
+    return RoleAssignmentPublic(status="assigned", count=len(created_links), links=result_links)
 
 
-api.include_router(instance_api)
+# ----------------------
+# Unassign role from user (with context)
+# ----------------------
+@router.post("/{role_id}/unassign/{user_id}/")
+async def unassign_role(
+    session: SessionDep,
+    role: RoleDep,
+    organization: OrganizationDep,
+    user_id: UUID,
+    context: dict[str, UUID] | None = None,
+) -> RoleUnassignmentPublic:
+    if not role.is_deletable:
+        raise HTTPException(403, "Role cannot be unassigned")
+
+    """
+    Remove a role assignment for a user in a specific context.
+    If context is None, remove all assignments of this role for the user.
+    """
+    stmt = select(RoleUserLink).where(
+        RoleUserLink.role_id == role.id,
+        RoleUserLink.organization_id == organization.id,
+        RoleUserLink.user_id == user_id,
+    )
+
+    if context:
+        for key, val in context.items():
+            if hasattr(RoleUserLink, key):
+                stmt = stmt.where(getattr(RoleUserLink, key) == val)
+
+    # ✅ Use session.execute() instead of session.exec()
+    result = await session.execute(stmt)
+    links = result.scalars().all()
+
+    if not links:
+        raise HTTPException(404, "No matching role assignment found")
+
+    for link in links:
+        await session.delete(link)
+
+    await session.commit()
+    return RoleUnassignmentPublic(status="unassigned", count=len(links))
+
+
+# ----------------------
+# Check access for a user
+# ----------------------
+@router.post("/check_access/{user_id}/")
+async def api_check_access(
+    session: SessionDep,
+    organization_id: Identifier,
+    user_id: UUID,
+    payload: AccessCheckRequest,
+) -> PermissionAccessCheckPublic:
+    """
+    Example POST JSON:
+    {
+        "access": "project:settings:update",
+        "project_id": "01ABCDEF2345XYZ"
+    }
+    """
+    # Build entity_context from the JSON payload
+    context = PermissionCheckContextPublic(
+        organization_id=organization_id,
+        project_id=payload.project_id,
+        branch_id=payload.branch_id,
+        env_type=payload.env_type,
+    )
+
+    allowed = await check_access(session, user_id, payload.access, context)
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    return PermissionAccessCheckPublic(access_granted=True, context=context)
+
+
+@router.get("/")
+async def list_roles(
+    session: SessionDep,
+    organization_id: Identifier,
+) -> list[RoleWithPermissionsPublic]:
+    """
+    List all roles and their access rights within an organization
+    """
+    stmt = select(Role).where(Role.organization_id == organization_id)
+    result = await session.execute(stmt)
+    roles = result.scalars().all()
+
+    # Include access rights in response
+    async def to_api_role(role: Role) -> RoleWithPermissionsPublic:
+        result = await session.execute(
+            select(AccessRight.entry)
+            .select_from(RoleAccessRight)  # <- explicitly say the left table
+            .join(AccessRight)
+            .where(RoleAccessRight.organization_id == organization_id, RoleAccessRight.role_id == role.id)
+        )
+        count = len(await role.awaitable_attrs.users)
+        return RoleWithPermissionsPublic(
+            id=role.id,
+            organization_id=role.organization_id,
+            description=role.description,
+            is_deletable=role.is_deletable,
+            role_type=cast("RoleTypePublic", role.role_type.name),
+            name=role.name,
+            is_active=role.is_active,
+            access_rights=[row.entry for row in result.all()],
+            user_count=count,
+        )
+
+    return [await to_api_role(role) for role in roles]
+
+
+@router.get("/role-assignments/")
+async def list_role_assignments(
+    session: SessionDep,
+    organization_id: Identifier,
+    user_id: UUID | None = None,
+) -> RoleAssignmentsPublic:
+    """
+    List role-user assignments within an organization.
+    Optionally filter by user_id.
+    """
+    stmt = select(RoleUserLink).where(RoleUserLink.organization_id == organization_id)
+    if user_id:
+        stmt = stmt.where(RoleUserLink.user_id == user_id)
+
+    result = await session.execute(stmt)
+    links = result.scalars().all()
+
+    assignments = [
+        RoleUserLinkPublic(
+            organization_id=link.organization_id,
+            project_id=link.project_id,
+            branch_id=link.branch_id,
+            role_id=link.role_id,
+            user_id=link.user_id,
+            env_type=link.env_type,
+        )
+        for link in links
+    ]
+
+    return RoleAssignmentsPublic(count=len(assignments), links=assignments)
