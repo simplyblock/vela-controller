@@ -7,7 +7,6 @@ import tempfile
 import textwrap
 from collections.abc import Mapping
 from importlib import resources
-from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Literal, cast
 
 import asyncpg
@@ -38,7 +37,7 @@ from ..exceptions import (
     VelaGrafanaError,
     VelaKubernetesError,
 )
-from ._util import _require_asset, deployment_namespace
+from ._util import deployment_namespace
 from .deployment import DeploymentParameters, DeploymentStatus
 from .grafana import create_vela_grafana_obj, delete_vela_grafana_obj
 from .kubernetes import KubernetesService
@@ -303,8 +302,8 @@ async def ensure_branch_storage_class(branch_id: Identifier, *, iops: int) -> st
 
 
 def _load_compose_manifest(branch_id: Identifier) -> dict[str, Any]:
-    compose_file_path = _require_asset(Path(__file__).with_name("compose.yml"), "docker-compose manifest")
-    compose_content = yaml.safe_load(compose_file_path.read_text())
+    compose_resource = resources.files(__package__).joinpath("compose.yml")
+    compose_content = yaml.safe_load(compose_resource.read_text())
     if not isinstance(compose_content, dict):
         raise VelaDeploymentError("docker-compose manifest must be a mapping")
     return inject_branch_env(compose_content, branch_id)
@@ -419,8 +418,8 @@ async def create_vela_config(
         _load_compose_manifest(branch_id),
         enable_file_storage=parameters.enable_file_storage,
     )
-    vector_file = _require_asset(Path(__file__).with_name("vector.yml"), "vector config file")
-    pb_hba_conf = _require_asset(Path(__file__).with_name("pg_hba.conf"), "pg_hba.conf file")
+    vector_resource = resources.files(__package__).joinpath("vector.yml")
+    pb_hba_resource = resources.files(__package__).joinpath("pg_hba.conf")
     values_content = _load_chart_values(chart)
 
     storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
@@ -438,6 +437,8 @@ async def create_vela_config(
     )
 
     with (
+        resources.as_file(vector_resource) as vector_file,
+        resources.as_file(pb_hba_resource) as pb_hba_conf,
         tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as temp_values,
         tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as modified_compose,
     ):
