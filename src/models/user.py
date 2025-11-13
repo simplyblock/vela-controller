@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -63,6 +64,9 @@ class UserPublic(BaseModel):
     email_verified: bool
     first_name: str
     last_name: str
+    active: bool
+    mfa_enabled: bool
+    last_activity_at: datetime | None = None
 
 
 class UserParameters(BaseModel):

@@ -1,5 +1,6 @@
 import secrets
 from collections.abc import Sequence
+from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
@@ -25,12 +26,16 @@ class UserCreationResult(BaseModel):
 
 async def public(id_: UUID) -> UserPublic:
     user = await realm_admin("vela").a_get_user(str(id_))
+    sessions = await realm_admin("vela").a_get_sessions(str(id_))
     return UserPublic(
         id=user["id"],
         email=user["email"],
         first_name=user["firstName"],
         last_name=user["lastName"],
         email_verified=user["emailVerified"],
+        active=user["enabled"],
+        mfa_enabled=user.get("totp", False),
+        last_activity_at=next(iter(sorted([datetime.fromtimestamp(session.lastAccess) for session in sessions])), None),
     )
 
 
