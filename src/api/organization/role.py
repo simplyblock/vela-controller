@@ -47,9 +47,6 @@ class RoleAssignmentPayload(BaseModel):
     env_types: list[str] | None = None
 
 
-# ----------------------
-# Create role
-# ----------------------
 @router.post("/")
 async def create_role(
     session: SessionDep,
@@ -94,9 +91,6 @@ async def create_role(
     )
 
 
-# ----------------------
-# Modify role
-# ----------------------
 @router.put("/{role_id}/")
 async def modify_role(
     session: SessionDep,
@@ -151,9 +145,6 @@ async def modify_role(
     )
 
 
-# ----------------------
-# Delete role
-# ----------------------
 @router.delete("/{role_id}/")
 async def delete_role(
     session: SessionDep,
@@ -171,9 +162,6 @@ async def delete_role(
     return RoleDeletePublic(status="deleted")
 
 
-# ----------------------
-# Assign role to user (with context)
-# ----------------------
 @router.post("/{role_id}/assign/{user_id}/")
 async def assign_role(
     session: SessionDep,
@@ -252,9 +240,6 @@ async def assign_role(
     return RoleAssignmentPublic(status="assigned", count=len(created_links), links=result_links)
 
 
-# ----------------------
-# Unassign role from user (with context)
-# ----------------------
 @router.post("/{role_id}/unassign/{user_id}/")
 async def unassign_role(
     session: SessionDep,
@@ -281,7 +266,6 @@ async def unassign_role(
             if hasattr(RoleUserLink, key):
                 stmt = stmt.where(getattr(RoleUserLink, key) == val)
 
-    # ✅ Use session.execute() instead of session.exec()
     result = await session.execute(stmt)
     links = result.scalars().all()
 
@@ -295,9 +279,6 @@ async def unassign_role(
     return RoleUnassignmentPublic(status="unassigned", count=len(links))
 
 
-# ----------------------
-# Check access for a user
-# ----------------------
 @router.post("/check_access/{user_id}/")
 async def api_check_access(
     session: SessionDep,
