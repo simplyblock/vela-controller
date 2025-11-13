@@ -1076,6 +1076,12 @@ def _build_apikey_jwt_plugin(namespace: str, tokens: list[str]) -> dict[str, Any
             return
         end
 
+        local public_path_prefix = "/storage/object/public"
+        local path = kong.request.get_path()
+        if path and path:sub(1, public_path_prefix:len()) == public_path_prefix then
+            return
+        end
+
         local auth_header = kong.request.get_header("Authorization")
 
         if not auth_header then
