@@ -333,7 +333,7 @@ class ResourcesDefinition(BaseModel):
     milli_vcpu: Annotated[
         int,
         PydanticField(
-            **CPU_CONSTRAINTS,
+            gt=0,
             description="Number of milli vCPUs provisioned (matches Branch.milli_vcpu constraints).",
         ),
     ]
@@ -347,21 +347,21 @@ class ResourcesDefinition(BaseModel):
     nvme_bytes: Annotated[
         int,
         PydanticField(
-            **DATABASE_SIZE_CONSTRAINTS,
+            gt=0,
             description="Provisioned NVMe volume capacity in bytes (derived from Branch.database_size).",
         ),
     ]
     iops: Annotated[
         int,
         PydanticField(
-            **IOPS_CONSTRAINTS,
+            gt=0,
             description="Configured storage IOPS budget (matches Branch.iops constraints).",
         ),
     ]
     storage_bytes: Annotated[
         int | None,
         PydanticField(
-            **STORAGE_SIZE_CONSTRAINTS,
+            gt=0,
             description="Storage capacity in bytes to be used for Storage API (mirrors Branch.storage_size).",
         ),
     ] = None
