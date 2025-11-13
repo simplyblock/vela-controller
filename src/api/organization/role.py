@@ -30,7 +30,7 @@ from ..auth import authenticated_user
 from ..db import SessionDep
 from ..dependencies import OrganizationDep, RoleDep
 
-router = APIRouter(dependencies=[Depends(authenticated_user)], tags=["role"])
+api = APIRouter(dependencies=[Depends(authenticated_user)], tags=["role"])
 
 
 class AccessCheckRequest(BaseModel):
@@ -47,7 +47,7 @@ class RoleAssignmentPayload(BaseModel):
     env_types: list[str] | None = None
 
 
-@router.post("/")
+@api.post("/")
 async def create_role(
     session: SessionDep,
     organization_id: Identifier,
@@ -91,7 +91,107 @@ async def create_role(
     )
 
 
-@router.put("/{role_id}/")
+@api.post("/check_access/{user_id}/")
+async def api_check_access(
+    session: SessionDep,
+    organization_id: Identifier,
+    user_id: UUID,
+    payload: AccessCheckRequest,
+) -> PermissionAccessCheckPublic:
+    """
+    Example POST JSON:
+    {
+        "access": "project:settings:update",
+        "project_id": "01ABCDEF2345XYZ"
+    }
+    """
+    # Build entity_context from the JSON payload
+    context = PermissionCheckContextPublic(
+        organization_id=organization_id,
+        project_id=payload.project_id,
+        branch_id=payload.branch_id,
+        env_type=payload.env_type,
+    )
+
+    allowed = await check_access(session, user_id, payload.access, context)
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    return PermissionAccessCheckPublic(access_granted=True, context=context)
+
+
+@api.get("/")
+async def list_roles(
+    session: SessionDep,
+    organization_id: Identifier,
+) -> list[RoleWithPermissionsPublic]:
+    """
+    List all roles and their access rights within an organization
+    """
+    stmt = select(Role).where(Role.organization_id == organization_id)
+    result = await session.execute(stmt)
+    roles = result.scalars().all()
+
+    # Include access rights in response
+    async def to_api_role(role: Role) -> RoleWithPermissionsPublic:
+        result = await session.execute(
+            select(AccessRight.entry)
+            .select_from(RoleAccessRight)  # <- explicitly say the left table
+            .join(AccessRight)
+            .where(RoleAccessRight.organization_id == organization_id, RoleAccessRight.role_id == role.id)
+        )
+        count = len(await role.awaitable_attrs.users)
+        return RoleWithPermissionsPublic(
+            id=role.id,
+            organization_id=role.organization_id,
+            description=role.description,
+            is_deletable=role.is_deletable,
+            role_type=cast("RoleTypePublic", role.role_type.name),
+            name=role.name,
+            is_active=role.is_active,
+            access_rights=[row.entry for row in result.all()],
+            user_count=count,
+        )
+
+    return [await to_api_role(role) for role in roles]
+
+
+@api.get("/role-assignments/")
+async def list_role_assignments(
+    session: SessionDep,
+    organization_id: Identifier,
+    user_id: UUID | None = None,
+) -> RoleAssignmentsPublic:
+    """
+    List role-user assignments within an organization.
+    Optionally filter by user_id.
+    """
+    stmt = select(RoleUserLink).where(RoleUserLink.organization_id == organization_id)
+    if user_id:
+        stmt = stmt.where(RoleUserLink.user_id == user_id)
+
+    result = await session.execute(stmt)
+    links = result.scalars().all()
+
+    assignments = [
+        RoleUserLinkPublic(
+            organization_id=link.organization_id,
+            project_id=link.project_id,
+            branch_id=link.branch_id,
+            role_id=link.role_id,
+            user_id=link.user_id,
+            env_type=link.env_type,
+        )
+        for link in links
+    ]
+
+    return RoleAssignmentsPublic(count=len(assignments), links=assignments)
+
+
+instance_api = APIRouter(prefix="/{role_id}")
+
+
+@instance_api.put("/")
 async def modify_role(
     session: SessionDep,
     organization_id: Identifier,
@@ -145,7 +245,7 @@ async def modify_role(
     )
 
 
-@router.delete("/{role_id}/")
+@instance_api.delete("/")
 async def delete_role(
     session: SessionDep,
     organization_id: Identifier,
@@ -162,7 +262,7 @@ async def delete_role(
     return RoleDeletePublic(status="deleted")
 
 
-@router.post("/{role_id}/assign/{user_id}/")
+@instance_api.post("/assign/{user_id}/")
 async def assign_role(
     session: SessionDep,
     organization: OrganizationDep,
@@ -240,7 +340,7 @@ async def assign_role(
     return RoleAssignmentPublic(status="assigned", count=len(created_links), links=result_links)
 
 
-@router.post("/{role_id}/unassign/{user_id}/")
+@instance_api.post("/unassign/{user_id}/")
 async def unassign_role(
     session: SessionDep,
     role: RoleDep,
@@ -279,98 +379,4 @@ async def unassign_role(
     return RoleUnassignmentPublic(status="unassigned", count=len(links))
 
 
-@router.post("/check_access/{user_id}/")
-async def api_check_access(
-    session: SessionDep,
-    organization_id: Identifier,
-    user_id: UUID,
-    payload: AccessCheckRequest,
-) -> PermissionAccessCheckPublic:
-    """
-    Example POST JSON:
-    {
-        "access": "project:settings:update",
-        "project_id": "01ABCDEF2345XYZ"
-    }
-    """
-    # Build entity_context from the JSON payload
-    context = PermissionCheckContextPublic(
-        organization_id=organization_id,
-        project_id=payload.project_id,
-        branch_id=payload.branch_id,
-        env_type=payload.env_type,
-    )
-
-    allowed = await check_access(session, user_id, payload.access, context)
-    if not allowed:
-        raise HTTPException(status_code=403, detail="Access denied")
-
-    return PermissionAccessCheckPublic(access_granted=True, context=context)
-
-
-@router.get("/")
-async def list_roles(
-    session: SessionDep,
-    organization_id: Identifier,
-) -> list[RoleWithPermissionsPublic]:
-    """
-    List all roles and their access rights within an organization
-    """
-    stmt = select(Role).where(Role.organization_id == organization_id)
-    result = await session.execute(stmt)
-    roles = result.scalars().all()
-
-    # Include access rights in response
-    async def to_api_role(role: Role) -> RoleWithPermissionsPublic:
-        result = await session.execute(
-            select(AccessRight.entry)
-            .select_from(RoleAccessRight)  # <- explicitly say the left table
-            .join(AccessRight)
-            .where(RoleAccessRight.organization_id == organization_id, RoleAccessRight.role_id == role.id)
-        )
-        count = len(await role.awaitable_attrs.users)
-        return RoleWithPermissionsPublic(
-            id=role.id,
-            organization_id=role.organization_id,
-            description=role.description,
-            is_deletable=role.is_deletable,
-            role_type=cast("RoleTypePublic", role.role_type.name),
-            name=role.name,
-            is_active=role.is_active,
-            access_rights=[row.entry for row in result.all()],
-            user_count=count,
-        )
-
-    return [await to_api_role(role) for role in roles]
-
-
-@router.get("/role-assignments/")
-async def list_role_assignments(
-    session: SessionDep,
-    organization_id: Identifier,
-    user_id: UUID | None = None,
-) -> RoleAssignmentsPublic:
-    """
-    List role-user assignments within an organization.
-    Optionally filter by user_id.
-    """
-    stmt = select(RoleUserLink).where(RoleUserLink.organization_id == organization_id)
-    if user_id:
-        stmt = stmt.where(RoleUserLink.user_id == user_id)
-
-    result = await session.execute(stmt)
-    links = result.scalars().all()
-
-    assignments = [
-        RoleUserLinkPublic(
-            organization_id=link.organization_id,
-            project_id=link.project_id,
-            branch_id=link.branch_id,
-            role_id=link.role_id,
-            user_id=link.user_id,
-            env_type=link.env_type,
-        )
-        for link in links
-    ]
-
-    return RoleAssignmentsPublic(count=len(assignments), links=assignments)
+api.include_router(instance_api)
