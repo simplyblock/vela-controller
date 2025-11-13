@@ -123,14 +123,11 @@ async def api_check_access(
 @api.get("/")
 async def list_roles(
     session: SessionDep,
-    organization_id: Identifier,
+    organization: OrganizationDep,
 ) -> list[RoleWithPermissionsPublic]:
     """
     List all roles and their access rights within an organization
     """
-    stmt = select(Role).where(Role.organization_id == organization_id)
-    result = await session.execute(stmt)
-    roles = result.scalars().all()
 
     # Include access rights in response
     async def to_api_role(role: Role) -> RoleWithPermissionsPublic:
@@ -138,7 +135,7 @@ async def list_roles(
             select(AccessRight.entry)
             .select_from(RoleAccessRight)  # <- explicitly say the left table
             .join(AccessRight)
-            .where(RoleAccessRight.organization_id == organization_id, RoleAccessRight.role_id == role.id)
+            .where(RoleAccessRight.organization_id == role.organization_id, RoleAccessRight.role_id == role.id)
         )
         count = len(await role.awaitable_attrs.users)
         return RoleWithPermissionsPublic(
@@ -153,7 +150,7 @@ async def list_roles(
             user_count=count,
         )
 
-    return [await to_api_role(role) for role in roles]
+    return [await to_api_role(role) for role in await organization.awaitable_attrs.roles]
 
 
 @api.get("/role-assignments/")
@@ -248,15 +245,8 @@ async def modify_role(
 @instance_api.delete("/")
 async def delete_role(
     session: SessionDep,
-    organization_id: Identifier,
-    role_id: Identifier,
+    role: RoleDep,
 ) -> RoleDeletePublic:
-    stmt = select(Role).where(Role.id == role_id, Role.organization_id == organization_id)
-    result = await session.execute(stmt)
-    role = result.scalar_one_or_none()
-    if not role:
-        raise HTTPException(404, f"Role {role_id} not found")
-
     await session.delete(role)
     await session.commit()
     return RoleDeletePublic(status="deleted")
