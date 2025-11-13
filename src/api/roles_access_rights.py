@@ -14,11 +14,13 @@ from ..models.role import (
     RoleAccessRight,
     RoleAssignmentPublic,
     RoleAssignmentsPublic,
+    RoleCreate,
     RoleDeletePublic,
     RolePublic,
     RoleType,
     RoleTypePublic,
     RoleUnassignmentPublic,
+    RoleUpdate,
     RoleUserLink,
     RoleUserLinkPublic,
     RoleWithPermissionsPublic,
@@ -38,24 +40,6 @@ class AccessCheckRequest(BaseModel):
     env_type: str | None = None
 
 
-class RolePayload(BaseModel):
-    role_id: Identifier
-    name: str
-    role_type: RoleTypePublic
-    is_active: bool = True
-    is_deletable: bool = True
-    access_rights: list[str] | None = []
-    description: str | None = None
-
-
-class RolePayloadUpdate(BaseModel):
-    name: str
-    role_type: RoleTypePublic
-    is_active: bool = True
-    access_rights: list[str] | None = []
-    description: str | None = None
-
-
 class RoleAssignmentPayload(BaseModel):
     # Single or multiple projects/branches/environments
     project_ids: list[Identifier] | None = None
@@ -70,11 +54,12 @@ class RoleAssignmentPayload(BaseModel):
 async def create_role(
     session: SessionDep,
     organization_id: Identifier,
-    payload: RolePayload,
+    payload: RoleCreate,
 ) -> RolePublic:
     role = Role(
         role_type=RoleType(payload.role_type),
         is_active=payload.is_active,
+        is_deletable=payload.is_deletable,
         name=payload.name,
         description=payload.description,
     )
@@ -117,7 +102,7 @@ async def modify_role(
     session: SessionDep,
     organization_id: Identifier,
     role: RoleDep,
-    payload: RolePayloadUpdate,
+    payload: RoleUpdate,
 ) -> RolePublic:
     if not role.is_deletable:
         raise HTTPException(403, "Role cannot be modified")

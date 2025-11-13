@@ -131,6 +131,23 @@ class RoleAccessRight(AsyncAttrs, Model, table=True):
     access_right_id: Identifier = Model.foreign_key_field("accessright", nullable=False, primary_key=True)
 
 
+class RoleCreate(BaseModel):
+    name: str
+    role_type: RoleTypePublic
+    is_active: bool = True
+    is_deletable: bool = True
+    description: str | None = None
+    access_rights: list[AccessRightPublic] | None = []
+
+
+class RoleUpdate(BaseModel):
+    name: str
+    role_type: RoleTypePublic
+    is_active: bool = True
+    access_rights: list[AccessRightPublic] | None = []
+    description: str | None = None
+
+
 class RolePublic(BaseModel):
     id: Identifier
     organization_id: Identifier
