@@ -2,11 +2,13 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Annotated, Any, ClassVar, Literal, Optional
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 from pydantic import Field as PydanticField
-from sqlalchemy import BigInteger, Column, String, Text, UniqueConstraint, text
+from sqlalchemy import BigInteger, Column, ForeignKey, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship
 
@@ -99,6 +101,10 @@ class Branch(AsyncAttrs, Model, table=True):
     resource_usage: dict[str, Any] = Field(
         default_factory=_default_resource_usage_payload,
         sa_column=Column(JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    )
+    created_by: UUID | None = Field(
+        default=None,
+        sa_column=Column(PGUUID(as_uuid=True), ForeignKey("user.id"), nullable=True),
     )
 
     __table_args__ = (UniqueConstraint("project_id", "name", name="unique_branch_name_per_project"),)
@@ -540,7 +546,7 @@ class BranchPublic(BaseModel):
     status: BranchServiceStatus
     pitr_enabled: bool
     created_at: datetime
-    created_by: str
+    created_by: UUID | None
     updated_at: datetime | None = None
     updated_by: str | None = None
 

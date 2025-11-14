@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal, TypedDict, cast
 from urllib.parse import urlsplit, urlunsplit
+from uuid import UUID
 
 import asyncpg
 from asyncpg import exceptions as asyncpg_exceptions
@@ -81,7 +82,7 @@ from ...._util.resourcelimit import (
 from ...._util.role import clone_user_role_assignment
 from ....auth import security
 from ....db import AsyncSessionLocal, SessionDep
-from ....dependencies import BranchDep, OrganizationDep, ProjectDep, branch_lookup
+from ....dependencies import AuthUserDep, BranchDep, OrganizationDep, ProjectDep, branch_lookup
 from ....keycloak import realm_admin
 from ....settings import get_settings as get_api_settings
 from .auth import api as auth_api
@@ -605,6 +606,7 @@ async def _build_branch_entity(
     source: Branch | None,
     copy_config: bool,
     clone_parameters: DeploymentParameters | None,
+    created_by: UUID,
 ) -> Branch:
     if source is not None:
         if clone_parameters is None:
@@ -625,6 +627,7 @@ async def _build_branch_entity(
             env_type=env_type,
             enable_file_storage=clone_parameters.enable_file_storage,
             status=BranchServiceStatus.CREATING,
+            created_by=created_by,
         )
         entity.database_password = source.database_password
         entity.pgbouncer_config = (
@@ -647,6 +650,7 @@ async def _build_branch_entity(
         database_image_tag=deployment_params.database_image_tag,
         enable_file_storage=deployment_params.enable_file_storage,
         status=BranchServiceStatus.CREATING,
+        created_by=created_by,
     )
     entity.database_password = deployment_params.database_password
     entity.pgbouncer_config = _default_pgbouncer_config()
@@ -1074,7 +1078,7 @@ async def _public(branch: Branch) -> BranchPublic:
         status=branch_status,
         pitr_enabled=False,
         created_at=branch.created_datetime,
-        created_by="system",  # TODO: update it when user management is in place
+        created_by=branch.created_by,
         updated_at=None,
         updated_by=None,
     )
@@ -1311,6 +1315,7 @@ async def create(
     credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
     organization: OrganizationDep,
     project: ProjectDep,
+    user: AuthUserDep,
     parameters: BranchCreate,
     response: Literal["empty", "full"] = "empty",
 ) -> JSONResponse:
@@ -1359,6 +1364,7 @@ async def create(
         source=source,
         copy_config=copy_config,
         clone_parameters=clone_parameters,
+        created_by=user.id,
     )
     jwt_secret, anon_key, service_key = generate_keys(str(entity.id))
     entity.jwt_secret = jwt_secret
