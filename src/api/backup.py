@@ -8,6 +8,7 @@ from typing import Annotated, Literal, Self
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import asc, delete, select
 from ulid import ULID
 
@@ -269,8 +270,6 @@ async def add_or_replace_backup_schedule(
     schedule: BackupSchedule | None,
     response: ResponseType,
 ) -> BackupScheduleCreatePublic | BackupSchedulePublic:
-    # TODO: @mxsrc will currently throw an HTTP 500 if the unique constraint fails. Please adjust to 409 Conflict.
-
     if organization is None and branch is None:
         raise HTTPException(status_code=404, detail="Valid branch or organization required.")
 
@@ -309,7 +308,23 @@ async def add_or_replace_backup_schedule(
         ],
     )
     session.add(schedule)
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        error = str(exc)
+        if "asyncpg.exceptions.UniqueViolationError" in error and "unique_backup_schedule" in error:
+            if organization is not None:
+                target = f"organization {organization.id}"
+            else:
+                assert branch is not None
+                target = f"branch {branch.id}"
+            env = payload.env_type or "default"
+            raise HTTPException(
+                status_code=409,
+                detail=f"Backup schedule already exists for {target} env {env}",
+            ) from exc
+        raise
     await session.refresh(schedule)
 
     if response == "full":

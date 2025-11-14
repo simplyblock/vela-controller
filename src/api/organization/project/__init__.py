@@ -37,7 +37,6 @@ async def _public(project: Project) -> ProjectPublic:
         name=await project.awaitable_attrs.name,
         max_backups=await project.awaitable_attrs.max_backups,
         status=await project.awaitable_attrs.status,
-        default_branch_id=None,  # TODO @Manohar please fill in the correct value
     )
 
 

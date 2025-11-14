@@ -101,4 +101,3 @@ class ProjectPublic(BaseModel):
     name: Name
     max_backups: int
     status: ProjectStatus
-    default_branch_id: Identifier | None  # TODO @Manohar please fill in the correct value
