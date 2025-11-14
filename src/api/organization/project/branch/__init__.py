@@ -1485,13 +1485,24 @@ async def status(
     },
 )
 async def update(
-    _session: SessionDep,
+    session: SessionDep,
     _organization: OrganizationDep,
     _project: ProjectDep,
-    _branch: BranchDep,
-    _parameters: BranchUpdate,
+    branch: BranchDep,
+    parameters: BranchUpdate,
 ):
-    # TODO implement update logic
+    update_values = parameters.model_dump(exclude_unset=True, exclude_none=True)
+    if "name" in update_values:
+        branch.name = update_values["name"]
+        try:
+            await session.commit()
+        except IntegrityError as exc:
+            await session.rollback()
+            error = str(exc)
+            if "asyncpg.exceptions.UniqueViolationError" in error and "unique_branch_name_per_project" in error:
+                raise HTTPException(409, f"Project already has branch named {parameters.name}") from exc
+            raise
+
     return Response(status_code=204)
 
 
