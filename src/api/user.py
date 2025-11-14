@@ -27,6 +27,7 @@ class UserCreationResult(BaseModel):
 async def public(id_: UUID) -> UserPublic:
     user = await realm_admin("vela").a_get_user(str(id_))
     sessions = await realm_admin("vela").a_get_sessions(str(id_))
+    print(sessions[0])
     return UserPublic(
         id=user["id"],
         email=user["email"],
@@ -35,7 +36,9 @@ async def public(id_: UUID) -> UserPublic:
         email_verified=user["emailVerified"],
         active=user["enabled"],
         mfa_enabled=user.get("totp", False),
-        last_activity_at=next(iter(sorted([datetime.fromtimestamp(session.lastAccess) for session in sessions])), None),
+        last_activity_at=next(
+            iter(sorted([datetime.fromtimestamp(session["lastAccess"] / 1000) for session in sessions])), None
+        ),
     )
 
 
