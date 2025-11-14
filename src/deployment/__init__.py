@@ -62,6 +62,7 @@ SIMPLYBLOCK_NAMESPACE = "simplyblock"
 SIMPLYBLOCK_CSI_CONFIGMAP = "simplyblock-csi-cm"
 SIMPLYBLOCK_CSI_SECRET = "simplyblock-csi-secret"
 DATABASE_PVC_SUFFIX = "-supabase-db-pvc"
+STORAGE_PVC_SUFFIX = "-supabase-db-storage-pvc"
 _LOAD_BALANCER_TIMEOUT_SECONDS = float(600)
 _LOAD_BALANCER_POLL_INTERVAL_SECONDS = float(2)
 DNSRecordType = Literal["AAAA", "CNAME"]
@@ -193,7 +194,7 @@ def _build_storage_class_manifest(*, storage_class_name: str, iops: int, base_st
     return manifest
 
 
-async def _load_simplyblock_credentials() -> tuple[str, str, str]:
+async def load_simplyblock_credentials() -> tuple[str, str, str]:
     config_map = await kube_service.get_config_map(SIMPLYBLOCK_NAMESPACE, SIMPLYBLOCK_CSI_CONFIGMAP)
     config_data = (config_map.data or {}).get("config.json")
     if not config_data:
@@ -235,8 +236,7 @@ async def _load_simplyblock_credentials() -> tuple[str, str, str]:
     return endpoint.rstrip("/"), cluster_id, cluster_secret
 
 
-async def _resolve_database_volume_identifiers(namespace: str) -> tuple[str, str | None]:
-    pvc_name = f"{_release_name(namespace)}{DATABASE_PVC_SUFFIX}"
+async def _resolve_volume_identifiers(namespace: str, pvc_name: str) -> tuple[str, str | None]:
     pvc = await kube_service.get_persistent_volume_claim(namespace, pvc_name)
     pvc_spec = getattr(pvc, "spec", None)
     volume_name = getattr(pvc_spec, "volume_name", None) if pvc_spec else None
@@ -258,11 +258,21 @@ async def _resolve_database_volume_identifiers(namespace: str) -> tuple[str, str
     return volume_uuid, volume_cluster_id
 
 
+async def resolve_database_volume_identifiers(namespace: str) -> tuple[str, str | None]:
+    pvc_name = f"{_release_name(namespace)}{DATABASE_PVC_SUFFIX}"
+    return await _resolve_volume_identifiers(namespace, pvc_name)
+
+
+async def resolve_storage_volume_identifiers(namespace: str) -> tuple[str, str | None]:
+    pvc_name = f"{_release_name(namespace)}{STORAGE_PVC_SUFFIX}"
+    return await _resolve_volume_identifiers(namespace, pvc_name)
+
+
 async def update_branch_volume_iops(branch_id: Identifier, iops: int) -> None:
     namespace = deployment_namespace(branch_id)
 
-    endpoint, cluster_id, cluster_secret = await _load_simplyblock_credentials()
-    volume_uuid, pv_cluster_id = await _resolve_database_volume_identifiers(namespace)
+    endpoint, cluster_id, cluster_secret = await load_simplyblock_credentials()
+    volume_uuid, pv_cluster_id = await resolve_database_volume_identifiers(namespace)
     if pv_cluster_id and pv_cluster_id != cluster_id:
         raise VelaDeploymentError(
             f"Cluster ID mismatch for Simplyblock volume {volume_uuid!r}: PV reports {pv_cluster_id}, "
