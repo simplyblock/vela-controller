@@ -1218,9 +1218,7 @@ async def deploy_branch_environment(
     results = await asyncio.gather(
         _serial_deploy(),
         create_branch_logflare_objects(branch_id=branch_id),
-        create_vela_grafana_obj(
-            organization_id, branch_id, credential
-        ),  # FIXME: Fails with error: "certificate signed by unknown authority"
+        create_vela_grafana_obj(organization_id, branch_id, credential),
         return_exceptions=True,
     )
 
