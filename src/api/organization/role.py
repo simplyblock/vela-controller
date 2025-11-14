@@ -54,7 +54,7 @@ async def create_role(
     payload: RoleCreate,
 ) -> RolePublic:
     role = Role(
-        role_type=RoleType(payload.role_type),
+        role_type=RoleType[payload.role_type],
         is_active=payload.is_active,
         is_deletable=payload.is_deletable,
         name=payload.name,
@@ -234,7 +234,7 @@ async def modify_role(
         id=role.id,
         organization_id=role.organization_id,  # type: ignore[arg-type]
         name=role.name,
-        role_type=role.role_type,  # type: ignore[arg-type]
+        role_type=role.role_type.name,  # type: ignore[arg-type]
         is_active=role.is_active,
         is_deletable=role.is_deletable,
         description=role.description,
