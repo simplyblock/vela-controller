@@ -35,7 +35,9 @@ async def public(id_: UUID) -> UserPublic:
         email_verified=user["emailVerified"],
         active=user["enabled"],
         mfa_enabled=user.get("totp", False),
-        last_activity_at=next(iter(sorted([datetime.fromtimestamp(session.lastAccess) for session in sessions])), None),
+        last_activity_at=next(
+            iter(sorted([datetime.fromtimestamp(session["lastAccess"] / 1000) for session in sessions])), None
+        ),
     )
 
 
