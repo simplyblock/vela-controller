@@ -1,13 +1,16 @@
+from collections.abc import Sequence
 from typing import cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlmodel import select
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from ...models._util import Identifier
 from ...models.role import (
     AccessRight,
+    AccessRightPublic,
     PermissionAccessCheckPublic,
     PermissionCheckContextPublic,
     Role,
@@ -31,6 +34,19 @@ from ..db import SessionDep
 from ..dependencies import OrganizationDep, RoleDep
 
 api = APIRouter(dependencies=[Depends(authenticated_user)], tags=["role"])
+
+
+async def lookup_access_rights(session: AsyncSession, entries: list[AccessRightPublic]) -> Sequence[AccessRight]:
+    statement = select(AccessRight).where(AccessRight.entry.in_(entries))  # type: ignore[attr-defined]
+    access_rights = (await session.exec(statement)).all()
+
+    if missing_entries := {str(entry) for entry in entries} - {ar.entry for ar in access_rights}:
+        raise HTTPException(
+            status_code=404,
+            detail=f"AccessRight entries not found: {', '.join(sorted(missing_entries))}",
+        )
+
+    return access_rights
 
 
 class AccessCheckRequest(BaseModel):
@@ -59,26 +75,21 @@ async def create_role(
         is_deletable=payload.is_deletable,
         name=payload.name,
         description=payload.description,
+        access_rights=[
+            RoleAccessRight(
+                organization_id=organization_id,
+                access_right_id=access_right.id,
+            )
+            for access_right in await lookup_access_rights(session, payload.access_rights)
+        ]
+        if payload.access_rights is not None
+        else [],
     )
     role.organization_id = organization_id
     session.add(role)
     await session.commit()
     await session.refresh(role)
 
-    # Add access rights if provided
-    if payload.access_rights:
-        for ar_payload in payload.access_rights:
-            stmt = select(AccessRight).where(AccessRight.entry == ar_payload)
-            result = await session.execute(stmt)
-            ar = result.scalar_one_or_none()
-            role_access_right = RoleAccessRight(
-                organization_id=organization_id, role_id=role.id, access_right_id=ar.id if ar is not None else None
-            )
-            session.add(role_access_right)
-        await session.commit()
-        await session.refresh(role)
-
-    count = len(await role.awaitable_attrs.users)
     return RolePublic(
         id=role.id,
         organization_id=role.organization_id,
@@ -87,7 +98,7 @@ async def create_role(
         is_active=role.is_active,
         is_deletable=role.is_deletable,
         description=role.description,
-        user_count=count,
+        user_count=len(await role.awaitable_attrs.users),
     )
 
 
@@ -203,33 +214,17 @@ async def modify_role(
     role.description = payload.description
 
     if payload.access_rights is not None:
-        # Clear existing access rights and add new ones
-
-        stmt = select(RoleAccessRight).where(
-            RoleAccessRight.role_id == role.id, RoleAccessRight.organization_id == organization_id
-        )
-        result = await session.execute(stmt)
-        ar = result.scalars().all()
-        if ar:
-            for a in ar:
-                await session.delete(a)
-            await session.commit()
-        for ar_payload in payload.access_rights:
-            stmt2 = select(AccessRight).where(AccessRight.entry == ar_payload)
-            result2 = await session.execute(stmt2)
-            ar2 = result2.scalar_one()
-            role_access_right = RoleAccessRight(
-                organization_id=organization_id, role_id=role.id, access_right_id=ar2.id
+        role.access_rights = [
+            RoleAccessRight(
+                organization_id=organization_id,  # FIXME remove redundant field
+                access_right_id=access_right.id,
             )
-            session.add(role_access_right)
-        await session.commit()
-        await session.refresh(role)
+            for access_right in await lookup_access_rights(session, payload.access_rights)
+        ]
 
-    session.add(role)
     await session.commit()
     await session.refresh(role)
 
-    count = len(await role.awaitable_attrs.users)
     return RolePublic(
         id=role.id,
         organization_id=role.organization_id,  # type: ignore[arg-type]
@@ -238,7 +233,7 @@ async def modify_role(
         is_active=role.is_active,
         is_deletable=role.is_deletable,
         description=role.description,
-        user_count=count,
+        user_count=len(await role.awaitable_attrs.users),
     )
 
 
