@@ -121,7 +121,7 @@ class Role(AsyncAttrs, Model, table=True):
     is_active: bool
     is_deletable: bool = True
     description: str | None = None
-    access_rights: list["RoleAccessRight"] = Relationship(back_populates="role")
+    access_rights: list["RoleAccessRight"] = Relationship(back_populates="role", cascade_delete=True)
 
 
 class RoleAccessRight(AsyncAttrs, Model, table=True):
