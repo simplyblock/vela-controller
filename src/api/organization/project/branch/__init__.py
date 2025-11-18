@@ -606,10 +606,11 @@ async def _build_branch_entity(
     copy_config: bool,
     clone_parameters: DeploymentParameters | None,
 ) -> Branch:
+    env_type = parameters.env_type if parameters.env_type is not None else ""
     if source is not None:
         if clone_parameters is None:
             raise AssertionError("clone_parameters required when cloning from a source branch")
-        env_type = parameters.env_type if parameters.env_type is not None else ""
+
         entity = Branch(
             name=parameters.name,
             project_id=project.id,
@@ -645,6 +646,7 @@ async def _build_branch_entity(
         memory=deployment_params.memory_bytes,
         iops=deployment_params.iops,
         database_image_tag=deployment_params.database_image_tag,
+        env_type=env_type,
         enable_file_storage=deployment_params.enable_file_storage,
         status=BranchServiceStatus.CREATING,
     )
