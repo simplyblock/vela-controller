@@ -5,6 +5,8 @@ metadata:
   namespace: {{ .Release.Namespace }}
 spec:
   secretName: {{ .Release.Name }}-tls-secret
+  privateKey:
+    rotationPolicy: Always
   issuerRef:
     name: {{ .Values.issuer }}
     kind: ClusterIssuer
@@ -20,6 +22,8 @@ metadata:
   namespace: {{ .Release.Namespace }}
 spec:
   secretName: {{ .Release.Name }}-tls-auth-secret
+  privateKey:
+    rotationPolicy: Always
   issuerRef:
     name: {{ .Values.issuer }}
     kind: ClusterIssuer
