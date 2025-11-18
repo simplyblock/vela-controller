@@ -1832,6 +1832,8 @@ async def control_branch(
     assert action in _CONTROL_TO_KUBEVIRT
     namespace, vmi_name = get_db_vmi_identity(branch.id)
     branch_in_session = await session.merge(branch)
+    branch_id = branch_in_session.id
+    branch_milli_vcpu = branch_in_session.milli_vcpu
     initial_status = _CONTROL_TRANSITION_INITIAL[action]
     if _apply_local_branch_status(branch_in_session, initial_status):
         await session.commit()
@@ -1842,11 +1844,11 @@ async def control_branch(
             async def _run_cpu_sync() -> None:
                 try:
                     await _sync_branch_cpu_resources(
-                        branch.id,
-                        desired_milli_vcpu=branch.milli_vcpu,
+                        branch_id,
+                        desired_milli_vcpu=branch_milli_vcpu,
                     )
                 except VelaKubernetesError:
-                    logger.exception("Failed to sync CPU resources after starting branch %s", branch.id)
+                    logger.exception("Failed to sync CPU resources after starting branch %s", branch_id)
 
             asyncio.create_task(_run_cpu_sync())
     except ApiException as e:
