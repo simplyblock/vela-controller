@@ -2,10 +2,10 @@ version: '3.9'
 services:
   db:
     container_name: vela-db
-    image: docker.io/vela/postgres:15.1.0.147
+    image: docker.io/supabase/postgres:15.1.0.147
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      JWT_SECRET: ${vela_JWT_SECRET}
+      JWT_SECRET: ${VELA_JWT_SECRET}
       JWT_EXP: '3600'
     volumes:
     - /mnt/postgres_data/pgdata:/var/lib/postgresql/data
@@ -40,8 +40,8 @@ services:
       PGRST_DB_USE_LEGACY_GUCS: 'false'
       PGRST_APP_SETTINGS_JWT_EXP: '3600'
       PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD_ENC}@db:5432/${POSTGRES_DB}?sslmode=disable
-      PGRST_JWT_SECRET: ${vela_JWT_SECRET}
-      PGRST_APP_SETTINGS_JWT_SECRET: ${vela_JWT_SECRET}
+      PGRST_JWT_SECRET: ${VELA_JWT_SECRET}
+      PGRST_APP_SETTINGS_JWT_SECRET: ${VELA_JWT_SECRET}
     ports:
     - 3000:3000
     networks:
@@ -67,7 +67,7 @@ services:
 
   realtime:
     container_name: vela-realtime
-    image: docker.io/vela/realtime:v2.27.5
+    image: docker.io/supabase/realtime:v2.27.5
     depends_on:
     - db
     restart: unless-stopped
@@ -75,7 +75,7 @@ services:
       DB_HOST: db
       DB_PORT: '5432'
       DB_NAME: ${POSTGRES_DB}
-      DB_USER: vela_admin
+      DB_USER: supabase_admin
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       DB_SSL: disable
       DB_AFTER_CONNECT_QUERY: SET search_path TO _realtime
@@ -87,14 +87,14 @@ services:
       ERL_AFLAGS: -proto_dist inet_tcp
       ENABLE_TAILSCALE: 'false'
       DNS_NODES: ''''''
-      JWT_SECRET: ${vela_JWT_SECRET}
-      API_JWT_SECRET: ${vela_JWT_SECRET}
+      JWT_SECRET: ${VELA_JWT_SECRET}
+      API_JWT_SECRET: ${VELA_JWT_SECRET}
     ports:
     - 4000:4000
     networks:
     - vela
   meta:
-    image: docker.io/vela/postgres-meta:v0.91.1
+    image: docker.io/supabase/postgres-meta:v0.91.1
     depends_on:
     - db
     restart: unless-stopped
@@ -103,7 +103,7 @@ services:
       PG_META_DB_HOST: db
       PG_META_DB_PORT: "5432"
       PG_META_DB_NAME: ${POSTGRES_DB}
-      PG_META_DB_USER: vela_admin
+      PG_META_DB_USER: supabase_admin
       PG_META_DB_PASSWORD: ${POSTGRES_PASSWORD}
       PG_META_DB_DRIVER: postgres
       PG_META_DB_SSL_MODE: disable
@@ -115,7 +115,7 @@ services:
     - vela
   storage:
     container_name: vela-storage
-    image: docker.io/vela/storage-api:v0.46.4
+    image: docker.io/supabase/storage-api:v0.46.4
     depends_on:
     - db
     - rest
@@ -137,7 +137,7 @@ services:
       REGION: stub
       GLOBAL_S3_BUCKET: stub
       DATABASE_URL: postgres://vela_storage_admin:${POSTGRES_PASSWORD_ENC}@db:5432/${POSTGRES_DB}?sslmode=disable
-      PGRST_JWT_SECRET: ${vela_JWT_SECRET}
+      PGRST_JWT_SECRET: ${VELA_JWT_SECRET}
       ANON_KEY: ${vela_ANON_KEY}
       SERVICE_KEY: ${vela_SERVICE_KEY}
       POSTGREST_URL: http://rest:3000

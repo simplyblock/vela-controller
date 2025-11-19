@@ -1,8 +1,9 @@
 {{- if .Values.db.enabled }}
+{{- $releaseFullname := include "vela.fullname" . -}}
 apiVersion: v1
 kind: Service
 metadata:
-  name: vela-vela-rest
+  name: {{ printf "%s-rest" $releaseFullname }}
   labels:
     {{- include "vela.labels" . | nindent 4 }}
 spec:
@@ -18,7 +19,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: vela-vela-realtime
+  name: {{ printf "%s-realtime" $releaseFullname }}
   labels:
     {{- include "vela.labels" . | nindent 4 }}
 spec:
@@ -35,7 +36,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: vela-vela-storage
+  name: {{ printf "%s-storage" $releaseFullname }}
   labels:
     {{- include "vela.labels" . | nindent 4 }}
 spec:
@@ -52,7 +53,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: vela-vela-meta
+  name: {{ printf "%s-meta" $releaseFullname }}
   labels:
     {{- include "vela.labels" . | nindent 4 }}
 spec:
@@ -68,7 +69,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: vela-vela-pgexporter
+  name: {{ printf "%s-pgexporter" $releaseFullname }}
   labels:
     app: pgexporter
     {{- include "vela.labels" . | nindent 4 }}

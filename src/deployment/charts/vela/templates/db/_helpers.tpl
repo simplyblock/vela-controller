@@ -13,13 +13,15 @@ If release name contains chart name it will be used as a full name.
 {{- define "vela.db.fullname" -}}
 {{- if .Values.db.fullnameOverride }}
 {{- .Values.db.fullnameOverride | trunc 63 | trimSuffix "-" }}
-{{- else }}
-{{- $name := default (print .Chart.Name "-db") .Values.db.nameOverride }}
+{{- else if .Values.db.nameOverride }}
+{{- $name := .Values.db.nameOverride }}
 {{- if contains $name .Release.Name }}
 {{- .Release.Name | trunc 63 | trimSuffix "-" }}
 {{- else }}
 {{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
 {{- end }}
+{{- else }}
+{{- printf "%s-db" (include "vela.fullname" .) | trunc 63 | trimSuffix "-" }}
 {{- end }}
 {{- end }}
 
