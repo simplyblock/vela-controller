@@ -100,25 +100,16 @@ async def _fetch_volume_stats(
     cluster_id: str,
     cluster_secret: str,
     volume_uuid: str,
-) -> dict[str, Any]:
+    required_fields: tuple[str, ...],
+) -> dict[str, int]:
     url = f"{endpoint}/lvol/iostats/{volume_uuid}"
     headers = {
         "Authorization": f"{cluster_id} {cluster_secret}",
         "Accept": "application/json",
     }
 
-    try:
-        response = await client.get(url, headers=headers, timeout=SIMPLYBLOCK_API_TIMEOUT_SECONDS)
-        response.raise_for_status()
-    except httpx.RequestError as exc:
-        raise ValueError(
-            f"Failed to fetch volume statistics from Simplyblock API for volume {volume_uuid}: {exc}"
-        ) from exc
-    except httpx.HTTPStatusError as exc:
-        raise ValueError(
-            f"Simplyblock API returned error response for volume {volume_uuid}: "
-            f"{exc.response.status_code} {exc.response.text}"
-        ) from exc
+    response = await client.get(url, headers=headers, timeout=SIMPLYBLOCK_API_TIMEOUT_SECONDS)
+    response.raise_for_status()
 
     payload = response.json()
 
@@ -128,7 +119,8 @@ async def _fetch_volume_stats(
     entry = stats[0]
     if not isinstance(entry, dict):
         raise ValueError(f"Simplyblock IO stats entry malformed for volume {volume_uuid}")
-    return entry
+
+    return {field: _require_int_stat(entry, field) for field in required_fields}
 
 
 # ---------------------------
@@ -413,12 +405,7 @@ async def _collect_compute_usage(namespace: str, vm_name: str) -> tuple[int, int
             f"Failed to resolve VM pod while collecting compute usage for {vm_name!r} in namespace {namespace!r}"
         ) from exc
 
-    try:
-        metrics = await _fetch_pod_metrics(namespace, pod_name)
-    except Exception as exc:
-        raise RuntimeError(
-            f"Failed to fetch compute usage metrics for pod {pod_name!r} in namespace {namespace!r}"
-        ) from exc
+    metrics = await _fetch_pod_metrics(namespace, pod_name)
 
     return _parse_compute_usage(metrics)
 
@@ -433,7 +420,8 @@ async def _resolve_volume_stats(
     endpoint: str,
     cluster_id: str,
     cluster_secret: str,
-) -> dict[str, Any]:
+    required_fields: tuple[str, ...],
+) -> dict[str, int]:
     volume_uuid, pv_cluster_id = await volume_identifier_resolver(namespace)
 
     if pv_cluster_id and pv_cluster_id != cluster_id:
@@ -456,6 +444,7 @@ async def _resolve_volume_stats(
         cluster_id=cluster_id,
         cluster_secret=cluster_secret,
         volume_uuid=volume_uuid,
+        required_fields=required_fields,
     )
 
 
@@ -477,10 +466,11 @@ async def _collect_database_volume_usage(
         endpoint=endpoint,
         cluster_id=cluster_id,
         cluster_secret=cluster_secret,
+        required_fields=("size_used", "read_io_ps", "write_io_ps"),
     )
-    nvme_bytes = _require_int_stat(stats, "size_used")
-    read_iops = _require_int_stat(stats, "read_io_ps")
-    write_iops = _require_int_stat(stats, "write_io_ps")
+    nvme_bytes = stats["size_used"]
+    read_iops = stats["read_io_ps"]
+    write_iops = stats["write_io_ps"]
     return nvme_bytes, read_iops + write_iops
 
 
@@ -502,9 +492,9 @@ async def _collect_storage_volume_usage(
         endpoint=endpoint,
         cluster_id=cluster_id,
         cluster_secret=cluster_secret,
+        required_fields=("size_used",),
     )
-    used_bytes = _require_int_stat(stats, "size_used")
-    return used_bytes
+    return stats["size_used"]
 
 
 async def _collect_branch_volume_usage(branch: Branch, namespace: str) -> tuple[int, int, int | None]:
@@ -538,12 +528,7 @@ async def _collect_branch_volume_usage(branch: Branch, namespace: str) -> tuple[
 async def _collect_branch_resource_usage(branch: Branch) -> ResourceUsageDefinition:
     namespace, vm_name = get_db_vmi_identity(branch.id)
     milli_vcpu, ram_bytes = await _collect_compute_usage(namespace, vm_name)
-    try:
-        nvme_bytes, iops, storage_bytes = await _collect_branch_volume_usage(branch, namespace)
-    except ValueError as exc:
-        raise ValueError(
-            f"Failed to collect volume usage metrics for branch '{branch.name}' (ID: {branch.id}): {exc}"
-        ) from exc
+    nvme_bytes, iops, storage_bytes = await _collect_branch_volume_usage(branch, namespace)
 
     return ResourceUsageDefinition(
         milli_vcpu=milli_vcpu,
