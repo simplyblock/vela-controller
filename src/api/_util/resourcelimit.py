@@ -30,24 +30,22 @@ if TYPE_CHECKING:
     from sqlalchemy.sql.elements import ColumnElement
 
 
-async def delete_branch_provisioning(session: SessionDep, branch: Branch):
+async def delete_branch_provisioning(session: SessionDep, branch: Branch, *, commit: bool = True):
     resource_usage_filter = cast(
         "ColumnElement[bool]",
         ResourceUsageMinute.branch_id == branch.id,
     )
     await session.execute(delete(ResourceUsageMinute).where(resource_usage_filter))
 
-    result = await session.execute(select(BranchProvisioning).where(BranchProvisioning.branch_id == branch.id))
-    allocations = result.scalars().all()
-    for allocation in allocations:
-        await session.delete(allocation)
+    provisioning_filter = cast("ColumnElement[bool]", BranchProvisioning.branch_id == branch.id)
+    await session.execute(delete(BranchProvisioning).where(provisioning_filter))
 
-    logs_result = await session.execute(select(ProvisioningLog).where(ProvisioningLog.branch_id == branch.id))
-    for log_entry in logs_result.scalars().all():
-        await session.delete(log_entry)
+    log_filter = cast("ColumnElement[bool]", ProvisioningLog.branch_id == branch.id)
+    await session.execute(delete(ProvisioningLog).where(log_filter))
 
-    await session.commit()
-    await session.refresh(branch)
+    if commit:
+        await session.commit()
+        await session.refresh(branch)
 
 
 async def get_current_branch_allocations(session: SessionDep, branch: Branch) -> BranchAllocationPublic:

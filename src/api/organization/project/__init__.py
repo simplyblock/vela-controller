@@ -21,7 +21,11 @@ from ....models.project import (
 )
 from ....models.resources import EntityType, ResourceLimit, ResourceType
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
-from ..._util.resourcelimit import get_organization_resource_limits, get_project_limit_totals
+from ..._util.resourcelimit import (
+    delete_branch_provisioning,
+    get_organization_resource_limits,
+    get_project_limit_totals,
+)
 from ...auth import security
 from ...db import SessionDep
 from ...dependencies import OrganizationDep, ProjectDep
@@ -478,6 +482,9 @@ async def delete(session: SessionDep, _organization: OrganizationDep, project: P
         project.status = "ERROR"
         await session.commit()
         raise
+    for branch in branches:
+        await delete_branch_provisioning(session, branch, commit=False)
+
     await session.delete(project)
     await session.commit()
     return Response(status_code=204)
