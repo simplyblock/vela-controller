@@ -34,12 +34,12 @@ secret:
     secretRefKey:
       apiKey: apiKey
 
-# A standalone Postgres database configured to work with Supabase services.
+# A standalone Postgres database configured to work with vela services.
 db:
   # Enable database provisioning
   enabled: true
   image:
-    repository: supabase/postgres
+    repository: vela/postgres
     pullPolicy: IfNotPresent
     tag: "15.1.0.147"
   imagePullSecrets: []
@@ -233,7 +233,7 @@ realtime:
   # Enable realtime provisioning
   enabled: false
   image:
-    repository: supabase/realtime
+    repository: vela/realtime
     pullPolicy: IfNotPresent
     tag: v2.27.5
   imagePullSecrets: []
@@ -269,11 +269,11 @@ realtime:
   environment:
     # Override the database hostname if using external database
     # DB_HOST: DATABASE.NAMESPACE.svc.cluster.local
-    DB_USER: supabase_admin
+    DB_USER: vela_admin
     DB_PORT: 5432
     DB_SSL: disable  # disable, allow, prefer, require, verify-ca, verify-full
     DB_AFTER_CONNECT_QUERY: "SET search_path TO _realtime"
-    DB_ENC_KEY: supabaserealtime
+    DB_ENC_KEY: velarealtime
     PORT: "4000"
     FLY_ALLOC_ID: fly123
     FLY_APP_NAME: realtime
@@ -318,7 +318,7 @@ meta:
   # Enable meta provisioning
   enabled: false
   image:
-    repository: supabase/postgres-meta
+    repository: vela/postgres-meta
     pullPolicy: IfNotPresent
     tag: v0.80.0
   imagePullSecrets: []
@@ -355,7 +355,7 @@ meta:
   environment:
     # Override the database hostname if using external database
     # DB_HOST: DATABASE.NAMESPACE.svc.cluster.local
-    DB_USER: supabase_admin
+    DB_USER: vela_admin
     DB_PORT: 5432
     DB_DRIVER: postgres
     DB_SSL: disable  # disable, allow, prefer, require, verify-ca, verify-full
@@ -397,7 +397,7 @@ storage:
   # Enable storage provisioning
   enabled: false
   image:
-    repository: supabase/storage-api
+    repository: vela/storage-api
     pullPolicy: IfNotPresent
     tag: v0.46.4
   imagePullSecrets: []
@@ -434,7 +434,7 @@ storage:
   environment:
     # Override the database hostname if using external database
     # DB_HOST: DATABASE.NAMESPACE.svc.cluster.local
-    DB_USER: supabase_storage_admin
+    DB_USER: vela_storage_admin
     DB_PORT: 5432
     DB_DRIVER: postgres
     DB_SSL: disable  # disable, allow, prefer, require, verify-ca, verify-full

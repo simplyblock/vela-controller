@@ -130,5 +130,5 @@ We use Alpine as the base image. The build recipe is available at http://github.
 To access the KubeVirt VM console:
 
 ```
-kubectl virt -n <namespace> console supabase-supabase-db
+kubectl virt -n <namespace> console vela-vela-db
 ```

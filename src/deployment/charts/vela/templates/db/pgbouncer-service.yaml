@@ -1,12 +1,12 @@
 {{- if .Values.pgbouncer.enabled -}}
-{{- $pgbouncerName := printf "%s-pgbouncer" (include "supabase.fullname" .) -}}
-{{- $pgbouncerSelectorName := printf "%s-pgbouncer" (include "supabase.name" .) -}}
+{{- $pgbouncerName := printf "%s-pgbouncer" (include "vela.fullname" .) -}}
+{{- $pgbouncerSelectorName := printf "%s-pgbouncer" (include "vela.name" .) -}}
 apiVersion: v1
 kind: Service
 metadata:
   name: {{ $pgbouncerName }}
   labels:
-    {{- include "supabase.labels" . | nindent 4 }}
+    {{- include "vela.labels" . | nindent 4 }}
 spec:
   type: {{ .Values.pgbouncer.service.type }}
   ports:
@@ -15,5 +15,5 @@ spec:
       protocol: TCP
       name: pgbouncer
   selector:
-    vm.kubevirt.io/name: {{ include "supabase.db.fullname" . }}
+    vm.kubevirt.io/name: {{ include "vela.db.fullname" . }}
 {{- end }}

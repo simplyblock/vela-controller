@@ -301,13 +301,13 @@ _VOLUME_SNAPSHOT_CLASS = "simplyblock-csi-snapshotclass"
 _SUPPORTED_DATABASE_IMAGE_TAG = "15.1.0.147"
 
 _BRANCH_SERVICE_ENDPOINTS: dict[str, tuple[str, int]] = {
-    "database": ("supabase-supabase-db", 5432),
-    "pgbouncer": ("supabase-pgbouncer", 6432),
-    "realtime": ("supabase-supabase-realtime", 4000),
-    "storage": ("supabase-supabase-storage", 5000),
-    "meta": ("supabase-supabase-meta", 8080),
-    "rest": ("supabase-supabase-rest", 3000),
-    "pgexporter": ("supabase-supabase-pgexporter", 9187),
+    "database": ("vela-vela-db", 5432),
+    "pgbouncer": ("vela-pgbouncer", 6432),
+    "realtime": ("vela-vela-realtime", 4000),
+    "storage": ("vela-vela-storage", 5000),
+    "meta": ("vela-vela-meta", 8080),
+    "rest": ("vela-vela-rest", 3000),
+    "pgexporter": ("vela-vela-pgexporter", 9187),
 }
 
 _PGBOUNCER_ADMIN_USER = "pgbouncer_admin"

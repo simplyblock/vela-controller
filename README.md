@@ -1,7 +1,7 @@
 # Vela Controller
 
 This repository contains the control-plane services and deployment tooling for Vela. It provides a FastAPI-based
-application that manages organizations, projects, and per-branch Supabase stack running on Kubevirt VM. The DNS endpoints are setup using Cloudflare DNS records. 
+application that manages organizations, projects, and per-branch Vela stack running on Kubevirt VM. The DNS endpoints are setup using Cloudflare DNS records. 
 
 
 ## Prerequisites

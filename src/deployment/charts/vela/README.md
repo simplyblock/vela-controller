@@ -1,12 +1,12 @@
-# Supabase for Kubernetes with Helm 3
+# vela for Kubernetes with Helm 3
 
-This directory contains the configurations and scripts required to run Supabase inside a Kubernetes cluster.
+This directory contains the configurations and scripts required to run vela inside a Kubernetes cluster.
 
 ## Disclamer
 
-We use [supabase/postgres](https://hub.docker.com/r/supabase/postgres) to create and manage the Postgres database. This permit you to use replication if needed but you'll have to use the Postgres image provided Supabase or build your own on top of it. You can also choose to use other databases provider like [StackGres](https://stackgres.io/) or [Postgres Operator](https://github.com/zalando/postgres-operator).
+We use [vela/postgres](https://hub.docker.com/r/vela/postgres) to create and manage the Postgres database. This permit you to use replication if needed but you'll have to use the Postgres image provided vela or build your own on top of it. You can also choose to use other databases provider like [StackGres](https://stackgres.io/) or [Postgres Operator](https://github.com/zalando/postgres-operator).
 
-For the moment we are using a root container to permit the installation of the missing `pgjwt` and `wal2json` extension inside the `initdbScripts`. This is considered a security issue, but you can use your own Postgres image instead with the extension already installed to prevent this. We provide an example of `Dockerfile`for this purpose, you can use [ours](https://hub.docker.com/r/tdeoliv/supabase-bitnami-postgres) or build and host it on your own.
+For the moment we are using a root container to permit the installation of the missing `pgjwt` and `wal2json` extension inside the `initdbScripts`. This is considered a security issue, but you can use your own Postgres image instead with the extension already installed to prevent this. We provide an example of `Dockerfile`for this purpose, you can use [ours](https://hub.docker.com/r/tdeoliv/vela-bitnami-postgres) or build and host it on your own.
 
 The database configuration we provide is an example using only one master. If you want to go to production, we highly recommend you to use a replicated database.
 
@@ -16,10 +16,10 @@ The database configuration we provide is an example using only one master. If yo
 
 ```bash
 # Clone Repository
-git clone https://github.com/supabase-community/supabase-kubernetes
+git clone https://github.com/vela-community/vela-kubernetes
 
 # Switch to charts directory
-cd supabase-kubernetes/charts/supabase/
+cd vela-kubernetes/charts/vela/
 
 # Install the chart using the bundled defaults
 helm install demo .
@@ -31,16 +31,16 @@ The first deployment can take some time to complete (especially auth service). Y
 kubectl get pod -l app.kubernetes.io/instance=demo
 
 NAME                                      READY   STATUS    RESTARTS      AGE
-demo-supabase-analytics-xxxxxxxxxx-xxxxx  1/1     Running   0             47s
-demo-supabase-auth-xxxxxxxxxx-xxxxx       1/1     Running   0             47s
-demo-supabase-db-xxxxxxxxxx-xxxxx         1/1     Running   0             47s
-demo-supabase-functions-xxxxxxxxxx-xxxxx  1/1     Running   0             47s
-demo-supabase-imgproxy-xxxxxxxxxx-xxxxx   1/1     Running   0             47s
-demo-supabase-kong-xxxxxxxxxx-xxxxx       1/1     Running   0             47s
-demo-supabase-meta-xxxxxxxxxx-xxxxx       1/1     Running   0             47s
-demo-supabase-realtime-xxxxxxxxxx-xxxxx   1/1     Running   0             47s
-demo-supabase-rest-xxxxxxxxxx-xxxxx       1/1     Running   0             47s
-demo-supabase-storage-xxxxxxxxxx-xxxxx    1/1     Running   0             47s
+demo-vela-analytics-xxxxxxxxxx-xxxxx  1/1     Running   0             47s
+demo-vela-auth-xxxxxxxxxx-xxxxx       1/1     Running   0             47s
+demo-vela-db-xxxxxxxxxx-xxxxx         1/1     Running   0             47s
+demo-vela-functions-xxxxxxxxxx-xxxxx  1/1     Running   0             47s
+demo-vela-imgproxy-xxxxxxxxxx-xxxxx   1/1     Running   0             47s
+demo-vela-kong-xxxxxxxxxx-xxxxx       1/1     Running   0             47s
+demo-vela-meta-xxxxxxxxxx-xxxxx       1/1     Running   0             47s
+demo-vela-realtime-xxxxxxxxxx-xxxxx   1/1     Running   0             47s
+demo-vela-rest-xxxxxxxxxx-xxxxx       1/1     Running   0             47s
+demo-vela-storage-xxxxxxxxxx-xxxxx    1/1     Running   0             47s
 ```
 
 ### Access with Minikube
@@ -63,7 +63,7 @@ Open http://example.com in your browser.
 helm uninstall demo
 
 # Backup and/or remove any Persistent Volume Claims that have keep annotation
-kubectl delete pvc demo-supabase-storage-pvc
+kubectl delete pvc demo-vela-storage-pvc
 ```
 
 ## Customize
@@ -93,7 +93,7 @@ secret:
 ```
 
 > 32 characters long secret can be generated with `openssl rand 64 | base64`
-> You can use the [JWT Tool](https://supabase.com/docs/guides/hosting/overview#api-keys) to generate anon and service keys.
+> You can use the [JWT Tool](https://vela.com/docs/guides/hosting/overview#api-keys) to generate anon and service keys.
 
 ### SMTP Secret
 
@@ -115,7 +115,7 @@ secret:
   db:
     username: <db-username>
     password: <db-password>
-    database: <supabase-database-name>
+    database: <vela-database-name>
 ```
 
 The secret can be created with kubectl via command-line:
@@ -124,18 +124,18 @@ The secret can be created with kubectl via command-line:
 
 ### Dashboard secret
 
-By default, a username and password is required to access the Supabase Studio dashboard. Simply change them at:
+By default, a username and password is required to access the vela Studio dashboard. Simply change them at:
 
 ```yaml
 secret:
   dashboard:
-    username: supabase
+    username: vela
     password: this_password_is_insecure_and_should_be_updated
 ```
 
 ### Analytics secret
 
-A new logflare secret API key is required for securing communication between all of the Supabase services. To set the secret, generate a new 32 characters long secret similar to the step [above](#jwt-secret).
+A new logflare secret API key is required for securing communication between all of the vela services. To set the secret, generate a new 32 characters long secret similar to the step [above](#jwt-secret).
 
 ```yaml
 secret:
@@ -145,7 +145,7 @@ secret:
 
 ### S3 secret
 
-Supabase storage supports the use of S3 object-storage. To enable S3 for Supabase storage:
+vela storage supports the use of S3 object-storage. To enable S3 for vela storage:
 
 1. Set S3 key ID and access key:
   ```yaml
@@ -222,7 +222,7 @@ and pipe it to your system clipboard handler:
 
 ```shell
 # Using xclip as an example
-./script.sh supabase/migrations | xclip -sel clipboard
+./script.sh vela/migrations | xclip -sel clipboard
 ```
 
 ## Troubleshooting
@@ -248,7 +248,7 @@ Before creating a merge request, you can test the charts locally by using [helm/
 # Run chart-testing (lint)
 docker run -it \
   --workdir=/data \
-  --volume $(pwd)/charts/supabase:/data \
+  --volume $(pwd)/charts/vela:/data \
   quay.io/helmpack/chart-testing:v3.7.1 \
   ct lint --validate-maintainers=false --chart-dirs . --charts .
 # Run chart-testing (install)
@@ -256,7 +256,7 @@ docker run -it \
   --network host \
   --workdir=/data \
   --volume ~/.kube/config:/root/.kube/config:ro \
-  --volume $(pwd)/charts/supabase:/data \
+  --volume $(pwd)/charts/vela:/data \
   quay.io/helmpack/chart-testing:v3.7.1 \
   ct install --chart-dirs . --charts .
 ```
@@ -265,10 +265,10 @@ docker run -it \
 
 #### `0.0.x` to `0.1.x`
 
-* `supabase/postgres` is updated from `14.1` to `15.1`, which warrants backing up all your data before proceeding to update to the next major version.
-* Intialization scripts for `supabase/postgres` has been reworked and matched closely to the [Docker Compose](https://github.com/supabase/supabase/blob/master/docker/docker-compose.yml) version. Further tweaks to the scripts are needed to ensure backward-compatibility.
-* Migration scripts are now exposed at `db.config`, which will be mounted at `/docker-entrypoint-initdb.d/migrations/`. Simply copy your migration files from your local project's `supabase/migration` and populate the `db.config`.
+* `vela/postgres` is updated from `14.1` to `15.1`, which warrants backing up all your data before proceeding to update to the next major version.
+* Intialization scripts for `vela/postgres` has been reworked and matched closely to the [Docker Compose](https://github.com/vela/vela/blob/master/docker/docker-compose.yml) version. Further tweaks to the scripts are needed to ensure backward-compatibility.
+* Migration scripts are now exposed at `db.config`, which will be mounted at `/docker-entrypoint-initdb.d/migrations/`. Simply copy your migration files from your local project's `vela/migration` and populate the `db.config`.
 * Ingress are now limited to `kong` & `db` services. This is by design to limit entry to the stack through secure `kong` service.
-* `kong.yaml` has been modified to follow [Docker kong.yaml](https://github.com/supabase/supabase/blob/master/docker/volumes/api/kong.yml) template.
-* `supabase/storage` does not comes with pre-populated `/var/lib/storage`, therefore an `emptyDir` will be created if persistence is disabled. This might be incompatible with previous version if the persistent storage location is set to location other than specified above.
-* `supabase/vector` requires read access to the `/var/log/pods` directory. When run in a Kubernetes cluster this can be provided with a [hostPath](https://kubernetes.io/docs/concepts/storage/volumes/#hostpath) volume.
+* `kong.yaml` has been modified to follow [Docker kong.yaml](https://github.com/vela/vela/blob/master/docker/volumes/api/kong.yml) template.
+* `vela/storage` does not comes with pre-populated `/var/lib/storage`, therefore an `emptyDir` will be created if persistence is disabled. This might be incompatible with previous version if the persistent storage location is set to location other than specified above.
+* `vela/vector` requires read access to the `/var/log/pods` directory. When run in a Kubernetes cluster this can be provided with a [hostPath](https://kubernetes.io/docs/concepts/storage/volumes/#hostpath) volume.

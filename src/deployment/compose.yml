@@ -2,16 +2,16 @@ version: '3.9'
 services:
   db:
     container_name: vela-db
-    image: docker.io/supabase/postgres:15.1.0.147
+    image: docker.io/vela/postgres:15.1.0.147
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      JWT_SECRET: ${SUPABASE_JWT_SECRET}
+      JWT_SECRET: ${vela_JWT_SECRET}
       JWT_EXP: '3600'
     volumes:
     - /mnt/postgres_data/pgdata:/var/lib/postgresql/data
     - ./pg_hba.conf:/etc/postgresql/pg_hba.conf:ro,z
     networks:
-    - supabase
+    - vela
     ports:
     - 5432:5432
   pgexporter:
@@ -40,12 +40,12 @@ services:
       PGRST_DB_USE_LEGACY_GUCS: 'false'
       PGRST_APP_SETTINGS_JWT_EXP: '3600'
       PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD_ENC}@db:5432/${POSTGRES_DB}?sslmode=disable
-      PGRST_JWT_SECRET: ${SUPABASE_JWT_SECRET}
-      PGRST_APP_SETTINGS_JWT_SECRET: ${SUPABASE_JWT_SECRET}
+      PGRST_JWT_SECRET: ${vela_JWT_SECRET}
+      PGRST_APP_SETTINGS_JWT_SECRET: ${vela_JWT_SECRET}
     ports:
     - 3000:3000
     networks:
-    - supabase
+    - vela
   pgbouncer:
     container_name: vela-pgbouncer
     image: docker.io/edoburu/pgbouncer:v1.24.1-p1
@@ -63,11 +63,11 @@ services:
     ports:
       - 6432:5432
     networks:
-      - supabase
+      - vela
 
   realtime:
     container_name: vela-realtime
-    image: docker.io/supabase/realtime:v2.27.5
+    image: docker.io/vela/realtime:v2.27.5
     depends_on:
     - db
     restart: unless-stopped
@@ -75,11 +75,11 @@ services:
       DB_HOST: db
       DB_PORT: '5432'
       DB_NAME: ${POSTGRES_DB}
-      DB_USER: supabase_admin
+      DB_USER: vela_admin
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       DB_SSL: disable
       DB_AFTER_CONNECT_QUERY: SET search_path TO _realtime
-      DB_ENC_KEY: supabaserealtime
+      DB_ENC_KEY: velarealtime
       PORT: '4000'
       FLY_ALLOC_ID: fly123
       FLY_APP_NAME: realtime
@@ -87,14 +87,14 @@ services:
       ERL_AFLAGS: -proto_dist inet_tcp
       ENABLE_TAILSCALE: 'false'
       DNS_NODES: ''''''
-      JWT_SECRET: ${SUPABASE_JWT_SECRET}
-      API_JWT_SECRET: ${SUPABASE_JWT_SECRET}
+      JWT_SECRET: ${vela_JWT_SECRET}
+      API_JWT_SECRET: ${vela_JWT_SECRET}
     ports:
     - 4000:4000
     networks:
-    - supabase
+    - vela
   meta:
-    image: docker.io/supabase/postgres-meta:v0.91.1
+    image: docker.io/vela/postgres-meta:v0.91.1
     depends_on:
     - db
     restart: unless-stopped
@@ -103,7 +103,7 @@ services:
       PG_META_DB_HOST: db
       PG_META_DB_PORT: "5432"
       PG_META_DB_NAME: ${POSTGRES_DB}
-      PG_META_DB_USER: supabase_admin
+      PG_META_DB_USER: vela_admin
       PG_META_DB_PASSWORD: ${POSTGRES_PASSWORD}
       PG_META_DB_DRIVER: postgres
       PG_META_DB_SSL_MODE: disable
@@ -112,10 +112,10 @@ services:
     ports:
     - 8080:8080
     networks:
-    - supabase
+    - vela
   storage:
     container_name: vela-storage
-    image: docker.io/supabase/storage-api:v0.46.4
+    image: docker.io/vela/storage-api:v0.46.4
     depends_on:
     - db
     - rest
@@ -124,7 +124,7 @@ services:
       DB_HOST: db
       DB_PORT: '5432'
       DB_NAME: ${POSTGRES_DB}
-      DB_USER: supabase_storage_admin
+      DB_USER: vela_storage_admin
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       DB_PASSWORD_ENC: ${POSTGRES_PASSWORD_ENC}
       DB_DRIVER: postgres
@@ -136,17 +136,17 @@ services:
       TENANT_ID: stub
       REGION: stub
       GLOBAL_S3_BUCKET: stub
-      DATABASE_URL: postgres://supabase_storage_admin:${POSTGRES_PASSWORD_ENC}@db:5432/${POSTGRES_DB}?sslmode=disable
-      PGRST_JWT_SECRET: ${SUPABASE_JWT_SECRET}
-      ANON_KEY: ${SUPABASE_ANON_KEY}
-      SERVICE_KEY: ${SUPABASE_SERVICE_KEY}
+      DATABASE_URL: postgres://vela_storage_admin:${POSTGRES_PASSWORD_ENC}@db:5432/${POSTGRES_DB}?sslmode=disable
+      PGRST_JWT_SECRET: ${vela_JWT_SECRET}
+      ANON_KEY: ${vela_ANON_KEY}
+      SERVICE_KEY: ${vela_SERVICE_KEY}
       POSTGREST_URL: http://rest:3000
     volumes:
     - /mnt/postgres_data/storage:/var/lib/storage
     ports:
     - 5000:5000
     networks:
-    - supabase
+    - vela
   vector:
     container_name: vela-vector
     image: timberio/vector:0.28.1-alpine
@@ -175,9 +175,9 @@ services:
     ports:
     - 9001:9001
     networks:
-    - supabase
+    - vela
 networks:
-  supabase:
+  vela:
     driver: bridge
     ipam:
       config:
