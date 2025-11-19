@@ -96,7 +96,7 @@ async def create_team(team_name: str):
             if status_code == 409:
                 logger.warning(f"Team '{team_name}' already exists. Fetching existing team ID...")
                 try:
-                    res = await client.get("search?name={team_name}")
+                    res = await client.get(f"search?name={team_name}")
                     team_id = res.json()["teams"][0]["id"]
                     logger.info(f"Fetched existing team ID: {team_id}")
                     return team_id
