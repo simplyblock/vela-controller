@@ -1,18 +1,24 @@
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
-from kubernetes_asyncio.client.exceptions import ApiException
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlmodel import select
 
 from .._util import quantity_to_bytes, quantity_to_milli_cpu
 from ..check_branch_status import get_branch_status
-from ..deployment import get_db_vmi_identity, kube_service
+from ..deployment import (
+    get_db_vmi_identity,
+    kube_service,
+    load_simplyblock_credentials,
+    resolve_database_volume_identifiers,
+    resolve_storage_volume_identifiers,
+)
 from ..deployment.kubernetes._util import custom_api_client
-from ..exceptions import VelaKubernetesError
 from ..models._util import Identifier
 from ..models.branch import Branch, BranchServiceStatus, ResourceUsageDefinition
 from ..models.project import Project
@@ -54,6 +60,9 @@ if TYPE_CHECKING:
 
 router = APIRouter(tags=["resource"])
 
+SIMPLYBLOCK_API_TIMEOUT_SECONDS = 10.0
+
+
 # ---------------------------
 # Helper functions
 # ---------------------------
@@ -72,6 +81,46 @@ AsyncSessionLocal = async_sessionmaker(
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _require_int_stat(stats: dict[str, Any], field: str) -> int:
+    if field not in stats:
+        raise ValueError(f"Simplyblock IO stats missing required field {field!r}")
+    value = stats[field]
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Simplyblock IO stat {field!r} with value {value!r} is not an integer") from exc
+
+
+async def _fetch_volume_stats(
+    *,
+    client: httpx.AsyncClient,
+    endpoint: str,
+    cluster_id: str,
+    cluster_secret: str,
+    volume_uuid: str,
+    required_fields: tuple[str, ...],
+) -> dict[str, int]:
+    url = f"{endpoint}/lvol/iostats/{volume_uuid}"
+    headers = {
+        "Authorization": f"{cluster_id} {cluster_secret}",
+        "Accept": "application/json",
+    }
+
+    response = await client.get(url, headers=headers, timeout=SIMPLYBLOCK_API_TIMEOUT_SECONDS)
+    response.raise_for_status()
+
+    payload = response.json()
+
+    stats = payload.get("stats")
+    if not isinstance(stats, list) or not stats:
+        raise ValueError(f"Simplyblock IO stats payload missing stats list for volume {volume_uuid}")
+    entry = stats[0]
+    if not isinstance(entry, dict):
+        raise ValueError(f"Simplyblock IO stats entry malformed for volume {volume_uuid}")
+
+    return {field: _require_int_stat(entry, field) for field in required_fields}
 
 
 # ---------------------------
@@ -318,46 +367,23 @@ async def get_consumption_limits(
     ]
 
 
-async def _collect_branch_resource_usage(branch: Branch) -> ResourceUsageDefinition:
-    namespace, vm_name = get_db_vmi_identity(branch.id)
-    default_usage = ResourceUsageDefinition(
-        milli_vcpu=0,
-        ram_bytes=0,
-        nvme_bytes=0,
-        iops=0,
-        storage_bytes=None,
-    )
+async def _resolve_vm_pod_name(namespace: str, vm_name: str) -> str:
+    pod_ref = await kube_service.get_vm_pod_name(namespace, vm_name)
+    return pod_ref[0] if isinstance(pod_ref, tuple) else pod_ref
 
-    try:
-        pod_ref = await kube_service.get_vm_pod_name(namespace, vm_name)
-    except VelaKubernetesError as exc:
-        logger.debug("Unable to resolve VM pod for %s/%s: %s", namespace, vm_name, exc)
-        return default_usage
 
-    pod_name = pod_ref[0] if isinstance(pod_ref, tuple) else pod_ref
+async def _fetch_pod_metrics(namespace: str, pod_name: str) -> dict[str, Any]:
+    async with custom_api_client() as custom_client:
+        return await custom_client.get_namespaced_custom_object(
+            group="metrics.k8s.io",
+            version="v1beta1",
+            namespace=namespace,
+            plural="pods",
+            name=pod_name,
+        )
 
-    try:
-        async with custom_api_client() as custom_client:
-            metrics = await custom_client.get_namespaced_custom_object(
-                group="metrics.k8s.io",
-                version="v1beta1",
-                namespace=namespace,
-                plural="pods",
-                name=pod_name,
-            )
-    except ApiException as exc:
-        if exc.status != 404:
-            logger.debug(
-                "Failed to fetch metrics for pod %s/%s: %s",
-                namespace,
-                pod_name,
-                exc,
-            )
-        return default_usage
-    except Exception:  # pragma: no cover - defensive guard for unexpected failures
-        logger.exception("Unexpected error retrieving metrics for pod %s/%s", namespace, pod_name)
-        return default_usage
 
+def _parse_compute_usage(metrics: dict[str, Any]) -> tuple[int, int]:
     containers = cast("Sequence[dict[str, Any]]", metrics["containers"])
     compute_usage = next(container for container in containers if container.get("name") == "compute")
 
@@ -368,12 +394,148 @@ async def _collect_branch_resource_usage(branch: Branch) -> ResourceUsageDefinit
     if cpu_usage is None or memory_usage is None:
         raise ValueError("Metrics API returned empty resource usage for compute container")
 
+    return cpu_usage, memory_usage
+
+
+async def _collect_compute_usage(namespace: str, vm_name: str) -> tuple[int, int]:
+    try:
+        pod_name = await _resolve_vm_pod_name(namespace, vm_name)
+    except Exception as exc:
+        raise RuntimeError(
+            f"Failed to resolve VM pod while collecting compute usage for {vm_name!r} in namespace {namespace!r}"
+        ) from exc
+
+    metrics = await _fetch_pod_metrics(namespace, pod_name)
+
+    return _parse_compute_usage(metrics)
+
+
+async def _resolve_volume_stats(
+    *,
+    volume_identifier_resolver: Callable[[str], Awaitable[tuple[str, str | None]]],
+    namespace: str,
+    branch: Branch,
+    resource_label: str,
+    sb_client: httpx.AsyncClient,
+    endpoint: str,
+    cluster_id: str,
+    cluster_secret: str,
+    required_fields: tuple[str, ...],
+) -> dict[str, int]:
+    volume_uuid, pv_cluster_id = await volume_identifier_resolver(namespace)
+
+    if pv_cluster_id and pv_cluster_id != cluster_id:
+        logger.warning(
+            "Cluster mismatch for branch %s %s volume %s: PV cluster %s != credentials cluster %s",
+            branch.id,
+            resource_label,
+            volume_uuid,
+            pv_cluster_id,
+            cluster_id,
+        )
+        raise ValueError(
+            f"Cluster mismatch for branch {branch.id} {resource_label} volume {volume_uuid}: "
+            f"PV cluster {pv_cluster_id} != credentials cluster {cluster_id}"
+        )
+
+    return await _fetch_volume_stats(
+        client=sb_client,
+        endpoint=endpoint,
+        cluster_id=cluster_id,
+        cluster_secret=cluster_secret,
+        volume_uuid=volume_uuid,
+        required_fields=required_fields,
+    )
+
+
+async def _collect_database_volume_usage(
+    *,
+    namespace: str,
+    branch: Branch,
+    sb_client: httpx.AsyncClient,
+    endpoint: str,
+    cluster_id: str,
+    cluster_secret: str,
+) -> tuple[int, int]:
+    stats = await _resolve_volume_stats(
+        volume_identifier_resolver=resolve_database_volume_identifiers,
+        namespace=namespace,
+        branch=branch,
+        resource_label="database",
+        sb_client=sb_client,
+        endpoint=endpoint,
+        cluster_id=cluster_id,
+        cluster_secret=cluster_secret,
+        required_fields=("size_used", "read_io_ps", "write_io_ps"),
+    )
+    nvme_bytes = stats["size_used"]
+    read_iops = stats["read_io_ps"]
+    write_iops = stats["write_io_ps"]
+    return nvme_bytes, read_iops + write_iops
+
+
+async def _collect_storage_volume_usage(
+    *,
+    namespace: str,
+    branch: Branch,
+    sb_client: httpx.AsyncClient,
+    endpoint: str,
+    cluster_id: str,
+    cluster_secret: str,
+) -> int:
+    stats = await _resolve_volume_stats(
+        volume_identifier_resolver=resolve_storage_volume_identifiers,
+        namespace=namespace,
+        branch=branch,
+        resource_label="storage",
+        sb_client=sb_client,
+        endpoint=endpoint,
+        cluster_id=cluster_id,
+        cluster_secret=cluster_secret,
+        required_fields=("size_used",),
+    )
+    return stats["size_used"]
+
+
+async def _collect_branch_volume_usage(branch: Branch, namespace: str) -> tuple[int, int, int | None]:
+    endpoint, cluster_id, cluster_secret = await load_simplyblock_credentials()
+    async with httpx.AsyncClient() as sb_client:
+        db_task = _collect_database_volume_usage(
+            namespace=namespace,
+            branch=branch,
+            sb_client=sb_client,
+            endpoint=endpoint,
+            cluster_id=cluster_id,
+            cluster_secret=cluster_secret,
+        )
+        if branch.enable_file_storage:
+            storage_task = _collect_storage_volume_usage(
+                namespace=namespace,
+                branch=branch,
+                sb_client=sb_client,
+                endpoint=endpoint,
+                cluster_id=cluster_id,
+                cluster_secret=cluster_secret,
+            )
+            (nvme_bytes, iops), storage_bytes = await asyncio.gather(db_task, storage_task)
+        else:
+            nvme_bytes, iops = await db_task
+            storage_bytes = None
+
+    return nvme_bytes, iops, storage_bytes
+
+
+async def _collect_branch_resource_usage(branch: Branch) -> ResourceUsageDefinition:
+    namespace, vm_name = get_db_vmi_identity(branch.id)
+    milli_vcpu, ram_bytes = await _collect_compute_usage(namespace, vm_name)
+    nvme_bytes, iops, storage_bytes = await _collect_branch_volume_usage(branch, namespace)
+
     return ResourceUsageDefinition(
-        milli_vcpu=cpu_usage,
-        ram_bytes=memory_usage,
-        nvme_bytes=0,
-        iops=0,
-        storage_bytes=None,
+        milli_vcpu=milli_vcpu,
+        ram_bytes=ram_bytes,
+        nvme_bytes=nvme_bytes,
+        iops=iops,
+        storage_bytes=storage_bytes,
     )
 
 
@@ -389,7 +551,11 @@ async def monitor_resources(interval_seconds: int = 60):
 
                 for branch in branches:
                     status = await refresh_branch_status(branch.id)
-                    usage = await _collect_branch_resource_usage(branch)
+                    try:
+                        usage = await _collect_branch_resource_usage(branch)
+                    except Exception:
+                        logger.exception("Failed to collect resource usage for branch %s", branch.id)
+                        continue
                     branch.store_resource_usage(usage)
 
                     status = await get_branch_status(branch.id)
