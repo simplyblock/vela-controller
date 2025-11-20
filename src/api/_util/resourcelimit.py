@@ -1,11 +1,10 @@
 from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, cast
 
 from sqlalchemy import delete, func
 from sqlalchemy.dialects.mysql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
-from sqlmodel import select
+from sqlmodel import col, select
 
 from ..._util import Identifier
 from ...exceptions import VelaResourceLimitError
@@ -26,22 +25,11 @@ from ...models.resources import (
 from ..db import SessionDep
 from ..settings import get_settings
 
-if TYPE_CHECKING:
-    from sqlalchemy.sql.elements import ColumnElement
-
 
 async def delete_branch_provisioning(session: SessionDep, branch: Branch, *, commit: bool = True):
-    resource_usage_filter = cast(
-        "ColumnElement[bool]",
-        ResourceUsageMinute.branch_id == branch.id,
-    )
-    await session.execute(delete(ResourceUsageMinute).where(resource_usage_filter))
-
-    provisioning_filter = cast("ColumnElement[bool]", BranchProvisioning.branch_id == branch.id)
-    await session.execute(delete(BranchProvisioning).where(provisioning_filter))
-
-    log_filter = cast("ColumnElement[bool]", ProvisioningLog.branch_id == branch.id)
-    await session.execute(delete(ProvisioningLog).where(log_filter))
+    await session.execute(delete(ResourceUsageMinute).where(col(ResourceUsageMinute.branch_id) == branch.id))
+    await session.execute(delete(BranchProvisioning).where(col(BranchProvisioning.branch_id) == branch.id))
+    await session.execute(delete(ProvisioningLog).where(col(ProvisioningLog.branch_id) == branch.id))
 
     if commit:
         await session.commit()
@@ -433,8 +421,8 @@ async def get_project_limit_totals(
         if not resource_filter:
             return {}
 
-    resource_column = cast("ColumnElement[ResourceType]", ResourceLimit.resource)
-    max_total_column = cast("ColumnElement[int]", ResourceLimit.max_total)
+    resource_column = col(ResourceLimit.resource)
+    max_total_column = col(ResourceLimit.max_total)
 
     query = (
         select(
@@ -448,8 +436,7 @@ async def get_project_limit_totals(
         .group_by(resource_column)
     )
     if resource_filter is not None:
-        resource_filter_clause = cast("ColumnElement[bool]", resource_column.in_(resource_filter))
-        query = query.where(resource_filter_clause)
+        query = query.where(resource_column.in_(resource_filter))
     if exclude_project_id is not None:
         query = query.where(ResourceLimit.project_id != exclude_project_id)
 
