@@ -137,7 +137,7 @@ services:
       LOGFLARE_FEATURE_FLAG_OVERRIDE: multibackend=true
       
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:12.2.0
     container_name: vela-grafana
     restart: unless-stopped
     ports:
