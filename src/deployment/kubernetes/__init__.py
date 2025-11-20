@@ -9,8 +9,6 @@ from ..._util import quantity_to_bytes
 from ...exceptions import VelaKubernetesError
 from ._util import core_v1_client, custom_api_client, storage_v1_client
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
