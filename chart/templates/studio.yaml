@@ -62,7 +62,7 @@ data:
   OPENAI_API_KEY: {{ .Values.studio.env.OPENAI_API_KEY | quote }}
   AUTH_JWT_SECRET: {{ .Values.studio.env.AUTH_JWT_SECRET | quote }}
   NEXTAUTH_SECRET: {{ .Values.studio.env.NEXTAUTH_SECRET | quote }}
-  LOGFLARE_URL: "https://{{ .Values.domain }}:{{ .Values.port }}/logs"
+  LOGFLARE_URL: "http://vela-logflare:4000/logs"
   VELA_PLATFORM_KEYCLOAK_ISSUER: "https://{{ .Values.domain }}:{{ .Values.port }}/auth/realms/vela"
   VELA_PLATFORM_KEYCLOAK_CLIENT_ID: {{ .Values.studio.env.VELA_PLATFORM_KEYCLOAK_CLIENT_ID | quote }}
   VELA_PLATFORM_KEYCLOAK_CLIENT_SECRET: {{ .Values.studio.env.VELA_PLATFORM_KEYCLOAK_CLIENT_SECRET | quote }}
