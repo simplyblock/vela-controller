@@ -21,8 +21,6 @@ async def _raise_for_status(response: httpx.Response) -> None:
 @asynccontextmanager
 async def _client(timeout: int = 10) -> AsyncGenerator[httpx.AsyncClient]:
     settings = get_settings()
-    logger.info(f"Grafana User: {settings.grafana_security_admin_user}")
-    logger.info(f"Grafana password: {settings.grafana_security_admin_password}")
     async with httpx.AsyncClient(
         base_url=f"{settings.grafana_url}/api/",
         timeout=timeout,
