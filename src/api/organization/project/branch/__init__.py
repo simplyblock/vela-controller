@@ -1370,7 +1370,14 @@ async def create(
     entity.pgbouncer_password = pgbouncer_admin_password
     session.add(entity)
     try:
-        await realm_admin("master").a_create_realm({"realm": str(entity.id)})
+        await realm_admin("master").a_create_realm(
+            {
+                "realm": str(entity.id),
+                "eventsEnabled": True,
+                "adminEventsEnabled": True,
+            }
+        )
+        await realm_admin(str(entity.id)).a_create_client({"clientId": "application-client"})
         await realm_admin(str(entity.id)).a_create_client({"clientId": "application-client"})
         await session.commit()
     except IntegrityError as exc:
