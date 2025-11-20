@@ -44,6 +44,7 @@ from .kubernetes import KubernetesService
 from .kubernetes.kubevirt import get_virtualmachine_status
 from .logflare import create_branch_logflare_objects, delete_branch_logflare_objects
 from .settings import get_settings
+from .simplyblock_api import SIMPLYBLOCK_API_TIMEOUT_SECONDS, create_simplyblock_api
 
 if TYPE_CHECKING:
     from cloudflare.types.dns.record_list_params import Name as CloudflareRecordName
@@ -283,32 +284,20 @@ async def resolve_storage_volume_identifiers(namespace: str) -> tuple[str, str |
 async def update_branch_volume_iops(branch_id: Identifier, iops: int) -> None:
     namespace = deployment_namespace(branch_id)
 
-    endpoint, cluster_id, cluster_secret = await load_simplyblock_credentials()
-    volume_uuid, pv_cluster_id = await resolve_database_volume_identifiers(namespace)
-    if pv_cluster_id and pv_cluster_id != cluster_id:
-        raise VelaDeploymentError(
-            f"Cluster ID mismatch for Simplyblock volume {volume_uuid!r}: PV reports {pv_cluster_id}, "
-            f"but credentials reference {cluster_id}"
-        )
-    url = f"{endpoint}/lvol/{volume_uuid}"
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"{cluster_id} {cluster_secret}",
-    }
-
+    volume_uuid, _ = await resolve_database_volume_identifiers(namespace)
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.put(url, headers=headers, json={"max-rw-iops": iops})
-            response.raise_for_status()
+        async with httpx.AsyncClient(timeout=SIMPLYBLOCK_API_TIMEOUT_SECONDS) as client:
+            sb_api = await create_simplyblock_api(client)
+            await sb_api.update_volume(volume_uuid=volume_uuid, payload={"max-rw-iops": iops})
     except httpx.HTTPStatusError as exc:
         detail = exc.response.text.strip() or exc.response.reason_phrase or str(exc)
         raise VelaDeploymentError(
             f"Simplyblock volume API rejected IOPS update for volume {volume_uuid!r}: {detail}"
         ) from exc
     except httpx.HTTPError as exc:
-        raise VelaDeploymentError(f"Failed to reach Simplyblock volume API at {url!r}") from exc
+        raise VelaDeploymentError("Failed to reach Simplyblock volume API") from exc
 
-    logger.info("Updated Simplyblock volume %s IOPS to %s using endpoint %s", volume_uuid, iops, endpoint)
+    logger.info("Updated Simplyblock volume %s IOPS to %s", volume_uuid, iops)
 
 
 async def ensure_branch_storage_class(branch_id: Identifier, *, iops: int) -> str:
