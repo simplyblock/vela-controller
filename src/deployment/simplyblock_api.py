@@ -39,7 +39,7 @@ class SimplyblockApi:
         return f"{self._endpoint}/api/v2/clusters/{self._cluster_id}/storage-pools/{pool_id}"
 
     async def pool(self, name: str = SIMPLYBLOCK_STORAGE_POOL_NAME) -> dict[str, Any]:
-        url = f"{self._cluster_base}/storage-pools"
+        url = f"{self._cluster_base}/storage-pools/"
         response = await self._client.get(url, headers=self._headers(), timeout=SIMPLYBLOCK_API_TIMEOUT_SECONDS)
         response.raise_for_status()
 
