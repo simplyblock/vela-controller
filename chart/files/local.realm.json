@@ -5,6 +5,8 @@
     "registrationAllowed": true,
     "registrationEmailAsUsername": true,
     "verifyEmail": true,
+    "eventsEnabled": true,
+    "adminEventsEnabled": true,
     "users": [
         {
             "username": "testuser",

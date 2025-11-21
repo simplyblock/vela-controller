@@ -1378,7 +1378,6 @@ async def create(
             }
         )
         await realm_admin(str(entity.id)).a_create_client({"clientId": "application-client"})
-        await realm_admin(str(entity.id)).a_create_client({"clientId": "application-client"})
         await session.commit()
     except IntegrityError as exc:
         await session.rollback()
