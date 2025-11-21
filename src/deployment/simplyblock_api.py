@@ -65,13 +65,7 @@ class SimplyblockApi:
         response = await self._client.get(url, headers=self._headers(), timeout=SIMPLYBLOCK_API_TIMEOUT_SECONDS)
         response.raise_for_status()
         payload = response.json()
-        stats = payload.get("stats")
-        if not isinstance(stats, list) or not stats:
-            raise ValueError(f"Simplyblock IO stats payload missing stats list for volume {volume_uuid}")
-        entry = stats[0]
-        if not isinstance(entry, dict):
-            raise ValueError(f"Simplyblock IO stats entry malformed for volume {volume_uuid}")
-        return entry
+        return payload[0]  # return the most recent one
 
     async def update_volume(
         self,
