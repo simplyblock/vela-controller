@@ -1,10 +1,11 @@
 {{- if .Values.db.enabled }}
+{{- $releaseFullname := include "vela.fullname" . -}}
 apiVersion: v1
 kind: Service
 metadata:
-  name: supabase-supabase-rest
+  name: {{ printf "%s-rest" $releaseFullname }}
   labels:
-    {{- include "supabase.labels" . | nindent 4 }}
+    {{- include "vela.labels" . | nindent 4 }}
 spec:
   type: {{ .Values.rest.service.type | default "ClusterIP" }}
   ports:
@@ -13,14 +14,14 @@ spec:
       protocol: TCP
       name: http
   selector:
-    vm.kubevirt.io/name: {{ include "supabase.db.fullname" . }}
+    vm.kubevirt.io/name: {{ include "vela.db.fullname" . }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: supabase-supabase-realtime
+  name: {{ printf "%s-realtime" $releaseFullname }}
   labels:
-    {{- include "supabase.labels" . | nindent 4 }}
+    {{- include "vela.labels" . | nindent 4 }}
 spec:
   type: {{ .Values.realtime.service.type | default "ClusterIP" }}
   ports:
@@ -29,15 +30,15 @@ spec:
       protocol: TCP
       name: http
   selector:
-    vm.kubevirt.io/name: {{ include "supabase.db.fullname" . }}
+    vm.kubevirt.io/name: {{ include "vela.db.fullname" . }}
 ---
 {{- if .Values.storage.enabled }}
 apiVersion: v1
 kind: Service
 metadata:
-  name: supabase-supabase-storage
+  name: {{ printf "%s-storage" $releaseFullname }}
   labels:
-    {{- include "supabase.labels" . | nindent 4 }}
+    {{- include "vela.labels" . | nindent 4 }}
 spec:
   type: {{ .Values.storage.service.type | default "ClusterIP" }}
   ports:
@@ -46,15 +47,15 @@ spec:
       protocol: TCP
       name: http
   selector:
-    vm.kubevirt.io/name: {{ include "supabase.db.fullname" . }}
+    vm.kubevirt.io/name: {{ include "vela.db.fullname" . }}
 ---
 {{- end }}
 apiVersion: v1
 kind: Service
 metadata:
-  name: supabase-supabase-meta
+  name: {{ printf "%s-meta" $releaseFullname }}
   labels:
-    {{- include "supabase.labels" . | nindent 4 }}
+    {{- include "vela.labels" . | nindent 4 }}
 spec:
   type: {{ .Values.meta.service.type | default "ClusterIP" }}
   ports:
@@ -63,15 +64,15 @@ spec:
       protocol: TCP
       name: http
   selector:
-    vm.kubevirt.io/name: {{ include "supabase.db.fullname" . }}
+    vm.kubevirt.io/name: {{ include "vela.db.fullname" . }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: supabase-supabase-pgexporter
+  name: {{ printf "%s-pgexporter" $releaseFullname }}
   labels:
     app: pgexporter
-    {{- include "supabase.labels" . | nindent 4 }}
+    {{- include "vela.labels" . | nindent 4 }}
 spec:
   type: {{ .Values.pgexporter.service.type | default "ClusterIP" }}
   ports:
@@ -80,5 +81,5 @@ spec:
       protocol: TCP
       name: http
   selector:
-    vm.kubevirt.io/name: {{ include "supabase.db.fullname" . }}
+    vm.kubevirt.io/name: {{ include "vela.db.fullname" . }}
 {{- end }}

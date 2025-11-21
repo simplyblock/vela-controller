@@ -1,5 +1,5 @@
 {{- if .Values.db.enabled -}}
-{{- $dbFullname := include "supabase.db.fullname" . -}}
+{{- $dbFullname := include "vela.db.fullname" . -}}
 {{- $serviceCfg := .Values.db.service | default (dict) -}}
 {{- $externalSvcEnabled := true -}}
 {{- if hasKey $serviceCfg "externalEnabled" }}
@@ -16,7 +16,7 @@ kind: Service
 metadata:
   name: {{ printf "%s-ext" $dbFullname }}
   labels:
-    {{- include "supabase.labels" . | nindent 4 }}
+    {{- include "vela.labels" . | nindent 4 }}
 spec:
   type: {{ .Values.db.service.type }}
   {{- if $lbIpFamilies }}
@@ -38,7 +38,7 @@ kind: Service
 metadata:
   name: {{ $dbFullname }}
   labels:
-    {{- include "supabase.labels" . | nindent 4 }}
+    {{- include "vela.labels" . | nindent 4 }}
 spec:
   type: ClusterIP
   {{- if $clusterIpFamilies }}

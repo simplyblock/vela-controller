@@ -1,5 +1,5 @@
 apiVersion: v2
-name: supabase
+name: vela
 description: The open source Firebase alternative.
 
 # A chart can be either an 'application' or a 'library' chart.

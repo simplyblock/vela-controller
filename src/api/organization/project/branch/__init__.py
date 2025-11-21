@@ -28,6 +28,7 @@ from .....deployment import (
     branch_api_domain,
     branch_domain,
     branch_rest_endpoint,
+    branch_service_name,
     calculate_cpu_resources,
     delete_deployment,
     deploy_branch_environment,
@@ -301,13 +302,13 @@ _VOLUME_SNAPSHOT_CLASS = "simplyblock-csi-snapshotclass"
 _SUPPORTED_DATABASE_IMAGE_TAG = "15.1.0.147"
 
 _BRANCH_SERVICE_ENDPOINTS: dict[str, tuple[str, int]] = {
-    "database": ("supabase-supabase-db", 5432),
-    "pgbouncer": ("supabase-pgbouncer", 6432),
-    "realtime": ("supabase-supabase-realtime", 4000),
-    "storage": ("supabase-supabase-storage", 5000),
-    "meta": ("supabase-supabase-meta", 8080),
-    "rest": ("supabase-supabase-rest", 3000),
-    "pgexporter": ("supabase-supabase-pgexporter", 9187),
+    "database": ("db", 5432),
+    "pgbouncer": ("pgbouncer", 6432),
+    "realtime": ("realtime", 4000),
+    "storage": ("storage", 5000),
+    "meta": ("meta", 8080),
+    "rest": ("rest", 3000),
+    "pgexporter": ("pgexporter", 9187),
 }
 
 _PGBOUNCER_ADMIN_USER = "pgbouncer_admin"
@@ -678,8 +679,8 @@ async def _probe_service_socket(host: str, port: int, *, label: str) -> BranchSe
 
 async def _collect_branch_service_health(namespace: str, *, storage_enabled: bool) -> BranchStatus:
     endpoints = {
-        label: (service_name, port)
-        for label, (service_name, port) in _BRANCH_SERVICE_ENDPOINTS.items()
+        label: (branch_service_name(namespace, component), port)
+        for label, (component, port) in _BRANCH_SERVICE_ENDPOINTS.items()
         if storage_enabled or label != "storage"
     }
 

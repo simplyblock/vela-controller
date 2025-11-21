@@ -1,49 +1,49 @@
 {{/*
 Expand the name of the JWT secret.
 */}}
-{{- define "supabase.secret.jwt" -}}
-{{- printf "%s-jwt" (include "supabase.fullname" .) }}
+{{- define "vela.secret.jwt" -}}
+{{- printf "%s-jwt" (include "vela.fullname" .) }}
 {{- end -}}
 
 {{/*
 Expand the name of the SMTP secret.
 */}}
-{{- define "supabase.secret.smtp" -}}
-{{- printf "%s-smtp" (include "supabase.fullname" .) }}
+{{- define "vela.secret.smtp" -}}
+{{- printf "%s-smtp" (include "vela.fullname" .) }}
 {{- end -}}
 
 {{/*
 Expand the name of the dashboard secret.
 */}}
-{{- define "supabase.secret.dashboard" -}}
-{{- printf "%s-dashboard" (include "supabase.fullname" .) }}
+{{- define "vela.secret.dashboard" -}}
+{{- printf "%s-dashboard" (include "vela.fullname" .) }}
 {{- end -}}
 
 {{/*
 Expand the name of the database secret.
 */}}
-{{- define "supabase.secret.db" -}}
-{{- printf "%s-db" (include "supabase.fullname" .) }}
+{{- define "vela.secret.db" -}}
+{{- printf "%s-db" (include "vela.fullname" .) }}
 {{- end -}}
 
 {{/*
 Expand the name of the analytics secret.
 */}}
-{{- define "supabase.secret.analytics" -}}
-{{- printf "%s-analytics" (include "supabase.fullname" .) }}
+{{- define "vela.secret.analytics" -}}
+{{- printf "%s-analytics" (include "vela.fullname" .) }}
 {{- end -}}
 
 {{/*
 Expand the name of the s3 secret.
 */}}
-{{- define "supabase.secret.s3" -}}
-{{- printf "%s-s3" (include "supabase.fullname" .) }}
+{{- define "vela.secret.s3" -}}
+{{- printf "%s-s3" (include "vela.fullname" .) }}
 {{- end -}}
 
 {{/*
 Check if both s3 keys are valid
 */}}
-{{- define "supabase.secret.s3.isValid" -}}
+{{- define "vela.secret.s3.isValid" -}}
 {{- $isValid := "false" -}}
 {{- if .Values.secret.s3.keyId -}}
 {{- if .Values.secret.s3.accessKey -}}

@@ -2,10 +2,10 @@
 apiVersion: kubevirt.io/v1
 kind: VirtualMachine
 metadata:
-  name: {{ include "supabase.db.fullname" . }}
+  name: {{ include "vela.db.fullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "supabase.labels" . | nindent 4 }}
+    {{- include "vela.labels" . | nindent 4 }}
 spec:
   runStrategy: Always
   template:
@@ -15,7 +15,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        {{- include "supabase.db.selectorLabels" . | nindent 8 }}
+        {{- include "vela.db.selectorLabels" . | nindent 8 }}
     spec:
       domain:
         cpu:
@@ -72,29 +72,29 @@ spec:
             image: manoharbrm/kubevirt:alpine-{{ .Values.db.image.tag }}
         - name: datadisk # vdb
           persistentVolumeClaim:
-            claimName: {{ include "supabase.db.fullname" . }}-pvc
+            claimName: {{ include "vela.db.fullname" . }}-pvc
         - name: db-secrets # vdc
           secret:
-            secretName: {{ include "supabase.secret.db" . }}
+            secretName: {{ include "vela.secret.db" . }}
         - name: compose-config # vdd
           configMap:
-            name: {{ include "supabase.db.fullname" . }}-compose
+            name: {{ include "vela.db.fullname" . }}-compose
         - name: jwt-secrets # vde
           secret:
-            secretName: {{ include "supabase.secret.jwt" . }}
+            secretName: {{ include "vela.secret.jwt" . }}
         - name: k8s-api-access # vdf
           serviceAccount:
-            serviceAccountName: {{ printf "%s-vm-config-reader" (include "supabase.db.fullname" .) }}
+            serviceAccountName: {{ printf "%s-vm-config-reader" (include "vela.db.fullname" .) }}
         - name: pgbouncer-config # vdg
           configMap:
-            name: {{ printf "%s-pgbouncer" (include "supabase.db.fullname" .) }}
+            name: {{ printf "%s-pgbouncer" (include "vela.db.fullname" .) }}
         {{- if .Values.storage.enabled }}
         - name: storage-disk # vdh
           persistentVolumeClaim:
-            claimName: {{ include "supabase.db.fullname" . }}-storage-pvc
+            claimName: {{ include "vela.db.fullname" . }}-storage-pvc
         {{- end }}
         - name: cloudinitdisk
           cloudInitNoCloud:
             secretRef: 
-              name: "{{ include "supabase.db.fullname" . }}-cloudinit-userdata"
+              name: "{{ include "vela.db.fullname" . }}-cloudinit-userdata"
 {{- end }}

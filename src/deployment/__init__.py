@@ -52,7 +52,10 @@ logger = logging.getLogger(__name__)
 
 kube_service = KubernetesService()
 
-DEFAULT_DATABASE_VM_NAME = "supabase-supabase-db"
+CHART_NAME = "vela"
+
+
+DEFAULT_DATABASE_VM_NAME = f"{CHART_NAME}-db"
 DATABASE_CLUSTER_SERVICE_NAME = DEFAULT_DATABASE_VM_NAME
 DATABASE_LOAD_BALANCER_SERVICE_NAME = f"{DEFAULT_DATABASE_VM_NAME}-ext"
 CHECK_ENCRYPTED_HEADER_PLUGIN_NAME = "check-x-connection-encrypted"
@@ -61,8 +64,8 @@ CPU_REQUEST_FRACTION = 0.25  # request = 25% of limit
 SIMPLYBLOCK_NAMESPACE = "simplyblock"
 SIMPLYBLOCK_CSI_CONFIGMAP = "simplyblock-csi-cm"
 SIMPLYBLOCK_CSI_SECRET = "simplyblock-csi-secret"
-DATABASE_PVC_SUFFIX = "-supabase-db-pvc"
-STORAGE_PVC_SUFFIX = "-supabase-db-storage-pvc"
+STORAGE_PVC_SUFFIX = "-vela-db-storage-pvc"
+DATABASE_PVC_SUFFIX = "-vela-db-pvc"
 _LOAD_BALANCER_TIMEOUT_SECONDS = float(600)
 _LOAD_BALANCER_POLL_INTERVAL_SECONDS = float(2)
 DNSRecordType = Literal["AAAA", "CNAME"]
@@ -132,6 +135,15 @@ def branch_rest_endpoint(branch_id: Identifier) -> str | None:
 def _release_name(namespace: str) -> str:
     _ = namespace  # kept for call-site clarity; release name is namespace-independent
     return get_settings().deployment_release_name
+
+
+def _release_fullname(namespace: str) -> str:
+    release = _release_name(namespace)
+    return release if CHART_NAME in release else f"{release}-{CHART_NAME}"
+
+
+def branch_service_name(namespace: str, component: str) -> str:
+    return f"{_release_fullname(namespace)}-{component}"
 
 
 def inject_branch_env(compose: dict[str, Any], branch_id: Identifier) -> dict[str, Any]:
@@ -331,7 +343,7 @@ def _configure_compose_storage(compose: dict[str, Any], *, enable_file_storage: 
 def _load_chart_values(chart_root: Any) -> dict[str, Any]:
     values_content = yaml.safe_load((chart_root / "values.yaml").read_text())
     if not isinstance(values_content, dict):
-        raise VelaDeploymentError("Supabase chart values.yaml must be a mapping")
+        raise VelaDeploymentError("vela chart values.yaml must be a mapping")
     return values_content
 
 
@@ -423,7 +435,7 @@ async def create_vela_config(
         branch_id,
     )
 
-    chart = resources.files(__package__) / "charts" / "supabase"
+    chart = resources.files(__package__) / "charts" / "vela"
     compose_file = _configure_compose_storage(
         _load_compose_manifest(branch_id),
         enable_file_storage=parameters.enable_file_storage,
@@ -536,13 +548,13 @@ def get_db_vmi_identity(branch_id: Identifier) -> tuple[str, str]:
     """
     Return the (namespace, vmi_name) for the project's database VirtualMachineInstance.
 
-    The Helm chart defines the DB VM fullname as "{Release.Name}-{ChartName}-db" when no overrides
-    are provided. With the configurable release name (`Settings.deployment_release_name`, default
-    "supabase") and chart name "supabase", the VMI resolves to
-    f"{_release_name(namespace)}-supabase-db".
+    The Helm chart defines the DB VM fullname as the Helm release fullname (release name plus chart
+    name if needed) with a "-db" suffix when no overrides are provided. With the configurable
+    release name (`Settings.deployment_release_name`, default "vela") and chart name "vela", the
+    VMI resolves to e.g. "vela-db".
     """
     namespace = deployment_namespace(branch_id)
-    vmi_name = f"{_release_name(namespace)}-supabase-db"
+    vmi_name = branch_service_name(namespace, "db")
     return namespace, vmi_name
 
 
@@ -579,7 +591,7 @@ def resize_deployment(branch_id: Identifier, parameters: ResizeParameters):
     """Perform an in-place Helm upgrade for resize operations. Only parameters provided will be
     updated; others are preserved using --reuse-values.
     """
-    chart = resources.files(__package__) / "charts" / "supabase"
+    chart = resources.files(__package__) / "charts" / "vela"
     # Minimal values file with only overrides
     values_content: dict[str, Any] = {}
 
@@ -634,7 +646,7 @@ async def update_branch_database_password(
 
     connection: asyncpg.Connection | None = None
     namespace = deployment_namespace(branch_id)
-    host: str = f"supabase-supabase-db.{namespace}.svc.cluster.local"
+    host: str = f"{branch_service_name(namespace, 'db')}.{namespace}.svc.cluster.local"
     try:
         connection = await asyncpg.connect(
             user="supabase_admin",  # superuser with permissions to change password
@@ -896,7 +908,8 @@ async def provision_branch_database_endpoint(branch_id: Identifier) -> None:
         return
 
     namespace = deployment_namespace(branch_id)
-    ipv6_address = await _wait_for_service_ipv6(namespace, DATABASE_LOAD_BALANCER_SERVICE_NAME)
+    service_name = f"{branch_service_name(namespace, 'db')}-ext"
+    ipv6_address = await _wait_for_service_ipv6(namespace, service_name)
     cf_cfg = _cloudflare_config()
     await _create_dns_record(
         cf_cfg,
@@ -954,7 +967,7 @@ def _postgrest_route_specs(ref: str, domain: str, namespace: str) -> list[HTTPRo
             ref=ref,
             domain=domain,
             namespace=namespace,
-            service_name="supabase-supabase-rest",
+            service_name=branch_service_name(namespace, "rest"),
             service_port=3000,
             path_prefix="/rest",
             route_suffix="postgrest-route",
@@ -971,7 +984,7 @@ def _storage_route_specs(ref: str, domain: str, namespace: str) -> list[HTTPRout
             ref=ref,
             domain=domain,
             namespace=namespace,
-            service_name="supabase-supabase-storage",
+            service_name=branch_service_name(namespace, "storage"),
             service_port=5000,
             path_prefix="/storage",
             route_suffix="storage-route",
@@ -988,7 +1001,7 @@ def _realtime_route_specs(ref: str, domain: str, namespace: str) -> list[HTTPRou
             ref=ref,
             domain=domain,
             namespace=namespace,
-            service_name="supabase-supabase-realtime",
+            service_name=branch_service_name(namespace, "realtime"),
             service_port=4000,
             path_prefix="/realtime",
             route_suffix="realtime-route",
@@ -1004,7 +1017,7 @@ def _pgmeta_route_specs(ref: str, domain: str, namespace: str) -> list[HTTPRoute
             ref=ref,
             domain=domain,
             namespace=namespace,
-            service_name="supabase-supabase-meta",
+            service_name=branch_service_name(namespace, "meta"),
             service_port=8080,
             path_prefix="/pg-meta",
             route_suffix="pgmeta-route",
