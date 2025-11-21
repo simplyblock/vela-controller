@@ -1,0 +1,102 @@
+{{- if .Values.meta.enabled }}
+{{- $root := . -}}
+{{- $dbHost := include "vela.db.serviceHostname" . -}}
+{{- $defaultEnv := dict
+  "PG_META_PORT" (printf "%v" (.Values.meta.environment.PG_META_PORT | default 8080))
+  "PG_META_DB_HOST" ($dbHost)
+  "PG_META_DB_PORT" (printf "%v" (.Values.meta.environment.PG_META_DB_PORT | default 5432))
+  "PG_META_DB_NAME" (.Values.meta.environment.PG_META_DB_NAME | default "postgres")
+  "PG_META_DB_USER" (.Values.meta.environment.PG_META_DB_USER | default "supabase_admin")
+  "PG_META_DB_DRIVER" (.Values.meta.environment.PG_META_DB_DRIVER | default "postgres")
+  "PG_META_DB_SSL_MODE" (.Values.meta.environment.PG_META_DB_SSL_MODE | default "disable")
+  "PG_META_DB_URL" (.Values.meta.environment.PG_META_DB_URL | default "")
+}} 
+{{- $userEnv := .Values.meta.environment | default (dict) -}}
+{{- $mergedEnv := merge $defaultEnv $userEnv -}}
+{{- $staticEnv := omit $mergedEnv "PG_META_DB_PASSWORD" "CRYPTO_KEY" -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "vela.meta.fullname" . }}
+  labels:
+    {{- include "vela.labels" . | nindent 4 }}
+    app.kubernetes.io/component: meta
+spec:
+  replicas: {{ .Values.meta.replicaCount | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "vela.meta.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "vela.meta.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: meta
+      {{- with .Values.meta.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "vela.meta.serviceAccountName" . }}
+      {{- with .Values.meta.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.meta.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ include "vela.meta.name" . }}
+          image: "{{ .Values.meta.image.repository }}:{{ .Values.meta.image.tag }}"
+          imagePullPolicy: {{ .Values.meta.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.meta.service.port | default 8080 }}
+              protocol: TCP
+          {{- with .Values.meta.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.meta.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            {{- $keys := keys $staticEnv | sortAlpha -}}
+            {{- range $keys }}
+            - name: {{ . }}
+              value: {{ tpl (printf "%v" (index $staticEnv .)) $root | quote }}
+            {{- end }}
+            - name: PG_META_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vela.secret.db" . }}
+                  key: password
+            - name: CRYPTO_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vela.secret.db" . }}
+                  key: pgmeta_crypto_key
+          {{- with .Values.meta.volumeMounts }}
+          volumeMounts:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.meta.resources | nindent 12 }}
+      {{- with .Values.meta.volumes }}
+      volumes:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.meta.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.meta.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.meta.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

@@ -1,0 +1,152 @@
+{{- if .Values.rest.enabled }}
+{{- $root := . -}}
+{{- $dbHost := include "vela.db.serviceHostname" . -}}
+{{- $dbPort := int (.Values.rest.environment.DB_PORT | default 5432) -}}
+{{- $defaultEnv := dict
+  "DB_DRIVER" (.Values.rest.environment.DB_DRIVER | default "postgres")
+  "DB_HOST" ($dbHost)
+  "DB_NAME" (.Values.rest.environment.DB_NAME | default "postgres")
+  "DB_PORT" (printf "%d" $dbPort)
+  "DB_SSL" (.Values.rest.environment.DB_SSL | default "disable")
+  "DB_USER" (.Values.rest.environment.DB_USER | default "postgres")
+  "PGRST_APP_SETTINGS_JWT_EXP" (printf "%v" (.Values.rest.environment.PGRST_APP_SETTINGS_JWT_EXP | default 3600))
+  "PGRST_DB_ANON_ROLE" (.Values.rest.environment.PGRST_DB_ANON_ROLE | default "anon")
+  "PGRST_DB_SCHEMAS" (.Values.rest.environment.PGRST_DB_SCHEMAS | default "public,storage,graphql_public")
+  "PGRST_DB_USE_LEGACY_GUCS" (printf "%v" (.Values.rest.environment.PGRST_DB_USE_LEGACY_GUCS | default false))
+}} 
+{{- $userEnv := .Values.rest.environment | default (dict) -}}
+{{- $mergedEnv := merge $defaultEnv $userEnv -}}
+{{- $staticEnv := omit $mergedEnv "DB_PASSWORD" "DB_PASSWORD_ENC" "PGRST_DB_URI" "PGRST_JWT_SECRET" "PGRST_APP_SETTINGS_JWT_SECRET" -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "vela.rest.fullname" . }}
+  labels:
+    {{- include "vela.labels" . | nindent 4 }}
+    app.kubernetes.io/component: rest
+spec:
+  replicas: {{ .Values.rest.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "vela.rest.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "vela.rest.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: rest
+      {{- with .Values.rest.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "vela.rest.serviceAccountName" . }}
+      {{- with .Values.rest.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.rest.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: wait-for-database
+          image: postgres:17-alpine
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: DB_HOST
+              value: {{ tpl (printf "%v" (index $mergedEnv "DB_HOST")) $root | quote }}
+            - name: DB_PORT
+              value: {{ tpl (printf "%v" (index $mergedEnv "DB_PORT")) $root | quote }}
+            - name: DB_USER
+              value: {{ tpl (printf "%v" (index $mergedEnv "DB_USER")) $root | quote }}
+            - name: DB_NAME
+              value: {{ tpl (printf "%v" (index $mergedEnv "DB_NAME")) $root | quote }}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vela.secret.db" . }}
+                  key: password
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo "Waiting for database..."
+              until pg_isready -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER"; do
+                sleep 2
+              done
+              echo "Database is ready"
+
+              until psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c '\q' 2>/dev/null; do
+                echo "Waiting for database user access..."
+                sleep 2
+              done
+              echo "Database connection established."
+      containers:
+        - name: {{ include "vela.rest.name" . }}
+          image: "{{ .Values.rest.image.repository }}:{{ .Values.rest.image.tag }}"
+          imagePullPolicy: {{ .Values.rest.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.rest.service.port | default 3000 }}
+              protocol: TCP
+          {{- with .Values.rest.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.rest.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            {{- $keys := keys $staticEnv | sortAlpha -}}
+            {{- range $keys }}
+            - name: {{ . }}
+              value: {{ tpl (printf "%v" (index $staticEnv .)) $root | quote }}
+            {{- end }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vela.secret.db" . }}
+                  key: password
+            - name: DB_PASSWORD_ENC
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vela.secret.db" . }}
+                  key: password_encoded
+            - name: PGRST_DB_URI
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vela.rest.secretName" . }}
+                  key: PGRST_DB_URI
+            - name: PGRST_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vela.secret.jwt" . }}
+                  key: secret
+            - name: PGRST_APP_SETTINGS_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vela.secret.jwt" . }}
+                  key: secret
+          {{- with .Values.rest.volumeMounts }}
+          volumeMounts:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.rest.resources | nindent 12 }}
+      {{- with .Values.rest.volumes }}
+      volumes:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.rest.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.rest.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.rest.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

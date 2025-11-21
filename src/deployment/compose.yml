@@ -31,34 +31,6 @@ services:
       options:
         max-size: 25m
         max-file: "1"
-  rest:
-    container_name: vela-rest
-    image: docker.io/postgrest/postgrest:v12.0.1
-    depends_on:
-    - db
-    restart: unless-stopped
-    environment:
-      DB_HOST: db
-      DB_PORT: '5432'
-      DB_NAME: postgres
-      DB_USER: authenticator
-      DB_PASSWORD: ${DB_PASSWORD}
-      DB_DRIVER: postgres
-      DB_SSL: disable
-      PGRST_DB_SCHEMAS: public,storage,graphql_public
-      PGRST_DB_USE_LEGACY_GUCS: 'false'
-      PGRST_APP_SETTINGS_JWT_EXP: '3600'
-      PGRST_JWT_SECRET: ${JWT_SECRET}
-      PGRST_APP_SETTINGS_JWT_SECRET: ${JWT_SECRET}
-    ports:
-    - 3000:3000
-    networks:
-    - vela
-    logging:
-      driver: k8s-file
-      options:
-        max-size: 25m
-        max-file: "1"
   pgbouncer:
     container_name: vela-pgbouncer
     image: docker.io/edoburu/pgbouncer:v1.24.1-p1
@@ -83,70 +55,6 @@ services:
         max-size: 25m
         max-file: "1"
 
-  meta:
-    image: docker.io/supabase/postgres-meta:v0.91.1
-    depends_on:
-    - db
-    restart: unless-stopped
-    environment:
-      PG_META_PORT: 8080
-      PG_META_DB_HOST: db
-      PG_META_DB_PORT: "5432"
-      PG_META_DB_NAME: postgres
-      PG_META_DB_USER: supabase_admin
-      PG_META_DB_PASSWORD: ${DB_PASSWORD}
-      PG_META_DB_DRIVER: postgres
-      PG_META_DB_SSL_MODE: disable
-      PG_META_DB_URL: '' # DB URI is decrypted from x-connection-encrypted header
-      CRYPTO_KEY: ${DB_PGMETA_CRYPTO_KEY}
-    ports:
-    - 8080:8080
-    networks:
-    - vela
-    logging:
-      driver: k8s-file
-      options:
-        max-size: 25m
-        max-file: "1"
-
-  storage:
-    container_name: vela-storage
-    image: docker.io/supabase/storage-api:v0.46.4
-    depends_on:
-    - db
-    - rest
-    restart: unless-stopped
-    environment:
-      DB_HOST: db
-      DB_PORT: '5432'
-      DB_NAME: postgres
-      DB_USER: supabase_storage_admin
-      DB_PASSWORD: ${DB_PASSWORD}
-      DB_DRIVER: postgres
-      DB_SSL: disable
-      FILE_SIZE_LIMIT: '52428800'
-      STORAGE_BACKEND: file
-      PGOPTIONS: -c search_path=storage,public
-      FILE_STORAGE_BACKEND_PATH: /var/lib/storage
-      DATABASE_URL: postgres://supabase_storage_admin:${DB_PASSWORD}@db:5432/postgres?sslmode=disable
-      TENANT_ID: stub
-      REGION: stub
-      GLOBAL_S3_BUCKET: stub
-      PGRST_JWT_SECRET: ${JWT_SECRET}
-      ANON_KEY: ${JWT_ANONKEY}
-      SERVICE_KEY: ${JWT_SERVICEKEY}
-      POSTGREST_URL: http://rest:3000
-    volumes:
-    - /mnt/postgres_data/storage:/var/lib/storage
-    ports:
-    - 5000:5000
-    networks:
-    - vela
-    logging:
-      driver: k8s-file
-      options:
-        max-size: 25m
-        max-file: "1"
   vector:
     container_name: vela-vector
     image: timberio/vector:0.28.1-alpine
@@ -186,5 +94,5 @@ networks:
     driver: bridge
     ipam:
       config:
-        - subnet: 10.89.0.0/24
-          gateway: 10.89.0.1
+        - subnet: 192.168.50.0/24
+          gateway: 192.168.50.1

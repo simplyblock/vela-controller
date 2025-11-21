@@ -1,0 +1,164 @@
+{{- if .Values.storage.enabled }}
+{{- $root := . -}}
+{{- $dbHost := include "vela.db.serviceHostname" . -}}
+{{- $restUrl := printf "http://%s:%v" (include "vela.rest.fullname" .) (.Values.rest.service.port | default 3000) -}}
+{{- $defaultEnv := dict
+  "DB_DRIVER" (.Values.storage.environment.DB_DRIVER | default "postgres")
+  "DB_HOST" ($dbHost)
+  "DB_NAME" (.Values.storage.environment.DB_NAME | default "postgres")
+  "DB_PORT" (printf "%v" (.Values.storage.environment.DB_PORT | default 5432))
+  "DB_SSL" (.Values.storage.environment.DB_SSL | default "disable")
+  "DB_USER" (.Values.storage.environment.DB_USER | default "vela_storage_admin")
+  "FILE_SIZE_LIMIT" (.Values.storage.environment.FILE_SIZE_LIMIT | default "52428800")
+  "STORAGE_BACKEND" (.Values.storage.environment.STORAGE_BACKEND | default "file")
+  "PGOPTIONS" (.Values.storage.environment.PGOPTIONS | default "-c search_path=storage,public")
+  "FILE_STORAGE_BACKEND_PATH" (.Values.storage.environment.FILE_STORAGE_BACKEND_PATH | default "/var/lib/storage")
+  "TENANT_ID" (.Values.storage.environment.TENANT_ID | default "stub")
+  "REGION" (.Values.storage.environment.REGION | default "stub")
+  "GLOBAL_S3_BUCKET" (.Values.storage.environment.GLOBAL_S3_BUCKET | default "stub")
+  "GLOBAL_S3_ENDPOINT" (.Values.storage.environment.GLOBAL_S3_ENDPOINT | default "")
+  "GLOBAL_S3_PROTOCOL" (.Values.storage.environment.GLOBAL_S3_PROTOCOL | default "")
+  "GLOBAL_S3_FORCE_PATH_STYLE" (printf "%v" (.Values.storage.environment.GLOBAL_S3_FORCE_PATH_STYLE | default ""))
+  "AWS_DEFAULT_REGION" (.Values.storage.environment.AWS_DEFAULT_REGION | default "")
+  "POSTGREST_URL" (.Values.storage.environment.POSTGREST_URL | default $restUrl)
+}}
+{{- $userEnv := .Values.storage.environment | default (dict) -}}
+{{- $mergedEnv := merge $defaultEnv $userEnv -}}
+{{- $staticEnv := omit $mergedEnv "DB_PASSWORD" "DB_PASSWORD_ENC" "DATABASE_URL" "PGRST_JWT_SECRET" "ANON_KEY" "SERVICE_KEY" -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "vela.storage.fullname" . }}
+  labels:
+    {{- include "vela.labels" . | nindent 4 }}
+    app.kubernetes.io/component: storage
+spec:
+  replicas: {{ .Values.storage.replicaCount | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "vela.storage.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "vela.storage.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: storage
+      {{- with .Values.storage.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "vela.storage.serviceAccountName" . }}
+      {{- with .Values.storage.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.storage.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: wait-for-rest
+          image: curlimages/curl:8.11.1
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: REST_URL
+              value: {{ tpl (printf "%v" (index $mergedEnv "POSTGREST_URL")) $root | quote }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo "Waiting for vela-rest at ${REST_URL}..."
+              until curl -sS -o /dev/null "${REST_URL}"; do
+                echo "vela-rest not ready yet. Sleeping..."
+                sleep 5
+              done
+              echo "vela-rest is ready."
+      containers:
+        - name: {{ include "vela.storage.name" . }}
+          image: "{{ .Values.storage.image.repository }}:{{ .Values.storage.image.tag }}"
+          imagePullPolicy: {{ .Values.storage.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.storage.service.port | default 5000 }}
+              protocol: TCP
+          {{- with .Values.storage.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.storage.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            {{- $keys := keys $staticEnv | sortAlpha -}}
+            {{- range $keys }}
+            - name: {{ . }}
+              value: {{ tpl (printf "%v" (index $staticEnv .)) $root | quote }}
+            {{- end }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vela.secret.db" . }}
+                  key: password
+            - name: DB_PASSWORD_ENC
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vela.secret.db" . }}
+                  key: password_encoded
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vela.storage.secretName" . }}
+                  key: DATABASE_URL
+            - name: PGRST_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vela.secret.jwt" . }}
+                  key: secret
+            - name: ANON_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vela.secret.jwt" . }}
+                  key: anonKey
+            - name: SERVICE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vela.secret.jwt" . }}
+                  key: serviceKey
+          {{- $hasDefaultMount := and .Values.storage.persistence.enabled }}
+          {{- if or $hasDefaultMount .Values.storage.volumeMounts }}
+          volumeMounts:
+            {{- if $hasDefaultMount }}
+            - name: storage-data
+              mountPath: {{ .Values.storage.environment.FILE_STORAGE_BACKEND_PATH | default "/var/lib/storage" }}
+            {{- end }}
+            {{- with .Values.storage.volumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.storage.resources | nindent 12 }}
+      {{- $hasDefaultVolume := and .Values.storage.persistence.enabled }}
+      {{- if or $hasDefaultVolume .Values.storage.volumes }}
+      volumes:
+        {{- if $hasDefaultVolume }}
+        - name: storage-data
+          persistentVolumeClaim:
+            claimName: {{ include "vela.storage.pvcName" . }}
+        {{- end }}
+        {{- with .Values.storage.volumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.storage.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.storage.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.storage.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
