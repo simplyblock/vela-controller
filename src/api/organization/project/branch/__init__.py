@@ -295,6 +295,7 @@ _SERVICE_PROBE_TIMEOUT_SECONDS = 2
 _SNAPSHOT_TIMEOUT_SECONDS = float(600)
 _SNAPSHOT_POLL_INTERVAL_SECONDS = float(2)
 _PVC_TIMEOUT_SECONDS = float(600)
+_PVC_CLONE_TIMEOUT_SECONDS = float(10)
 _PVC_POLL_INTERVAL_SECONDS = float(2)
 _VOLUME_SNAPSHOT_CLASS = "simplyblock-csi-snapshotclass"
 _SUPPORTED_DATABASE_IMAGE_TAG = "15.1.0.147"
@@ -573,6 +574,13 @@ def _deployment_parameters_from_source(
     memory_bytes = cast("int", resource_values["memory_bytes"])
     iops = cast("int", resource_values["iops"])
     storage_size = resource_values["storage_size"] if enable_file_storage else None
+
+    _ensure_clone_storage_capacity(
+        source,
+        database_size=database_size,
+        storage_size=storage_size,
+        enable_file_storage=enable_file_storage,
+    )
 
     return DeploymentParameters(
         database_password=source.database_password,
@@ -878,7 +886,7 @@ async def _clone_branch_environment_task(
                 storage_class_name=storage_class_name,
                 snapshot_timeout_seconds=_SNAPSHOT_TIMEOUT_SECONDS,
                 snapshot_poll_interval_seconds=_SNAPSHOT_POLL_INTERVAL_SECONDS,
-                pvc_timeout_seconds=_PVC_TIMEOUT_SECONDS,
+                pvc_timeout_seconds=_PVC_CLONE_TIMEOUT_SECONDS,
                 pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
             )
         except VelaError:
@@ -1192,6 +1200,33 @@ async def _ensure_resize_resource_limits(
         exclude_branch_ids=[branch.id],
     )
     _ensure_branch_resource_limits(exceeded_limits, target_allocations, remaining_limits)
+
+
+def _ensure_clone_storage_capacity(
+    source: Branch,
+    *,
+    database_size: int,
+    storage_size: int | None,
+    enable_file_storage: bool,
+) -> None:
+    usage = source.resource_usage_snapshot()
+    errors: list[str] = []
+    if database_size <= usage.nvme_bytes:
+        errors.append(
+            f"Requested database_size {database_size} must be greater than current usage {usage.nvme_bytes} "
+            f"for source branch {source.id}"
+        )
+
+    if enable_file_storage:
+        current_storage_usage = usage.storage_bytes
+        if current_storage_usage is not None and storage_size is not None and storage_size <= current_storage_usage:
+            errors.append(
+                f"Requested storage_size {storage_size} must be greater than current usage {current_storage_usage} "
+                f"for source branch {source.id}"
+            )
+
+    if errors:
+        raise HTTPException(status_code=422, detail="; ".join(errors))
 
 
 async def _post_commit_branch_setup(
