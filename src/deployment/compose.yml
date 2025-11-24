@@ -65,34 +65,6 @@ services:
     networks:
       - vela
 
-  realtime:
-    container_name: vela-realtime
-    image: docker.io/supabase/realtime:v2.27.5
-    depends_on:
-    - db
-    restart: unless-stopped
-    environment:
-      DB_HOST: db
-      DB_PORT: '5432'
-      DB_NAME: ${POSTGRES_DB}
-      DB_USER: supabase_admin
-      DB_PASSWORD: ${POSTGRES_PASSWORD}
-      DB_SSL: disable
-      DB_AFTER_CONNECT_QUERY: SET search_path TO _realtime
-      DB_ENC_KEY: velarealtime
-      PORT: '4000'
-      FLY_ALLOC_ID: fly123
-      FLY_APP_NAME: realtime
-      SECRET_KEY_BASE: UpNVntn3cDxHJpq99YMc1T1AQgQpc8kfYTuRgBiYa15BLrx8etQoXz3gZv1/u2oq
-      ERL_AFLAGS: -proto_dist inet_tcp
-      ENABLE_TAILSCALE: 'false'
-      DNS_NODES: ''''''
-      JWT_SECRET: ${VELA_JWT_SECRET}
-      API_JWT_SECRET: ${VELA_JWT_SECRET}
-    ports:
-    - 4000:4000
-    networks:
-    - vela
   meta:
     image: docker.io/supabase/postgres-meta:v0.91.1
     depends_on:

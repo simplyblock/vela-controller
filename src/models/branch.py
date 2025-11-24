@@ -424,7 +424,6 @@ class ApiKeyDetails(BaseModel):
 class BranchStatus(BaseModel):
     database: BranchServiceStatus
     storage: BranchServiceStatus
-    realtime: BranchServiceStatus
     meta: BranchServiceStatus
     rest: BranchServiceStatus
 

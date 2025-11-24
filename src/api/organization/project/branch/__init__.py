@@ -145,7 +145,6 @@ def _derive_branch_status_from_services(
 ) -> BranchServiceStatus:
     statuses: list[BranchServiceStatus] = [
         service_status.database,
-        service_status.realtime,
         service_status.meta,
         service_status.rest,
     ]
@@ -254,7 +253,6 @@ def _normalize_resize_statuses(branch: Branch) -> dict[str, BranchResizeStatusEn
 
 _DEFAULT_SERVICE_STATUS = BranchStatus(
     database=BranchServiceStatus.UNKNOWN,
-    realtime=BranchServiceStatus.UNKNOWN,
     storage=BranchServiceStatus.UNKNOWN,
     meta=BranchServiceStatus.UNKNOWN,
     rest=BranchServiceStatus.UNKNOWN,
@@ -304,7 +302,6 @@ _SUPPORTED_DATABASE_IMAGE_TAG = "15.1.0.147"
 _BRANCH_SERVICE_ENDPOINTS: dict[str, tuple[str, int]] = {
     "database": ("db", 5432),
     "pgbouncer": ("pgbouncer", 6432),
-    "realtime": ("realtime", 4000),
     "storage": ("storage", 5000),
     "meta": ("meta", 8080),
     "rest": ("rest", 3000),
@@ -709,7 +706,6 @@ async def _collect_branch_service_health(namespace: str, *, storage_enabled: boo
             "storage",
             BranchServiceStatus.STOPPED if not storage_enabled else BranchServiceStatus.UNKNOWN,
         ),
-        realtime=results["realtime"],
         meta=results["meta"],
         rest=results["rest"],
     )
