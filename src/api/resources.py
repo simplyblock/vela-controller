@@ -4,7 +4,6 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlmodel import select
@@ -14,11 +13,11 @@ from ..check_branch_status import get_branch_status
 from ..deployment import (
     get_db_vmi_identity,
     kube_service,
-    load_simplyblock_credentials,
     resolve_database_volume_identifiers,
     resolve_storage_volume_identifiers,
 )
 from ..deployment.kubernetes._util import custom_api_client
+from ..deployment.simplyblock_api import create_simplyblock_api
 from ..models._util import Identifier
 from ..models.branch import Branch, BranchServiceStatus, ResourceUsageDefinition
 from ..models.project import Project
@@ -60,8 +59,6 @@ if TYPE_CHECKING:
 
 router = APIRouter(tags=["resource"])
 
-SIMPLYBLOCK_API_TIMEOUT_SECONDS = 10.0
-
 
 # ---------------------------
 # Helper functions
@@ -81,46 +78,6 @@ AsyncSessionLocal = async_sessionmaker(
 )
 
 logger = logging.getLogger(__name__)
-
-
-def _require_int_stat(stats: dict[str, Any], field: str) -> int:
-    if field not in stats:
-        raise ValueError(f"Simplyblock IO stats missing required field {field!r}")
-    value = stats[field]
-    try:
-        return int(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"Simplyblock IO stat {field!r} with value {value!r} is not an integer") from exc
-
-
-async def _fetch_volume_stats(
-    *,
-    client: httpx.AsyncClient,
-    endpoint: str,
-    cluster_id: str,
-    cluster_secret: str,
-    volume_uuid: str,
-    required_fields: tuple[str, ...],
-) -> dict[str, int]:
-    url = f"{endpoint}/lvol/iostats/{volume_uuid}"
-    headers = {
-        "Authorization": f"{cluster_id} {cluster_secret}",
-        "Accept": "application/json",
-    }
-
-    response = await client.get(url, headers=headers, timeout=SIMPLYBLOCK_API_TIMEOUT_SECONDS)
-    response.raise_for_status()
-
-    payload = response.json()
-
-    stats = payload.get("stats")
-    if not isinstance(stats, list) or not stats:
-        raise ValueError(f"Simplyblock IO stats payload missing stats list for volume {volume_uuid}")
-    entry = stats[0]
-    if not isinstance(entry, dict):
-        raise ValueError(f"Simplyblock IO stats entry malformed for volume {volume_uuid}")
-
-    return {field: _require_int_stat(entry, field) for field in required_fields}
 
 
 # ---------------------------
@@ -414,59 +371,17 @@ async def _resolve_volume_stats(
     *,
     volume_identifier_resolver: Callable[[str], Awaitable[tuple[str, str | None]]],
     namespace: str,
-    branch: Branch,
-    resource_label: str,
-    sb_client: httpx.AsyncClient,
-    endpoint: str,
-    cluster_id: str,
-    cluster_secret: str,
-    required_fields: tuple[str, ...],
 ) -> dict[str, int]:
-    volume_uuid, pv_cluster_id = await volume_identifier_resolver(namespace)
+    volume_uuid, _ = await volume_identifier_resolver(namespace)
 
-    if pv_cluster_id and pv_cluster_id != cluster_id:
-        logger.warning(
-            "Cluster mismatch for branch %s %s volume %s: PV cluster %s != credentials cluster %s",
-            branch.id,
-            resource_label,
-            volume_uuid,
-            pv_cluster_id,
-            cluster_id,
-        )
-        raise ValueError(
-            f"Cluster mismatch for branch {branch.id} {resource_label} volume {volume_uuid}: "
-            f"PV cluster {pv_cluster_id} != credentials cluster {cluster_id}"
-        )
-
-    return await _fetch_volume_stats(
-        client=sb_client,
-        endpoint=endpoint,
-        cluster_id=cluster_id,
-        cluster_secret=cluster_secret,
-        volume_uuid=volume_uuid,
-        required_fields=required_fields,
-    )
+    async with create_simplyblock_api() as sb_api:
+        return await sb_api.volume_iostats(volume_uuid=volume_uuid)
 
 
-async def _collect_database_volume_usage(
-    *,
-    namespace: str,
-    branch: Branch,
-    sb_client: httpx.AsyncClient,
-    endpoint: str,
-    cluster_id: str,
-    cluster_secret: str,
-) -> tuple[int, int]:
+async def _collect_database_volume_usage(namespace: str) -> tuple[int, int]:
     stats = await _resolve_volume_stats(
         volume_identifier_resolver=resolve_database_volume_identifiers,
         namespace=namespace,
-        branch=branch,
-        resource_label="database",
-        sb_client=sb_client,
-        endpoint=endpoint,
-        cluster_id=cluster_id,
-        cluster_secret=cluster_secret,
-        required_fields=("size_used", "read_io_ps", "write_io_ps"),
     )
     nvme_bytes = stats["size_used"]
     read_iops = stats["read_io_ps"]
@@ -474,53 +389,22 @@ async def _collect_database_volume_usage(
     return nvme_bytes, read_iops + write_iops
 
 
-async def _collect_storage_volume_usage(
-    *,
-    namespace: str,
-    branch: Branch,
-    sb_client: httpx.AsyncClient,
-    endpoint: str,
-    cluster_id: str,
-    cluster_secret: str,
-) -> int:
+async def _collect_storage_volume_usage(namespace: str) -> int:
     stats = await _resolve_volume_stats(
         volume_identifier_resolver=resolve_storage_volume_identifiers,
         namespace=namespace,
-        branch=branch,
-        resource_label="storage",
-        sb_client=sb_client,
-        endpoint=endpoint,
-        cluster_id=cluster_id,
-        cluster_secret=cluster_secret,
-        required_fields=("size_used",),
     )
     return stats["size_used"]
 
 
 async def _collect_branch_volume_usage(branch: Branch, namespace: str) -> tuple[int, int, int | None]:
-    endpoint, cluster_id, cluster_secret = await load_simplyblock_credentials()
-    async with httpx.AsyncClient() as sb_client:
-        db_task = _collect_database_volume_usage(
-            namespace=namespace,
-            branch=branch,
-            sb_client=sb_client,
-            endpoint=endpoint,
-            cluster_id=cluster_id,
-            cluster_secret=cluster_secret,
-        )
-        if branch.enable_file_storage:
-            storage_task = _collect_storage_volume_usage(
-                namespace=namespace,
-                branch=branch,
-                sb_client=sb_client,
-                endpoint=endpoint,
-                cluster_id=cluster_id,
-                cluster_secret=cluster_secret,
-            )
-            (nvme_bytes, iops), storage_bytes = await asyncio.gather(db_task, storage_task)
-        else:
-            nvme_bytes, iops = await db_task
-            storage_bytes = None
+    db_task = _collect_database_volume_usage(namespace)
+    if branch.enable_file_storage:
+        storage_task = _collect_storage_volume_usage(namespace)
+        (nvme_bytes, iops), storage_bytes = await asyncio.gather(db_task, storage_task)
+    else:
+        nvme_bytes, iops = await db_task
+        storage_bytes = None
 
     return nvme_bytes, iops, storage_bytes
 
