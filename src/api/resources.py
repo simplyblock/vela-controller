@@ -435,6 +435,13 @@ async def monitor_resources(interval_seconds: int = 60):
 
                 for branch in branches:
                     status = await refresh_branch_status(branch.id)
+                    if status != BranchServiceStatus.ACTIVE_HEALTHY:
+                        logger.debug(
+                            "Skipping resource collection for branch %s with non-active status %s",
+                            branch.id,
+                            status,
+                        )
+                        continue
                     try:
                         usage = await _collect_branch_resource_usage(branch)
                     except Exception:
