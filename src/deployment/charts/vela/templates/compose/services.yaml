@@ -15,22 +15,7 @@ spec:
       name: http
   selector:
     vm.kubevirt.io/name: {{ include "vela.db.fullname" . }}
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: {{ printf "%s-realtime" $releaseFullname }}
-  labels:
-    {{- include "vela.labels" . | nindent 4 }}
-spec:
-  type: {{ .Values.realtime.service.type | default "ClusterIP" }}
-  ports:
-    - port: {{ .Values.realtime.service.port | default 4000 }}
-      targetPort: 4000
-      protocol: TCP
-      name: http
-  selector:
-    vm.kubevirt.io/name: {{ include "vela.db.fullname" . }}
+
 ---
 {{- if .Values.storage.enabled }}
 apiVersion: v1

@@ -1,9 +1,8 @@
 # File structure of values.yaml:
 # |-- 1.  Database
 # |-- 2.  Rest
-# |-- 3.  Realtime
-# |-- 4.  Meta
-# |-- 5.  Storage API
+# |-- 3.  Meta
+# |-- 4.  Storage API
 
 # docker-compose payload injected via helm --set-file composeYaml
 composeYaml: ""
@@ -13,7 +12,7 @@ pgHbaConf: ""
 secret:
   # jwt will be used to reference secret in multiple services:
   # Anon & Service key: Studio, Storage, Kong
-  # JWT Secret: Analytics, Auth, Rest, Realtime, Storage
+  # JWT Secret: Analytics, Auth, Rest, Storage
   pgmeta_crypto_key: ''
   jwt:
     anonKey: ""
@@ -39,7 +38,7 @@ db:
   # Enable database provisioning
   enabled: true
   image:
-    repository: vela/postgres
+    repository: supabase/postgres
     pullPolicy: IfNotPresent
     tag: "15.1.0.147"
   imagePullSecrets: []
@@ -228,97 +227,12 @@ rest:
   tolerations: []
   affinity: {}
 
-# Realtime Service
-realtime:
-  # Enable realtime provisioning
-  enabled: false
-  image:
-    repository: vela/realtime
-    pullPolicy: IfNotPresent
-    tag: v2.27.5
-  imagePullSecrets: []
-  nameOverride: ""
-  fullnameOverride: ""
-  livenessProbe:
-    httpGet:
-      path: /
-      port: 4000
-    initialDelaySeconds: 3
-  readinessProbe: {}
-  serviceAccount:
-    # Specifies whether a service account should be created
-    create: true
-    # Annotations to add to the service account
-    annotations: {}
-    # The name of the service account to use.
-    # If not set and create is true, a name is generated using the fullname template
-    name: ""
-  podAnnotations: {}
-  podSecurityContext: {}
-    # fsGroup: 2000
-  securityContext: {}
-    # capabilities:
-    #   drop:
-    #   - ALL
-    # readOnlyRootFilesystem: true
-    # runAsNonRoot: true
-    # runAsUser: 1000
-  service:
-    type: ClusterIP
-    port: 4000
-  environment:
-    # Override the database hostname if using external database
-    # DB_HOST: DATABASE.NAMESPACE.svc.cluster.local
-    DB_USER: supabase_admin
-    DB_PORT: 5432
-    DB_SSL: disable  # disable, allow, prefer, require, verify-ca, verify-full
-    DB_AFTER_CONNECT_QUERY: "SET search_path TO _realtime"
-    DB_ENC_KEY: velarealtime
-    PORT: "4000"
-    FLY_ALLOC_ID: fly123
-    FLY_APP_NAME: realtime
-    SECRET_KEY_BASE: UpNVntn3cDxHJpq99YMc1T1AQgQpc8kfYTuRgBiYa15BLrx8etQoXz3gZv1/u2oq
-    ERL_AFLAGS: -proto_dist inet_tcp
-    ENABLE_TAILSCALE: "false"
-    DNS_NODES: "''"
-  # volumeMounts:
-  #   - name: volume_name
-  #     mountPath: /path/to/my/secret
-  # volumes:
-  #   - name: volume_name
-  #     secret:
-  #       defaultMode: 733
-  #       secretName: my_secret
-  #       items:
-  #       - key: my_secret.txt
-  #         path: name_of_file_in_container.txt
-  resources: {}
-    # We usually recommend not to specify default resources and to leave this as a conscious
-    # choice for the user. This also increases chances charts run on environments with little
-    # resources, such as Minikube. If you do want to specify resources, uncomment the following
-    # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
-    # limits:
-    #   cpu: 100m
-    #   memory: 128Mi
-    # requests:
-    #   cpu: 100m
-    #   memory: 128Mi
-  autoscaling:
-    enabled: true
-    minReplicas: 1
-    maxReplicas: 100
-    targetCPUUtilizationPercentage: 80
-    # targetMemoryUtilizationPercentage: 80
-  nodeSelector: {}
-  tolerations: []
-  affinity: {}
-
 # Meta Service
 meta:
   # Enable meta provisioning
   enabled: false
   image:
-    repository: vela/postgres-meta
+    repository: supabase/postgres-meta
     pullPolicy: IfNotPresent
     tag: v0.80.0
   imagePullSecrets: []
@@ -397,7 +311,7 @@ storage:
   # Enable storage provisioning
   enabled: false
   image:
-    repository: vela/storage-api
+    repository: supabase/storage-api
     pullPolicy: IfNotPresent
     tag: v0.46.4
   imagePullSecrets: []
@@ -434,7 +348,7 @@ storage:
   environment:
     # Override the database hostname if using external database
     # DB_HOST: DATABASE.NAMESPACE.svc.cluster.local
-    DB_USER: vela_storage_admin
+    DB_USER: supabase_storage_admin
     DB_PORT: 5432
     DB_DRIVER: postgres
     DB_SSL: disable  # disable, allow, prefer, require, verify-ca, verify-full

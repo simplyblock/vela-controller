@@ -981,22 +981,6 @@ def _storage_route_specs(ref: str, domain: str, namespace: str) -> list[HTTPRout
     ]
 
 
-def _realtime_route_specs(ref: str, domain: str, namespace: str) -> list[HTTPRouteSpec]:
-    """HTTPRoute definitions that expose the Realtime service for a branch."""
-
-    return [
-        HTTPRouteSpec(
-            ref=ref,
-            domain=domain,
-            namespace=namespace,
-            service_name=branch_service_name(namespace, "realtime"),
-            service_port=4000,
-            path_prefix="/realtime",
-            route_suffix="realtime-route",
-        ),
-    ]
-
-
 def _pgmeta_route_specs(ref: str, domain: str, namespace: str) -> list[HTTPRouteSpec]:
     """HTTPRoute definitions that expose the Postgres Meta service for a branch."""
 
@@ -1141,7 +1125,7 @@ async def provision_branch_endpoints(
     anon_key: str,
     service_key: str,
 ) -> BranchEndpointResult:
-    """Provision DNS + HTTPRoute resources (PostgREST + optional Storage + Realtime + PGMeta) for a branch."""
+    """Provision DNS + HTTPRoute resources (PostgREST + optional Storage + PGMeta) for a branch."""
 
     cf_cfg = _cloudflare_config()
 
@@ -1172,7 +1156,6 @@ async def provision_branch_endpoints(
     route_specs = _postgrest_route_specs(ref, domain, gateway_cfg.namespace)
     if spec.enable_file_storage:
         route_specs += _storage_route_specs(ref, domain, gateway_cfg.namespace)
-    route_specs += _realtime_route_specs(ref, domain, gateway_cfg.namespace)
     route_specs += _pgmeta_route_specs(ref, domain, gateway_cfg.namespace)
     routes = [_build_http_route(gateway_cfg, route_spec) for route_spec in route_specs]
     await _apply_http_routes(gateway_cfg.namespace, routes)
