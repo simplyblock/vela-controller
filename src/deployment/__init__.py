@@ -65,8 +65,8 @@ CPU_REQUEST_FRACTION = 0.25  # request = 25% of limit
 SIMPLYBLOCK_NAMESPACE = "simplyblock"
 SIMPLYBLOCK_CSI_CONFIGMAP = "simplyblock-csi-cm"
 SIMPLYBLOCK_CSI_SECRET = "simplyblock-csi-secret"
-STORAGE_PVC_SUFFIX = "-vela-db-storage-pvc"
-DATABASE_PVC_SUFFIX = "-vela-db-pvc"
+STORAGE_PVC_SUFFIX = "-db-storage-pvc"
+DATABASE_PVC_SUFFIX = "-db-pvc"
 _LOAD_BALANCER_TIMEOUT_SECONDS = float(600)
 _LOAD_BALANCER_POLL_INTERVAL_SECONDS = float(2)
 DNSRecordType = Literal["AAAA", "CNAME"]
