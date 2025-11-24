@@ -44,7 +44,7 @@ from .kubernetes import KubernetesService
 from .kubernetes.kubevirt import get_virtualmachine_status
 from .logflare import create_branch_logflare_objects, delete_branch_logflare_objects
 from .settings import get_settings
-from .simplyblock_api import SIMPLYBLOCK_API_TIMEOUT_SECONDS, create_simplyblock_api
+from .simplyblock_api import create_simplyblock_api
 
 if TYPE_CHECKING:
     from cloudflare.types.dns.record_list_params import Name as CloudflareRecordName
@@ -286,8 +286,7 @@ async def update_branch_volume_iops(branch_id: Identifier, iops: int) -> None:
 
     volume_uuid, _ = await resolve_database_volume_identifiers(namespace)
     try:
-        async with httpx.AsyncClient(timeout=SIMPLYBLOCK_API_TIMEOUT_SECONDS) as client:
-            sb_api = await create_simplyblock_api(client)
+        async with create_simplyblock_api() as sb_api:
             await sb_api.update_volume(volume_uuid=volume_uuid, payload={"max-rw-iops": iops})
     except httpx.HTTPStatusError as exc:
         detail = exc.response.text.strip() or exc.response.reason_phrase or str(exc)

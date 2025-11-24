@@ -4,7 +4,6 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlmodel import select
@@ -375,8 +374,7 @@ async def _resolve_volume_stats(
 ) -> dict[str, int]:
     volume_uuid, _ = await volume_identifier_resolver(namespace)
 
-    async with httpx.AsyncClient() as sb_client:
-        sb_api = await create_simplyblock_api(sb_client)
+    async with create_simplyblock_api() as sb_api:
         return await sb_api.volume_iostats(volume_uuid=volume_uuid)
 
 
