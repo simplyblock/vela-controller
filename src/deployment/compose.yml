@@ -96,7 +96,7 @@ services:
       DB_HOST: db
       DB_PORT: '5432'
       DB_NAME: ${POSTGRES_DB}
-      DB_USER: vela_storage_admin
+      DB_USER: supabase_storage_admin
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       DB_PASSWORD_ENC: ${POSTGRES_PASSWORD_ENC}
       DB_DRIVER: postgres
@@ -108,10 +108,10 @@ services:
       TENANT_ID: stub
       REGION: stub
       GLOBAL_S3_BUCKET: stub
-      DATABASE_URL: postgres://vela_storage_admin:${POSTGRES_PASSWORD_ENC}@db:5432/${POSTGRES_DB}?sslmode=disable
+      DATABASE_URL: postgres://supabase_storage_admin:${POSTGRES_PASSWORD_ENC}@db:5432/${POSTGRES_DB}?sslmode=disable
       PGRST_JWT_SECRET: ${VELA_JWT_SECRET}
-      ANON_KEY: ${vela_ANON_KEY}
-      SERVICE_KEY: ${vela_SERVICE_KEY}
+      ANON_KEY: ${VELA_ANON_KEY}
+      SERVICE_KEY: ${VELA_SERVICE_KEY}
       POSTGREST_URL: http://rest:3000
     volumes:
     - /mnt/postgres_data/storage:/var/lib/storage
