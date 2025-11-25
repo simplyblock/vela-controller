@@ -170,11 +170,11 @@ rest:
   #         path: name_of_file_in_container.txt
   resources:
     limits:
-      cpu: 500m
-      memory: 512Mi
+      cpu: 200m
+      memory: 256Mi
     requests:
       cpu: 100m
-      memory: 256Mi
+      memory: 128Mi
   autoscaling:
     enabled: true
     minReplicas: 1
@@ -248,7 +248,7 @@ meta:
       cpu: 200m
       memory: 256Mi
     requests:
-      cpu: 50m
+      cpu: 100m
       memory: 128Mi
   autoscaling:
     enabled: true
@@ -336,8 +336,8 @@ storage:
     # resources, such as Minikube. If you do want to specify resources, uncomment the following
     # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
     limits:
-      cpu: 100m
-      memory: 128Mi
+      cpu: 200m
+      memory: 256Mi
     requests:
       cpu: 100m
       memory: 128Mi

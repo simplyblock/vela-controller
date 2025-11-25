@@ -311,6 +311,39 @@ _PGBOUNCER_CONFIG_TEMPLATE_ERROR = "PgBouncer configuration template missing req
 _PGBOUNCER_CONFIG_UPDATE_ERROR = "Failed to update PgBouncer configuration."
 
 
+async def _scale_branch_deployments(namespace: str, *, enable_file_storage: bool, replicas: int) -> None:
+    components = ["rest", "meta"]
+    if enable_file_storage:
+        components.append("storage")
+
+    for component in components:
+        name = branch_service_name(component)
+        try:
+            await kube_service.scale_deployment(namespace, name, replicas)
+        except VelaKubernetesError:
+            logger.warning("Failed to scale deployment %s/%s to %s replicas", namespace, name, replicas, exc_info=True)
+        except Exception:  # pragma: no cover - defensive guard
+            logger.exception("Unexpected error scaling deployment %s/%s", namespace, name)
+
+
+async def _run_post_control_side_effects(
+    *,
+    action: str,
+    namespace: str,
+    enable_file_storage: bool,
+) -> None:
+    if action == "start":
+        replicas = _ACTION_TO_DEPLOYMENT_REPLICAS.get(action)
+        if replicas is None:
+            return
+
+        await _scale_branch_deployments(
+            namespace,
+            enable_file_storage=enable_file_storage,
+            replicas=replicas,
+        )
+
+
 def generate_pgbouncer_password(length: int = 32) -> str:
     if length <= 0:
         raise ValueError("PgBouncer password length must be positive.")
@@ -703,12 +736,14 @@ async def _collect_branch_service_health(namespace: str, *, storage_enabled: boo
             logger.exception("Service health probe failed for %s", label)
             results[label] = BranchServiceStatus.UNKNOWN
 
+    storage_status = results.get(
+        "storage",
+        BranchServiceStatus.STOPPED if not storage_enabled else BranchServiceStatus.UNKNOWN,
+    )
+
     return BranchStatus(
         database=results["database"],
-        storage=results.get(
-            "storage",
-            BranchServiceStatus.STOPPED if not storage_enabled else BranchServiceStatus.UNKNOWN,
-        ),
+        storage=storage_status,
         meta=results["meta"],
         rest=results["rest"],
     )
@@ -1828,6 +1863,12 @@ _CONTROL_TRANSITION_FINAL: dict[str, BranchServiceStatus | None] = {
     "stop": BranchServiceStatus.STOPPED,
 }
 
+_ACTION_TO_DEPLOYMENT_REPLICAS: dict[str, int] = {
+    "start": 1,
+    "resume": 1,
+    "stop": 0,
+}
+
 
 async def _set_branch_status(session: SessionDep, branch: Branch, status: BranchServiceStatus):
     branch.status = status
@@ -1899,6 +1940,11 @@ async def control_branch(
             action=action,
             autoscaler_namespace=autoscaler_namespace,
             autoscaler_vm_name=autoscaler_vm_name,
+        )
+        await _run_post_control_side_effects(
+            action=action,
+            namespace=autoscaler_namespace,
+            enable_file_storage=branch_in_session.enable_file_storage,
         )
     except ApiException as e:
         await _set_branch_status(session, branch_in_session, BranchServiceStatus.ERROR)

@@ -7,7 +7,7 @@ from aiohttp import ClientError
 from kubernetes_asyncio import client
 
 from ...exceptions import VelaKubernetesError
-from ._util import core_v1_client, custom_api_client, storage_v1_client
+from ._util import apps_v1_client, core_v1_client, custom_api_client, storage_v1_client
 from .neonvm import NeonVM, get_neon_vm
 
 logger = logging.getLogger(__name__)
@@ -218,6 +218,21 @@ class KubernetesService:
             except client.exceptions.ApiException as exc:
                 if exc.status == 404:
                     raise VelaKubernetesError(f"Secret {namespace!r}/{name!r} not found") from exc
+                raise
+
+    async def scale_deployment(self, namespace: str, name: str, replicas: int) -> None:
+        body = {"spec": {"replicas": replicas}}
+        async with apps_v1_client() as apps_v1:
+            try:
+                await apps_v1.patch_namespaced_deployment_scale(
+                    name=name,
+                    namespace=namespace,
+                    body=body,
+                )
+                logger.info("Scaled deployment %s/%s to %s replicas", namespace, name, replicas)
+            except client.exceptions.ApiException as exc:
+                if exc.status == 404:
+                    raise VelaKubernetesError(f"Deployment {namespace!r}/{name!r} not found") from exc
                 raise
 
     async def get_persistent_volume_claim(self, namespace: str, name: str) -> Any:
