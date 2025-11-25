@@ -16,7 +16,6 @@ from fastapi.security import HTTPAuthorizationCredentials
 from keycloak.exceptions import KeycloakError
 from kubernetes_asyncio.client.exceptions import ApiException
 from pydantic import ValidationError
-from sqlalchemy import inspect
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
@@ -33,6 +32,7 @@ from .....deployment import (
     delete_deployment,
     deploy_branch_environment,
     ensure_branch_storage_class,
+    get_autoscaler_vm_identity,
     get_db_vmi_identity,
     kube_service,
     resize_deployment,
@@ -41,6 +41,8 @@ from .....deployment import (
 )
 from .....deployment.kubernetes._util import core_v1_client
 from .....deployment.kubernetes.kubevirt import KubevirtSubresourceAction, call_kubevirt_subresource
+from .....deployment.kubernetes.neonvm import PowerState as NeonVMPowerState
+from .....deployment.kubernetes.neonvm import set_virtualmachine_power_state
 from .....deployment.kubernetes.volume_clone import (
     clone_branch_database_volume,
     restore_branch_database_volume_from_snapshot,
@@ -116,14 +118,6 @@ def _parse_branch_status(value: BranchServiceStatus | str | None) -> BranchServi
             return cast("BranchServiceStatus", member)
         logger.warning("Encountered unknown branch status %s; defaulting to UNKNOWN", value)
     return BranchServiceStatus.UNKNOWN
-
-
-def _apply_local_branch_status(branch: Branch, status: BranchServiceStatus) -> bool:
-    state = inspect(branch)
-    if state is not None and "status" in state.dict and _parse_branch_status(state.dict["status"]) == status:
-        return False
-    branch.status = status
-    return True
 
 
 async def _persist_branch_status(branch_id: Identifier, status: BranchServiceStatus) -> None:
@@ -219,10 +213,8 @@ async def refresh_branch_status(branch_id: Identifier) -> BranchServiceStatus:
             logger.exception("Failed to refresh service status for branch %s", branch.id)
             derived_status = BranchServiceStatus.UNKNOWN
 
-        if _should_update_branch_status(current_status, derived_status) and _apply_local_branch_status(
-            branch,
-            derived_status,
-        ):
+        if _should_update_branch_status(current_status, derived_status):
+            branch.status = derived_status
             await session.commit()
             return derived_status
 
@@ -1818,6 +1810,12 @@ _CONTROL_TO_KUBEVIRT: dict[str, KubevirtSubresourceAction] = {
     "start": "start",
     "stop": "stop",
 }
+_CONTROL_TO_AUTOSCALER_POWERSTATE: dict[str, NeonVMPowerState] = {
+    "pause": "Stopped",
+    "resume": "Running",
+    "start": "Running",
+    "stop": "Stopped",
+}
 
 _CONTROL_TRANSITION_INITIAL: dict[str, BranchServiceStatus] = {
     "pause": BranchServiceStatus.PAUSING,
@@ -1832,6 +1830,50 @@ _CONTROL_TRANSITION_FINAL: dict[str, BranchServiceStatus | None] = {
     "start": None,
     "stop": BranchServiceStatus.STOPPED,
 }
+
+
+async def _set_branch_status(session: SessionDep, branch: Branch, status: BranchServiceStatus):
+    branch.status = status
+    await session.commit()
+
+
+async def _set_final_branch_status(session: SessionDep, branch: Branch, action: str) -> None:
+    final_status = _CONTROL_TRANSITION_FINAL[action]
+    if final_status is None:
+        return
+    await _set_branch_status(session, branch, final_status)
+
+
+async def _set_autoscaler_power_state(action: str, namespace: str, name: str) -> None:
+    power_state = _CONTROL_TO_AUTOSCALER_POWERSTATE.get(action)
+    if power_state is None:
+        return
+    await set_virtualmachine_power_state(namespace, name, power_state)
+
+
+async def _sync_cpu_after_start(branch_id: Identifier, desired_milli_vcpu: int) -> None:
+    try:
+        await _sync_branch_cpu_resources(branch_id, desired_milli_vcpu=desired_milli_vcpu)
+    except VelaKubernetesError:
+        logger.exception("Failed to sync CPU resources after starting branch %s", branch_id)
+
+
+async def _apply_branch_action(
+    *,
+    action: str,
+    namespace: str,
+    vmi_name: str,
+    autoscaler_namespace: str,
+    autoscaler_vm_name: str,
+    branch_id: Identifier,
+    branch_milli_vcpu: int,
+) -> None:
+    await _set_autoscaler_power_state(action, autoscaler_namespace, autoscaler_vm_name)
+
+    # TODO: remove the below code when migrate to Autoscaler completely
+    await call_kubevirt_subresource(namespace, vmi_name, _CONTROL_TO_KUBEVIRT[action])
+    if action == "start":
+        asyncio.create_task(_sync_cpu_after_start(branch_id, desired_milli_vcpu=branch_milli_vcpu))
 
 
 @instance_api.post(
@@ -1867,36 +1909,31 @@ async def control_branch(
 ):
     action = request.scope["route"].name.split(":")[-1]
     assert action in _CONTROL_TO_KUBEVIRT
-    namespace, vmi_name = get_db_vmi_identity(branch.id)
     branch_in_session = await session.merge(branch)
     branch_id = branch_in_session.id
     branch_milli_vcpu = branch_in_session.milli_vcpu
-    initial_status = _CONTROL_TRANSITION_INITIAL[action]
-    if _apply_local_branch_status(branch_in_session, initial_status):
-        await session.commit()
+    namespace, vmi_name = get_db_vmi_identity(branch_id)
+    autoscaler_namespace, autoscaler_vm_name = get_autoscaler_vm_identity(branch_id)
+    await _set_branch_status(session, branch_in_session, _CONTROL_TRANSITION_INITIAL[action])
     try:
-        await call_kubevirt_subresource(namespace, vmi_name, _CONTROL_TO_KUBEVIRT[action])
-        if action == "start":
-
-            async def _run_cpu_sync() -> None:
-                try:
-                    await _sync_branch_cpu_resources(
-                        branch_id,
-                        desired_milli_vcpu=branch_milli_vcpu,
-                    )
-                except VelaKubernetesError:
-                    logger.exception("Failed to sync CPU resources after starting branch %s", branch_id)
-
-            asyncio.create_task(_run_cpu_sync())
+        await _apply_branch_action(
+            action=action,
+            namespace=namespace,
+            vmi_name=vmi_name,
+            autoscaler_namespace=autoscaler_namespace,
+            autoscaler_vm_name=autoscaler_vm_name,
+            branch_id=branch_id,
+            branch_milli_vcpu=branch_milli_vcpu,
+        )
     except ApiException as e:
-        if _apply_local_branch_status(branch_in_session, BranchServiceStatus.ERROR):
-            await session.commit()
+        await _set_branch_status(session, branch_in_session, BranchServiceStatus.ERROR)
         status = 404 if e.status == 404 else 400
         raise HTTPException(status_code=status, detail=e.body or str(e)) from e
+    except VelaKubernetesError as e:
+        await _set_branch_status(session, branch_in_session, BranchServiceStatus.ERROR)
+        raise HTTPException(status_code=500, detail=str(e)) from e
     else:
-        final_status = _CONTROL_TRANSITION_FINAL[action]
-        if final_status is not None and _apply_local_branch_status(branch_in_session, final_status):
-            await session.commit()
+        await _set_final_branch_status(session, branch_in_session, action)
     return Response(status_code=204)
 
 
