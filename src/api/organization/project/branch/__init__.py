@@ -1001,8 +1001,7 @@ async def _restore_branch_environment_task(
 
 
 def _resolve_db_host(branch: Branch) -> str | None:
-    host = branch.endpoint_domain or branch_domain(branch.id)
-    return host or get_deployment_settings().deployment_host
+    return branch.endpoint_domain or branch_domain(branch.id)
 
 
 def _build_connection_string(user: str, database: str, port: int) -> str:
@@ -1047,7 +1046,7 @@ async def _public(branch: Branch) -> BranchPublic:
     api_domain = branch_api_domain(branch.id)
     # Fall back to using the same host as the database when dedicated domains are unavailable.
     service_endpoint = _service_endpoint_url(rest_endpoint, api_domain, db_host)
-
+    server_root_url = get_deployment_settings().server_root_url
     max_resources = branch.provisioned_resources()
 
     database_info = DatabaseInformation(
@@ -1057,7 +1056,7 @@ async def _public(branch: Branch) -> BranchPublic:
         name=branch.database,
         encrypted_connection_string=encrypt_with_passphrase(connection_string, get_api_settings().pgmeta_crypto_key),
         service_endpoint_uri=service_endpoint,
-        monitoring_endpoint_uri=f"{service_endpoint}/grafana/d/{branch.id}/metrics",
+        monitoring_endpoint_uri=f"{server_root_url}/grafana/d/{branch.id}/metrics",
         version=branch.database_image_tag,
         has_replicas=False,
     )
@@ -1593,8 +1592,6 @@ async def reset_password(
 ) -> Response:
     admin_password = branch.database_password
     db_host = branch.endpoint_domain or branch_domain(branch.id)
-    if not db_host:
-        db_host = get_deployment_settings().deployment_host
     if not db_host:
         logging.error("Database host unavailable for branch %s", branch.id)
         raise HTTPException(status_code=500, detail="Branch database host is not configured.")
