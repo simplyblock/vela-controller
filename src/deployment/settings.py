@@ -16,6 +16,14 @@ class Settings(BaseSettings):
             pattern=r"^[a-z][a-z0-9._-]*[a-z0-9]$",
         ),
     ] = "vela"
+    simplyblock_namespace: Annotated[
+        str,
+        StringConstraints(
+            min_length=1,
+            max_length=63,
+            pattern=r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+        ),
+    ] = "simplyblock"
     logflare_private_access_token: Annotated[
         str,
         Field(default="", description="Private access token for authenticating with the Logflare API."),

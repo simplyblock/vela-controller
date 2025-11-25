@@ -32,6 +32,7 @@ controller:
     VELA_CLOUDFLARE_API_TOKEN: 'your_cloudflare_api_token'
     VELA_CLOUDFLARE_ZONE_ID: 'your_cloudflare_zone_id'
     VELA_DEPLOYMENT_NAMESPACE_PREFIX: 'vela'
+    VELA_SIMPLYBLOCK_NAMESPACE: 'simplyblock'
     VELA_KEYCLOAK_URL: 'http://vela-auth-service:8080/auth/'
     VELA_JWT_SECRET: 'http://vela-auth-service:8080/auth/realms/vela/protocol/openid-connect/certs'
     VELA_LOGFLARE_URL: 'http://vela-logflare:4000'

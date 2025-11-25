@@ -65,7 +65,7 @@ DATABASE_LOAD_BALANCER_SERVICE_NAME = f"{DEFAULT_DATABASE_VM_NAME}-ext"
 CHECK_ENCRYPTED_HEADER_PLUGIN_NAME = "check-x-connection-encrypted"
 APIKEY_JWT_PLUGIN_NAME = "apikey-jwt"
 CPU_REQUEST_FRACTION = 0.25  # request = 25% of limit
-SIMPLYBLOCK_NAMESPACE = "simplyblock"
+SIMPLYBLOCK_NAMESPACE = get_settings().simplyblock_namespace
 SIMPLYBLOCK_CSI_CONFIGMAP = "simplyblock-csi-cm"
 SIMPLYBLOCK_CSI_SECRET = "simplyblock-csi-secret"
 STORAGE_PVC_SUFFIX = "-db-storage-pvc"
@@ -146,6 +146,18 @@ def _release_fullname(namespace: str) -> str:
     return release if CHART_NAME in release else f"{release}-{CHART_NAME}"
 
 
+def database_pvc_name(namespace: str) -> str:
+    """Return the expected database PVC name for the given namespace."""
+
+    return f"{_release_fullname(namespace)}{DATABASE_PVC_SUFFIX}"
+
+
+def storage_pvc_name(namespace: str) -> str:
+    """Return the expected storage PVC name for the given namespace."""
+
+    return f"{_release_fullname(namespace)}{STORAGE_PVC_SUFFIX}"
+
+
 def branch_service_name(namespace: str, component: str) -> str:
     return f"{_release_fullname(namespace)}-{component}"
 
@@ -211,10 +223,11 @@ def _build_storage_class_manifest(*, storage_class_name: str, iops: int, base_st
 
 
 async def load_simplyblock_credentials() -> tuple[str, str, str]:
-    config_map = await kube_service.get_config_map(SIMPLYBLOCK_NAMESPACE, SIMPLYBLOCK_CSI_CONFIGMAP)
+    namespace = SIMPLYBLOCK_NAMESPACE
+    config_map = await kube_service.get_config_map(namespace, SIMPLYBLOCK_CSI_CONFIGMAP)
     config_data = (config_map.data or {}).get("config.json")
     if not config_data:
-        raise VelaDeploymentError("ConfigMap simplyblock-csi-cm missing 'config.json'")
+        raise VelaDeploymentError(f"ConfigMap {namespace}/{SIMPLYBLOCK_CSI_CONFIGMAP} missing 'config.json'")
     try:
         config = json.loads(config_data)
     except (TypeError, ValueError) as exc:
@@ -229,10 +242,10 @@ async def load_simplyblock_credentials() -> tuple[str, str, str]:
     if not endpoint or not cluster_id:
         raise VelaDeploymentError("Simplyblock CSI config missing required 'ip' or 'uuid'")
 
-    secret = await kube_service.get_secret(SIMPLYBLOCK_NAMESPACE, SIMPLYBLOCK_CSI_SECRET)
+    secret = await kube_service.get_secret(namespace, SIMPLYBLOCK_CSI_SECRET)
     secret_blob = (secret.data or {}).get("secret.json")
     if not secret_blob:
-        raise VelaDeploymentError("Secret simplyblock-csi-secret missing 'secret.json'")
+        raise VelaDeploymentError(f"Secret {namespace}/{SIMPLYBLOCK_CSI_SECRET} missing 'secret.json'")
     try:
         decoded_secret = base64.b64decode(secret_blob).decode()
     except (TypeError, ValueError, UnicodeDecodeError) as exc:
@@ -275,12 +288,12 @@ async def _resolve_volume_identifiers(namespace: str, pvc_name: str) -> tuple[st
 
 
 async def resolve_database_volume_identifiers(namespace: str) -> tuple[str, str | None]:
-    pvc_name = f"{_release_name(namespace)}{DATABASE_PVC_SUFFIX}"
+    pvc_name = database_pvc_name(namespace)
     return await _resolve_volume_identifiers(namespace, pvc_name)
 
 
 async def resolve_storage_volume_identifiers(namespace: str) -> tuple[str, str | None]:
-    pvc_name = f"{_release_name(namespace)}{STORAGE_PVC_SUFFIX}"
+    pvc_name = storage_pvc_name(namespace)
     return await _resolve_volume_identifiers(namespace, pvc_name)
 
 

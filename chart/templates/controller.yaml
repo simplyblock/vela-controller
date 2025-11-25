@@ -128,6 +128,7 @@ data:
   VELA_CLOUDFLARE_BRANCH_REF_CNAME: {{ .Values.domain | quote }}
   VELA_CLOUDFLARE_DOMAIN_SUFFIX: {{ .Values.domain | quote }}
   VELA_DEPLOYMENT_NAMESPACE_PREFIX: {{ .Values.controller.env.VELA_DEPLOYMENT_NAMESPACE_PREFIX | quote }}
+  VELA_SIMPLYBLOCK_NAMESPACE: {{ .Values.controller.env.VELA_SIMPLYBLOCK_NAMESPACE | quote }}
   VELA_DEPLOYMENT_SERVICE_PORT: {{ .Values.port | quote }}
   VELA_SERVER_ROOT_URL: "https://{{ .Values.domain | quote }}:{{ .Values.port | quote }}"
   VELA_ENABLE_DB_EXTERNAL_IPV6_LOADBALANCER: {{ .Values.controller.env.VELA_ENABLE_DB_EXTERNAL_IPV6_LOADBALANCER | quote }}

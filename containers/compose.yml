@@ -35,6 +35,7 @@ services:
       VELA_CLOUDFLARE_BRANCH_REF_CNAME: 'branch-ref.staging.vela.run'
       VELA_CLOUDFLARE_DOMAIN_SUFFIX: 'example.com'
       VELA_DEPLOYMENT_NAMESPACE_PREFIX: 'vela'
+      VELA_SIMPLYBLOCK_NAMESPACE: 'simplyblock'
       VELA_LOGFLARE_PRIVATE_ACCESS_TOKEN: 'your-super-secret-and-long-logflare-key-private'
       VELA_LOGFLARE_PUBLIC_ACCESS_TOKEN: 'my-super-secret-api-key'
       VELA_LOGFLARE_URL: 'http://logflare:4000'
