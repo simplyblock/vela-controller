@@ -31,7 +31,7 @@ class Settings(BaseSettings):
         Field(default="http://localhost:4000", description="Base URL of the Logflare API (e.g. http://localhost:4000)"),
     ]
     deployment_release_name: str = "vela"
-    deployment_host: str = "localhost"
+    server_root_url: str = "http://localhost:8000"
     deployment_service_port: int = 443
     enable_db_external_ipv6_loadbalancer: bool = True  # Expose Vela Postgres via external IPv6 LB when true
     pgmeta_crypto_key: str
