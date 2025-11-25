@@ -113,6 +113,34 @@ db:
   # Additional migration scripts can be defined here
   config: {}
 
+# Neon autoscaler VM
+autoscalerVm:
+  enabled: false
+  nameOverride: ""
+  fullnameOverride: ""
+  powerState: Running
+  extraNetwork:
+    enable: true
+  image:
+    repository: docker.io/manoharbrm/pg16-test
+    tag: dev14
+  mountPath: /var/lib/postgresql
+  resources: # Placeholder values. Actual values are filled by create_vela_config
+    cpus:
+      min: "1m"
+      use: "1m"
+      max: "64000m"
+    memorySlots:
+      min: 1
+      use: 1
+      max: 128
+    memorySlotSize: 512Mi
+  persistence:
+    storageClassName: "simplyblock-csi-sc"
+    size: 20Gi
+    accessModes:
+      - ReadWriteMany
+
 # PgBouncer connection pooler
 pgbouncer:
   enabled: true
