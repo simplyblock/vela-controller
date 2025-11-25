@@ -19,6 +19,16 @@ from .keycloak import realm_admin
 api = APIRouter(dependencies=[Depends(authenticated_user)], tags=["user"])
 
 
+async def _user_id(user_ref: UUID | EmailStr) -> UUID:
+    if isinstance(user_ref, UUID):
+        return user_ref
+
+    user_id_candidate = await realm_admin("vela").a_get_user_id(str(user_ref))
+    if user_id_candidate is None:
+        raise HTTPException(status_code=404, detail=f"User {user_ref} not found")
+    return UUID(user_id_candidate)
+
+
 class UserCreationResult(BaseModel):
     id: UUID
     password: str
@@ -87,14 +97,7 @@ async def add(parameters: UserParameters) -> tuple[UserCreationResult, int]:
     responses={401: Unauthenticated, 404: NotFound},
 )
 async def get(user_ref: UUID | EmailStr) -> UserPublic:
-    if isinstance(user_ref, str):
-        user_id_candidate = await realm_admin("vela").a_get_user_id(str(user_ref))
-        if user_id_candidate is None:
-            raise HTTPException(status_code=404, detail=f"User {user_ref} not found")
-        user_id = UUID(user_id_candidate)
-    else:
-        user_id = user_ref
-    return await public(user_id)
+    return await public(await _user_id(user_ref))
 
 
 @api.get("/{user_ref}/roles/")
@@ -102,10 +105,7 @@ async def list_user_roles(
     session: SessionDep,
     user_ref: UUID | EmailStr,
 ) -> list[RoleUserLinkPublic]:
-    user_id = (
-        UUID(await realm_admin("vela").a_get_user_id(str(user_ref))) if isinstance(user_ref, EmailStr) else user_ref
-    )
-    result = await session.execute(select(RoleUserLink).where(RoleUserLink.user_id == user_id))
+    result = await session.execute(select(RoleUserLink).where(RoleUserLink.user_id == (await _user_id(user_ref))))
     return [
         RoleUserLinkPublic(
             organization_id=row.organization_id,
@@ -124,9 +124,6 @@ async def list_user_permissions(
     session: SessionDep,
     user_ref: UUID | EmailStr,
 ) -> list[UserPermissionPublic]:
-    user_id = (
-        UUID(await realm_admin("vela").a_get_user_id(str(user_ref))) if isinstance(user_ref, EmailStr) else user_ref
-    )
     stmt = (
         select(  # type: ignore[call-overload]
             AccessRight.entry,
@@ -145,7 +142,7 @@ async def list_user_permissions(
             and_(Membership.user_id == User.id, Membership.organization_id == RoleUserLink.organization_id),
             isouter=True,
         )
-        .where(and_(Role.is_active, User.id == user_id))
+        .where(and_(Role.is_active, User.id == (await _user_id(user_ref))))
     )
 
     result = await session.execute(stmt)
