@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
 from sqlmodel import and_, select
 
@@ -87,9 +87,13 @@ async def add(parameters: UserParameters) -> tuple[UserCreationResult, int]:
     responses={401: Unauthenticated, 404: NotFound},
 )
 async def get(user_ref: UUID | EmailStr) -> UserPublic:
-    user_id = (
-        UUID(await realm_admin("vela").a_get_user_id(str(user_ref))) if isinstance(user_ref, EmailStr) else user_ref
-    )
+    if isinstance(user_ref, str):
+        user_id_candidate = await realm_admin("vela").a_get_user_id(str(user_ref))
+        if user_id_candidate is None:
+            raise HTTPException(status_code=404, detail=f"User {user_ref} not found")
+        user_id = UUID(user_id_candidate)
+    else:
+        user_id = user_ref
     return await public(user_id)
 
 
