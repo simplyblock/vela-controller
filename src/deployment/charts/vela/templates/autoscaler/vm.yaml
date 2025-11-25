@@ -1,0 +1,49 @@
+{{- if .Values.autoscalerVm.enabled -}}
+{{- $vmName := "" -}}
+{{- if .Values.autoscalerVm.fullnameOverride }}
+{{- $vmName = .Values.autoscalerVm.fullnameOverride | trunc 63 | trimSuffix "-" }}
+{{- else if .Values.autoscalerVm.nameOverride }}
+{{- $override := .Values.autoscalerVm.nameOverride }}
+{{- if contains $override .Release.Name }}
+{{- $vmName = .Release.Name | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- $vmName = printf "%s-%s" .Release.Name $override | trunc 63 | trimSuffix "-" }}
+{{- end }}
+{{- else }}
+{{- $vmName = printf "%s-autoscaler-vm" (include "vela.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+apiVersion: vm.neon.tech/v1
+kind: VirtualMachine
+metadata:
+  name: {{ $vmName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "vela.labels" . | nindent 4 }}
+spec:
+  powerState: {{ .Values.autoscalerVm.powerState }}
+  extraNetwork:
+    enable: {{ .Values.autoscalerVm.extraNetwork.enable }}
+  guest:
+    rootDisk:
+      image: {{ printf "%s:%s" .Values.autoscalerVm.image.repository .Values.autoscalerVm.image.tag }}
+    cpus:
+      min: {{ .Values.autoscalerVm.resources.cpus.min }}
+      use: {{ .Values.autoscalerVm.resources.cpus.use }}
+      max: {{ .Values.autoscalerVm.resources.cpus.max }}
+    memorySlots:
+      min: {{ .Values.autoscalerVm.resources.memorySlots.min }}
+      use: {{ .Values.autoscalerVm.resources.memorySlots.use }}
+      max: {{ .Values.autoscalerVm.resources.memorySlots.max }}
+    memorySlotSize: {{ .Values.autoscalerVm.resources.memorySlotSize }}
+  disks:
+    - name: data
+      mountPath: {{ .Values.autoscalerVm.mountPath }}
+      blockDevice:
+        persistentVolumeClaim:
+          storageClassName: {{ .Values.autoscalerVm.persistence.storageClassName }}
+          accessModes:
+{{ toYaml .Values.autoscalerVm.persistence.accessModes | indent 12 }}
+          resources:
+            requests:
+              storage: {{ .Values.autoscalerVm.persistence.size }}
+{{- end }}

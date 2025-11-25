@@ -2,6 +2,7 @@ import asyncio
 import base64
 import json
 import logging
+import math
 import subprocess
 import tempfile
 import textwrap
@@ -23,6 +24,8 @@ from .._util import (
     IOPS_CONSTRAINTS,
     MEMORY_CONSTRAINTS,
     STORAGE_SIZE_CONSTRAINTS,
+    VCPU_MILLIS_MAX,
+    VCPU_MILLIS_MIN,
     Identifier,
     Name,
     StatusType,
@@ -400,6 +403,19 @@ def _configure_vela_values(
         db_persistence["create"] = False
     db_persistence["storageClassName"] = storage_class_name
 
+    autoscaler_spec = values_content.setdefault("autoscalerVm", {})
+    autoscaler_spec["enabled"] = True
+    autoscaler_resources = autoscaler_spec.setdefault("resources", {})
+    autoscaler_resources["cpus"] = calculate_autoscaler_vm_cpus(parameters.milli_vcpu)
+    memory_slot_size, memory_slots = calculate_autoscaler_vm_memory(parameters.memory_bytes)
+    autoscaler_resources["memorySlotSize"] = memory_slot_size
+    autoscaler_resources["memorySlots"] = memory_slots
+
+    autoscaler_persistence = autoscaler_spec.setdefault("persistence", {})
+    autoscaler_persistence["size"] = f"{bytes_to_gb(parameters.database_size)}G"
+    autoscaler_persistence["storageClassName"] = storage_class_name
+    autoscaler_persistence.setdefault("accessModes", ["ReadWriteMany"])
+
     return values_content
 
 
@@ -555,6 +571,30 @@ def calculate_cpu_resources(milli_vcpu: int) -> tuple[str, str]:
     return cpu_limit, cpu_request
 
 
+def calculate_autoscaler_vm_cpus(milli_vcpu: int) -> dict[str, str]:
+    """
+    Return min/use/max CPU core counts for the autoscaler VM derived from milli vCPU.
+    """
+
+    vm_millis = max(1, milli_vcpu)
+    cpu_value = f"{vm_millis}m"
+    min_value = f"{VCPU_MILLIS_MIN}m"
+    max_value = f"{VCPU_MILLIS_MAX}m"
+    return {"min": min_value, "use": cpu_value, "max": max_value}
+
+
+def calculate_autoscaler_vm_memory(memory_bytes: int) -> tuple[str, dict[str, int]]:
+    """
+    Return (memory_slot_size, memory_slots) derived from memory_bytes with fixed slot sizing.
+    """
+
+    memory_mib = max(1, bytes_to_mib(memory_bytes))
+    slot_size_mib = 512
+    desired_slots = max(1, math.ceil(memory_mib / slot_size_mib))
+    slots = {"min": 1, "use": min(desired_slots, 128), "max": 128}
+    return f"{slot_size_mib}Mi", slots
+
+
 class ResizeParameters(BaseModel):
     database_size: Annotated[int, Field(**DATABASE_SIZE_CONSTRAINTS)] | None = None
     storage_size: Annotated[int, Field(**STORAGE_SIZE_CONSTRAINTS)] | None = None
@@ -587,6 +627,8 @@ def resize_deployment(branch_id: Identifier, parameters: ResizeParameters):
     if parameters.database_size is not None:
         db_spec = values_content.setdefault("db", {})
         db_spec.setdefault("persistence", {})["size"] = f"{bytes_to_gb(parameters.database_size)}G"
+        autoscaler_spec = values_content.setdefault("autoscalerVm", {})
+        autoscaler_spec.setdefault("persistence", {})["size"] = f"{bytes_to_gb(parameters.database_size)}G"
 
     # resize storageAPI volume
     if parameters.storage_size is not None:
@@ -598,6 +640,11 @@ def resize_deployment(branch_id: Identifier, parameters: ResizeParameters):
         db_spec = values_content.setdefault("db", {})
         resource_cfg = db_spec.setdefault("resources", {})
         resource_cfg["guestMemory"] = f"{bytes_to_mib(parameters.memory_bytes)}Mi"
+        autoscaler_spec = values_content.setdefault("autoscalerVm", {})
+        autoscaler_resources = autoscaler_spec.setdefault("resources", {})
+        memory_slot_size, memory_slots = calculate_autoscaler_vm_memory(parameters.memory_bytes)
+        autoscaler_resources["memorySlotSize"] = memory_slot_size
+        autoscaler_resources["memorySlots"] = memory_slots
 
     if not values_content:
         logger.info("No Helm overrides required for resize of branch %s; skipping upgrade.", branch_id)
