@@ -590,6 +590,15 @@ def get_db_vmi_identity(branch_id: Identifier) -> tuple[str, str]:
     return namespace, vmi_name
 
 
+def get_autoscaler_vm_identity(branch_id: Identifier) -> tuple[str, str]:
+    """
+    Return the (namespace, vm_name) for the branch's autoscaler Neon VirtualMachine.
+    """
+    namespace = deployment_namespace(branch_id)
+    vm_name = f"{_release_fullname(namespace)}-autoscaler-vm"
+    return namespace, vm_name
+
+
 def calculate_cpu_resources(milli_vcpu: int) -> tuple[str, str]:
     """Return (limit, request) CPU quantities formatted for Kubernetes."""
 

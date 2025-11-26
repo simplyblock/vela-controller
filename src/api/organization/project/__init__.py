@@ -10,8 +10,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
 from ...._util import Identifier
-from ....deployment import delete_deployment, get_db_vmi_identity
+from ....deployment import delete_deployment, get_autoscaler_vm_identity, get_db_vmi_identity
 from ....deployment.kubernetes.kubevirt import call_kubevirt_subresource
+from ....deployment.kubernetes.neonvm import set_virtualmachine_power_state
+from ....exceptions import VelaKubernetesError
 from ....models.organization import Organization
 from ....models.project import (
     Project,
@@ -506,12 +508,19 @@ async def suspend(session: SessionDep, _organization: OrganizationDep, project: 
 
     for branch in branches:
         namespace, vmi_name = get_db_vmi_identity(branch.id)
+        autoscaler_namespace, autoscaler_vm_name = get_autoscaler_vm_identity(branch.id)
         try:
             # a paused VM will still consume resources, so we stop it instead
             # https://kubevirt.io/user-guide/user_workloads/lifecycle/#pausing-and-unpausing-a-virtual-machine
             await call_kubevirt_subresource(namespace, vmi_name, "stop")
         except ApiException as e:
             errors.append(f"{vmi_name}: {e.status}")
+        try:
+            await set_virtualmachine_power_state(autoscaler_namespace, autoscaler_vm_name, "Stopped")
+        except ApiException as e:
+            errors.append(f"{autoscaler_vm_name}: {e.status}")
+        except VelaKubernetesError as e:
+            errors.append(f"{autoscaler_vm_name}: {e}")
 
     if errors:
         project.status = "ERROR"
@@ -539,10 +548,17 @@ async def resume(session: SessionDep, _organization: OrganizationDep, project: P
 
     for branch in branches:
         namespace, vmi_name = get_db_vmi_identity(branch.id)
+        autoscaler_namespace, autoscaler_vm_name = get_autoscaler_vm_identity(branch.id)
         try:
             await call_kubevirt_subresource(namespace, vmi_name, "start")
         except ApiException as e:
             errors.append(f"{vmi_name}: {e.status}")
+        try:
+            await set_virtualmachine_power_state(autoscaler_namespace, autoscaler_vm_name, "Running")
+        except ApiException as e:
+            errors.append(f"{autoscaler_vm_name}: {e.status}")
+        except VelaKubernetesError as e:
+            errors.append(f"{autoscaler_vm_name}: {e}")
 
     if errors:
         project.status = "ERROR"
