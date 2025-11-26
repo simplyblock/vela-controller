@@ -72,6 +72,7 @@ SIMPLYBLOCK_CSI_CONFIGMAP = "simplyblock-csi-cm"
 SIMPLYBLOCK_CSI_SECRET = "simplyblock-csi-secret"
 STORAGE_PVC_SUFFIX = "-db-storage-pvc"
 DATABASE_PVC_SUFFIX = "-db-pvc"
+AUTOSCALER_PVC_SUFFIX = "-block-data"
 _LOAD_BALANCER_TIMEOUT_SECONDS = float(600)
 _LOAD_BALANCER_POLL_INTERVAL_SECONDS = float(2)
 DNSRecordType = Literal["AAAA", "CNAME"]
@@ -281,23 +282,23 @@ async def _resolve_volume_identifiers(namespace: str, pvc_name: str) -> tuple[st
     return volume_uuid, volume_cluster_id
 
 
-async def resolve_database_volume_identifiers(namespace: str) -> tuple[str, str | None]:
-    pvc_name = f"{_release_name(namespace)}{DATABASE_PVC_SUFFIX}"
+async def resolve_storage_volume_identifiers(namespace: str) -> tuple[str, str | None]:
+    pvc_name = f"{_release_name(namespace)}{STORAGE_PVC_SUFFIX}"
     return await _resolve_volume_identifiers(namespace, pvc_name)
 
 
-async def resolve_storage_volume_identifiers(namespace: str) -> tuple[str, str | None]:
-    pvc_name = f"{_release_name(namespace)}{STORAGE_PVC_SUFFIX}"
+async def resolve_autoscaler_volume_identifiers(namespace: str) -> tuple[str, str | None]:
+    pvc_name = f"{_autoscaler_vm_name(namespace)}{AUTOSCALER_PVC_SUFFIX}"
     return await _resolve_volume_identifiers(namespace, pvc_name)
 
 
 async def update_branch_volume_iops(branch_id: Identifier, iops: int) -> None:
     namespace = deployment_namespace(branch_id)
 
-    volume_uuid, _ = await resolve_database_volume_identifiers(namespace)
+    volume_uuid, _ = await resolve_autoscaler_volume_identifiers(namespace)
     try:
         async with create_simplyblock_api() as sb_api:
-            await sb_api.update_volume(volume_uuid=volume_uuid, payload={"max-rw-iops": iops})
+            await sb_api.update_volume(volume_uuid=volume_uuid, payload={"max_rw_iops": iops})
     except httpx.HTTPStatusError as exc:
         detail = exc.response.text.strip() or exc.response.reason_phrase or str(exc)
         raise VelaDeploymentError(
