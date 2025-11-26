@@ -14,6 +14,7 @@ import asyncpg
 import httpx
 import yaml
 from cloudflare import AsyncCloudflare, CloudflareError
+from kubernetes_asyncio import client as kubernetes_client
 from kubernetes_asyncio.client.exceptions import ApiException
 from pydantic import BaseModel, Field, model_validator
 from ulid import ULID
@@ -44,6 +45,7 @@ from ._util import deployment_namespace
 from .deployment import DeploymentParameters, DeploymentStatus
 from .grafana import create_vela_grafana_obj, delete_vela_grafana_obj
 from .kubernetes import KubernetesService
+from .kubernetes._util import custom_api_client
 from .kubernetes.kubevirt import get_virtualmachine_status
 from .logflare import create_branch_logflare_objects, delete_branch_logflare_objects
 from .settings import get_settings
@@ -144,6 +146,11 @@ def _release_name(namespace: str) -> str:
 def _release_fullname(namespace: str) -> str:
     release = _release_name(namespace)
     return release if CHART_NAME in release else f"{release}-{CHART_NAME}"
+
+
+def _autoscaler_vm_name(namespace: str) -> str:
+    name = f"{_release_fullname(namespace)}-autoscaler-vm"
+    return name[:63].rstrip("-")
 
 
 def branch_service_name(namespace: str, component: str) -> str:
@@ -523,10 +530,31 @@ async def get_deployment_status(branch_id: Identifier) -> DeploymentStatus:
     return DeploymentStatus(status=status)
 
 
+async def _delete_autoscaler_vm(namespace: str) -> None:
+    vm_name = _autoscaler_vm_name(namespace)
+    async with custom_api_client() as custom_client:
+        try:
+            await custom_client.delete_namespaced_custom_object(
+                group="vm.neon.tech",
+                version="v1",
+                namespace=namespace,
+                plural="virtualmachines",
+                name=vm_name,
+                body=kubernetes_client.V1DeleteOptions(),
+            )
+            logger.info("Deleted autoscaler VM %s in namespace %s", vm_name, namespace)
+        except ApiException as exc:
+            if exc.status == 404:
+                logger.info("Autoscaler VM %s not found in namespace %s; skipping delete", vm_name, namespace)
+                return
+            raise
+
+
 async def delete_deployment(branch_id: Identifier) -> None:
     namespace, _ = get_db_vmi_identity(branch_id)
     storage_class_name = branch_storage_class_name(branch_id)
     await cleanup_branch_dns(branch_id)
+    await _delete_autoscaler_vm(namespace)
     try:
         await delete_branch_logflare_objects(branch_id)
         await kube_service.delete_namespace(namespace)
