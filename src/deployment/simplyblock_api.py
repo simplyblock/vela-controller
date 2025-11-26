@@ -99,7 +99,7 @@ class SimplyblockApi:
         headers = self._headers()
         headers["Content-Type"] = "application/json"
         base_url = await self._cluster_pool_base()
-        url = f"{base_url}/volumes/{volume_uuid}"
+        url = f"{base_url}/volumes/{volume_uuid}/"
         response = await self._client.put(
             url,
             headers=headers,

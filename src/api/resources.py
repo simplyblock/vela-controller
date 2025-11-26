@@ -13,7 +13,7 @@ from ..check_branch_status import get_branch_status
 from ..deployment import (
     get_db_vmi_identity,
     kube_service,
-    resolve_database_volume_identifiers,
+    resolve_autoscaler_volume_identifiers,
     resolve_storage_volume_identifiers,
 )
 from ..deployment.kubernetes._util import custom_api_client
@@ -380,7 +380,7 @@ async def _resolve_volume_stats(
 
 async def _collect_database_volume_usage(namespace: str) -> tuple[int, int]:
     stats = await _resolve_volume_stats(
-        volume_identifier_resolver=resolve_database_volume_identifiers,
+        volume_identifier_resolver=resolve_autoscaler_volume_identifiers,
         namespace=namespace,
     )
     nvme_bytes = stats["size_used"]

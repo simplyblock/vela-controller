@@ -7,6 +7,8 @@ from kubernetes_asyncio.config.config_exception import ConfigException
 
 from ...exceptions import VelaKubernetesError
 
+KUBE_API_SERVER_TIMEOUT = 10
+
 
 class ApiClientWithTimeout(ApiClient):
     def __init__(self, *args, default_timeout=None, **kwargs):
@@ -34,8 +36,8 @@ async def _ensure_kubeconfig() -> None:
 @asynccontextmanager
 async def api_client():
     await _ensure_kubeconfig()
-    async with ApiClientWithTimeout(default_timeout=2) as api_client:
-        api_client.rest_client.pool_manager._timeout = ClientTimeout(sock_connect=2)
+    async with ApiClientWithTimeout(default_timeout=KUBE_API_SERVER_TIMEOUT) as api_client:
+        api_client.rest_client.pool_manager._timeout = ClientTimeout(sock_connect=KUBE_API_SERVER_TIMEOUT)
         yield api_client
 
 
