@@ -228,6 +228,22 @@ class KubernetesService:
                     raise VelaKubernetesError(f"PersistentVolumeClaim {namespace!r}/{name!r} not found") from exc
                 raise
 
+    async def resize_pvc_storage(self, namespace: str, name: str, storage: str) -> None:
+        async with core_v1_client() as core_v1:
+            try:
+                await core_v1.patch_namespaced_persistent_volume_claim(
+                    name=name,
+                    namespace=namespace,
+                    body={"spec": {"resources": {"requests": {"storage": storage}}}},
+                )
+            except client.exceptions.ApiException as exc:
+                detail = exc.body or exc.reason or str(exc)
+                raise VelaKubernetesError(
+                    f"Failed to resize PVC {namespace!r}/{name!r} to {storage}: {detail}"
+                ) from exc
+
+        logger.info("Resized PVC %s/%s to %s", namespace, name, storage)
+
     async def get_persistent_volume(self, name: str) -> Any:
         async with core_v1_client() as core_v1:
             try:
