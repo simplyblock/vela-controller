@@ -2,7 +2,7 @@ from typing import Any, Literal
 
 from aiohttp.client_exceptions import ClientError
 from kubernetes_asyncio.client.exceptions import ApiException
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from ..._util import quantity_to_bytes, quantity_to_milli_cpu
 from ...exceptions import VelaKubernetesError
@@ -38,10 +38,6 @@ def _require_cpu_millis(value: Any, field: str) -> int:
     raise VelaKubernetesError(f"Autoscaler VM missing required CPU field {field}")
 
 
-def _extract_autoscaler_memory_bytes(slot_size_bytes: int, slot_count: int) -> int:
-    return slot_size_bytes * slot_count
-
-
 def _to_camel(string: str) -> str:
     parts = string.split("_")
     return parts[0] + "".join(word.capitalize() for word in parts[1:])
@@ -54,40 +50,25 @@ class CamelModel(BaseModel):
 class NeonVMStatus(CamelModel):
     phase: str
     pod_name: str = Field(default="", alias="podName")
-    cpus: Any | None = None
-    memory_slots_used: Any | None = None
-    memory_slots: Any | None = None
-    memory_size: Any | None = None
-
-    @model_validator(mode="after")
-    def ensure_slots(self: "NeonVMStatus") -> "NeonVMStatus":
-        if self.memory_slots_used is None and self.memory_slots is None:
-            raise VelaKubernetesError("Autoscaler VM missing status.memorySlots")
-        return self
-
-    @property
-    def cpu_milli(self) -> int:
-        return _require_cpu_millis(self.cpus, "status.cpus")
-
-    @property
-    def memory_slots_int(self) -> int:
-        return _require_int(
-            self.memory_slots_used or self.memory_slots,
-            "status.memorySlots",
-        )
-
-    def memory_bytes(self, slot_size_bytes: int) -> int:
-        if self.memory_size is not None:
-            return _require_quantity_bytes(self.memory_size, "status.memorySize")
-        return _extract_autoscaler_memory_bytes(slot_size_bytes, self.memory_slots_int)
+    extra_net_ip: str | None = Field(default=None, alias="extraNetIP")
 
 
 class GuestCPUs(CamelModel):
-    use: Any = Field(alias="use")  # you’d call _require_cpu_millis in a validator
+    min: Any
+    use: Any
+    max: Any
 
     @property
     def use_milli(self) -> int:
         return _require_cpu_millis(self.use, "guest.cpus.use")
+
+    @property
+    def min_milli(self) -> int:
+        return _require_cpu_millis(self.min, "guest.cpus.min")
+
+    @property
+    def max_milli(self) -> int:
+        return _require_cpu_millis(self.max, "guest.cpus.max")
 
 
 class MemorySlots(CamelModel):
@@ -111,21 +92,25 @@ class MemorySlots(CamelModel):
 class Guest(CamelModel):
     cpus: GuestCPUs
     memory_slots: MemorySlots
-    memory_slot_size: Any
+    memory_slot_size: Any = Field(alias="memorySlotSize")
 
     @property
     def slot_size_bytes(self) -> int:
         return _require_quantity_bytes(self.memory_slot_size, "guest.memorySlotSize")
 
 
+class NeonVMSpec(CamelModel):
+    power_state: PowerState = Field(alias="powerState")
+    guest: Guest
+
+
 class NeonVM(CamelModel):
-    spec: dict[str, Any] = Field(default_factory=dict)
+    spec: NeonVMSpec
     status: NeonVMStatus
 
     @property
     def guest(self) -> Guest:
-        guest = (self.spec or {}).get("guest") or {}
-        return Guest.model_validate(guest)
+        return self.spec.guest
 
 
 async def get_neon_vm(namespace: str, name: str) -> NeonVM:
