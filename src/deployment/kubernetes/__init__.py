@@ -311,9 +311,8 @@ class KubernetesService:
         """
         vm = await get_neon_vm(namespace, name)
         guest = vm.guest
-        status = vm.status
 
-        vm_manifest = _build_autoscaler_vm_manifest(vm.model_dump(), namespace, name)
+        vm_manifest = _build_autoscaler_vm_manifest(vm.model_dump(by_alias=True), namespace, name)
         guest_spec = vm_manifest.setdefault("spec", {}).setdefault("guest", {})
         if cpu_milli is not None:
             guest_spec.setdefault("cpus", {})["use"] = f"{cpu_milli}m"
@@ -331,7 +330,7 @@ class KubernetesService:
             if desired_slots > max_slots:
                 raise VelaKubernetesError(f"Requested autoscaler memory exceeds configured maximum slots ({max_slots})")
 
-            current_usage = status.memory_bytes(slot_size_bytes)
+            current_usage = guest.memory_slots.use_int * slot_size_bytes
             if current_usage is not None and memory_bytes < current_usage:
                 raise VelaKubernetesError(
                     "Requested autoscaler memory is lower than current utilization; downsizing is not permitted"
