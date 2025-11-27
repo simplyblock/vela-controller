@@ -2,7 +2,7 @@ from typing import Any, Literal
 
 from aiohttp.client_exceptions import ClientError
 from kubernetes_asyncio.client.exceptions import ApiException
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from ...exceptions import VelaKubernetesError
 from ._util import custom_api_client
@@ -10,9 +10,15 @@ from ._util import custom_api_client
 PowerState = Literal["Running", "Stopped"]
 
 
+def to_camel(string: str) -> str:
+    return "".join(word.capitalize() for word in string.split("_"))
+
+
 class Status(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel)
+
     phase: str
-    pod_name: str = Field(default="", alias="podName")
+    pod_name: str
 
 
 class NeonVM(BaseModel):
