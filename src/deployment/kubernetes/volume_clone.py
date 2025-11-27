@@ -6,7 +6,7 @@ from typing import Any
 
 from ..._util import Identifier
 from ...exceptions import VelaKubernetesError
-from .. import DATABASE_PVC_SUFFIX, deployment_namespace, kube_service
+from .. import AUTOSCALER_PVC_SUFFIX, get_autoscaler_vm_identity, kube_service
 from ..settings import get_settings
 from .pvc import (
     build_pvc_manifest_from_existing,
@@ -110,9 +110,14 @@ class _VolumeCloneOperation:
     created_content: bool = field(default=False, init=False)
 
     def __post_init__(self) -> None:
-        pvc_name = f"{get_settings().deployment_release_name}{DATABASE_PVC_SUFFIX}"
-        source_ns = deployment_namespace(self.source_branch_id)
-        target_ns = deployment_namespace(self.target_branch_id)
+        source_ns, source_vm_name = get_autoscaler_vm_identity(self.source_branch_id)
+        target_ns, target_vm_name = get_autoscaler_vm_identity(self.target_branch_id)
+        pvc_name = f"{source_vm_name}{AUTOSCALER_PVC_SUFFIX}"
+        target_pvc_name = f"{target_vm_name}{AUTOSCALER_PVC_SUFFIX}"
+        if target_pvc_name != pvc_name:
+            raise VelaKubernetesError(
+                f"Autoscaler PVC name mismatch between source ({pvc_name}) and target ({target_pvc_name})"
+            )
         timestamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
         source_snapshot = f"{str(self.source_branch_id).lower()}-snapshot-{timestamp}"[:63]
         target_snapshot = f"{str(self.target_branch_id).lower()}-snapshot-{timestamp}"[:63]
@@ -306,8 +311,15 @@ class _SnapshotRestoreOperation:
     created_content: bool = field(default=False, init=False)
 
     def __post_init__(self) -> None:
-        pvc_name = f"{get_settings().deployment_release_name}{DATABASE_PVC_SUFFIX}"
-        target_ns = deployment_namespace(self.target_branch_id)
+        source_ns = self.snapshot_namespace
+        _, source_vm_name = get_autoscaler_vm_identity(self.source_branch_id)
+        target_ns, target_vm_name = get_autoscaler_vm_identity(self.target_branch_id)
+        pvc_name = f"{source_vm_name}{AUTOSCALER_PVC_SUFFIX}"
+        target_pvc_name = f"{target_vm_name}{AUTOSCALER_PVC_SUFFIX}"
+        if target_pvc_name != pvc_name:
+            raise VelaKubernetesError(
+                f"Autoscaler PVC name mismatch between source ({pvc_name}) and target ({target_pvc_name})"
+            )
         timestamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
         target_snapshot = f"{str(self.target_branch_id).lower()}-restore-{timestamp}"[:63]
         snapshot_content = f"snapcontent-restore-{str(self.target_branch_id).lower()}-{timestamp}"[:63]
@@ -317,7 +329,7 @@ class _SnapshotRestoreOperation:
             "ids",
             CloneIdentifiers(
                 pvc=pvc_name,
-                source_namespace=self.snapshot_namespace,
+                source_namespace=source_ns,
                 target_namespace=target_ns,
                 source_snapshot=self.snapshot_name,
                 target_snapshot=target_snapshot,

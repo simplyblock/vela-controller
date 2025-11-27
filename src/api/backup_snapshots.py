@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from .._util import Identifier, quantity_to_bytes
-from ..deployment import DATABASE_PVC_SUFFIX, deployment_namespace
+from ..deployment import AUTOSCALER_PVC_SUFFIX, get_autoscaler_vm_identity
 from ..deployment.kubernetes.snapshot import (
     create_snapshot_from_pvc,
     ensure_snapshot_absent,
@@ -15,7 +15,6 @@ from ..deployment.kubernetes.snapshot import (
     read_snapshot,
     wait_snapshot_ready,
 )
-from ..deployment.settings import get_settings as get_deployment_settings
 
 if TYPE_CHECKING:
     from ulid import ULID
@@ -64,8 +63,8 @@ async def create_branch_snapshot(
     label: str,
     time_limit: float,
 ) -> SnapshotDetails:
-    namespace = deployment_namespace(branch_id)
-    pvc_name = f"{get_deployment_settings().deployment_release_name}{DATABASE_PVC_SUFFIX}"
+    namespace, autoscaler_vm_name = get_autoscaler_vm_identity(branch_id)
+    pvc_name = f"{autoscaler_vm_name}{AUTOSCALER_PVC_SUFFIX}"
     snapshot_name = _build_snapshot_name(label=label, backup_id=backup_id)
 
     logger.info("Creating VolumeSnapshot %s/%s for branch %s", namespace, snapshot_name, branch_id)

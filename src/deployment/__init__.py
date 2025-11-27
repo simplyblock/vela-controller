@@ -349,6 +349,7 @@ def _load_chart_values(chart_root: Any) -> dict[str, Any]:
 def _configure_vela_values(
     values_content: dict[str, Any],
     *,
+    namespace: str,
     parameters: DeploymentParameters,
     jwt_secret: str,
     anon_key: str,
@@ -420,6 +421,7 @@ def _configure_vela_values(
     autoscaler_resources["memorySlots"] = memory_slots
 
     autoscaler_persistence = autoscaler_spec.setdefault("persistence", {})
+    autoscaler_persistence["claimName"] = f"{_autoscaler_vm_name(namespace)}{AUTOSCALER_PVC_SUFFIX}"
     autoscaler_persistence["size"] = f"{bytes_to_gb(parameters.database_size)}G"
     autoscaler_persistence["storageClassName"] = storage_class_name
     autoscaler_persistence.setdefault("accessModes", ["ReadWriteMany"])
@@ -464,6 +466,7 @@ async def create_vela_config(
         anon_key=anon_key,
         service_key=service_key,
         pgbouncer_admin_password=pgbouncer_admin_password,
+        namespace=namespace,
         storage_class_name=storage_class_name,
         use_existing_db_pvc=use_existing_db_pvc,
         pgbouncer_config=pgbouncer_config,
