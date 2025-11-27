@@ -12,6 +12,7 @@
 {{- else }}
 {{- $vmName = printf "%s-autoscaler-vm" (include "vela.fullname" .) | trunc 63 | trimSuffix "-" }}
 {{- end }}
+{{- $pvcName := default (printf "%s-block-data" $vmName) .Values.autoscalerVm.persistence.claimName -}}
 apiVersion: vm.neon.tech/v1
 kind: VirtualMachine
 metadata:
@@ -40,10 +41,5 @@ spec:
       mountPath: {{ .Values.autoscalerVm.mountPath }}
       blockDevice:
         persistentVolumeClaim:
-          storageClassName: {{ .Values.autoscalerVm.persistence.storageClassName }}
-          accessModes:
-{{ toYaml .Values.autoscalerVm.persistence.accessModes | indent 12 }}
-          resources:
-            requests:
-              storage: {{ .Values.autoscalerVm.persistence.size }}
+          claimName: {{ $pvcName }}
 {{- end }}

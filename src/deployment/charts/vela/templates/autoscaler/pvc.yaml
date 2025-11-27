@@ -1,0 +1,32 @@
+{{- if .Values.autoscalerVm.enabled -}}
+{{- $vmName := "" -}}
+{{- if .Values.autoscalerVm.fullnameOverride }}
+{{- $vmName = .Values.autoscalerVm.fullnameOverride | trunc 63 | trimSuffix "-" }}
+{{- else if .Values.autoscalerVm.nameOverride }}
+{{- $override := .Values.autoscalerVm.nameOverride }}
+{{- if contains $override .Release.Name }}
+{{- $vmName = .Release.Name | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- $vmName = printf "%s-%s" .Release.Name $override | trunc 63 | trimSuffix "-" }}
+{{- end }}
+{{- else }}
+{{- $vmName = printf "%s-autoscaler-vm" (include "vela.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+{{- $pvcName := default (printf "%s-block-data" $vmName) .Values.autoscalerVm.persistence.claimName -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $pvcName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "vela.labels" . | nindent 4 }}
+spec:
+  {{- if .Values.autoscalerVm.persistence.storageClassName }}
+  storageClassName: {{ .Values.autoscalerVm.persistence.storageClassName }}
+  {{- end }}
+  accessModes:
+{{ toYaml .Values.autoscalerVm.persistence.accessModes | indent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.autoscalerVm.persistence.size | quote }}
+{{- end }}
