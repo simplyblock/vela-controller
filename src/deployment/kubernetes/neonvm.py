@@ -1,12 +1,50 @@
-from typing import Literal
+from typing import Any, Literal
 
 from aiohttp.client_exceptions import ClientError
 from kubernetes_asyncio.client.exceptions import ApiException
+from pydantic import BaseModel, Field, ValidationError
 
 from ...exceptions import VelaKubernetesError
 from ._util import custom_api_client
 
 PowerState = Literal["Running", "Stopped"]
+
+
+class Status(BaseModel):
+    phase: str
+    pod_name: str = Field(default="", alias="podName")
+
+
+class NeonVM(BaseModel):
+    spec: dict[str, Any] = Field(default_factory=dict)
+    status: Status
+
+
+async def get_neon_vm(namespace: str, name: str) -> NeonVM:
+    """
+    Fetch and validate a Neon VM custom object.
+    """
+    try:
+        async with custom_api_client() as custom_client:
+            vm_obj = await custom_client.get_namespaced_custom_object(
+                group="vm.neon.tech",
+                version="v1",
+                namespace=namespace,
+                plural="virtualmachines",
+                name=name,
+            )
+    except Exception as exc:
+        raise RuntimeError(f"Failed to fetch Neon VM {name!r} in namespace {namespace!r}") from exc
+
+    try:
+        return NeonVM.model_validate(vm_obj)
+    except ValidationError as exc:
+        raise RuntimeError(f"Failed to parse Neon VM for {name!r} in namespace {namespace!r}") from exc
+
+
+async def resolve_autoscaler_vm_pod_name(namespace: str, vm_name: str) -> str:
+    neon_vm = await get_neon_vm(namespace, vm_name)
+    return neon_vm.status.pod_name
 
 
 async def set_virtualmachine_power_state(namespace: str, name: str, power_state: PowerState) -> None:

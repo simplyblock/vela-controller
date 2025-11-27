@@ -5,18 +5,20 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException
+from kubernetes_asyncio.client.exceptions import ApiException
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlmodel import select
 
 from .._util import quantity_to_bytes, quantity_to_milli_cpu
 from ..check_branch_status import get_branch_status
 from ..deployment import (
-    get_db_vmi_identity,
+    get_autoscaler_vm_identity,
     kube_service,
     resolve_autoscaler_volume_identifiers,
     resolve_storage_volume_identifiers,
 )
 from ..deployment.kubernetes._util import custom_api_client
+from ..deployment.kubernetes.neonvm import resolve_autoscaler_vm_pod_name
 from ..deployment.simplyblock_api import create_simplyblock_api
 from ..models._util import Identifier
 from ..models.branch import Branch, BranchServiceStatus, ResourceUsageDefinition
@@ -342,7 +344,7 @@ async def _fetch_pod_metrics(namespace: str, pod_name: str) -> dict[str, Any]:
 
 def _parse_compute_usage(metrics: dict[str, Any]) -> tuple[int, int]:
     containers = cast("Sequence[dict[str, Any]]", metrics["containers"])
-    compute_usage = next(container for container in containers if container.get("name") == "compute")
+    compute_usage = next(container for container in containers if container.get("name") == "neonvm-runner")
 
     usage = cast("dict[str, Any]", compute_usage["usage"])
     cpu_usage = quantity_to_milli_cpu(usage["cpu"])
@@ -356,7 +358,7 @@ def _parse_compute_usage(metrics: dict[str, Any]) -> tuple[int, int]:
 
 async def _collect_compute_usage(namespace: str, vm_name: str) -> tuple[int, int]:
     try:
-        pod_name = await _resolve_vm_pod_name(namespace, vm_name)
+        pod_name = await resolve_autoscaler_vm_pod_name(namespace, vm_name)
     except Exception as exc:
         raise RuntimeError(
             f"Failed to resolve VM pod while collecting compute usage for {vm_name!r} in namespace {namespace!r}"
@@ -409,9 +411,22 @@ async def _collect_branch_volume_usage(branch: Branch, namespace: str) -> tuple[
     return nvme_bytes, iops, storage_bytes
 
 
-async def _collect_branch_resource_usage(branch: Branch) -> ResourceUsageDefinition:
-    namespace, vm_name = get_db_vmi_identity(branch.id)
-    milli_vcpu, ram_bytes = await _collect_compute_usage(namespace, vm_name)
+async def _collect_branch_resource_usage(branch: Branch) -> ResourceUsageDefinition | None:
+    namespace, vm_name = get_autoscaler_vm_identity(branch.id)
+    try:
+        compute_usage = await _collect_compute_usage(namespace, vm_name)
+    except ApiException as exc:
+        if exc.status == 404:
+            logger.warning(
+                "Pod metrics not available yet for branch %s (namespace %s, vm %s); skipping resource usage collection",
+                branch.id,
+                namespace,
+                vm_name,
+            )
+            return None
+        raise
+
+    milli_vcpu, ram_bytes = compute_usage
     nvme_bytes, iops, storage_bytes = await _collect_branch_volume_usage(branch, namespace)
 
     return ResourceUsageDefinition(
@@ -446,6 +461,8 @@ async def monitor_resources(interval_seconds: int = 60):
                         usage = await _collect_branch_resource_usage(branch)
                     except Exception:
                         logger.exception("Failed to collect resource usage for branch %s", branch.id)
+                        continue
+                    if usage is None:
                         continue
                     branch.store_resource_usage(usage)
 
