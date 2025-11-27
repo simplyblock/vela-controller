@@ -37,7 +37,6 @@ from .....deployment import (
     get_autoscaler_vm_identity,
     get_db_vmi_identity,
     kube_service,
-    resize_deployment,
     update_branch_database_password,
     update_branch_volume_iops,
 )
@@ -782,9 +781,6 @@ async def _apply_resize_operations(
     branch: Branch,
     effective_parameters: dict[CapaResizeKey, int],
 ) -> None:
-    resize_params = ResizeParameters(**{str(key): value for key, value in effective_parameters.items()})
-    resize_deployment(branch.id, resize_params)
-
     namespace, autoscaler_vm_name = get_autoscaler_vm_identity(branch.id)
     if "database_size" in effective_parameters:
         new_database_size = effective_parameters["database_size"]
@@ -810,19 +806,36 @@ async def _apply_resize_operations(
             commit=False,
         )
 
-    milli_vcpu = effective_parameters.get("milli_vcpu")
-    if milli_vcpu is not None:
-        await _sync_branch_cpu_resources(
-            branch.id,
-            desired_milli_vcpu=milli_vcpu,
+    milli_vcpu = effective_parameters.get("milli_vcpu", branch.milli_vcpu)
+    memory = effective_parameters.get("memory_bytes", branch.memory)
+
+    cpu_changed = "milli_vcpu" in effective_parameters
+    memory_changed = "memory_bytes" in effective_parameters
+
+    if cpu_changed or memory_changed:
+        await kube_service.resize_autoscaler_vm(
+            namespace,
+            autoscaler_vm_name,
+            cpu_milli=milli_vcpu,
+            memory_bytes=memory,
         )
-        branch.milli_vcpu = milli_vcpu
-        await create_or_update_branch_provisioning(
-            session,
-            branch,
-            ResourceLimitsPublic(milli_vcpu=milli_vcpu),
-            commit=False,
-        )
+        if cpu_changed:
+            branch.milli_vcpu = milli_vcpu
+            await create_or_update_branch_provisioning(
+                session,
+                branch,
+                ResourceLimitsPublic(milli_vcpu=milli_vcpu),
+                commit=False,
+            )
+
+        if memory_changed:
+            branch.memory = memory
+            await create_or_update_branch_provisioning(
+                session,
+                branch,
+                ResourceLimitsPublic(ram=memory),
+                commit=False,
+            )
 
 
 async def _deploy_branch_environment_task(
@@ -1797,16 +1810,16 @@ async def resize(
         await _ensure_resize_resource_limits(session, branch_in_session, effective_parameters)
         await _apply_resize_operations(session, branch_in_session, effective_parameters)
         completion_timestamp = datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-        if "milli_vcpu" in effective_parameters:
-            updated_statuses["database_cpu_resize"] = {
-                "status": "COMPLETED",
-                "timestamp": completion_timestamp,
-            }
-        if "iops" in effective_parameters:
-            updated_statuses["database_iops_resize"] = {
-                "status": "COMPLETED",
-                "timestamp": completion_timestamp,
-            }
+        for param_key, service_key in (
+            ("iops", "database_iops_resize"),
+            ("milli_vcpu", "database_cpu_resize"),
+            ("memory_bytes", "database_memory_resize"),
+        ):
+            if param_key in effective_parameters:
+                updated_statuses[service_key] = {
+                    "status": "COMPLETED",
+                    "timestamp": completion_timestamp,
+                }
 
     branch_in_session.resize_statuses = updated_statuses
     branch_in_session.resize_status = aggregate_resize_statuses(updated_statuses)

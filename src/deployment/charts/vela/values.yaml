@@ -134,7 +134,7 @@ autoscalerVm:
       min: 1
       use: 1
       max: 128
-    memorySlotSize: 512Mi
+    memorySlotSize: 256Mi
   persistence:
     claimName: ""
     storageClassName: "simplyblock-csi-sc"

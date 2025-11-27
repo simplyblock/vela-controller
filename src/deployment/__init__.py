@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field, model_validator
 from ulid import ULID
 
 from .._util import (
+    AUTOSCALER_MEMORY_SLOT_SIZE_MIB,
     CPU_CONSTRAINTS,
     DATABASE_SIZE_CONSTRAINTS,
     IOPS_CONSTRAINTS,
@@ -630,7 +631,7 @@ def calculate_autoscaler_vm_memory(memory_bytes: int) -> tuple[str, dict[str, in
     """
 
     memory_mib = max(1, bytes_to_mib(memory_bytes))
-    slot_size_mib = 512
+    slot_size_mib = AUTOSCALER_MEMORY_SLOT_SIZE_MIB
     desired_slots = max(1, math.ceil(memory_mib / slot_size_mib))
     slots = {"min": 1, "use": min(desired_slots, 128), "max": 128}
     return f"{slot_size_mib}Mi", slots
@@ -654,47 +655,6 @@ class ResizeParameters(BaseModel):
         ):
             raise ValueError("Specify at least one of database_size, storage_size, memory_bytes, milli_vcpu, or iops")
         return self
-
-
-def resize_deployment(branch_id: Identifier, parameters: ResizeParameters):
-    """Perform an in-place Helm upgrade for resize operations. Only parameters provided will be
-    updated; others are preserved using --reuse-values.
-    """
-    chart = resources.files(__package__) / "charts" / "vela"
-    # Minimal values file with only overrides
-    values_content: dict[str, Any] = {}
-
-    # resize memory
-    if parameters.memory_bytes is not None:
-        db_spec = values_content.setdefault("db", {})
-        resource_cfg = db_spec.setdefault("resources", {})
-        resource_cfg["guestMemory"] = f"{bytes_to_mib(parameters.memory_bytes)}Mi"
-        autoscaler_spec = values_content.setdefault("autoscalerVm", {})
-        autoscaler_resources = autoscaler_spec.setdefault("resources", {})
-        memory_slot_size, memory_slots = calculate_autoscaler_vm_memory(parameters.memory_bytes)
-        autoscaler_resources["memorySlotSize"] = memory_slot_size
-        autoscaler_resources["memorySlots"] = memory_slots
-
-    if not values_content:
-        logger.info("No Helm overrides required for resize of branch %s; skipping upgrade.", branch_id)
-        return
-
-    namespace = deployment_namespace(branch_id)
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as temp_values:
-        yaml.dump(values_content, temp_values, default_flow_style=False)
-        subprocess.check_call(
-            [
-                "helm",
-                "upgrade",
-                _release_name(namespace),
-                str(chart),
-                "--namespace",
-                namespace,
-                "--reuse-values",
-                "-f",
-                temp_values.name,
-            ]
-        )
 
 
 async def update_branch_database_password(
