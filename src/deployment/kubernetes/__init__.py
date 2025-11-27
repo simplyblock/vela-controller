@@ -323,8 +323,8 @@ class KubernetesService:
             if slot_size_bytes <= 0:
                 raise VelaKubernetesError("Autoscaler VM memory slot size is invalid")
 
-            min_slots = guest.memory_slots.min_int or 1
-            max_slots = guest.memory_slots.max_int or 128
+            min_slots = guest.memory_slots.min_int
+            max_slots = guest.memory_slots.max_int
             target_slots = math.ceil(memory_bytes / slot_size_bytes)
             desired_slots = max(min_slots, target_slots)
 
