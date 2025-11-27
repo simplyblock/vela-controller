@@ -39,13 +39,14 @@ metadata:
   name: vm-manohar-dev
 spec:
   powerState: Running
-  extraNetwork:
-    enable: true
-  guest:
-    rootDisk:
-      image: docker.io/manoharbrm/pg16-test:dev9 # TODO: update image
+    extraNetwork:
+      enable: true
+    guest:
+      rootDisk:
+        image: docker.io/manoharbrm/pg16-test:dev9 # TODO: update image
     cpus: { min: 1, use: 1, max: 64 }
-    memorySlots: { min: 1, use: 2, max: 256 }
+    memorySlots: { min: 4, use: 16, max: 16 }
+    memorySlotSize: 128Mi
   disks:
     - name: data
       mountPath: /var/lib/postgresql/data

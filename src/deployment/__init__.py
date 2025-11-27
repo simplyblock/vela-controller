@@ -21,6 +21,8 @@ from ulid import ULID
 
 from .._util import (
     AUTOSCALER_MEMORY_SLOT_SIZE_MIB,
+    AUTOSCALER_MEMORY_SLOTS_MAX,
+    AUTOSCALER_MEMORY_SLOTS_MIN,
     CPU_CONSTRAINTS,
     DATABASE_SIZE_CONSTRAINTS,
     IOPS_CONSTRAINTS,
@@ -633,7 +635,11 @@ def calculate_autoscaler_vm_memory(memory_bytes: int) -> tuple[str, dict[str, in
     memory_mib = max(1, bytes_to_mib(memory_bytes))
     slot_size_mib = AUTOSCALER_MEMORY_SLOT_SIZE_MIB
     desired_slots = max(1, math.ceil(memory_mib / slot_size_mib))
-    slots = {"min": 1, "use": min(desired_slots, 128), "max": 128}
+    slots = {
+        "min": AUTOSCALER_MEMORY_SLOTS_MIN,
+        "use": min(max(desired_slots, AUTOSCALER_MEMORY_SLOTS_MIN), AUTOSCALER_MEMORY_SLOTS_MAX),
+        "max": AUTOSCALER_MEMORY_SLOTS_MAX,
+    }
     return f"{slot_size_mib}Mi", slots
 
 

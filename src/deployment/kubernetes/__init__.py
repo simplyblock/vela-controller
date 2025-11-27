@@ -318,25 +318,26 @@ class KubernetesService:
         if cpu_milli is not None:
             guest_spec.setdefault("cpus", {})["use"] = f"{cpu_milli}m"
 
-        slot_size_bytes = guest.slot_size_bytes
-        if slot_size_bytes <= 0:
-            raise VelaKubernetesError("Autoscaler VM memory slot size is invalid")
+        if memory_bytes is not None:
+            slot_size_bytes = guest.slot_size_bytes
+            if slot_size_bytes <= 0:
+                raise VelaKubernetesError("Autoscaler VM memory slot size is invalid")
 
-        min_slots = guest.memory_slots.min_int or 1
-        max_slots = guest.memory_slots.max_int or 128
-        target_slots = math.ceil((memory_bytes or min_slots * slot_size_bytes) / slot_size_bytes)
-        desired_slots = max(min_slots, target_slots)
+            min_slots = guest.memory_slots.min_int or 1
+            max_slots = guest.memory_slots.max_int or 128
+            target_slots = math.ceil(memory_bytes / slot_size_bytes)
+            desired_slots = max(min_slots, target_slots)
 
-        if desired_slots > max_slots:
-            raise VelaKubernetesError(f"Requested autoscaler memory exceeds configured maximum slots ({max_slots})")
+            if desired_slots > max_slots:
+                raise VelaKubernetesError(f"Requested autoscaler memory exceeds configured maximum slots ({max_slots})")
 
-        current_usage = status.memory_bytes(slot_size_bytes)
-        if memory_bytes is not None and current_usage is not None and memory_bytes < current_usage:
-            raise VelaKubernetesError(
-                "Requested autoscaler memory is lower than current utilization; downsizing is not permitted"
-            )
+            current_usage = status.memory_bytes(slot_size_bytes)
+            if current_usage is not None and memory_bytes < current_usage:
+                raise VelaKubernetesError(
+                    "Requested autoscaler memory is lower than current utilization; downsizing is not permitted"
+                )
 
-        guest_spec.setdefault("memorySlots", {})["use"] = desired_slots
+            guest_spec.setdefault("memorySlots", {})["use"] = desired_slots
 
         return await self.apply_autoscaler_vm(namespace, name, vm_manifest)
 
