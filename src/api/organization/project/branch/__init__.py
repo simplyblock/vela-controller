@@ -42,7 +42,6 @@ from .....deployment import (
     update_branch_volume_iops,
 )
 from .....deployment.kubernetes._util import core_v1_client
-from .....deployment.kubernetes.kubevirt import KubevirtSubresourceAction, call_kubevirt_subresource
 from .....deployment.kubernetes.neonvm import PowerState as NeonVMPowerState
 from .....deployment.kubernetes.neonvm import set_virtualmachine_power_state
 from .....deployment.kubernetes.volume_clone import (
@@ -1820,12 +1819,6 @@ _control_responses: dict[int | str, dict[str, Any]] = {
     404: NotFound,
 }
 
-_CONTROL_TO_KUBEVIRT: dict[str, KubevirtSubresourceAction] = {
-    "pause": "pause",
-    "resume": "unpause",
-    "start": "start",
-    "stop": "stop",
-}
 _CONTROL_TO_AUTOSCALER_POWERSTATE: dict[str, NeonVMPowerState] = {
     "pause": "Stopped",
     "resume": "Running",
@@ -1877,19 +1870,10 @@ async def _sync_cpu_after_start(branch_id: Identifier, desired_milli_vcpu: int) 
 async def _apply_branch_action(
     *,
     action: str,
-    namespace: str,
-    vmi_name: str,
     autoscaler_namespace: str,
     autoscaler_vm_name: str,
-    branch_id: Identifier,
-    branch_milli_vcpu: int,
 ) -> None:
     await _set_autoscaler_power_state(action, autoscaler_namespace, autoscaler_vm_name)
-
-    # TODO: remove the below code when migrate to Autoscaler completely
-    await call_kubevirt_subresource(namespace, vmi_name, _CONTROL_TO_KUBEVIRT[action])
-    if action == "start":
-        asyncio.create_task(_sync_cpu_after_start(branch_id, desired_milli_vcpu=branch_milli_vcpu))
 
 
 @instance_api.post(
@@ -1924,22 +1908,16 @@ async def control_branch(
     branch: BranchDep,
 ):
     action = request.scope["route"].name.split(":")[-1]
-    assert action in _CONTROL_TO_KUBEVIRT
+    assert action in _CONTROL_TO_AUTOSCALER_POWERSTATE
     branch_in_session = await session.merge(branch)
     branch_id = branch_in_session.id
-    branch_milli_vcpu = branch_in_session.milli_vcpu
-    namespace, vmi_name = get_db_vmi_identity(branch_id)
     autoscaler_namespace, autoscaler_vm_name = get_autoscaler_vm_identity(branch_id)
     await _set_branch_status(session, branch_in_session, _CONTROL_TRANSITION_INITIAL[action])
     try:
         await _apply_branch_action(
             action=action,
-            namespace=namespace,
-            vmi_name=vmi_name,
             autoscaler_namespace=autoscaler_namespace,
             autoscaler_vm_name=autoscaler_vm_name,
-            branch_id=branch_id,
-            branch_milli_vcpu=branch_milli_vcpu,
         )
     except ApiException as e:
         await _set_branch_status(session, branch_in_session, BranchServiceStatus.ERROR)

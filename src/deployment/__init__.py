@@ -29,7 +29,6 @@ from .._util import (
     VCPU_MILLIS_MIN,
     Identifier,
     Name,
-    StatusType,
     bytes_to_gb,
     bytes_to_mib,
     check_output,
@@ -42,11 +41,10 @@ from ..exceptions import (
     VelaKubernetesError,
 )
 from ._util import deployment_namespace
-from .deployment import DeploymentParameters, DeploymentStatus
+from .deployment import DeploymentParameters
 from .grafana import create_vela_grafana_obj, delete_vela_grafana_obj
 from .kubernetes import KubernetesService
 from .kubernetes._util import custom_api_client
-from .kubernetes.kubevirt import get_virtualmachine_status
 from .logflare import create_branch_logflare_objects, delete_branch_logflare_objects
 from .settings import get_settings
 from .simplyblock_api import create_simplyblock_api
@@ -521,17 +519,6 @@ async def create_vela_config(
                     raise
                 logger.info("Helm release %s not found during cleanup; continuing", release_name)
             raise
-
-
-async def get_deployment_status(branch_id: Identifier) -> DeploymentStatus:
-    status: StatusType
-    try:
-        namespace, vmi_name = get_db_vmi_identity(branch_id)
-        status = await get_virtualmachine_status(namespace, vmi_name)
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"Failed to get deployment status (returning UNKNOWN): {e}")
-        status = "Unknown"
-    return DeploymentStatus(status=status)
 
 
 async def _delete_autoscaler_vm(namespace: str) -> None:
