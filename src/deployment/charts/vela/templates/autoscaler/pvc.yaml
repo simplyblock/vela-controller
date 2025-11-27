@@ -24,6 +24,7 @@ spec:
   {{- if .Values.autoscalerVm.persistence.storageClassName }}
   storageClassName: {{ .Values.autoscalerVm.persistence.storageClassName }}
   {{- end }}
+  volumeMode: Block
   accessModes:
 {{ toYaml .Values.autoscalerVm.persistence.accessModes | indent 4 }}
   resources:

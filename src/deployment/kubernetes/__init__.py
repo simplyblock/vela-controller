@@ -1,4 +1,6 @@
 import logging
+import math
+from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any
 
@@ -8,6 +10,7 @@ from kubernetes_asyncio import client
 from ..._util import quantity_to_bytes
 from ...exceptions import VelaKubernetesError
 from ._util import core_v1_client, custom_api_client, storage_v1_client
+from .neonvm import NeonVM, get_neon_vm
 
 logger = logging.getLogger(__name__)
 
@@ -295,6 +298,75 @@ class KubernetesService:
             raise VelaKubernetesError(f"No pods found for {label!r} in namespace {namespace!r}")
         return pods
 
+    async def resize_autoscaler_vm(
+        self,
+        namespace: str,
+        name: str,
+        *,
+        cpu_milli: int | None,
+        memory_bytes: int | None,
+    ) -> NeonVM:
+        """
+        Patch the Neon autoscaler VM guest resources.
+        """
+        vm = await get_neon_vm(namespace, name)
+        guest = vm.guest
+        status = vm.status
+
+        vm_manifest = _build_autoscaler_vm_manifest(vm.model_dump(), namespace, name)
+        guest_spec = vm_manifest.setdefault("spec", {}).setdefault("guest", {})
+        if cpu_milli is not None:
+            guest_spec.setdefault("cpus", {})["use"] = f"{cpu_milli}m"
+
+        if memory_bytes is not None:
+            slot_size_bytes = guest.slot_size_bytes
+            if slot_size_bytes <= 0:
+                raise VelaKubernetesError("Autoscaler VM memory slot size is invalid")
+
+            min_slots = guest.memory_slots.min_int
+            max_slots = guest.memory_slots.max_int
+            target_slots = math.ceil(memory_bytes / slot_size_bytes)
+            desired_slots = max(min_slots, target_slots)
+
+            if desired_slots > max_slots:
+                raise VelaKubernetesError(f"Requested autoscaler memory exceeds configured maximum slots ({max_slots})")
+
+            current_usage = status.memory_bytes(slot_size_bytes)
+            if current_usage is not None and memory_bytes < current_usage:
+                raise VelaKubernetesError(
+                    "Requested autoscaler memory is lower than current utilization; downsizing is not permitted"
+                )
+
+            guest_spec.setdefault("memorySlots", {})["use"] = desired_slots
+
+        return await self.apply_autoscaler_vm(namespace, name, vm_manifest)
+
+    async def apply_autoscaler_vm(self, namespace: str, name: str, vm_manifest: dict[str, Any]) -> NeonVM:
+        """
+        Apply (create or patch) the Neon autoscaler VM using server-side apply semantics.
+        """
+        manifest = deepcopy(vm_manifest)
+
+        try:
+            async with custom_api_client() as custom_client:
+                applied = await custom_client.patch_namespaced_custom_object(
+                    group="vm.neon.tech",
+                    version="v1",
+                    namespace=namespace,
+                    plural="virtualmachines",
+                    name=name,
+                    body=manifest,
+                    _content_type="application/apply-patch+yaml",
+                    field_manager="vela-autoscaler",
+                    force=True,
+                )
+        except client.exceptions.ApiException as exc:
+            raise VelaKubernetesError(f"Failed to apply autoscaler VM {namespace!r}/{name!r}: {exc.reason}") from exc
+        except ClientError as exc:
+            raise VelaKubernetesError(f"Autoscaler VM apply for {namespace!r}/{name!r} failed") from exc
+
+        return NeonVM.model_validate(applied)
+
     async def get_vm_memory_bytes(self, namespace: str, vm_name: str) -> int | None:
         """
         Fetch the VirtualMachine spec and return the configured guest memory in bytes.
@@ -476,3 +548,18 @@ def _compute_container_memory(pod: Any) -> str | None:
         if fallback is None:
             fallback = memory_value
     return fallback
+
+
+def _build_autoscaler_vm_manifest(vm_obj: dict[str, Any], namespace: str, name: str) -> dict[str, Any]:
+    """
+    Prepare a clean autoscaler VM manifest suitable for server-side apply.
+    """
+    return {
+        "apiVersion": vm_obj.get("apiVersion", "vm.neon.tech/v1"),
+        "kind": vm_obj.get("kind", "VirtualMachine"),
+        "metadata": {
+            "name": name,
+            "namespace": namespace,
+        },
+        "spec": deepcopy(vm_obj.get("spec") or {}),
+    }
