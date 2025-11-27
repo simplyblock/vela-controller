@@ -661,18 +661,6 @@ def resize_deployment(branch_id: Identifier, parameters: ResizeParameters):
     # Minimal values file with only overrides
     values_content: dict[str, Any] = {}
 
-    # resize Database volume
-    if parameters.database_size is not None:
-        db_spec = values_content.setdefault("db", {})
-        db_spec.setdefault("persistence", {})["size"] = f"{bytes_to_gb(parameters.database_size)}G"
-        autoscaler_spec = values_content.setdefault("autoscalerVm", {})
-        autoscaler_spec.setdefault("persistence", {})["size"] = f"{bytes_to_gb(parameters.database_size)}G"
-
-    # resize storageAPI volume
-    if parameters.storage_size is not None:
-        storage_size_gb = f"{bytes_to_gb(parameters.storage_size)}G"
-        values_content.setdefault("storage", {}).setdefault("persistence", {})["size"] = storage_size_gb
-
     # resize memory
     if parameters.memory_bytes is not None:
         db_spec = values_content.setdefault("db", {})
