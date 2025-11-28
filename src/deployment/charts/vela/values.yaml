@@ -136,7 +136,6 @@ autoscalerVm:
       max: 16
     memorySlotSize: 128Mi
   persistence:
-    claimName: ""
     storageClassName: "simplyblock-csi-sc"
     size: 20Gi
     accessModes:
