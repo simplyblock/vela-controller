@@ -214,6 +214,7 @@ async def modify_role(
     role.description = payload.description
 
     if payload.access_rights is not None:
+        await role.awaitable_attrs.access_rights  # Ensure access_rights are loaded
         role.access_rights = [
             RoleAccessRight(
                 organization_id=organization_id,  # FIXME remove redundant field
