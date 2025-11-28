@@ -20,6 +20,10 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "vela.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-1"
+
 spec:
   {{- if .Values.autoscalerVm.persistence.storageClassName }}
   storageClassName: {{ .Values.autoscalerVm.persistence.storageClassName }}
