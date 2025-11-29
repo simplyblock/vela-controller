@@ -12,6 +12,7 @@ from kubernetes_asyncio.client.exceptions import ApiException
 from kubernetes_asyncio.client.models import CoreV1Event
 
 from ...._util import quantity_to_bytes
+from ....deployment import AUTOSCALER_PVC_SUFFIX, DATABASE_PVC_SUFFIX, STORAGE_PVC_SUFFIX
 from ....deployment.kubernetes._util import core_v1_client
 
 logger = logging.getLogger(__name__)
@@ -48,9 +49,11 @@ def normalize_iso_timestamp(value: datetime | None) -> str:
 
 def resource_from_pvc_name(name: str) -> str | None:
     """Infer which service a PVC belongs to based on the naming convention."""
-    if name.endswith("-storage-pvc"):
+    if name.endswith(STORAGE_PVC_SUFFIX):
         return "storage"
-    if name.endswith("-pvc"):
+    if name.endswith(DATABASE_PVC_SUFFIX):
+        return "database"
+    if name.endswith(AUTOSCALER_PVC_SUFFIX):
         return "database"
     return None
 
@@ -63,7 +66,9 @@ def derive_status(reason: str | None, event_type: str | None, message: str | Non
         return "RESIZING"
     if normalized_reason == "FILESYSTEMRESIZEREQUIRED":
         return "FILESYSTEM_RESIZE_PENDING"
-    if normalized_reason in {"FILESYSTEMRESIZESUCCESSFUL", "RESIZEFINISHED"}:
+    if normalized_reason == "RESIZEFINISHED":
+        return "FILESYSTEM_RESIZE_PENDING"
+    if normalized_reason == "FILESYSTEMRESIZESUCCESSFUL":
         return "COMPLETED"
     if normalized_reason in {"VOLUMERESIZEFAILED", "FILESYSTEMRESIZEFAILED"}:
         return "FAILED"

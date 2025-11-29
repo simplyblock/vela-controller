@@ -313,8 +313,13 @@ class KubernetesService:
 
         vm_manifest = _build_autoscaler_vm_manifest(vm.model_dump(by_alias=True), namespace, name)
         guest_spec = vm_manifest.setdefault("spec", {}).setdefault("guest", {})
-        if cpu_milli is not None:
-            guest_spec.setdefault("cpus", {})["use"] = f"{cpu_milli}m"
+        cpu_block = guest_spec.setdefault("cpus", {})
+        min_milli = guest.cpus.min_milli
+        max_milli = guest.cpus.max_milli
+        use_milli = cpu_milli if cpu_milli is not None else guest.cpus.use_milli
+        cpu_block["min"] = _milli_to_cores(min_milli)
+        cpu_block["max"] = _milli_to_cores(max_milli)
+        cpu_block["use"] = _milli_to_cores(use_milli)
 
         if memory_bytes is not None:
             slot_size_bytes = guest.slot_size_bytes
@@ -341,7 +346,7 @@ class KubernetesService:
 
     async def apply_autoscaler_vm(self, namespace: str, name: str, vm_manifest: dict[str, Any]) -> NeonVM:
         """
-        Apply (create or patch) the Neon autoscaler VM using server-side apply semantics.
+        Apply (create or patch) the Neon autoscaler VM using a merge patch.
         """
         manifest = deepcopy(vm_manifest)
 
@@ -354,9 +359,7 @@ class KubernetesService:
                     plural="virtualmachines",
                     name=name,
                     body=manifest,
-                    _content_type="application/apply-patch+yaml",
-                    field_manager="vela-autoscaler",
-                    force=True,
+                    _content_type="application/merge-patch+json",
                 )
         except client.exceptions.ApiException as exc:
             raise VelaKubernetesError(f"Failed to apply autoscaler VM {namespace!r}/{name!r}: {exc.reason}") from exc
@@ -437,9 +440,14 @@ def _compute_container_memory(pod: Any) -> str | None:
     return fallback
 
 
+def _milli_to_cores(value: int) -> int | float:
+    cores = value / 1000
+    return int(cores) if cores.is_integer() else cores
+
+
 def _build_autoscaler_vm_manifest(vm_obj: dict[str, Any], namespace: str, name: str) -> dict[str, Any]:
     """
-    Prepare a clean autoscaler VM manifest suitable for server-side apply.
+    Prepare a clean autoscaler VM manifest for patching.
     """
     return {
         "apiVersion": vm_obj.get("apiVersion", "vm.neon.tech/v1"),
