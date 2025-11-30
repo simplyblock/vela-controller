@@ -26,6 +26,8 @@ kubectl label namespace neonvm-system  \
 kubectl apply -f https://github.com/neondatabase/autoscaling/releases/latest/download/neonvm.yaml
 kubectl apply -f https://github.com/neondatabase/autoscaling/releases/latest/download/neonvm-vxlan-controller.yaml
 kubectl apply -f https://github.com/neondatabase/autoscaling/releases/latest/download/neonvm-controller.yaml
+kubectl apply -f https://github.com/neondatabase/autoscaling/releases/latest/download/autoscale-scheduler.yaml
+kubectl apply -f https://github.com/neondatabase/autoscaling/releases/latest/download/autoscaler-agent.yaml
 ```
 
 ### Usage
