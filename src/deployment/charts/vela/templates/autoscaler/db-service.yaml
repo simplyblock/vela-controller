@@ -1,5 +1,4 @@
-{{- if .Values.db.enabled -}}
-{{- $dbFullname := include "vela.db.fullname" . -}}
+{{- $dbName := printf "%s-db" (include "vela.fullname" .) -}}
 {{- $serviceCfg := .Values.db.service | default (dict) -}}
 {{- $externalSvcEnabled := true -}}
 {{- if hasKey $serviceCfg "externalEnabled" }}
@@ -14,29 +13,29 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ printf "%s-ext" $dbFullname }}
+  name: {{ printf "%s-ext" $dbName }}
   labels:
     {{- include "vela.labels" . | nindent 4 }}
 spec:
-  type: {{ .Values.db.service.type }}
+  type: {{ default "LoadBalancer" (index $serviceCfg "type") }}
   {{- if $lbIpFamilies }}
   ipFamilies:
 {{ toYaml $lbIpFamilies | indent 4 }}
   {{- end }}
   ipFamilyPolicy: {{ $lbIpPolicy }}
   ports:
-    - port: {{ .Values.db.service.port }}
+    - port: {{ default 5432 (index $serviceCfg "port") }}
       targetPort: 5432
       protocol: TCP
       name: postgres
   selector:
-    vm.kubevirt.io/name: {{ $dbFullname }}
+{{ include "vela.autoscaler.selectorLabel" . | nindent 4 }}
 ---
 {{- end }}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ $dbFullname }}
+  name: {{ $dbName }}
   labels:
     {{- include "vela.labels" . | nindent 4 }}
 spec:
@@ -47,10 +46,9 @@ spec:
   {{- end }}
   ipFamilyPolicy: {{ $clusterIpPolicy }}
   ports:
-    - port: {{ .Values.db.service.port }}
+    - port: {{ default 5432 (index $serviceCfg "port") }}
       targetPort: 5432
       protocol: TCP
       name: postgres
   selector:
-    vm.kubevirt.io/name: {{ $dbFullname }}
-{{- end }}
+{{ include "vela.autoscaler.selectorLabel" . | nindent 4 }}

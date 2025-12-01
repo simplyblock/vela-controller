@@ -389,12 +389,9 @@ def _configure_vela_values(
     secrets.setdefault("db", {})["password"] = parameters.database_password
     secrets.setdefault("pgbouncer", {})["admin_password"] = pgbouncer_admin_password
 
-    resource_cfg = db_spec.setdefault("resources", {})
-    resource_cfg["guestMemory"] = f"{bytes_to_mib(parameters.memory_bytes)}Mi"
-
-    cpu_limit, cpu_request = calculate_cpu_resources(parameters.milli_vcpu)
-    resource_cfg["limits"] = {"cpu": cpu_limit}
-    resource_cfg["requests"] = {"cpu": cpu_request}
+    db_values = values_content.setdefault("db", {})
+    db_service_cfg = db_values.setdefault("service", {})
+    db_service_cfg["externalEnabled"] = get_settings().enable_db_external_ipv6_loadbalancer
 
     storage_spec = values_content.setdefault("storage", {})
     storage_persistence = storage_spec.setdefault("persistence", {})

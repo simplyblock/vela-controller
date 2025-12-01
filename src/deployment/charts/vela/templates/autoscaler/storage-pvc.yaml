@@ -2,7 +2,7 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "vela.db.fullname" . }}-storage-pvc
+  name: {{ include "vela.autoscaler.name" . }}-storage-pvc
   labels:
     {{- include "vela.labels" . | nindent 4 }}
   {{- with .Values.storage.persistence.annotations }}
@@ -13,8 +13,7 @@ spec:
   {{- with .Values.storage.persistence.storageClassName }}
   storageClassName: {{ . | quote }}
   {{- end }}
-  {{- with .Values.storage.persistence.volumeMode }}
-  {{- end }}
+  volumeMode: Block
   accessModes:
   {{- range .Values.storage.persistence.accessModes }}
     - {{ . | quote }}
