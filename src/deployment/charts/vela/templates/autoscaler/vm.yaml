@@ -79,12 +79,12 @@ spec:
       mountPath: "/var/storage"
       blockDevice:
         persistentVolumeClaim:
-          claimName: {{ include "vela.db.fullname" . }}-storage-pvc
+          claimName: {{ include "vela.autoscaler.name" . }}-storage-pvc
     {{- end }}
     - name: compose
       mountPath: "/vela/config/"
       configMap:
-        name: {{ include "vela.db.fullname" . }}-compose
+        name: {{ include "vela.autoscaler.composeConfigName" . }}
     - name: vela-db-secret
       mountPath: "/vela/secrets/db"
       secret:

@@ -24,6 +24,34 @@ If release name contains chart name it will be used as a full name.
 {{- end }}
 
 {{/*
+Return the autoscaler VM fullname.
+*/}}
+{{- define "vela.autoscaler.name" -}}
+{{- printf "%s-autoscaler-vm" (include "vela.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Return the compose config map name associated with the autoscaler VM.
+*/}}
+{{- define "vela.autoscaler.composeConfigName" -}}
+{{- printf "%s-compose" (include "vela.autoscaler.name" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Return the PgBouncer config map name that lives next to the autoscaler VM.
+*/}}
+{{- define "vela.autoscaler.pgbouncerConfigName" -}}
+{{- printf "%s-pgbouncer" (include "vela.autoscaler.name" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Selector label used to identify the autoscaler VM pods.
+*/}}
+{{- define "vela.autoscaler.selectorLabel" -}}
+vm.neon.tech/name: {{ include "vela.autoscaler.name" . }}
+{{- end }}
+
+{{/*
 Create chart name and version as used by the chart label.
 */}}
 {{- define "vela.chart" -}}

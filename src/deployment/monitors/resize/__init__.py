@@ -16,7 +16,6 @@ PVC resize pipeline
    ``Branch`` record, updating aggregate resize state and capacity fields so that
    API consumers observe consistent progress semantics.
 
-
 Control surface
 ---------------
 ``run_resize_monitor`` drives both loops concurrently, coordinating shutdown via

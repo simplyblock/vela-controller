@@ -1,6 +1,5 @@
-{{- if .Values.pgbouncer.enabled -}}
+{{- if and .Values.autoscalerVm.enabled .Values.pgbouncer.enabled }}
 {{- $pgbouncerName := printf "%s-pgbouncer" (include "vela.fullname" .) -}}
-{{- $pgbouncerSelectorName := printf "%s-pgbouncer" (include "vela.name" .) -}}
 apiVersion: v1
 kind: Service
 metadata:
@@ -15,5 +14,5 @@ spec:
       protocol: TCP
       name: pgbouncer
   selector:
-    vm.kubevirt.io/name: {{ include "vela.db.fullname" . }}
+{{ include "vela.autoscaler.selectorLabel" . | nindent 4 }}
 {{- end }}

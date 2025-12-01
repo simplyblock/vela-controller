@@ -1,11 +1,11 @@
-{{- if and .Values.db.enabled .Values.pgbouncer.enabled }}
+{{- if and .Values.autoscalerVm.enabled .Values.pgbouncer.enabled }}
 {{- $dbPassword := required "Values.secret.db.password is required when PgBouncer is enabled" .Values.secret.db.password }}
 {{- $pgbouncerAdminPassword := required "Values.secret.pgbouncer.admin_password is required when PgBouncer is enabled" .Values.secret.pgbouncer.admin_password }}
 {{- $pgbouncerConfig := .Values.pgbouncer.config | default (dict) }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ printf "%s-pgbouncer" (include "vela.db.fullname" .) }}
+  name: {{ include "vela.autoscaler.pgbouncerConfigName" . }}
   labels:
     {{- include "vela.labels" . | nindent 4 }}
 data:
@@ -33,5 +33,5 @@ data:
   users.txt: |
     "postgres" {{ $dbPassword | quote }}
     "pgbouncer_admin" {{ $pgbouncerAdminPassword | quote }}
-  
+
 {{- end }}
