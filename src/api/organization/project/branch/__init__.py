@@ -30,7 +30,6 @@ from .....deployment import (
     branch_domain,
     branch_rest_endpoint,
     branch_service_name,
-    calculate_cpu_resources,
     delete_deployment,
     deploy_branch_environment,
     ensure_branch_storage_class,
@@ -738,41 +737,6 @@ def _track_resize_change(
         statuses[service_key] = entry
     elif statuses.get(service_key, {}).get("status") == "PENDING":
         statuses.pop(service_key, None)
-
-
-# TODO: send an alert if function fails.
-async def _sync_branch_cpu_resources(
-    branch_id: Identifier,
-    *,
-    desired_milli_vcpu: int,
-    attempts: int = 10,
-    delay_seconds: float = 2.0,
-) -> None:
-    """
-    Ensure the virt-launcher pod backing the branch VM reflects the desired CPU settings.
-    Retries while the pod is recreating (e.g. immediately after a start request).
-    """
-    namespace, vm_name = get_db_vmi_identity(branch_id)
-
-    last_error: Exception | None = None
-    for attempt in range(attempts):
-        try:
-            cpu_limit, cpu_request = calculate_cpu_resources(desired_milli_vcpu)
-            await kube_service.resize_vm_compute_cpu(
-                namespace,
-                vm_name,
-                cpu_request=cpu_request,
-                cpu_limit=cpu_limit,
-            )
-            return
-        except VelaKubernetesError as exc:
-            last_error = exc
-            if attempt == attempts - 1:
-                raise
-            await asyncio.sleep(delay_seconds)
-
-    if last_error is not None:
-        raise last_error
 
 
 async def _apply_resize_operations(
@@ -1871,13 +1835,6 @@ async def _set_autoscaler_power_state(action: str, namespace: str, name: str) ->
     if power_state is None:
         return
     await set_virtualmachine_power_state(namespace, name, power_state)
-
-
-async def _sync_cpu_after_start(branch_id: Identifier, desired_milli_vcpu: int) -> None:
-    try:
-        await _sync_branch_cpu_resources(branch_id, desired_milli_vcpu=desired_milli_vcpu)
-    except VelaKubernetesError:
-        logger.exception("Failed to sync CPU resources after starting branch %s", branch_id)
 
 
 async def _apply_branch_action(

@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -7,14 +6,8 @@ from sqlalchemy import or_
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from ...._util import quantity_to_bytes
-from ....api._util.resourcelimit import create_or_update_branch_provisioning
 from ....api.db import engine
-from ....api.organization.project.branch import _sync_branch_cpu_resources
-from ....deployment import get_db_vmi_identity, kube_service
-from ....exceptions import VelaKubernetesError
 from ....models.branch import Branch, BranchResizeStatus, aggregate_resize_statuses
-from ....models.resources import ResourceLimitsPublic
 
 logger = logging.getLogger(__name__)
 
@@ -29,67 +22,6 @@ RESIZE_TIMEOUT_SERVICES: tuple[str, ...] = (
     "storage_api_disk_resize",
 )
 _TIMEOUT_STATUSES: set[BranchResizeStatus] = {"PENDING", "RESIZING", "FILESYSTEM_RESIZE_PENDING"}
-
-
-async def refresh_memory_status(session: AsyncSession, branch: Branch) -> None:
-    """Confirm memory resize progress by inspecting the VM's pod allocation."""
-    branch_id = branch.id
-    raw_statuses = dict(branch.resize_statuses or {})
-    raw_entry = raw_statuses.get(MEMORY_SERVICE_KEY)
-    if raw_entry is None:
-        return
-
-    entry_payload = _load_resize_entry(raw_entry)
-    entry_payload.pop("requested_value", None)
-    current_status = entry_payload.get("status", "PENDING")
-    requested_at = _parse_timestamp(entry_payload.get("requested_at") or entry_payload.get("timestamp"))
-
-    namespace, vmi_name = get_db_vmi_identity(branch.id)
-    pod_memory_bytes = await _resolve_pod_memory_bytes(namespace, vmi_name, requested_at, branch.id)
-
-    target_memory = await kube_service.get_vm_memory_bytes(namespace, vmi_name)
-    if target_memory is None:
-        return
-
-    pod_satisfies_request = _pod_memory_satisfies_request(target_memory, pod_memory_bytes, branch.memory)
-    new_status = "COMPLETED" if pod_satisfies_request else "RESIZING"
-
-    branch_memory_needs_update = new_status == "COMPLETED" and branch.memory != target_memory
-    state_changed = new_status != current_status
-    if not state_changed and not branch_memory_needs_update:
-        return
-
-    entry_payload["status"] = new_status
-    entry_payload["timestamp"] = _timestamp_now()
-
-    raw_statuses[MEMORY_SERVICE_KEY] = entry_payload
-    branch.resize_statuses = raw_statuses
-    branch.resize_status = aggregate_resize_statuses(raw_statuses)
-
-    logger.info("1. Memory resize for branch %s completed to %d bytes", branch_id, target_memory)
-
-    if new_status == "COMPLETED":
-        await create_or_update_branch_provisioning(
-            session,
-            branch,
-            ResourceLimitsPublic(ram=target_memory),
-            commit=False,
-        )
-        branch.memory = target_memory
-        logger.info("2. Memory resize for branch %s completed to %d bytes", branch_id, target_memory)
-        try:
-            await _sync_branch_cpu_resources(
-                branch_id,
-                desired_milli_vcpu=branch.milli_vcpu,
-            )
-        except VelaKubernetesError:
-            logger.exception(
-                "Failed to sync CPU resources for branch %s after memory resize completion",
-                branch_id,
-            )
-
-    await session.commit()
-    logger.info("Updated memory resize status for branch %s to %s", branch_id, new_status)
 
 
 async def enforce_resize_timeouts() -> None:
@@ -150,36 +82,6 @@ def _timestamp_now() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-async def _resolve_pod_memory_bytes(
-    namespace: str,
-    vmi_name: str,
-    requested_at: datetime | None,
-    branch_id: Any,
-) -> int | None:
-    try:
-        _pod_name, pod_memory_quantity = await kube_service.get_vm_pod_name(
-            namespace,
-            vmi_name,
-            earliest_start_time=requested_at,
-        )
-    except VelaKubernetesError as exc:
-        logger.debug("Waiting for VM pod during memory resize for branch %s: %s", branch_id, exc)
-        return None
-    return quantity_to_bytes(pod_memory_quantity)
-
-
-def _pod_memory_satisfies_request(
-    target_memory: int | None,
-    pod_memory_bytes: int | None,
-    previous_memory: int | None,
-) -> bool:
-    if pod_memory_bytes is None or target_memory is None:
-        return False
-    if previous_memory is not None and target_memory < previous_memory:
-        return pod_memory_bytes <= target_memory
-    return pod_memory_bytes >= target_memory
-
-
 def _parse_timestamp(value: Any) -> datetime | None:
     if not isinstance(value, str) or not value:
         return None
@@ -206,44 +108,3 @@ def _load_resize_entry(entry: Any) -> dict[str, Any]:
         if hasattr(entry, key):
             fallback[key] = getattr(entry, key)
     return fallback
-
-
-async def reconcile_memory_resizes() -> None:
-    """Walk all branches with resize activity and refresh their memory state."""
-
-    # get all the branch ids with memory resize activity
-    resize_statuses_column = Branch.resize_statuses
-    async with AsyncSession(engine) as session:
-        result = await session.exec(
-            select(Branch).where(resize_statuses_column.has_key(MEMORY_SERVICE_KEY))  # type: ignore[attr-defined]
-        )
-        branch_ids = [branch.id for branch in result.all()]
-
-    # for each branch, refresh its memory status by checking if the new pod's memory matches the requested
-    for branch_id in branch_ids:
-        async with AsyncSession(engine) as branch_session:
-            branch = await branch_session.get(Branch, branch_id)
-            if branch is None:
-                continue
-            await refresh_memory_status(branch_session, branch)
-
-
-async def poll_memory_resizes(stop_event: asyncio.Event) -> None:
-    """Periodically reconcile memory resizes until cancelled."""
-    while not stop_event.is_set():
-        try:
-            await reconcile_memory_resizes()
-        except asyncio.CancelledError:
-            raise
-        except Exception:  # pragma: no cover - defensive guard
-            logger.exception("Failed to reconcile memory resize status")
-        try:
-            await enforce_resize_timeouts()
-        except asyncio.CancelledError:
-            raise
-        except Exception:  # pragma: no cover - defensive guard
-            logger.exception("Failed to enforce resize timeout thresholds")
-        try:
-            await asyncio.wait_for(stop_event.wait(), timeout=MEMORY_POLL_SECONDS)
-        except TimeoutError:
-            continue

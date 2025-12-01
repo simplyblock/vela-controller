@@ -55,7 +55,6 @@ from ....models.branch import (
     should_transition_resize_status,
 )
 from ....models.resources import ResourceLimitsPublic
-from .memory_resize import poll_memory_resizes
 from .pvc_resize import (
     INITIAL_BACKOFF_SECONDS,
     VOLUME_SERVICE_MAP,
@@ -172,25 +171,16 @@ async def _handle_pvc_event(core_v1: CoreV1Api, event: CoreV1Event) -> None:
 
 
 async def run_resize_monitor(stop_event: asyncio.Event) -> None:
-    """Drive both memory and PVC resize monitors until the caller signals shutdown."""
-    memory_task = asyncio.create_task(poll_memory_resizes(stop_event))
+    """Drive PVC resize monitors until the caller signals shutdown."""
     while not stop_event.is_set():
         try:
             await stream_pvc_events(stop_event, _handle_pvc_event)
-        except asyncio.CancelledError:
-            memory_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await memory_task
-            raise
         except VelaKubernetesError as exc:
             logger.warning("PVC resize monitor awaiting Kubernetes configuration: %s", exc)
             await asyncio.sleep(INITIAL_BACKOFF_SECONDS)
         except Exception:  # pragma: no cover - defensive guard
             logger.exception("PVC resize monitor unexpected failure; retrying")
             await asyncio.sleep(INITIAL_BACKOFF_SECONDS)
-    memory_task.cancel()
-    with suppress(asyncio.CancelledError):
-        await memory_task
 
 
 class ResizeMonitor:
