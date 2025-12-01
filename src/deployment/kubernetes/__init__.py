@@ -341,6 +341,7 @@ class KubernetesService:
                 )
 
             guest_spec.setdefault("memorySlots", {})["use"] = desired_slots
+            guest_spec.setdefault("memorySlots", {})["limit"] = desired_slots
 
         return await self.apply_autoscaler_vm(namespace, name, vm_manifest)
 

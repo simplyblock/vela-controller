@@ -622,9 +622,11 @@ def calculate_autoscaler_vm_memory(memory_bytes: int) -> tuple[str, dict[str, in
     memory_mib = max(1, bytes_to_mib(memory_bytes))
     slot_size_mib = AUTOSCALER_MEMORY_SLOT_SIZE_MIB
     desired_slots = max(1, math.ceil(memory_mib / slot_size_mib))
+    target_memory_slots = min(max(desired_slots, AUTOSCALER_MEMORY_SLOTS_MIN), AUTOSCALER_MEMORY_SLOTS_MAX)
     slots = {
         "min": AUTOSCALER_MEMORY_SLOTS_MIN,
-        "use": min(max(desired_slots, AUTOSCALER_MEMORY_SLOTS_MIN), AUTOSCALER_MEMORY_SLOTS_MAX),
+        "use": target_memory_slots,
+        "limit": target_memory_slots,
         "max": AUTOSCALER_MEMORY_SLOTS_MAX,
     }
     return f"{slot_size_mib}Mi", slots
