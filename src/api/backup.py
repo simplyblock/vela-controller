@@ -315,11 +315,11 @@ async def add_or_replace_backup_schedule(
         error = str(exc)
         if "asyncpg.exceptions.UniqueViolationError" in error and "unique_backup_schedule" in error:
             if organization is not None:
-                session.refresh(organization)
+                await session.refresh(organization)
                 target = f"organization {organization.id}"
             else:
                 assert branch is not None
-                session.refresh(branch)
+                await session.refresh(branch)
                 target = f"branch {branch.id}"
             env = payload.env_type or "default"
             raise HTTPException(
