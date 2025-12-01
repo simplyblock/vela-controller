@@ -25,7 +25,6 @@ secret:
   pgbouncer:
     admin_password: "pgadmin_pwd" # TODO: auto generate this in the next PR.
 
-
 # Database service settings
 db:
   service:
