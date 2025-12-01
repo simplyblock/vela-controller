@@ -122,8 +122,8 @@ autoscalerVm:
   extraNetwork:
     enable: true
   image:
-    repository: docker.io/manoharbrm/pg16-test
-    tag: dev14
+    repository: docker.io/manoharbrm/vela-vm
+    tag: latest
   mountPath: /var/lib/postgresql
   resources: # Placeholder values. Actual values are filled by create_vela_config
     cpus:

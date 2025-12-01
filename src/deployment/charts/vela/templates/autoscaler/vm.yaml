@@ -20,6 +20,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "vela.labels" . | nindent 4 }}
+    autoscaling.neon.tech/enabled: "true"
 spec:
   powerState: {{ .Values.autoscalerVm.powerState }}
   extraNetwork:
@@ -27,6 +28,7 @@ spec:
   guest:
     rootDisk:
       image: {{ printf "%s:%s" .Values.autoscalerVm.image.repository .Values.autoscalerVm.image.tag }}
+      size: 4G
     cpus:
       min: {{ .Values.autoscalerVm.resources.cpus.min }}
       use: {{ .Values.autoscalerVm.resources.cpus.use }}
@@ -36,10 +38,50 @@ spec:
       use: {{ .Values.autoscalerVm.resources.memorySlots.use }}
       max: {{ .Values.autoscalerVm.resources.memorySlots.max }}
     memorySlotSize: {{ .Values.autoscalerVm.resources.memorySlotSize }}
+  ports:
+    - name: postgres
+      port: 5432
+      protocol: TCP
+    - name: pgexporter
+      port: 9187
+      protocol: TCP
+    - name: rest
+      port: 3000
+      protocol: TCP
+    - name: pgbouncer
+      port: 6432
+      protocol: TCP
+    - name: pgbouncer
+      port: 8080
+      protocol: TCP
+    - name: pgbouncer
+      port: 5000
+      protocol: TCP
+    - name: vector
+      port: 9001
+      protocol: TCP
+    - name: metrics
+      port: 9100
+      protocol: TCP
+    - name: monitor
+      port: 10301
+      protocol: TCP
+  schedulerName: autoscale-scheduler
   disks:
     - name: data
       mountPath: {{ .Values.autoscalerVm.mountPath }}
       blockDevice:
         persistentVolumeClaim:
           claimName: {{ $pvcName }}
+    - name: compose
+      mountPath: "/vela/"
+      configMap:
+        name: {{ include "vela.db.fullname" . }}-compose
+        items:
+        - key: docker-compose.yml
+          path: compose.yaml
+        - key: vector.yml
+          path: vector.yml
+        - key: pg_hba.conf
+          path: pg_hba.conf
 {{- end }}
