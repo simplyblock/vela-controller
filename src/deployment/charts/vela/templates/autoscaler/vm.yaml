@@ -80,4 +80,8 @@ spec:
         items:
         - key: docker-compose.yml
           path: compose.yaml
+        - key: vector.yml
+          path: vector.yml
+        - key: pg_hba.conf
+          path: pg_hba.conf
 {{- end }}
