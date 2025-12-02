@@ -37,6 +37,7 @@ spec:
       min: {{ .Values.autoscalerVm.resources.memorySlots.min }}
       use: {{ .Values.autoscalerVm.resources.memorySlots.use }}
       max: {{ .Values.autoscalerVm.resources.memorySlots.max }}
+      limit: {{ .Values.autoscalerVm.resources.memorySlots.limit }}
     memorySlotSize: {{ .Values.autoscalerVm.resources.memorySlotSize }}
   ports:
     - name: postgres

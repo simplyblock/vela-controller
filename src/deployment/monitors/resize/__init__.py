@@ -16,11 +16,6 @@ PVC resize pipeline
    ``Branch`` record, updating aggregate resize state and capacity fields so that
    API consumers observe consistent progress semantics.
 
-Memory resize reconciliation
-----------------------------
-``poll_memory_resizes`` periodically enumerates branches with outstanding
-resizes, pulls their backing VirtualMachineInstance objects, and updates memory
-metrics in-place, using the same aggregate status semantics as the PVC path.
 
 Control surface
 ---------------

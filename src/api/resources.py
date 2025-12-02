@@ -13,7 +13,6 @@ from .._util import quantity_to_bytes, quantity_to_milli_cpu
 from ..check_branch_status import get_branch_status
 from ..deployment import (
     get_autoscaler_vm_identity,
-    kube_service,
     resolve_autoscaler_volume_identifiers,
     resolve_storage_volume_identifiers,
 )
@@ -324,11 +323,6 @@ async def get_consumption_limits(
         ConsumptionLimitPublic(resource=limit.resource.value, max_total_minutes=limit.max_total_minutes)
         for limit in result.scalars().all()
     ]
-
-
-async def _resolve_vm_pod_name(namespace: str, vm_name: str) -> str:
-    pod_ref = await kube_service.get_vm_pod_name(namespace, vm_name)
-    return pod_ref[0] if isinstance(pod_ref, tuple) else pod_ref
 
 
 async def _fetch_pod_metrics(namespace: str, pod_name: str) -> dict[str, Any]:
