@@ -1,19 +1,34 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import logging
+from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import HTTPException
-from sqlalchemy import func
+from sqlalchemy import Table, func
 from sqlmodel import delete, select
 
-from ...models.backups import BackupSchedule, BackupScheduleRow, NextBackup
+from ...models.backups import BackupEntry, BackupSchedule, BackupScheduleRow, NextBackup
 from ...models.branch import Branch
+from ..backup_snapshots import delete_branch_snapshot
+
+logger = logging.getLogger(__name__)
+
+SNAPSHOT_TIMEOUT_SEC = 120
+SNAPSHOT_POLL_INTERVAL_SEC = 5
+
 
 if TYPE_CHECKING:
     from ..._util import Identifier
     from ...models.organization import Organization
     from ...models.project import Project
     from ..db import SessionDep
+
+
+def _table_for(model: Any) -> Table:
+    table = getattr(model, "__table__", None)
+    if table is None:
+        raise AttributeError(f"{model} has no __table__ attribute")
+    return cast("Table", table)
 
 
 async def copy_branch_backup_schedules(
@@ -98,3 +113,32 @@ async def _remove_existing_schedule(
         await session.refresh(organization)
     if branch is not None:
         await session.refresh(branch)
+
+
+async def _delete_backup_snapshots(backups: list[BackupEntry]) -> None:
+    if not backups:
+        return
+
+    for backup in backups:
+        try:
+            await delete_branch_snapshot(
+                name=backup.snapshot_name,
+                namespace=backup.snapshot_namespace,
+                content_name=backup.snapshot_content_name,
+                time_limit=SNAPSHOT_TIMEOUT_SEC,
+                poll_interval=SNAPSHOT_POLL_INTERVAL_SEC,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to delete snapshot %s/%s for backup %s",
+                backup.snapshot_namespace,
+                backup.snapshot_name,
+                backup.id,
+            )
+
+
+async def delete_branch_backups(session: SessionDep, branch: Branch) -> None:
+    """Drop the remaining backup snapshots for a branch before the branch row is removed."""
+    backup_result = await session.execute(select(BackupEntry).where(BackupEntry.branch_id == branch.id))
+    backup_entries: list[BackupEntry] = list(backup_result.scalars())
+    await _delete_backup_snapshots(backup_entries)

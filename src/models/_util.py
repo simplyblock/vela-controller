@@ -3,7 +3,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import UUID as SQLAlchemyUUID  # noqa: N811
-from sqlalchemy import TypeDecorator
+from sqlalchemy import Column, ForeignKey, TypeDecorator
 from sqlmodel import Field as SQLField
 from sqlmodel import SQLModel
 from ulid import ULID
@@ -39,11 +39,22 @@ class Model(SQLModel):
 
     # This would ideally be a classmethod, but initialization order prevents that
     @staticmethod
-    def foreign_key_field(table_name, *, nullable=False, **kwargs):
+    def foreign_key_field(table_name, *, nullable=False, ondelete=None, **kwargs):
+        primary_key = kwargs.pop("primary_key", False)
+        unique = kwargs.pop("unique", False)
+        index = kwargs.pop("index", False)
+        fk_constraint = ForeignKey(f"{table_name}.id", ondelete=ondelete)
+        column = Column(
+            _DatabaseIdentifier,
+            fk_constraint,
+            primary_key=primary_key,
+            nullable=False if primary_key else nullable,
+            unique=unique,
+            index=index,
+        )
         return SQLField(
             default=None if nullable else ...,
-            foreign_key=f"{table_name}.id",
-            sa_type=_DatabaseIdentifier,
+            sa_column=column,
             **kwargs,
         )
 
