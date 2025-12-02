@@ -293,6 +293,12 @@ async def resolve_autoscaler_volume_identifiers(namespace: str) -> tuple[str, st
     return await _resolve_volume_identifiers(namespace, pvc_name)
 
 
+def get_storage_volume_identity(branch_id: Identifier) -> tuple[str, str]:
+    namespace = deployment_namespace(branch_id)
+    pvc_name = f"{_release_name(namespace)}{STORAGE_PVC_SUFFIX}"
+    return namespace, pvc_name
+
+
 async def update_branch_volume_iops(branch_id: Identifier, iops: int) -> None:
     namespace = deployment_namespace(branch_id)
 

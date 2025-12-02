@@ -3,11 +3,16 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from .._util import Identifier, quantity_to_bytes
-from ..deployment import AUTOSCALER_PVC_SUFFIX, get_autoscaler_vm_identity
+from ..deployment import (
+    AUTOSCALER_PVC_SUFFIX,
+    get_autoscaler_vm_identity,
+    get_storage_volume_identity,
+)
 from ..deployment.kubernetes.snapshot import (
     create_snapshot_from_pvc,
     ensure_snapshot_absent,
@@ -54,20 +59,21 @@ def _build_snapshot_name(*, label: str, backup_id: ULID) -> str:
     return f"{label_component}{separator}{backup_component}"
 
 
-async def create_branch_snapshot(
-    branch_id: Identifier,
+SnapshotMetadata = tuple[str | None, str | None, str | None]
+
+
+async def _create_snapshot_from_pvc(
     *,
+    namespace: str,
+    pvc_name: str,
     backup_id: ULID,
     snapshot_class: str,
-    poll_interval: float,
     label: str,
+    poll_interval: float,
     time_limit: float,
 ) -> SnapshotDetails:
-    namespace, autoscaler_vm_name = get_autoscaler_vm_identity(branch_id)
-    pvc_name = f"{autoscaler_vm_name}{AUTOSCALER_PVC_SUFFIX}"
     snapshot_name = _build_snapshot_name(label=label, backup_id=backup_id)
-
-    logger.info("Creating VolumeSnapshot %s/%s for branch %s", namespace, snapshot_name, branch_id)
+    logger.info("Creating VolumeSnapshot %s/%s for branch PVC %s", namespace, snapshot_name, pvc_name)
     try:
         async with asyncio.timeout(time_limit):
             await create_snapshot_from_pvc(
@@ -84,10 +90,10 @@ async def create_branch_snapshot(
             )
     except TimeoutError:
         logger.exception(
-            "Timed out creating VolumeSnapshot %s/%s for branch %s within %s seconds",
+            "Timed out creating VolumeSnapshot %s/%s for PVC %s within %s seconds",
             namespace,
             snapshot_name,
-            branch_id,
+            pvc_name,
             time_limit,
         )
         raise
@@ -109,6 +115,107 @@ async def create_branch_snapshot(
         content_name=content_name,
         size_bytes=size_bytes,
     )
+
+
+async def create_branch_snapshot(
+    branch_id: Identifier,
+    *,
+    backup_id: ULID,
+    snapshot_class: str,
+    poll_interval: float,
+    label: str,
+    time_limit: float,
+) -> SnapshotDetails:
+    namespace, autoscaler_vm_name = get_autoscaler_vm_identity(branch_id)
+    pvc_name = f"{autoscaler_vm_name}{AUTOSCALER_PVC_SUFFIX}"
+    return await _create_snapshot_from_pvc(
+        namespace=namespace,
+        pvc_name=pvc_name,
+        backup_id=backup_id,
+        snapshot_class=snapshot_class,
+        poll_interval=poll_interval,
+        label=label,
+        time_limit=time_limit,
+    )
+
+
+async def create_storage_snapshot(
+    branch_id: Identifier,
+    *,
+    backup_id: ULID,
+    snapshot_class: str,
+    poll_interval: float,
+    label: str,
+    time_limit: float,
+) -> SnapshotDetails:
+    namespace, pvc_name = get_storage_volume_identity(branch_id)
+    storage_label = f"storage-{label}"
+    return await _create_snapshot_from_pvc(
+        namespace=namespace,
+        pvc_name=pvc_name,
+        backup_id=backup_id,
+        snapshot_class=snapshot_class,
+        poll_interval=poll_interval,
+        label=storage_label,
+        time_limit=time_limit,
+    )
+
+
+async def create_branch_snapshots(
+    branch_id: Identifier,
+    *,
+    backup_id: ULID,
+    snapshot_class: str,
+    poll_interval: float,
+    label: str,
+    time_limit: float,
+    storage_enabled: bool,
+) -> tuple[SnapshotDetails, SnapshotDetails | None]:
+    db_snapshot = await create_branch_snapshot(
+        branch_id,
+        backup_id=backup_id,
+        snapshot_class=snapshot_class,
+        poll_interval=poll_interval,
+        label=label,
+        time_limit=time_limit,
+    )
+
+    storage_snapshot: SnapshotDetails | None = None
+    if storage_enabled:
+        try:
+            storage_snapshot = await create_storage_snapshot(
+                branch_id,
+                backup_id=backup_id,
+                snapshot_class=snapshot_class,
+                poll_interval=poll_interval,
+                label=label,
+                time_limit=time_limit,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to create storage snapshot for branch %s; rolling back %s/%s",
+                branch_id,
+                db_snapshot.namespace,
+                db_snapshot.name,
+            )
+            try:
+                await delete_branch_snapshot(
+                    name=db_snapshot.name,
+                    namespace=db_snapshot.namespace,
+                    content_name=db_snapshot.content_name,
+                    time_limit=time_limit,
+                    poll_interval=poll_interval,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to delete rollback snapshot %s/%s for branch %s",
+                    db_snapshot.namespace,
+                    db_snapshot.name,
+                    branch_id,
+                )
+            raise
+
+    return db_snapshot, storage_snapshot
 
 
 async def delete_branch_snapshot(
@@ -159,3 +266,19 @@ async def delete_branch_snapshot(
             time_limit,
         )
         raise
+
+
+async def delete_snapshots(
+    snapshot_metadata: Sequence[SnapshotMetadata],
+    *,
+    time_limit: float,
+    poll_interval: float,
+) -> None:
+    for name, namespace, content_name in snapshot_metadata:
+        await delete_branch_snapshot(
+            name=name,
+            namespace=namespace,
+            content_name=content_name,
+            time_limit=time_limit,
+            poll_interval=poll_interval,
+        )

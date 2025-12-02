@@ -20,7 +20,7 @@ from ..models.backups import (
 from ..models.branch import Branch, BranchServiceStatus
 from ..models.organization import Organization
 from ..models.project import Project
-from .backup_snapshots import create_branch_snapshot, delete_branch_snapshot
+from .backup_snapshots import create_branch_snapshots, delete_snapshots
 from .organization.project.branch import refresh_branch_status
 from .settings import get_settings
 
@@ -207,10 +207,15 @@ class BackupMonitor:
         deleted_ids: list[ULID] = []
         for backup in backups:
             try:
-                await delete_branch_snapshot(
-                    name=backup.snapshot_name,
-                    namespace=backup.snapshot_namespace,
-                    content_name=backup.snapshot_content_name,
+                await delete_snapshots(
+                    [
+                        (backup.snapshot_name, backup.snapshot_namespace, backup.snapshot_content_name),
+                        (
+                            backup.storage_snapshot_name,
+                            backup.storage_snapshot_namespace,
+                            backup.storage_snapshot_content_name,
+                        ),
+                    ],
                     time_limit=SNAPSHOT_TIMEOUT_SEC,
                     poll_interval=SNAPSHOT_POLL_INTERVAL_SEC,
                 )
@@ -307,13 +312,14 @@ class BackupMonitor:
         backup_id = ULID()
 
         try:
-            snapshot = await create_branch_snapshot(
+            snapshot, storage_snapshot = await create_branch_snapshots(
                 branch.id,
                 backup_id=backup_id,
                 snapshot_class=VOLUME_SNAPSHOT_CLASS,
                 poll_interval=SNAPSHOT_POLL_INTERVAL_SEC,
                 label=f"row-{row.row_index}",
                 time_limit=SNAPSHOT_TIMEOUT_SEC,
+                storage_enabled=branch.enable_file_storage,
             )
         except Exception:
             nb.next_at = next_due
@@ -332,6 +338,9 @@ class BackupMonitor:
             snapshot_name=snapshot.name,
             snapshot_namespace=snapshot.namespace,
             snapshot_content_name=snapshot.content_name,
+            storage_snapshot_name=storage_snapshot.name if storage_snapshot else None,
+            storage_snapshot_namespace=storage_snapshot.namespace if storage_snapshot else None,
+            storage_snapshot_content_name=storage_snapshot.content_name if storage_snapshot else None,
         )
         db.add(be)
         await db.flush()
