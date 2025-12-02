@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, Optional
 
 from pydantic import BaseModel, model_validator
 from sqlalchemy import Column, String, UniqueConstraint
@@ -20,6 +20,7 @@ from .resources import ResourceLimitsPublic
 
 if TYPE_CHECKING:
     from .branch import Branch
+    from .resources import ResourceLimit
 
 
 ProjectStatus = Literal[
@@ -44,6 +45,7 @@ class Project(AsyncAttrs, Model, table=True):
     organization_id: Identifier = Model.foreign_key_field("organization")
     organization: Organization = Relationship(back_populates="projects")
     branches: list["Branch"] = Relationship(back_populates="project", cascade_delete=True)
+    resource_limit: Optional["ResourceLimit"] = Relationship(back_populates="project", cascade_delete=True)
 
     __table_args__ = (UniqueConstraint("organization_id", "name", name="unique_project_name"),)
 

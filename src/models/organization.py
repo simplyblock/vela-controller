@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from pydantic import BaseModel, StrictBool
 from sqlalchemy.ext.asyncio import AsyncAttrs
@@ -10,6 +10,7 @@ from .membership import Membership
 
 if TYPE_CHECKING:
     from .project import Project
+    from .resources import ResourceLimit
     from .role import Role
     from .user import User
 
@@ -20,6 +21,7 @@ class Organization(AsyncAttrs, Model, table=True):
     projects: list["Project"] = Relationship(back_populates="organization", cascade_delete=True)
     roles: list["Role"] = Relationship(back_populates="organization", cascade_delete=True)
     users: list["User"] = Relationship(back_populates="organizations", link_model=Membership)
+    resource_limit: Optional["ResourceLimit"] = Relationship(back_populates="organization", cascade_delete=True)
     require_mfa: bool = False
     max_backups: int
     environments: str
