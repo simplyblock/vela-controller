@@ -13,6 +13,7 @@
 {{- $vmName = printf "%s-autoscaler-vm" (include "vela.fullname" .) | trunc 63 | trimSuffix "-" }}
 {{- end }}
 {{- $pvcName := default (printf "%s-block-data" $vmName) .Values.autoscalerVm.persistence.claimName -}}
+{{- $pgbouncerName := printf "%s-pgbouncer" (include "vela.fullname" .) -}}
 apiVersion: vm.neon.tech/v1
 kind: VirtualMachine
 metadata:
@@ -85,4 +86,8 @@ spec:
           path: vector.yml
         - key: pg_hba.conf
           path: pg_hba.conf
+    - name: pgbouncer-config
+      mountPath: "/pgbouncer"
+      configMap:
+        name: {{ $pgbouncerName }}
 {{- end }}
