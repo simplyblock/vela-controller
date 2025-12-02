@@ -131,9 +131,10 @@ autoscalerVm:
       use: "1m"
       max: "64000m"
     memorySlots:
-      min: 4
-      use: 4
-      max: 16
+      min: 0
+      use: 0
+      max: 0
+      limit: 0
     memorySlotSize: 128Mi
   persistence:
     storageClassName: "simplyblock-csi-sc"

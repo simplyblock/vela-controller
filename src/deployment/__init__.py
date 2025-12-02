@@ -545,7 +545,7 @@ async def _delete_autoscaler_vm(namespace: str) -> None:
 
 
 async def delete_deployment(branch_id: Identifier) -> None:
-    namespace, _ = get_db_vmi_identity(branch_id)
+    namespace, _ = get_autoscaler_vm_identity(branch_id)
     storage_class_name = branch_storage_class_name(branch_id)
     await cleanup_branch_dns(branch_id)
     await _delete_autoscaler_vm(namespace)
@@ -568,20 +568,6 @@ async def delete_deployment(branch_id: Identifier) -> None:
             logger.info("StorageClass %s not found", storage_class_name)
         else:
             raise
-
-
-def get_db_vmi_identity(branch_id: Identifier) -> tuple[str, str]:
-    """
-    Return the (namespace, vmi_name) for the project's database VirtualMachineInstance.
-
-    The Helm chart defines the DB VM fullname as the Helm release fullname (release name plus chart
-    name if needed) with a "-db" suffix when no overrides are provided. With the configurable
-    release name (`Settings.deployment_release_name`, default "vela") and chart name "vela", the
-    VMI resolves to e.g. "vela-db".
-    """
-    namespace = deployment_namespace(branch_id)
-    vmi_name = branch_service_name(namespace, "db")
-    return namespace, vmi_name
 
 
 def get_autoscaler_vm_identity(branch_id: Identifier) -> tuple[str, str]:

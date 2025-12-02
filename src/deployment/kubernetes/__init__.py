@@ -1,7 +1,6 @@
 import logging
 import math
 from copy import deepcopy
-from datetime import UTC, datetime
 from typing import Any
 
 from aiohttp import ClientError
@@ -255,37 +254,6 @@ class KubernetesService:
                     raise VelaKubernetesError(f"PersistentVolume {name!r} not found") from exc
                 raise
 
-    async def get_vm_pod_name(
-        self,
-        namespace: str,
-        vm_name: str,
-        *,
-        earliest_start_time: datetime | None = None,
-    ) -> tuple[str, str | None]:
-        """
-        Resolve the virt-launcher pod name backing the supplied KubeVirt VirtualMachine.
-
-        Prefers running pods whose compute container is already ready. Falls back to the most
-        recently started pod when no healthy candidates exist.
-        """
-        pods = await self.list_pods(namespace, f"vm.neon.tech/name={vm_name}")
-        candidates = _eligible_vm_pods(pods.items or [])
-        if not candidates:
-            raise VelaKubernetesError(f"No pods found for VM {vm_name!r} in namespace {namespace!r}")
-
-        if earliest_start_time is not None:
-            normalized_start = earliest_start_time.astimezone(UTC)
-            candidates = [pod for pod in candidates if _pod_start_time(pod) >= normalized_start]
-            if not candidates:
-                raise VelaKubernetesError(
-                    f"No pods for VM {vm_name!r} in namespace {namespace!r} meet start time "
-                    f"{normalized_start.isoformat()}"
-                )
-
-        target_pod = _choose_vm_pod(candidates)
-        requested_memory = _compute_container_memory(target_pod)
-        return target_pod.metadata.name, requested_memory
-
     async def list_pods(self, namespace, label):
         async with core_v1_client() as core_v1:
             try:
@@ -368,77 +336,6 @@ class KubernetesService:
             raise VelaKubernetesError(f"Autoscaler VM apply for {namespace!r}/{name!r} failed") from exc
 
         return NeonVM.model_validate(applied)
-
-
-def _eligible_vm_pods(pods: list[Any]) -> list[Any]:
-    eligible: list[Any] = []
-    for pod in pods:
-        metadata = getattr(pod, "metadata", None)
-        if metadata and not getattr(metadata, "deletion_timestamp", None):
-            eligible.append(pod)
-    return eligible
-
-
-def _choose_vm_pod(candidates: list[Any]) -> Any:
-    ordered_buckets = [
-        [pod for pod in candidates if _pod_phase(pod) == "RUNNING" and _compute_container_ready(pod)],
-        [pod for pod in candidates if _pod_phase(pod) == "RUNNING"],
-        [pod for pod in candidates if _pod_phase(pod) == "PENDING"],
-        candidates,
-    ]
-    for bucket in ordered_buckets:
-        if bucket:
-            return max(bucket, key=_pod_start_time)
-    raise VelaKubernetesError("No eligible pods available")
-
-
-def _pod_phase(pod: Any) -> str:
-    status = getattr(pod, "status", None)
-    return (getattr(status, "phase", None) or "").upper()
-
-
-def _compute_container_ready(pod: Any) -> bool:
-    statuses = getattr(getattr(pod, "status", None), "container_statuses", None) or []
-    compute_statuses = [cs for cs in statuses if getattr(cs, "name", None) == "compute"]
-    target_statuses = compute_statuses or statuses
-    return all(bool(getattr(cs, "ready", False)) for cs in target_statuses) if target_statuses else False
-
-
-def _pod_start_time(pod: Any) -> datetime:
-    status = getattr(pod, "status", None)
-    metadata = getattr(pod, "metadata", None)
-    for value in (
-        getattr(status, "start_time", None),
-        getattr(status, "startTime", None),
-        getattr(metadata, "creation_timestamp", None),
-        getattr(metadata, "creationTimestamp", None),
-    ):
-        if isinstance(value, datetime):
-            normalized = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
-            return normalized.astimezone(UTC)
-    return datetime.min.replace(tzinfo=UTC)
-
-
-def _compute_container_memory(pod: Any) -> str | None:
-    spec = getattr(pod, "spec", None)
-    containers = getattr(spec, "containers", None) or []
-    fallback: str | None = None
-    for container in containers:
-        resources = getattr(container, "resources", None)
-        if isinstance(resources, dict):
-            requests = resources.get("requests") or {}
-            limits = resources.get("limits") or {}
-        else:
-            requests = getattr(resources, "requests", None) or {}
-            limits = getattr(resources, "limits", None) or {}
-        memory_value = requests.get("memory") or limits.get("memory")
-        if not memory_value:
-            continue
-        if getattr(container, "name", None) == "compute":
-            return memory_value
-        if fallback is None:
-            fallback = memory_value
-    return fallback
 
 
 def _milli_to_cores(value: int) -> int | float:

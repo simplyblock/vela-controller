@@ -34,7 +34,6 @@ from .....deployment import (
     deploy_branch_environment,
     ensure_branch_storage_class,
     get_autoscaler_vm_identity,
-    get_db_vmi_identity,
     kube_service,
     update_branch_database_password,
     update_branch_volume_iops,
@@ -199,7 +198,7 @@ async def refresh_branch_status(branch_id: Identifier) -> BranchServiceStatus:
 
         current_status = _parse_branch_status(branch.status)
         try:
-            namespace, _ = get_db_vmi_identity(branch.id)
+            namespace, _ = get_autoscaler_vm_identity(branch.id)
             service_status = await _collect_branch_service_health(
                 namespace,
                 storage_enabled=branch.enable_file_storage,
@@ -251,7 +250,7 @@ _DEFAULT_SERVICE_STATUS = BranchStatus(
 
 
 async def _branch_service_status(branch: Branch) -> BranchStatus:
-    namespace, _ = get_db_vmi_identity(branch.id)
+    namespace, _ = get_autoscaler_vm_identity(branch.id)
     try:
         return await _collect_branch_service_health(namespace, storage_enabled=branch.enable_file_storage)
     except Exception:  # pragma: no cover - defensive guard
@@ -1611,7 +1610,7 @@ async def get_pgbouncer_config(
     config = await branch.awaitable_attrs.pgbouncer_config
     config_snapshot = snapshot_pgbouncer_config(config)
 
-    namespace, _ = get_db_vmi_identity(branch.id)
+    namespace, _ = get_autoscaler_vm_identity(branch.id)
     pgbouncer_status = await _probe_service_socket(
         host=_pgbouncer_host_for_namespace(namespace),
         port=_PGBOUNCER_SERVICE_PORT,
@@ -1652,7 +1651,7 @@ async def update_pgbouncer_config(
 ) -> BranchPgbouncerConfigStatus:
     config = _ensure_pgbouncer_config(session, branch)
 
-    namespace, vmi_name = get_db_vmi_identity(branch.id)
+    namespace, vmi_name = get_autoscaler_vm_identity(branch.id)
     host = _pgbouncer_host_for_namespace(namespace)
     update_commands = _collect_pgbouncer_updates(parameters)
 
