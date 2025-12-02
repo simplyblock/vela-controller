@@ -5,7 +5,7 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, StrictBool
 from sqlmodel import and_, select
 
 from ..models.membership import Membership
@@ -63,12 +63,16 @@ async def public_list(
         raise AssertionError("unreachable")
 
 
+class UserInviteParameters(UserParameters):
+    send_mail: StrictBool = True
+
+
 @api.post(
     "/",
     status_code=201,
     responses={401: Unauthenticated},
 )
-async def add(parameters: UserParameters) -> tuple[UserCreationResult, int]:
+async def add(parameters: UserInviteParameters) -> tuple[UserCreationResult, int]:
     password = secrets.token_hex(16)
     user_id = await realm_admin("vela").a_create_user(
         {
@@ -85,7 +89,8 @@ async def add(parameters: UserParameters) -> tuple[UserCreationResult, int]:
             ],
         }
     )
-    await realm_admin("vela").a_send_verify_email(user_id)
+    if parameters.send_mail:
+        await realm_admin("vela").a_send_verify_email(user_id)
     return UserCreationResult(
         id=UUID(user_id),
         password=password,
