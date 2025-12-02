@@ -209,8 +209,8 @@ def normalize_datetime_to_utc(instant: datetime | None) -> datetime | None:
     if instant is None:
         return None
     if instant.tzinfo is None:
-        return instant.replace(tzinfo=UTC)
-    return instant.astimezone(UTC)
+        return instant.replace(tzinfo=UTC).replace(second=0, microsecond=0)
+    return instant.astimezone(UTC).replace(second=0, microsecond=0)
 
 
 async def get_organization_resource_usage(
