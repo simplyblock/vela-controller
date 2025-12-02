@@ -254,17 +254,6 @@ class KubernetesService:
                     raise VelaKubernetesError(f"PersistentVolume {name!r} not found") from exc
                 raise
 
-    async def list_pods(self, namespace, label):
-        async with core_v1_client() as core_v1:
-            try:
-                pods = await core_v1.list_namespaced_pod(namespace=namespace, label_selector=label)
-            except client.exceptions.ApiException as exc:
-                raise VelaKubernetesError(f"Failed to list pods backing {label!r} in namespace {namespace!r}") from exc
-
-        if not pods.items:
-            raise VelaKubernetesError(f"No pods found for {label!r} in namespace {namespace!r}")
-        return pods
-
     async def resize_autoscaler_vm(
         self,
         namespace: str,

@@ -1649,7 +1649,7 @@ async def update_pgbouncer_config(
     branch: BranchDep,
     parameters: BranchPgbouncerConfigUpdate,
 ) -> BranchPgbouncerConfigStatus:
-    config = _ensure_pgbouncer_config(session, branch)
+    config = await _ensure_pgbouncer_config(session, branch)
 
     namespace, vmi_name = get_autoscaler_vm_identity(branch.id)
     host = _pgbouncer_host_for_namespace(namespace)
@@ -1936,8 +1936,8 @@ async def get_apikeys(
 api.include_router(instance_api)
 
 
-def _ensure_pgbouncer_config(session: SessionDep, branch: Branch) -> PgbouncerConfig:
-    config = branch.pgbouncer_config
+async def _ensure_pgbouncer_config(session: SessionDep, branch: Branch) -> PgbouncerConfig:
+    config = await session.scalar(select(PgbouncerConfig).where(PgbouncerConfig.branch_id == branch.id))
     if config is None:
         config = PgbouncerConfig(
             default_pool_size=PgbouncerConfig.DEFAULT_POOL_SIZE,
@@ -1949,6 +1949,8 @@ def _ensure_pgbouncer_config(session: SessionDep, branch: Branch) -> PgbouncerCo
         )
         branch.pgbouncer_config = config
         session.add(config)
+    else:
+        branch.pgbouncer_config = config
     return config
 
 

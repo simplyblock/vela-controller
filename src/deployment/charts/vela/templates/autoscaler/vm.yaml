@@ -85,4 +85,10 @@ spec:
           path: vector.yml
         - key: pg_hba.conf
           path: pg_hba.conf
+        - key: namespace
+          path: pgbouncer/namespace
+        - key: pgbouncer.ini
+          path: pgbouncer/pgbouncer.ini
+        - key: users.txt
+          path: pgbouncer/users.txt
 {{- end }}
