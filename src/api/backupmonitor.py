@@ -20,7 +20,12 @@ from ..models.backups import (
 from ..models.branch import Branch, BranchServiceStatus
 from ..models.organization import Organization
 from ..models.project import Project
-from .backup_snapshots import create_branch_snapshot, delete_branch_snapshot
+from .backup_snapshots import (
+    SNAPSHOT_POLL_INTERVAL_SEC,
+    SNAPSHOT_TIMEOUT_SEC,
+    create_branch_snapshot,
+    delete_branch_snapshot,
+)
 from .organization.project.branch import refresh_branch_status
 from .settings import get_settings
 
@@ -29,8 +34,6 @@ from .settings import get_settings
 # ---------------------------
 VOLUME_SNAPSHOT_CLASS = os.environ.get("VOLUME_SNAPSHOT_CLASS", "csi-snapshot-class")
 POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", "60"))
-SNAPSHOT_TIMEOUT_SEC = int(os.environ.get("SNAPSHOT_TIMEOUT_SEC", "120"))
-SNAPSHOT_POLL_INTERVAL_SEC = int(os.environ.get("SNAPSHOT_POLL_INTERVAL_SEC", "5"))
 
 logging.basicConfig(
     level=os.environ.get("LOG_LEVEL", "INFO"),
@@ -211,8 +214,6 @@ class BackupMonitor:
                     name=backup.snapshot_name,
                     namespace=backup.snapshot_namespace,
                     content_name=backup.snapshot_content_name,
-                    time_limit=SNAPSHOT_TIMEOUT_SEC,
-                    poll_interval=SNAPSHOT_POLL_INTERVAL_SEC,
                 )
             except Exception:
                 context = {

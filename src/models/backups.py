@@ -25,7 +25,7 @@ class BackupSchedule(AsyncAttrs, Model, table=True):
     organization_id: Identifier | None = Model.foreign_key_field("organization")
     organization: Organization | None = Relationship()
     branch_id: Identifier | None = Model.foreign_key_field("branch")
-    branch: Branch | None = Relationship()
+    branch: Branch | None = Relationship(back_populates="backup_schedules")
     env_type: str | None = Field(default=None)
     rows: list["BackupScheduleRow"] = Relationship(back_populates="schedule", cascade_delete=True)
     next_backups: list["NextBackup"] = Relationship(back_populates="schedule", cascade_delete=True)
@@ -42,7 +42,7 @@ class BackupScheduleRow(AsyncAttrs, Model, table=True):
 
 class NextBackup(AsyncAttrs, Model, table=True):
     branch_id: Identifier = Model.foreign_key_field("branch")
-    branch: Branch = Relationship()
+    branch: Branch = Relationship(back_populates="next_backups")
     schedule_id: Identifier = Model.foreign_key_field("backupschedule")
     schedule: BackupSchedule = Relationship(back_populates="next_backups")
     row_index: int
@@ -51,7 +51,7 @@ class NextBackup(AsyncAttrs, Model, table=True):
 
 class BackupEntry(AsyncAttrs, Model, table=True):
     branch_id: Identifier = Model.foreign_key_field("branch")
-    branch: Branch = Relationship()
+    branch: Branch = Relationship(back_populates="backup_entries")
     row_index: int
     created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
     size_bytes: Annotated[int, Field(sa_column=Column(BigInteger, nullable=True))]
@@ -71,7 +71,7 @@ class BackupEntry(AsyncAttrs, Model, table=True):
 
 class BackupLog(AsyncAttrs, Model, table=True):
     branch_id: Identifier = Model.foreign_key_field("branch")
-    branch: Branch = Relationship()
+    branch: Branch = Relationship(back_populates="backup_logs")
     backup_uuid: str
     # backup: BackupEntry = Relationship(back_populates="backup_entries")
     action: str
