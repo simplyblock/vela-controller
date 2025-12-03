@@ -6,7 +6,7 @@ from sqlalchemy.exc import NoResultFound
 from sqlmodel import select
 
 from .._util import Identifier
-from ..models.branch import Branch
+from ..models.branch import Branch, BranchServiceStatus
 from ..models.organization import Organization
 from ..models.project import Project
 from ..models.role import Role
@@ -50,7 +50,14 @@ RoleDep = Annotated[Role, Depends(_role_lookup)]
 async def branch_lookup(session: SessionDep, project: ProjectDep, branch_id: Identifier) -> Branch:
     try:
         query = select(Branch).where(Branch.project_id == project.id, Branch.id == branch_id)
-        return (await session.execute(query)).scalars().one()
+        branch = (await session.execute(query)).scalars().one()
+        status_value = branch.status
+        if (
+            status_value
+            and BranchServiceStatus._value2member_map_.get(str(status_value)) == BranchServiceStatus.DELETING
+        ):
+            raise HTTPException(status_code=409, detail="Branch is being deleted and cannot be manipulated.")
+        return branch
     except NoResultFound as e:
         raise HTTPException(404, f"Branch {branch_id} not found") from e
 

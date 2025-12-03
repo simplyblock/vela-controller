@@ -1561,6 +1561,7 @@ async def delete(
     _project: ProjectDep,
     branch: BranchDep,
 ):
+    await _set_branch_status(session, branch, BranchServiceStatus.DELETING)
     await delete_deployment(branch.id)
     try:
         await realm_admin("master").a_delete_realm(str(branch.id))
