@@ -343,7 +343,7 @@ async def add_or_replace_backup_schedule(
                     unit=row.unit,
                     retention=row.retention,
                 )
-                for row in schedule.rows
+                for row in await schedule.awaitable_attrs.rows
             ],
         )
     return BackupScheduleCreatePublic(status="ok", schedule_id=schedule.id)
