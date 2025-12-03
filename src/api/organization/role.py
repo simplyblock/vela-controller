@@ -16,7 +16,6 @@ from ...models.role import (
     Role,
     RoleAccessRight,
     RoleAssignmentPublic,
-    RoleAssignmentsPublic,
     RoleCreate,
     RoleDeletePublic,
     RolePublic,
@@ -169,7 +168,7 @@ async def list_role_assignments(
     session: SessionDep,
     organization_id: Identifier,
     user_id: UUID | None = None,
-) -> RoleAssignmentsPublic:
+) -> list[RoleUserLinkPublic]:
     """
     List role-user assignments within an organization.
     Optionally filter by user_id.
@@ -179,9 +178,8 @@ async def list_role_assignments(
         stmt = stmt.where(RoleUserLink.user_id == user_id)
 
     result = await session.execute(stmt)
-    links = result.scalars().all()
 
-    assignments = [
+    return [
         RoleUserLinkPublic(
             organization_id=link.organization_id,
             project_id=link.project_id,
@@ -190,10 +188,8 @@ async def list_role_assignments(
             user_id=link.user_id,
             env_type=link.env_type,
         )
-        for link in links
+        for link in result.scalars().all()
     ]
-
-    return RoleAssignmentsPublic(count=len(assignments), links=assignments)
 
 
 instance_api = APIRouter(prefix="/{role_id}")

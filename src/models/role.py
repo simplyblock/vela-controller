@@ -187,11 +187,6 @@ class RoleWithPermissionsPublic(RolePublic):
     access_rights: list[str] | None
 
 
-class RoleAssignmentsPublic(BaseModel):
-    count: int
-    links: list[RoleUserLinkPublic]
-
-
 class PermissionAccessCheckContext(BaseModel):
     organization_id: Identifier
     project_id: Identifier | None
