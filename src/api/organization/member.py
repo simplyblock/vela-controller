@@ -70,10 +70,13 @@ async def add(
     try:
         await session.commit()
     except IntegrityError as e:
+        await session.rollback()
         error = str(e)
         if ("asyncpg.exceptions.UniqueViolationError" not in error) or ("membership_pkey" not in error):
             raise
-        raise HTTPException(400, f"User {parameters.id} is already member of organization {organization.id}") from e
+        raise HTTPException(
+            409, f"User {parameters.id} is already member of organization {await organization.awaitable_attrs.id}"
+        ) from e
 
     return JSONResponse(status_code=201, content=None)
 
