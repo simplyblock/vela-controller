@@ -214,8 +214,6 @@ class BackupMonitor:
                     name=backup.snapshot_name,
                     namespace=backup.snapshot_namespace,
                     content_name=backup.snapshot_content_name,
-                    time_limit=SNAPSHOT_TIMEOUT_SEC,
-                    poll_interval=SNAPSHOT_POLL_INTERVAL_SEC,
                 )
             except Exception:
                 context = {

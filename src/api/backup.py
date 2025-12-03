@@ -35,7 +35,6 @@ from ._util.backups import _remove_existing_schedule, _validate_project_retentio
 from .auth import authenticated_user
 from .backup_snapshots import (
     SNAPSHOT_POLL_INTERVAL_SEC,
-    SNAPSHOT_TIMEOUT_SEC,
     create_branch_snapshot,
     delete_branch_snapshot,
 )
@@ -594,8 +593,6 @@ async def delete_backup(session: SessionDep, backup_id: Identifier) -> BackupDel
             name=backup.snapshot_name,
             namespace=backup.snapshot_namespace,
             content_name=backup.snapshot_content_name,
-            time_limit=SNAPSHOT_TIMEOUT_SEC,
-            poll_interval=SNAPSHOT_POLL_INTERVAL_SEC,
         )
     except Exception as exc:
         logger.exception("Failed to delete snapshot for backup %s", backup_id)

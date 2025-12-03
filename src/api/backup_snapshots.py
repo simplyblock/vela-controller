@@ -120,8 +120,8 @@ async def delete_branch_snapshot(
     name: str | None,
     namespace: str | None,
     content_name: str | None,
-    time_limit: float,
-    poll_interval: float,
+    time_limit: float = SNAPSHOT_TIMEOUT_SEC,
+    poll_interval: float = SNAPSHOT_POLL_INTERVAL_SEC,
 ) -> None:
     if not name or not namespace:
         logger.debug(

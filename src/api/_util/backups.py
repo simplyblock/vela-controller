@@ -10,8 +10,6 @@ from sqlmodel import delete, select
 from ...models.backups import BackupEntry, BackupSchedule, BackupScheduleRow, NextBackup
 from ...models.branch import Branch
 from ..backup_snapshots import (
-    SNAPSHOT_POLL_INTERVAL_SEC,
-    SNAPSHOT_TIMEOUT_SEC,
     delete_branch_snapshot,
 )
 
@@ -121,8 +119,6 @@ async def delete_branch_backups(session: SessionDep, branch: Branch) -> None:
                 name=backup.snapshot_name,
                 namespace=backup.snapshot_namespace,
                 content_name=backup.snapshot_content_name,
-                time_limit=SNAPSHOT_TIMEOUT_SEC,
-                poll_interval=SNAPSHOT_POLL_INTERVAL_SEC,
             )
         except Exception:
             logger.exception(
