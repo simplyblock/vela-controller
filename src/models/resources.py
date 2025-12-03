@@ -36,9 +36,9 @@ class EntityType(PyEnum):
 class ResourceLimit(AsyncAttrs, Model, table=True):
     entity_type: EntityType
     resource: ResourceType
-    org_id: Identifier | None = Model.foreign_key_field("organization", nullable=True)
-    env_type: str | None = Field(default=None, nullable=True)
-    project_id: Identifier | None = Model.foreign_key_field("project", nullable=True)
+    org_id: Identifier | None = Model.foreign_key_field("organization")
+    env_type: str | None = None
+    project_id: Identifier | None = Model.foreign_key_field("project")
     max_total: Annotated[int, Field(sa_type=BigInteger)]
     max_per_branch: Annotated[int, Field(sa_type=BigInteger)]
 
@@ -47,7 +47,7 @@ class BranchProvisioning(AsyncAttrs, Model, table=True):
     branch_id: Identifier = Model.foreign_key_field("branch", nullable=True)
     resource: ResourceType
     amount: Annotated[int, Field(sa_type=BigInteger)]
-    updated_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    updated_at: datetime = Field(sa_column=Column(DateTime(timezone=True)))
 
 
 class ProvisioningLog(AsyncAttrs, Model, table=True):
@@ -56,11 +56,11 @@ class ProvisioningLog(AsyncAttrs, Model, table=True):
     amount: Annotated[int, Field(sa_type=BigInteger)]
     action: str
     reason: str | None = None
-    ts: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    ts: datetime = Field(sa_column=Column(DateTime(timezone=True)))
 
 
 class ResourceUsageMinute(AsyncAttrs, Model, table=True):
-    ts_minute: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    ts_minute: datetime = Field(sa_column=Column(DateTime(timezone=True)))
     org_id: Identifier = Model.foreign_key_field("organization", nullable=True)
     project_id: Identifier = Model.foreign_key_field("project", nullable=True)
     branch_id: Identifier = Model.foreign_key_field("branch", nullable=True)
@@ -70,8 +70,8 @@ class ResourceUsageMinute(AsyncAttrs, Model, table=True):
 
 class ResourceConsumptionLimit(AsyncAttrs, Model, table=True):
     entity_type: EntityType
-    org_id: Identifier | None = Model.foreign_key_field("organization", nullable=True)
-    project_id: Identifier | None = Model.foreign_key_field("project", nullable=True)
+    org_id: Identifier | None = Model.foreign_key_field("organization")
+    project_id: Identifier | None = Model.foreign_key_field("project")
     resource: ResourceType
     max_total_minutes: int
 
