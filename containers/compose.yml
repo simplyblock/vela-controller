@@ -101,7 +101,7 @@ services:
     restart: unless-stopped
 
   logflare:
-    image: supabase/logflare:1.22.6
+    image: supabase/logflare:1.23.0
     restart: unless-stopped
     ports:
       - 4000:4000
@@ -128,17 +128,16 @@ services:
       DB_SCHEMA: _analytics
       LOGFLARE_PUBLIC_ACCESS_TOKEN: 'my-super-secret-api-key'
       LOGFLARE_PRIVATE_ACCESS_TOKEN: 'your-super-secret-and-long-logflare-key-private'
-      LOGFLARE_SINGLE_TENANT: true
-      LOGFLARE_SUPABASE_MODE: false
+      LOGFLARE_SINGLE_TENANT: 'true'
+      LOGFLARE_SUPABASE_MODE: 'false'
       LOGFLARE_MIN_CLUSTER_SIZE: 1
 
       POSTGRES_BACKEND_URL: postgresql://logflare:logflare@database:5432/logflare
       POSTGRES_BACKEND_SCHEMA: _analytics
       LOGFLARE_FEATURE_FLAG_OVERRIDE: multibackend=true
-      
+
   grafana:
     image: grafana/grafana:12.2.0
-    container_name: vela-grafana
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -161,7 +160,6 @@ services:
 
   caddy:
     image: caddy:2
-    container_name: caddy
     ports:
       - "8443:8443"
     volumes:
