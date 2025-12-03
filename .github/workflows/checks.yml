@@ -91,10 +91,10 @@ jobs:
         python-version: '3.13'
         cache: 'pip'
 
-    - name: Install type checker
+    - name: Install dependencies
       run: pip install testcontainers alembic 'psycopg[binary]' .
 
-    - name: Execute type checker
+    - name: Execute alembic
       run: python3 scripts/alembic.py check
 
 
