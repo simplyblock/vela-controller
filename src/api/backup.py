@@ -33,7 +33,12 @@ from ..models.organization import Organization
 from ..models.project import Project
 from ._util.backups import _remove_existing_schedule, _validate_project_retention_budget
 from .auth import authenticated_user
-from .backup_snapshots import create_branch_snapshot, delete_branch_snapshot
+from .backup_snapshots import (
+    SNAPSHOT_POLL_INTERVAL_SEC,
+    SNAPSHOT_TIMEOUT_SEC,
+    create_branch_snapshot,
+    delete_branch_snapshot,
+)
 from .db import SessionDep
 from .dependencies import OrganizationDep
 
@@ -43,8 +48,6 @@ router = APIRouter(dependencies=[Depends(authenticated_user)], tags=["backup"])
 # Constants
 # ---------------------------
 VOLUME_SNAPSHOT_CLASS = os.environ.get("VOLUME_SNAPSHOT_CLASS", "simplyblock-csi-snapshotclass")
-SNAPSHOT_TIMEOUT_SEC = int(os.environ.get("SNAPSHOT_TIMEOUT_SEC", "120"))
-SNAPSHOT_POLL_INTERVAL_SEC = int(os.environ.get("SNAPSHOT_POLL_INTERVAL_SEC", "5"))
 MANUAL_BACKUP_TIMEOUT_SEC = int(os.environ.get("MANUAL_BACKUP_TIMEOUT_SEC", "10"))
 
 UNIT_MULTIPLIER = {

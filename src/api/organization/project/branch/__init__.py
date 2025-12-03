@@ -71,7 +71,7 @@ from .....models.branch import (
 )
 from .....models.resources import BranchAllocationPublic, ResourceLimitsPublic, ResourceType
 from ...._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
-from ...._util.backups import copy_branch_backup_schedules
+from ...._util.backups import copy_branch_backup_schedules, delete_branch_backups
 from ...._util.resourcelimit import (
     check_available_resources_limits,
     create_or_update_branch_provisioning,
@@ -81,6 +81,12 @@ from ...._util.resourcelimit import (
 )
 from ...._util.role import clone_user_role_assignment
 from ....auth import security
+from ....backup_snapshots import (
+    SNAPSHOT_POLL_INTERVAL_SEC as _SNAPSHOT_POLL_INTERVAL_SECONDS,
+)
+from ....backup_snapshots import (
+    SNAPSHOT_TIMEOUT_SEC as _SNAPSHOT_TIMEOUT_SECONDS,
+)
 from ....db import AsyncSessionLocal, SessionDep
 from ....dependencies import BranchDep, OrganizationDep, ProjectDep, branch_lookup
 from ....keycloak import realm_admin
@@ -282,8 +288,6 @@ async def _resolve_branch_status(
 
 
 _SERVICE_PROBE_TIMEOUT_SECONDS = 2
-_SNAPSHOT_TIMEOUT_SECONDS = float(600)
-_SNAPSHOT_POLL_INTERVAL_SECONDS = float(2)
 _PVC_TIMEOUT_SECONDS = float(600)
 _PVC_CLONE_TIMEOUT_SECONDS = float(10)
 _PVC_POLL_INTERVAL_SECONDS = float(2)
@@ -1549,6 +1553,7 @@ async def delete(
         else:
             raise
     await delete_branch_provisioning(session, branch)
+    await delete_branch_backups(session, branch)
     await session.delete(branch)
     await session.commit()
 

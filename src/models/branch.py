@@ -1,7 +1,7 @@
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Annotated, Any, ClassVar, Literal, Optional
+from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 from pydantic import Field as PydanticField
@@ -36,6 +36,9 @@ from ..deployment import DeploymentParameters
 from ._util import Model
 from .project import Project
 
+if TYPE_CHECKING:
+    from .backups import BackupEntry, BackupLog, BackupSchedule, NextBackup
+
 
 def _default_resource_usage_payload() -> dict[str, Any]:
     return {
@@ -57,6 +60,10 @@ class Branch(AsyncAttrs, Model, table=True):
     parent_id: Identifier | None = Model.foreign_key_field("branch", nullable=True)
     parent: Optional["Branch"] = Relationship()
     endpoint_domain: str | None = Field(default=None, sa_column=Column(String(255), nullable=True))
+    backup_schedules: list["BackupSchedule"] = Relationship(back_populates="branch", cascade_delete=True)
+    next_backups: list["NextBackup"] = Relationship(back_populates="branch", cascade_delete=True)
+    backup_entries: list["BackupEntry"] = Relationship(back_populates="branch", cascade_delete=True)
+    backup_logs: list["BackupLog"] = Relationship(back_populates="branch", cascade_delete=True)
 
     # Deployment parameters specific to this branch
     database: Annotated[str, Field(sa_column=Column(String(255)))]
