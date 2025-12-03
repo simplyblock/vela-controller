@@ -1,14 +1,19 @@
 from collections.abc import Sequence
 from datetime import datetime
+from decimal import Decimal
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
+from sqlmodel import col, func, select
+from ulid import ULID
 
 from ...deployment import delete_deployment
 from ...models.audit import OrganizationAuditLog
 from ...models.organization import Organization, OrganizationCreate, OrganizationUpdate
+from ...models.resources import ResourceTypePublic, ResourceUsageMinute
 from .._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from .._util.resourcelimit import initialize_organization_resource_limits
 from .._util.role import create_organization_admin_role
@@ -211,6 +216,55 @@ def list_audits(
     _to: Annotated[datetime, Query(alias="to")],
 ) -> OrganizationAuditLog:
     return OrganizationAuditLog(result=[], retention_period=0)
+
+
+class Metric(BaseModel):
+    organization_id: ULID
+    project_id: ULID
+    branch_id: ULID
+    amount: Decimal
+    type: ResourceTypePublic
+
+
+@instance_api.get("/metrics/")
+async def metrics(
+    session: SessionDep, organization: OrganizationDep, start: datetime | None = None, end: datetime | None = None
+) -> list[Metric]:
+    usage_cte = select(  # type: ignore[call-overload]
+        ResourceUsageMinute.id,
+        ResourceUsageMinute.ts_minute,
+        ResourceUsageMinute.org_id,
+        ResourceUsageMinute.project_id,
+        ResourceUsageMinute.branch_id,
+        ResourceUsageMinute.resource,
+        ResourceUsageMinute.amount,
+    )
+
+    if start is not None:
+        usage_cte = usage_cte.where(ResourceUsageMinute.ts_minute >= func.date_trunc("minute", start))
+
+    if end is not None:
+        usage_cte = usage_cte.where(ResourceUsageMinute.ts_minute <= func.date_trunc("minute", end))
+
+    usage_cte = usage_cte.order_by(
+        col(ResourceUsageMinute.project_id).desc(),
+        col(ResourceUsageMinute.branch_id).desc(),
+        col(ResourceUsageMinute.resource).desc(),
+        col(ResourceUsageMinute.ts_minute).desc(),
+    ).cte("usage")
+
+    statement = (
+        select(  # type: ignore[call-overload]
+            usage_cte.c.org_id,
+            usage_cte.c.project_id,
+            usage_cte.c.branch_id,
+            usage_cte.c.resource,
+            func.sum(usage_cte.c.amount).label("amount"),
+        )
+        .where(usage_cte.c.org_id == organization.id)
+        .group_by(usage_cte.c.org_id, usage_cte.c.project_id, usage_cte.c.branch_id, usage_cte.c.resource)
+    )
+    return (await session.exec(statement)).all()
 
 
 instance_api.include_router(project_api, prefix="/projects")
