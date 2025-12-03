@@ -1,13 +1,19 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from fastapi import HTTPException
 from sqlalchemy import func
 from sqlmodel import delete, select
 
-from ...models.backups import BackupSchedule, BackupScheduleRow, NextBackup
+from ...models.backups import BackupEntry, BackupSchedule, BackupScheduleRow, NextBackup
 from ...models.branch import Branch
+from ..backup_snapshots import (
+    delete_branch_snapshot,
+)
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ..._util import Identifier
@@ -98,3 +104,26 @@ async def _remove_existing_schedule(
         await session.refresh(organization)
     if branch is not None:
         await session.refresh(branch)
+
+
+async def delete_branch_backups(session: SessionDep, branch: Branch) -> None:
+    """Remove snapshot artifacts for backups belonging to the branch."""
+    result = await session.exec(select(BackupEntry).where(BackupEntry.branch_id == branch.id))
+    backups = list(result.all())
+    if not backups:
+        return
+
+    for backup in backups:
+        try:
+            await delete_branch_snapshot(
+                name=backup.snapshot_name,
+                namespace=backup.snapshot_namespace,
+                content_name=backup.snapshot_content_name,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to delete snapshot %s/%s for backup %s",
+                backup.snapshot_namespace,
+                backup.snapshot_name,
+                backup.id,
+            )
