@@ -50,7 +50,7 @@ services:
     container_name: vela-pgbouncer
     image: docker.io/edoburu/pgbouncer:v1.24.1-p1
     volumes:
-      - ./pgbouncer:/etc/pgbouncer:Z
+      - ./:/etc/pgbouncer:Z
     depends_on:
     - db
     restart: unless-stopped

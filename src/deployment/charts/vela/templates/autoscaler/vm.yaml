@@ -39,7 +39,7 @@ spec:
       max: {{ .Values.autoscalerVm.resources.memorySlots.max }}
       limit: {{ .Values.autoscalerVm.resources.memorySlots.limit }}
     memorySlotSize: {{ .Values.autoscalerVm.resources.memorySlotSize }}
-  ports:
+    ports:
     - name: postgres
       port: 5432
       protocol: TCP
@@ -52,10 +52,10 @@ spec:
     - name: pgbouncer
       port: 6432
       protocol: TCP
-    - name: pgbouncer
+    - name: meta
       port: 8080
       protocol: TCP
-    - name: pgbouncer
+    - name: storageapi
       port: 5000
       protocol: TCP
     - name: vector
@@ -86,9 +86,9 @@ spec:
         - key: pg_hba.conf
           path: pg_hba.conf
         - key: namespace
-          path: pgbouncer/namespace
+          path: namespace
         - key: pgbouncer.ini
-          path: pgbouncer/pgbouncer.ini
+          path: pgbouncer.ini
         - key: users.txt
-          path: pgbouncer/users.txt
+          path: users.txt
 {{- end }}
