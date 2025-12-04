@@ -4,13 +4,13 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict
 from pydantic import Field as PydanticField
-from sqlalchemy import BigInteger, Column, DateTime
+from sqlalchemy import BigInteger
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field
 from ulid import ULID
 
 from .._util import Identifier
-from ._util import Model
+from ._util import DateTime, Model
 
 
 # ---------------------------
@@ -47,7 +47,7 @@ class BranchProvisioning(AsyncAttrs, Model, table=True):
     branch_id: Identifier = Model.foreign_key_field("branch", nullable=True)
     resource: ResourceType
     amount: Annotated[int, Field(sa_type=BigInteger)]
-    updated_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    updated_at: DateTime
 
 
 class ProvisioningLog(AsyncAttrs, Model, table=True):
@@ -56,11 +56,11 @@ class ProvisioningLog(AsyncAttrs, Model, table=True):
     amount: Annotated[int, Field(sa_type=BigInteger)]
     action: str
     reason: str | None = None
-    ts: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    ts: DateTime
 
 
 class ResourceUsageMinute(AsyncAttrs, Model, table=True):
-    ts_minute: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    ts_minute: DateTime
     org_id: Identifier = Model.foreign_key_field("organization", nullable=True)
     project_id: Identifier = Model.foreign_key_field("project", nullable=True)
     branch_id: Identifier = Model.foreign_key_field("branch", nullable=True)
