@@ -9,6 +9,7 @@ helm upgrade --install kong-operator kong/gateway-operator -n kong-system \
 ```
 
 # create TLS certificate
+#### TODO: manage this certificate using Certmanager
 ```sh
  kubectl create secret tls vela-staging-cert \
    --cert=letsencrypt/live/staging.vela.run/fullchain.pem \
@@ -29,6 +30,8 @@ spec:
     network:
       services:
         ingress:
+          # TODO: currently there is a challenge in claiming port 443 in the staging cluster, hence choosing 
+          # to use NodePort
           type: NodePort
     deployment:
       podTemplateSpec:
@@ -37,6 +40,7 @@ spec:
             - name: proxy
               image: kong/kong-gateway:3.9
               env:
+                # modifing the proxy buffers to accomodate larger headers passed by KeyCloak
                 - name: KONG_NGINX_PROXY_PROXY_BUFFER_SIZE
                   value: "128k"
                 - name: KONG_NGINX_PROXY_PROXY_BUFFERS
@@ -90,6 +94,7 @@ spec:
     protocol: HTTPS
     tls:
       certificateRefs:
+      # TODO: make sure that this matches with tls certicate secret in ./(#create TLS certificate)
       - group: ""
         kind: Secret
         name: vela-staging-cert
@@ -192,9 +197,7 @@ EOF
 ```
 
 ### Monitoring
-Disabled node exporter so ask to not to conflict with the onces already exists in cluster
-Ideally simplyblock should able to hook into the existing monitoring solution. But implementing that feedback was never
-prioritised: https://github.com/simplyblock/sbcli/pull/408#issuecomment-2991065338
+Simplyblock helm charts already ships with a prometheus node exporter. Ideally simplyblock should able to hook into the existing monitoring solution.
 
 ```
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
@@ -208,19 +211,6 @@ helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheu
   --set nodeExporter.enabled=false \
   --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.storageClassName=openebs-local-hostpath \
   --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage=5Gi
-```
-
-### stackgres
-
-```
-helm upgrade --install stackgres-operator \
-  stackgres-operator \
-  --repo https://stackgres.io/downloads/stackgres-k8s/stackgres/helm/ \
-  --namespace stackgres \
-  --create-namespace \
-  --wait \
-  --timeout 600s \
-  --version 1.17.4
 ```
 
 ### Metrics API 

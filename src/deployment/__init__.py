@@ -414,6 +414,7 @@ def _configure_vela_values(
     db_persistence["storageClassName"] = storage_class_name
 
     autoscaler_spec = values_content.setdefault("autoscalerVm", {})
+    autoscaler_spec.setdefault("extraNetwork", {})["enable"] = get_settings().enable_autoscaler_vm_extra_network
     autoscaler_spec["enabled"] = True
     autoscaler_resources = autoscaler_spec.setdefault("resources", {})
     autoscaler_resources["cpus"] = calculate_autoscaler_vm_cpus(parameters.milli_vcpu)

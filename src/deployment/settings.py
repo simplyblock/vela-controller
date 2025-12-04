@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     server_root_url: str = "http://localhost:8000"
     deployment_service_port: int = 443
     enable_db_external_ipv6_loadbalancer: bool = True  # Expose Vela Postgres via external IPv6 LB when true
+    enable_autoscaler_vm_extra_network: bool = True
     pgmeta_crypto_key: str
     cloudflare_api_token: str
     cloudflare_zone_id: str

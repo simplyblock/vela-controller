@@ -131,6 +131,7 @@ data:
   VELA_DEPLOYMENT_SERVICE_PORT: {{ .Values.port | quote }}
   VELA_SERVER_ROOT_URL: "https://{{ .Values.domain }}:{{ .Values.port }}"
   VELA_ENABLE_DB_EXTERNAL_IPV6_LOADBALANCER: {{ .Values.controller.env.VELA_ENABLE_DB_EXTERNAL_IPV6_LOADBALANCER | quote }}
+  VELA_ENABLE_AUTOSCALER_VM_EXTRA_NETWORK: {{ .Values.controller.env.VELA_ENABLE_AUTOSCALER_VM_EXTRA_NETWORK | quote }}
   VELA_LOGFLARE_URL: {{ .Values.controller.env.VELA_LOGFLARE_URL | quote }}
   VELA_GRAFANA_URL: {{ .Values.controller.env.VELA_GRAFANA_URL | quote }}
   VELA_SYSTEM_LIMIT_MILLIS_VCPU: {{ .Values.controller.env.VELA_SYSTEM_LIMIT_MILLIS_VCPU | quote }}
