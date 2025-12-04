@@ -10,7 +10,7 @@ from sqlmodel import Field
 from ulid import ULID
 
 from .._util import Identifier
-from ._util import DateTime, Model
+from ._util import DatabaseIdentifier, DateTime, Model
 
 
 # ---------------------------
@@ -36,22 +36,22 @@ class EntityType(PyEnum):
 class ResourceLimit(AsyncAttrs, Model, table=True):
     entity_type: EntityType
     resource: ResourceType
-    org_id: Identifier | None = Model.foreign_key_field("organization")
+    org_id: Identifier | None = Model.foreign_key_field("organization", ondelete="CASCADE")
     env_type: str | None = None
-    project_id: Identifier | None = Model.foreign_key_field("project")
+    project_id: Identifier | None = Model.foreign_key_field("project", ondelete="CASCADE")
     max_total: Annotated[int, Field(sa_type=BigInteger)]
     max_per_branch: Annotated[int, Field(sa_type=BigInteger)]
 
 
 class BranchProvisioning(AsyncAttrs, Model, table=True):
-    branch_id: Identifier = Model.foreign_key_field("branch", nullable=True)
+    branch_id: Identifier | None = Model.foreign_key_field("branch", ondelete="CASCADE")
     resource: ResourceType
     amount: Annotated[int, Field(sa_type=BigInteger)]
     updated_at: DateTime
 
 
 class ProvisioningLog(AsyncAttrs, Model, table=True):
-    branch_id: Identifier = Model.foreign_key_field("branch", nullable=True)
+    branch_id: Identifier | None = Model.foreign_key_field("branch", ondelete="CASCADE")
     resource: ResourceType
     amount: Annotated[int, Field(sa_type=BigInteger)]
     action: str
@@ -61,17 +61,23 @@ class ProvisioningLog(AsyncAttrs, Model, table=True):
 
 class ResourceUsageMinute(AsyncAttrs, Model, table=True):
     ts_minute: DateTime
-    org_id: Identifier = Model.foreign_key_field("organization", nullable=True)
-    project_id: Identifier = Model.foreign_key_field("project", nullable=True)
-    branch_id: Identifier = Model.foreign_key_field("branch", nullable=True)
+    org_id: Identifier | None = Model.foreign_key_field("organization", ondelete="CASCADE")
+    project_id: Identifier | None = Model.foreign_key_field("project", ondelete="SET NULL")
+    original_project_id: Identifier = Field(
+        sa_type=DatabaseIdentifier
+    )  # Required to allow discrimination after the origin project has been deleted
+    branch_id: Identifier | None = Model.foreign_key_field("branch", ondelete="SET NULL")
+    original_branch_id: Identifier = Field(
+        sa_type=DatabaseIdentifier
+    )  # Required to allow discrimination after the origin branch has been deleted
     resource: ResourceType
     amount: Annotated[int, Field(sa_type=BigInteger)]
 
 
 class ResourceConsumptionLimit(AsyncAttrs, Model, table=True):
     entity_type: EntityType
-    org_id: Identifier | None = Model.foreign_key_field("organization")
-    project_id: Identifier | None = Model.foreign_key_field("project")
+    org_id: Identifier | None = Model.foreign_key_field("organization", ondelete="CASCADE")
+    project_id: Identifier | None = Model.foreign_key_field("project", ondelete="CASCADE")
     resource: ResourceType
     max_total_minutes: int
 

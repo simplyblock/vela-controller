@@ -492,15 +492,18 @@ async def get_current_project_allocations(
 def _aggregate_group_by_resource_type(
     grouped: dict[ResourceType, list[BranchProvisioning]], branch_statuses: dict[Identifier, BranchServiceStatus]
 ) -> dict[ResourceType, int]:
-    result: dict[ResourceType, int] = {}
-    for resource_type, allocations in grouped.items():
-        aggregated_allocations = 0
-        for allocation in allocations:
-            branch_status = branch_statuses.get(allocation.branch_id)
-            if branch_status not in {BranchServiceStatus.STOPPED, BranchServiceStatus.DELETING}:
-                aggregated_allocations += allocation.amount
-        result[resource_type] = aggregated_allocations
-    return result
+    return {
+        resource_type: sum(
+            allocation.amount
+            for allocation in allocations
+            if (allocation.branch_id is not None)
+            and (
+                branch_statuses.get(allocation.branch_id)
+                not in {BranchServiceStatus.STOPPED, BranchServiceStatus.DELETING}
+            )
+        )
+        for resource_type, allocations in grouped.items()
+    }
 
 
 async def _collect_branch_statuses(

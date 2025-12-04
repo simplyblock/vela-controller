@@ -234,8 +234,8 @@ async def metering(
         ResourceUsageMinute.id,
         ResourceUsageMinute.ts_minute,
         ResourceUsageMinute.org_id,
-        ResourceUsageMinute.project_id,
-        ResourceUsageMinute.branch_id,
+        ResourceUsageMinute.original_project_id,
+        ResourceUsageMinute.original_branch_id,
         ResourceUsageMinute.resource,
         ResourceUsageMinute.amount,
     )
@@ -247,8 +247,8 @@ async def metering(
         usage_cte = usage_cte.where(ResourceUsageMinute.ts_minute <= func.date_trunc("minute", end))
 
     usage_cte = usage_cte.order_by(
-        col(ResourceUsageMinute.project_id).desc(),
-        col(ResourceUsageMinute.branch_id).desc(),
+        col(ResourceUsageMinute.original_project_id).desc(),
+        col(ResourceUsageMinute.original_branch_id).desc(),
         col(ResourceUsageMinute.resource).desc(),
         col(ResourceUsageMinute.ts_minute).desc(),
     ).cte("usage")
@@ -256,13 +256,15 @@ async def metering(
     statement = (
         select(  # type: ignore[call-overload]
             usage_cte.c.org_id,
-            usage_cte.c.project_id,
-            usage_cte.c.branch_id,
+            usage_cte.c.original_project_id,
+            usage_cte.c.original_branch_id,
             usage_cte.c.resource,
             func.sum(usage_cte.c.amount).label("amount"),
         )
         .where(usage_cte.c.org_id == organization.id)
-        .group_by(usage_cte.c.org_id, usage_cte.c.project_id, usage_cte.c.branch_id, usage_cte.c.resource)
+        .group_by(
+            usage_cte.c.org_id, usage_cte.c.original_project_id, usage_cte.c.original_branch_id, usage_cte.c.resource
+        )
     )
     return (await session.exec(statement)).all()
 

@@ -18,7 +18,7 @@ settings = Settings()  # type: ignore[call-arg]
 def render_item(_type, obj, _autogen_context):
     """Render custom database identifiers as UUID."""
 
-    if obj.__class__.__name__ == "_DatabaseIdentifier":
+    if obj.__class__.__name__ == "DatabaseIdentifier":
         return "sa.UUID(as_uuid=True)"
 
     return False  # Use default rendering
