@@ -2,12 +2,12 @@ from datetime import datetime
 from typing import Annotated
 
 from pydantic import BaseModel
-from sqlalchemy import BigInteger, Column, DateTime, String, UniqueConstraint
+from sqlalchemy import BigInteger, Column, String, UniqueConstraint
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship
 
 from .._util import Identifier
-from ._util import Model
+from ._util import DateTime, Model
 from .branch import Branch
 from .organization import Organization
 
@@ -46,14 +46,14 @@ class NextBackup(AsyncAttrs, Model, table=True):
     schedule_id: Identifier = Model.foreign_key_field("backupschedule")
     schedule: BackupSchedule = Relationship(back_populates="next_backups")
     row_index: int
-    next_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    next_at: DateTime
 
 
 class BackupEntry(AsyncAttrs, Model, table=True):
     branch_id: Identifier = Model.foreign_key_field("branch")
     branch: Branch = Relationship(back_populates="backup_entries")
     row_index: int
-    created_at: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    created_at: DateTime
     size_bytes: Annotated[int, Field(sa_column=Column(BigInteger, nullable=True))]
     snapshot_name: str | None = Field(
         default=None,
@@ -75,7 +75,7 @@ class BackupLog(AsyncAttrs, Model, table=True):
     backup_uuid: str
     # backup: BackupEntry = Relationship(back_populates="backup_entries")
     action: str
-    ts: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
+    ts: DateTime
 
 
 class BackupLogCreate(BaseModel):

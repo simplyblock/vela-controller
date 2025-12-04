@@ -1,14 +1,27 @@
 from datetime import UTC, datetime
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
 from sqlalchemy import UUID as SQLAlchemyUUID  # noqa: N811
 from sqlalchemy import TypeDecorator
+from sqlalchemy.types import DateTime as SADateTime
 from sqlmodel import Field as SQLField
 from sqlmodel import SQLModel
 from ulid import ULID
 
 from .._util import Identifier
+
+
+class DateTimeTZ(SADateTime):
+    """DateTime with timezone awareness"""
+
+    def __init__(self):
+        super().__init__(timezone=True)
+
+
+# Utility for using timezone-aware postgres types.
+# See https://wiki.postgresql.org/wiki/Don't_Do_This#Don't_use_timestamp_(without_time_zone)
+DateTime = Annotated[datetime, SQLField(sa_type=DateTimeTZ)]
 
 
 class _DatabaseIdentifier(TypeDecorator):
