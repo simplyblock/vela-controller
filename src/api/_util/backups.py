@@ -106,9 +106,9 @@ async def _remove_existing_schedule(
         await session.refresh(branch)
 
 
-async def delete_branch_backups(session: SessionDep, branch: Branch) -> None:
+async def delete_branch_backups(session: SessionDep, branch_id: Identifier) -> None:
     """Remove snapshot artifacts for backups belonging to the branch."""
-    result = await session.exec(select(BackupEntry).where(BackupEntry.branch_id == branch.id))
+    result = await session.exec(select(BackupEntry).where(BackupEntry.branch_id == branch_id))
     backups = list(result.all())
     if not backups:
         return

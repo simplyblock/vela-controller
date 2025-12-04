@@ -26,14 +26,13 @@ from ..db import SessionDep
 from ..settings import get_settings
 
 
-async def delete_branch_provisioning(session: SessionDep, branch: Branch, *, commit: bool = True):
-    await session.execute(delete(ResourceUsageMinute).where(col(ResourceUsageMinute.branch_id) == branch.id))
-    await session.execute(delete(BranchProvisioning).where(col(BranchProvisioning.branch_id) == branch.id))
-    await session.execute(delete(ProvisioningLog).where(col(ProvisioningLog.branch_id) == branch.id))
+async def delete_branch_provisioning(session: SessionDep, branch_id: Identifier, *, commit: bool = True):
+    await session.execute(delete(ResourceUsageMinute).where(col(ResourceUsageMinute.branch_id) == branch_id))
+    await session.execute(delete(BranchProvisioning).where(col(BranchProvisioning.branch_id) == branch_id))
+    await session.execute(delete(ProvisioningLog).where(col(ProvisioningLog.branch_id) == branch_id))
 
     if commit:
         await session.commit()
-        await session.refresh(branch)
 
 
 async def get_current_branch_allocations(session: SessionDep, branch: Branch) -> BranchAllocationPublic:

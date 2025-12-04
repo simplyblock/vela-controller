@@ -95,14 +95,16 @@ class ScheduleRow(BaseModel):
     )
     interval: int = Field(
         ...,
+        ge=1,
         description="Number of time units between automatic backups for this row.",
     )
     unit: str = Field(
         ...,
-        description="Time unit for interval",
+        description=("Time unit for interval; allowed values are " + ", ".join(sorted(VALID_UNITS))),
     )
     retention: int = Field(
         ...,
+        ge=1,
         description="Maximum number of backups to retain for this row before pruning.",
     )
 
@@ -503,7 +505,7 @@ async def delete_schedule(
     await session.delete(schedule)
     await session.commit()
 
-    return BackupScheduleDeletePublic(status="success", message="Schedule and related data deleted successfully")
+    return BackupScheduleDeletePublic(status="success", message="Schedule deleted successfully")
 
 
 # ---------------------------
