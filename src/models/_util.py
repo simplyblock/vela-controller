@@ -24,7 +24,7 @@ class DateTimeTZ(SADateTime):
 DateTime = Annotated[datetime, SQLField(sa_type=DateTimeTZ)]
 
 
-class _DatabaseIdentifier(TypeDecorator):
+class DatabaseIdentifier(TypeDecorator):
     """SQLAlchemy type that stores ULIDs as UUIDs in the database."""
 
     impl = SQLAlchemyUUID
@@ -48,7 +48,7 @@ class _DatabaseIdentifier(TypeDecorator):
 
 
 class Model(SQLModel):
-    id: Identifier = SQLField(default_factory=ULID, primary_key=True, sa_type=_DatabaseIdentifier)
+    id: Identifier = SQLField(default_factory=ULID, primary_key=True, sa_type=DatabaseIdentifier)
 
     # This would ideally be a classmethod, but initialization order prevents that
     @staticmethod
@@ -56,7 +56,7 @@ class Model(SQLModel):
         return SQLField(
             default=None if nullable else ...,
             foreign_key=f"{table_name}.id",
-            sa_type=_DatabaseIdentifier,
+            sa_type=DatabaseIdentifier,
             **kwargs,
         )
 

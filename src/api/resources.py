@@ -473,7 +473,9 @@ async def monitor_resources(interval_seconds: int = 60):
                                 ts_minute=ts_minute,
                                 org_id=project.organization_id,
                                 project_id=branch.project_id,
+                                original_project_id=branch.project_id,
                                 branch_id=branch.id,
+                                original_branch_id=branch.id,
                                 resource=p.resource,
                                 amount=p.amount,
                             )
