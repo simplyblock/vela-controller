@@ -32,7 +32,7 @@ from .settings import get_settings
 # ---------------------------
 # Config
 # ---------------------------
-VOLUME_SNAPSHOT_CLASS = os.environ.get("VOLUME_SNAPSHOT_CLASS", "csi-snapshot-class")
+VOLUME_SNAPSHOT_CLASS = os.environ.get("VOLUME_SNAPSHOT_CLASS", "simplyblock-csi-snapshotclass")
 POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", "60"))
 
 logging.basicConfig(

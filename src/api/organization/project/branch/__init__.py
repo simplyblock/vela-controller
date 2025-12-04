@@ -1544,17 +1544,18 @@ async def delete(
     _project: ProjectDep,
     branch: BranchDep,
 ):
+    branch_id = branch.id
     await _set_branch_status(session, branch, BranchServiceStatus.DELETING)
-    await delete_deployment(branch.id)
+    await delete_deployment(branch_id)
     try:
-        await realm_admin("master").a_delete_realm(str(branch.id))
+        await realm_admin("master").a_delete_realm(str(branch_id))
     except KeycloakError as exc:
         if getattr(exc, "response_code", None) == 404:
-            logger.error("Keycloak realm not found for branch %s during delete; continuing.", branch.id, exc_info=True)
+            logger.error("Keycloak realm not found for branch %s during delete; continuing.", branch_id, exc_info=True)
         else:
             raise
-    await delete_branch_provisioning(session, branch)
-    await delete_branch_backups(session, branch)
+    await delete_branch_provisioning(session, branch_id)
+    await delete_branch_backups(session, branch_id)
     await session.delete(branch)
     await session.commit()
 

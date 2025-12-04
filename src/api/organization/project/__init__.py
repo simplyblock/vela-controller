@@ -484,7 +484,7 @@ async def delete(session: SessionDep, _organization: OrganizationDep, project: P
         await session.commit()
         raise
     for branch in branches:
-        await delete_branch_provisioning(session, branch, commit=False)
+        await delete_branch_provisioning(session, branch.id, commit=False)
 
     await session.delete(project)
     await session.commit()
