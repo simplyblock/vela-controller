@@ -36,9 +36,9 @@ class EntityType(PyEnum):
 class ResourceLimit(AsyncAttrs, Model, table=True):
     entity_type: EntityType
     resource: ResourceType
-    org_id: Identifier | None = Model.foreign_key_field("organization", nullable=True)
-    env_type: str | None = Field(default=None, nullable=True)
-    project_id: Identifier | None = Model.foreign_key_field("project", nullable=True)
+    org_id: Identifier | None = Model.foreign_key_field("organization")
+    env_type: str | None = None
+    project_id: Identifier | None = Model.foreign_key_field("project")
     max_total: Annotated[int, Field(sa_type=BigInteger)]
     max_per_branch: Annotated[int, Field(sa_type=BigInteger)]
 
@@ -70,8 +70,8 @@ class ResourceUsageMinute(AsyncAttrs, Model, table=True):
 
 class ResourceConsumptionLimit(AsyncAttrs, Model, table=True):
     entity_type: EntityType
-    org_id: Identifier | None = Model.foreign_key_field("organization", nullable=True)
-    project_id: Identifier | None = Model.foreign_key_field("project", nullable=True)
+    org_id: Identifier | None = Model.foreign_key_field("organization")
+    project_id: Identifier | None = Model.foreign_key_field("project")
     resource: ResourceType
     max_total_minutes: int
 
