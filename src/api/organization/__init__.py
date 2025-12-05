@@ -218,7 +218,7 @@ def list_audits(
     return OrganizationAuditLog(result=[], retention_period=0)
 
 
-class Metric(BaseModel):
+class Metering(BaseModel):
     organization_id: ULID
     project_id: ULID
     branch_id: ULID
@@ -226,10 +226,10 @@ class Metric(BaseModel):
     type: ResourceTypePublic
 
 
-@instance_api.get("/metrics/")
-async def metrics(
+@instance_api.get("/metering/")
+async def metering(
     session: SessionDep, organization: OrganizationDep, start: datetime | None = None, end: datetime | None = None
-) -> list[Metric]:
+) -> list[Metering]:
     usage_cte = select(  # type: ignore[call-overload]
         ResourceUsageMinute.id,
         ResourceUsageMinute.ts_minute,
