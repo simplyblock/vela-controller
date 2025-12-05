@@ -21,9 +21,9 @@ data:
   datasource.yaml: |
     apiVersion: 1
     datasources:
-    - name: Prometheus
+    - name: Thanos
       type: prometheus
-      url: http://{{ .Values.prometheus.name }}.{{ .Values.prometheus.namespace }}.svc.cluster.local:9090
+      url: http://{{ .Values.prometheus.thanosQuery }}.{{ .Values.prometheus.namespace }}.svc.cluster.local:9091
       isDefault: true
       access: proxy
       uid: PBFA97CFB590B2093

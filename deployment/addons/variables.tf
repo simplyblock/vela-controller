@@ -37,3 +37,7 @@ variable "kube_ovn_master_node_name" {
   description = "Name of the node that should be labeled as the Kube-OVN master"
   type        = string
 }
+
+variable "namespace" {
+  default = "monitoring"
+}

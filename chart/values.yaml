@@ -55,6 +55,7 @@ issuer: ca-issuer
 prometheus:
   name: vela-prometheus
   namespace: monitoring
+  thanosQuery: vela-thanos-query
 
 analytics:
   DB_HOST: database
