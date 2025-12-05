@@ -15,14 +15,26 @@ metadata:
     app.kubernetes.io/name: vela-db
     app.kubernetes.io/instance: vela
   annotations:
-    # Protects DB from being deleted on helm uninstall
-    "helm.sh/resource-policy": keep
+    "helm.sh/resource-policy": keep  # Protect DB from being deleted on helm uninstall
 spec:
-  instances: 1
+  instances: 3
   postgres:
     version: {{ .Values.postgresVersion }}
   pods:
     persistentVolume:
       size: '20Gi'
       storageClass: simplyblock-csi-sc
+    scheduling:
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchExpressions:
+            - key: app.kubernetes.io/name
+              operator: In
+              values:
+              - vela-db
+          topologyKey: kubernetes.io/hostname
   sgInstanceProfile: 'profile'
+  replication:
+    mode: async
+    role: ha-read
