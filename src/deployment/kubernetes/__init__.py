@@ -199,7 +199,7 @@ class KubernetesService:
         name: str,
     ) -> int:
         """
-        Return the NodePort for the specified service port (or first port when unspecified).
+        Return the NodePort for the specified service name
         """
         service = await self.get_service(namespace, name)
         return service.spec.ports[0].node_port

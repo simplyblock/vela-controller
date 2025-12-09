@@ -679,7 +679,7 @@ async def _probe_service_socket(host: str, port: int, *, label: str) -> BranchSe
 
 async def _collect_branch_service_health(namespace: str, *, storage_enabled: bool) -> BranchStatus:
     endpoints = {
-        label: (branch_service_name(namespace, component), port)
+        label: (branch_service_name(component), port)
         for label, (component, port) in _BRANCH_SERVICE_ENDPOINTS.items()
         if storage_enabled or label != "storage"
     }
@@ -1021,20 +1021,13 @@ def _service_endpoint_url(rest_endpoint: str | None, api_domain: str | None, db_
     return _ensure_service_port(candidate, get_deployment_settings().deployment_service_port)
 
 
-async def _resolve_branch_db_node_port(branch: Branch) -> int:
-    """
-    Return the NodePort exposed by the branch database service, falling back to 5432.
-    """
-    namespace = deployment_namespace(branch.id)
-    service_name = branch_service_name(namespace, "db")
-    return await kube_service.get_service_node_port(namespace, service_name)
-
-
 async def _public(branch: Branch) -> BranchPublic:
     project = await branch.awaitable_attrs.project
 
     db_host = _resolve_db_host(branch) or ""
-    port = await _resolve_branch_db_node_port(branch)
+    port = await kube_service.get_service_node_port(
+        namespace=deployment_namespace(branch.id), name=branch_service_name("db")
+    )
 
     # pg-meta and pg are in the same network. So password is not required in connection string.
     connection_string = _build_connection_string(branch.database_user, "postgres", port)

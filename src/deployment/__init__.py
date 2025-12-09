@@ -140,23 +140,22 @@ def branch_rest_endpoint(branch_id: Identifier) -> str | None:
     return f"https://{domain}:{port}/rest"
 
 
-def _release_name(namespace: str) -> str:
-    _ = namespace  # kept for call-site clarity; release name is namespace-independent
+def _release_name() -> str:
     return get_settings().deployment_release_name
 
 
-def _release_fullname(namespace: str) -> str:
-    release = _release_name(namespace)
+def _release_fullname() -> str:
+    release = _release_name()
     return release if CHART_NAME in release else f"{release}-{CHART_NAME}"
 
 
-def _autoscaler_vm_name(namespace: str) -> str:
-    name = f"{_release_fullname(namespace)}-autoscaler-vm"
+def _autoscaler_vm_name() -> str:
+    name = f"{_release_fullname()}-autoscaler-vm"
     return name[:63].rstrip("-")
 
 
-def branch_service_name(namespace: str, component: str) -> str:
-    return f"{_release_fullname(namespace)}-{component}"
+def branch_service_name(component: str) -> str:
+    return f"{_release_fullname()}-{component}"
 
 
 def inject_branch_env(compose: dict[str, Any], branch_id: Identifier) -> dict[str, Any]:
@@ -284,12 +283,12 @@ async def _resolve_volume_identifiers(namespace: str, pvc_name: str) -> tuple[st
 
 
 async def resolve_storage_volume_identifiers(namespace: str) -> tuple[str, str | None]:
-    pvc_name = f"{_release_name(namespace)}{STORAGE_PVC_SUFFIX}"
+    pvc_name = f"{_release_name()}{STORAGE_PVC_SUFFIX}"
     return await _resolve_volume_identifiers(namespace, pvc_name)
 
 
 async def resolve_autoscaler_volume_identifiers(namespace: str) -> tuple[str, str | None]:
-    pvc_name = f"{_autoscaler_vm_name(namespace)}{AUTOSCALER_PVC_SUFFIX}"
+    pvc_name = f"{_autoscaler_vm_name()}{AUTOSCALER_PVC_SUFFIX}"
     return await _resolve_volume_identifiers(namespace, pvc_name)
 
 
@@ -350,7 +349,6 @@ def _load_chart_values(chart_root: Any) -> dict[str, Any]:
 def _configure_vela_values(
     values_content: dict[str, Any],
     *,
-    namespace: str,
     parameters: DeploymentParameters,
     jwt_secret: str,
     anon_key: str,
@@ -422,7 +420,7 @@ def _configure_vela_values(
     autoscaler_resources["memorySlots"] = memory_slots
 
     autoscaler_persistence = autoscaler_spec.setdefault("persistence", {})
-    autoscaler_persistence["claimName"] = f"{_autoscaler_vm_name(namespace)}{AUTOSCALER_PVC_SUFFIX}"
+    autoscaler_persistence["claimName"] = f"{_autoscaler_vm_name()}{AUTOSCALER_PVC_SUFFIX}"
     autoscaler_persistence["size"] = f"{bytes_to_gb(parameters.database_size)}G"
     autoscaler_persistence["storageClassName"] = storage_class_name
     autoscaler_persistence.setdefault("accessModes", ["ReadWriteMany"])
@@ -467,7 +465,6 @@ async def create_vela_config(
         anon_key=anon_key,
         service_key=service_key,
         pgbouncer_admin_password=pgbouncer_admin_password,
-        namespace=namespace,
         storage_class_name=storage_class_name,
         use_existing_db_pvc=use_existing_db_pvc,
         pgbouncer_config=pgbouncer_config,
@@ -490,7 +487,7 @@ async def create_vela_config(
                 [
                     "helm",
                     "install",
-                    _release_name(namespace),
+                    _release_name(),
                     str(chart),
                     "--namespace",
                     namespace,
@@ -509,7 +506,7 @@ async def create_vela_config(
             )
         except subprocess.CalledProcessError as e:
             logger.exception(f"Failed to create deployment: {e.stderr}")
-            release_name = _release_name(namespace)
+            release_name = _release_name()
             try:
                 await check_output(
                     ["helm", "uninstall", release_name, "-n", namespace],
@@ -525,7 +522,7 @@ async def create_vela_config(
 
 
 async def _delete_autoscaler_vm(namespace: str) -> None:
-    vm_name = _autoscaler_vm_name(namespace)
+    vm_name = _autoscaler_vm_name()
     async with custom_api_client() as custom_client:
         try:
             await custom_client.delete_namespaced_custom_object(
@@ -575,7 +572,7 @@ def get_autoscaler_vm_identity(branch_id: Identifier) -> tuple[str, str]:
     Return the (namespace, vm_name) for the branch's autoscaler Neon VirtualMachine.
     """
     namespace = deployment_namespace(branch_id)
-    vm_name = f"{_release_fullname(namespace)}-autoscaler-vm"
+    vm_name = _autoscaler_vm_name()
     return namespace, vm_name
 
 
@@ -651,7 +648,7 @@ async def update_branch_database_password(
 
     connection: asyncpg.Connection | None = None
     namespace = deployment_namespace(branch_id)
-    host: str = f"{branch_service_name(namespace, 'db')}.{namespace}.svc.cluster.local"
+    host: str = f"{branch_service_name('db')}.{namespace}.svc.cluster.local"
     try:
         connection = await asyncpg.connect(
             user="supabase_admin",  # superuser with permissions to change password
@@ -913,7 +910,7 @@ async def provision_branch_database_endpoint(branch_id: Identifier) -> None:
         return
 
     namespace = deployment_namespace(branch_id)
-    service_name = f"{branch_service_name(namespace, 'db')}-ext"
+    service_name = f"{branch_service_name('db')}-ext"
     ipv6_address = await _wait_for_service_ipv6(namespace, service_name)
     cf_cfg = _cloudflare_config()
     await _create_dns_record(
@@ -972,7 +969,7 @@ def _postgrest_route_specs(ref: str, domain: str, namespace: str) -> list[HTTPRo
             ref=ref,
             domain=domain,
             namespace=namespace,
-            service_name=branch_service_name(namespace, "rest"),
+            service_name=branch_service_name("rest"),
             service_port=3000,
             path_prefix="/rest",
             route_suffix="postgrest-route",
@@ -989,7 +986,7 @@ def _storage_route_specs(ref: str, domain: str, namespace: str) -> list[HTTPRout
             ref=ref,
             domain=domain,
             namespace=namespace,
-            service_name=branch_service_name(namespace, "storage"),
+            service_name=branch_service_name("storage"),
             service_port=5000,
             path_prefix="/storage",
             route_suffix="storage-route",
@@ -1006,7 +1003,7 @@ def _pgmeta_route_specs(ref: str, domain: str, namespace: str) -> list[HTTPRoute
             ref=ref,
             domain=domain,
             namespace=namespace,
-            service_name=branch_service_name(namespace, "meta"),
+            service_name=branch_service_name("meta"),
             service_port=8080,
             path_prefix="/pg-meta",
             route_suffix="pgmeta-route",
