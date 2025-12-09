@@ -74,6 +74,13 @@ spec:
       blockDevice:
         persistentVolumeClaim:
           claimName: {{ $pvcName }}
+    {{- if .Values.storage.enabled }}
+    - name: storage
+      mountPath: "/var/storage"
+      blockDevice:
+        persistentVolumeClaim:
+          claimName: {{ include "vela.db.fullname" . }}-storage-pvc
+    {{- end }}
     - name: compose
       mountPath: "/vela/"
       configMap:
