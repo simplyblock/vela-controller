@@ -43,13 +43,11 @@ services:
       DB_NAME: ${POSTGRES_DB}
       DB_USER: authenticator
       DB_PASSWORD: ${POSTGRES_PASSWORD}
-      DB_PASSWORD_ENC: ${POSTGRES_PASSWORD_ENC}
       DB_DRIVER: postgres
       DB_SSL: disable
       PGRST_DB_SCHEMAS: public,storage,graphql_public
       PGRST_DB_USE_LEGACY_GUCS: 'false'
       PGRST_APP_SETTINGS_JWT_EXP: '3600'
-      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD_ENC}@db:5432/${POSTGRES_DB}?sslmode=disable
       PGRST_JWT_SECRET: ${VELA_JWT_SECRET}
       PGRST_APP_SETTINGS_JWT_SECRET: ${VELA_JWT_SECRET}
     ports:
@@ -123,7 +121,6 @@ services:
       DB_NAME: ${POSTGRES_DB}
       DB_USER: supabase_storage_admin
       DB_PASSWORD: ${POSTGRES_PASSWORD}
-      DB_PASSWORD_ENC: ${POSTGRES_PASSWORD_ENC}
       DB_DRIVER: postgres
       DB_SSL: disable
       FILE_SIZE_LIMIT: '52428800'
@@ -133,7 +130,6 @@ services:
       TENANT_ID: stub
       REGION: stub
       GLOBAL_S3_BUCKET: stub
-      DATABASE_URL: postgres://supabase_storage_admin:${POSTGRES_PASSWORD_ENC}@db:5432/${POSTGRES_DB}?sslmode=disable
       PGRST_JWT_SECRET: ${VELA_JWT_SECRET}
       ANON_KEY: ${VELA_ANON_KEY}
       SERVICE_KEY: ${VELA_SERVICE_KEY}
