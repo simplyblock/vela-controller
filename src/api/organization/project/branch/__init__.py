@@ -38,6 +38,7 @@ from .....deployment import (
     update_branch_database_password,
     update_branch_volume_iops,
 )
+from .....deployment._util import deployment_namespace
 from .....deployment.kubernetes._util import core_v1_client
 from .....deployment.kubernetes.neonvm import PowerState as NeonVMPowerState
 from .....deployment.kubernetes.neonvm import set_virtualmachine_power_state
@@ -1020,11 +1021,20 @@ def _service_endpoint_url(rest_endpoint: str | None, api_domain: str | None, db_
     return _ensure_service_port(candidate, get_deployment_settings().deployment_service_port)
 
 
+async def _resolve_branch_db_node_port(branch: Branch) -> int:
+    """
+    Return the NodePort exposed by the branch database service, falling back to 5432.
+    """
+    namespace = deployment_namespace(branch.id)
+    service_name = branch_service_name(namespace, "db")
+    return await kube_service.get_service_node_port(namespace, service_name)
+
+
 async def _public(branch: Branch) -> BranchPublic:
     project = await branch.awaitable_attrs.project
 
     db_host = _resolve_db_host(branch) or ""
-    port = 5432
+    port = await _resolve_branch_db_node_port(branch)
 
     # pg-meta and pg are in the same network. So password is not required in connection string.
     connection_string = _build_connection_string(branch.database_user, "postgres", port)

@@ -30,6 +30,15 @@ kubectl apply -f https://github.com/neondatabase/autoscaling/releases/latest/dow
 kubectl apply -f https://github.com/neondatabase/autoscaling/releases/latest/download/autoscaler-agent.yaml
 ```
 
+Since the new CRDs manages the PVCs, we need to update `neonvm-manager-role` cluster role permissions
+
+```
+kubectl patch clusterrole neonvm-manager-role \
+  --type='json' \
+  -p='[{"op":"add","path":"/rules/0","value":{"apiGroups":[""],"resources":["persistentvolumeclaims"],"verbs":["get","list","watch","create","update","patch","delete"]}}]'
+kubectl delete pod -n neonvm-system -l control-plane=controller 
+```
+
 ### Usage
 
 Create a sample VM:
@@ -41,11 +50,11 @@ metadata:
   name: vm-manohar-dev
 spec:
   powerState: Running
-    extraNetwork:
-      enable: true
-    guest:
-      rootDisk:
-        image: docker.io/manoharbrm/pg16-test:dev9 # TODO: update image
+  extraNetwork:
+    enable: true
+  guest:
+    rootDisk:
+      image: docker.io/manoharbrm/pg16-test:dev9 # TODO: update image
     cpus: { min: 1, use: 1, max: 64 }
     memorySlots: { min: 4, use: 16, max: 16 }
     memorySlotSize: 128Mi

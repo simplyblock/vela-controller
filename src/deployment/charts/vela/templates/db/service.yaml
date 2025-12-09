@@ -40,7 +40,7 @@ metadata:
   labels:
     {{- include "vela.labels" . | nindent 4 }}
 spec:
-  type: ClusterIP
+  type: NodePort
   {{- if $clusterIpFamilies }}
   ipFamilies:
 {{ toYaml $clusterIpFamilies | indent 4 }}

@@ -72,7 +72,7 @@ db:
     # runAsNonRoot: true
     # runAsUser: 1000
   service:
-    externalEnabled: true
+    externalEnabled: false
     type: LoadBalancer
     port: 5432
     ipFamilies:
