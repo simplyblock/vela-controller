@@ -14,6 +14,11 @@ services:
     - vela
     ports:
     - 5432:5432
+    logging:
+      driver: k8s-file
+      options:
+        max-size: 25m
+        max-file: "1"
   pgexporter:
     container_name: vela-pgexporter
     image: prometheuscommunity/postgres-exporter:v0.17.1
@@ -21,6 +26,11 @@ services:
       DATA_SOURCE_NAME: "postgresql://postgres@db:5432/demo?sslmode=disable"
     ports:
     - 9187:9187
+    logging:
+      driver: k8s-file
+      options:
+        max-size: 25m
+        max-file: "1"
   rest:
     container_name: vela-rest
     image: docker.io/postgrest/postgrest:v12.0.1
@@ -46,6 +56,11 @@ services:
     - 3000:3000
     networks:
     - vela
+    logging:
+      driver: k8s-file
+      options:
+        max-size: 25m
+        max-file: "1"
   pgbouncer:
     container_name: vela-pgbouncer
     image: docker.io/edoburu/pgbouncer:v1.24.1-p1
@@ -64,6 +79,11 @@ services:
       - 6432:5432
     networks:
       - vela
+    logging:
+      driver: k8s-file
+      options:
+        max-size: 25m
+        max-file: "1"
 
   meta:
     image: docker.io/supabase/postgres-meta:v0.91.1
@@ -85,6 +105,11 @@ services:
     - 8080:8080
     networks:
     - vela
+    logging:
+      driver: k8s-file
+      options:
+        max-size: 25m
+        max-file: "1"
   storage:
     container_name: vela-storage
     image: docker.io/supabase/storage-api:v0.46.4
@@ -119,6 +144,11 @@ services:
     - 5000:5000
     networks:
     - vela
+    logging:
+      driver: k8s-file
+      options:
+        max-size: 25m
+        max-file: "1"
   vector:
     container_name: vela-vector
     image: timberio/vector:0.28.1-alpine
@@ -148,6 +178,11 @@ services:
     - 9001:9001
     networks:
     - vela
+    logging:
+      driver: k8s-file
+      options:
+        max-size: 25m
+        max-file: "1"
 networks:
   vela:
     driver: bridge
