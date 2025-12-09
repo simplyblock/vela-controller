@@ -120,7 +120,7 @@ autoscalerVm:
   fullnameOverride: ""
   powerState: Running
   extraNetwork:
-    enable: true
+    enable: false
   image:
     repository: docker.io/manoharbrm/vela-vm
     tag: latest
