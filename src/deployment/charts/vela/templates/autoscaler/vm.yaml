@@ -82,20 +82,15 @@ spec:
           claimName: {{ include "vela.db.fullname" . }}-storage-pvc
     {{- end }}
     - name: compose
-      mountPath: "/vela/"
+      mountPath: "/vela/config/"
       configMap:
         name: {{ include "vela.db.fullname" . }}-compose
-        items:
-        - key: docker-compose.yml
-          path: compose.yaml
-        - key: vector.yml
-          path: vector.yml
-        - key: pg_hba.conf
-          path: pg_hba.conf
-        - key: namespace
-          path: namespace
-        - key: pgbouncer.ini
-          path: pgbouncer.ini
-        - key: users.txt
-          path: users.txt
+    - name: vela-db-secret
+      mountPath: "/vela/secrets/db"
+      secret:
+        secretName: {{ include "vela.secret.db" . }}
+    - name: vela-jwt-secret
+      mountPath: "/vela/secrets/jwt"
+      secret:
+        secretName: {{ include "vela.secret.jwt" . }}
 {{- end }}
