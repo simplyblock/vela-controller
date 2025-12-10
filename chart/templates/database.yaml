@@ -17,7 +17,7 @@ metadata:
   annotations:
     "helm.sh/resource-policy": keep  # Protect DB from being deleted on helm uninstall
 spec:
-  instances: 3
+  instances: {{ .Values.database.replicas }}
   postgres:
     version: '{{ .Values.database.postgresVersion }}'
   pods:
