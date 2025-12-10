@@ -16,7 +16,6 @@ data:
     sources:
       kubernetes_host:
         type: kubernetes_logs
-        extra_label_selector: app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/name!=vela-vector
 
     transforms:
       project_logs:
@@ -24,9 +23,13 @@ data:
         inputs:
           - kubernetes_host
         source: |-
+          . = map_keys(., recursive: true) -> |key| { replace(key, ".", "_") }
           .project = "global"
           .event_message = del(.message)
           .appname = del(.kubernetes.container_name)
+          .metadata.id = uuid_v7()
+          log(.kubernetes.pod_labels)
+          .database_label = del(.kubernetes.pod_labels."stackgres_io/cluster-name")
           del(.file)
           del(.kubernetes)
           del(.source_type)
@@ -40,7 +43,7 @@ data:
           auth: '.appname == "vela-auth"'
           controller: '.appname == "vela-controller"'
           studio: '.appname == "vela-studio"'
-          db: '.appname == "vela-db"'
+          db: '.database_label == "database"'
       # Ignores non nginx errors since they are related with kong booting up
       kong_logs:
         type: remap
@@ -101,17 +104,16 @@ data:
         inputs:
           - router.controller
         source: |-
-          parsed, err = parse_regex(.event_message, r'^(?P<time>.*): (?P<msg>.*)$')
+          parsed, err = parse_regex(.event_message, r'^(?P<time>\d+-\d+-\d+ \d+:\d+:\d+)? ?(?P<level>INFO|NOTICE|WARNING|ERROR|LOG|FATAL|PANIC?):? .*$', numeric_groups: true)
           if err == null {
               .event_message = parsed.msg
-              if match!(parsed.time, r'^\d{1,2}/[A-Za-z]{3}/\d{4}\s+\d{2}:\d{2}\s+[+-]\d{2}:\d{2}$') {
-                ts, terr = parse_timestamp(parsed.time, format: "%e/%b/%Y %R %:z")
-                if terr == null {
-                  .timestamp = ts
-                } else {
-                  # If the timestamp is invalid, we use the current time
-                  .timestamp = now()
-                }
+              .timestamp = now()
+              if exists(parsed.time) {
+                  .timestamp = timestamp!(parsed.time)
+              }
+              .metadata.parsed.error_severity = "info"
+              if  {
+                  .metadata.parsed.error_severity = parsed.level
               }
               .metadata.host = .project
           }
@@ -127,6 +129,13 @@ data:
               .event_message = parsed.msg
               .metadata.level = parsed.level
           }
+          .metadata.parsed.error_severity = "info"
+          if exists(parsed.level) {
+            .metadata.parsed.error_severity = parsed.level
+          }
+          .metadata.response.status_code = ""
+          .metadata.request.method = ""
+          .metadata.request.path = ""
       # Postgres logs some messages to stderr which we map to warning severity level
       db_logs:
         type: remap
@@ -148,67 +157,25 @@ data:
               .metadata.parsed.error_severity = "log"
           }
           .metadata.parsed.error_severity = upcase!(.metadata.parsed.error_severity)
+          .metadata.response.status_code = ""
+          .metadata.request.method = ""
+          .metadata.request.path = ""
 
     sinks:
-      logflare_auth:
-        type: 'http'
-        inputs:
-          - auth_logs
-        encoding:
-          codec: 'json'
-        method: 'post'
-        request:
-          retry_max_duration_secs: 10
-          headers:
-            x-api-key: ${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
-        uri: 'http://vela-logflare:4000/api/logs?source_name=global.auth.logs.vela'
-      logflare_controller:
-        type: 'http'
-        inputs:
-          - controller_logs
-        encoding:
-          codec: 'json'
-        method: 'post'
-        request:
-          retry_max_duration_secs: 10
-          headers:
-            x-api-key: ${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
-        uri: 'http://vela-logflare:4000/api/logs?source_name=global.controller.logs.vela'
-      logflare_studio:
-        type: 'http'
-        inputs:
-          - studio_logs
-        encoding:
-          codec: 'json'
-        method: 'post'
-        request:
-          retry_max_duration_secs: 10
-          headers:
-            x-api-key: ${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
-        uri: 'http://vela-logflare:4000/api/logs?source_name=global.studio.logs.vela'
-      logflare_db:
-        type: 'http'
+      loki:
+        type: 'loki'
         inputs:
           - db_logs
+          - studio_logs
+          - controller_logs
+        endpoint: 'http://loki.loki.svc.cluster.local:3100'
+        labels:
+          region: 'global'
+          level: '{{ "{{" }} .metadata.parsed.error_severity {{ "}}" }}'
+          appname: '{{ "{{" }} .appname {{ "}}" }}'
+          status: '{{ "{{" }} .metadata.response.status_code {{ "}}" }}'
+          method: '{{ "{{" }} .metadata.request.method {{ "}}" }}'
+          path: '{{ "{{" }} .metadata.request.path {{ "}}" }}'
         encoding:
-          codec: 'json'
-        method: 'post'
-        request:
-          retry_max_duration_secs: 10
-          headers:
-            x-api-key: ${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
-        uri: 'http://vela-logflare:4000/api/logs?source_name=global.db.logs.vela'
-      logflare_kong:
-        type: 'http'
-        inputs:
-          - kong_logs
-          - kong_err
-        encoding:
-          codec: 'json'
-        method: 'post'
-        request:
-          retry_max_duration_secs: 10
-          headers:
-            x-api-key: ${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}
-        uri: 'http://vela-logflare:4000/api/logs?source_name=global.kong.logs.vela'
+          codec: json
 {{- end }}
