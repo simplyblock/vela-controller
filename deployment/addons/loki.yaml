@@ -1,0 +1,159 @@
+---
+loki:
+  image:
+    tag: 3.6.2
+
+  auth_enabled: false
+
+  server:
+    http_listen_port: 3100
+
+  commonConfig:
+    instance_addr: 127.0.0.1
+    path_prefix: /var/loki
+    ring:
+      kvstore:
+        store: inmemory
+
+  structuredConfig:
+    ruler_storage:
+      backend: local
+      local:
+        directory: /var/loki/rules
+
+  commonStorageConfig:
+    filesystem:
+      chunks_directory: /var/loki/chunks
+      rules_directory: /var/loki/rules
+
+  storage:
+    type: filesystem
+    use_thanos_objstore: false
+    filesystem:
+      chunks_directory: /var/loki/chunks
+      rules_directory: /var/loki/rules
+
+  rulerConfig:
+    alertmanager_url: http://localhost:9093
+
+  schemaConfig:
+    configs:
+      - from: 2020-10-24
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: index_
+          period: 24h
+
+  ingester:
+    chunk_encoding: snappy
+    lifecycler:
+      ring:
+        kvstore:
+          store: inmemory
+        replication_factor: 1
+
+  limits_config:
+    allow_structured_metadata: true
+    volume_enabled: true
+    reject_old_samples: true
+    metric_aggregation_enabled: true
+    enable_multi_variant_queries: true
+    retention_period: 168h
+
+    # stream-related limits
+    max_streams_per_user: 5000          # increase if you really need more
+    max_global_streams_per_user: 0      # 0 = disabled global cap
+
+  tracing:
+    enabled: false
+
+  querier:
+    # Default is 4, if you have enough memory and CPU you can increase, reduce if OOMing
+    max_concurrent: 4
+
+  frontend:
+    encoding: protobuf
+
+  analytics:
+    reporting_enabled: false
+
+  ruler:
+    enable_api: true
+
+  pattern_ingester:
+    enabled: true
+    metric_aggregation:
+      loki_address: 127.0.0.1:3100
+
+lokiCanary:
+  enabled: false
+  replicas: 1
+
+test:
+  enabled: false
+
+minio:
+  enabled: false
+
+isUsingObjectStorage: false
+
+deploymentMode: SingleBinary
+
+singleBinary:
+  replicas: 1
+  resources:
+    limits:
+      cpu: 3
+      memory: 4Gi
+    requests:
+      cpu: 2
+      memory: 2Gi
+  extraEnv:
+    # Keep a little bit lower than memory limits
+    - name: GOMEMLIMIT
+      value: 3750MiB
+  persistence:
+    enabled: true
+    size: 100Gi
+    storageClass: simplyblock-csi-sc
+    accessModes:
+      - ReadWriteOnce
+
+chunksCache:
+  enabled: false
+  # default is 500MB, with limited memory keep this smaller
+  writebackSizeLimit: 100MB
+
+resultsCache:
+  enabled: false
+
+gateway:
+  enabled: false
+
+# Zero out replica counts of other deployment modes
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0
+ingester:
+  replicas: 0
+querier:
+  replicas: 0
+queryFrontend:
+  replicas: 0
+queryScheduler:
+  replicas: 0
+distributor:
+  replicas: 0
+compactor:
+  replicas: 0
+indexGateway:
+  replicas: 0
+bloomCompactor:
+  replicas: 0
+bloomGateway:
+  replicas: 0
