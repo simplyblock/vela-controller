@@ -24,10 +24,6 @@ secret:
     password: ""
   pgbouncer:
     admin_password: "pgadmin_pwd" # TODO: auto generate this in the next PR.
-  # analytics Logflare API key
-  analytics:
-    apiKey: your-super-secret-and-long-logflare-key
-
 
 
 # Database service settings
