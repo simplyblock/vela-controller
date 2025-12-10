@@ -15,7 +15,6 @@ from fastapi.routing import APIRoute
 from httpx import TimeoutException
 from pydantic import BaseModel
 
-from ..deployment.logflare import create_global_logflare_objects
 from ..deployment.monitors.resize import ResizeMonitor
 from ..exceptions import VelaLogflareError
 from ._util.resourcelimit import create_system_resource_limits
@@ -246,12 +245,6 @@ _resize_monitor = ResizeMonitor()
 @app.on_event("startup")
 async def on_startup():
     await _populate_db()
-    try:
-        await create_global_logflare_objects()
-    except VelaLogflareError as exc:
-        if not isinstance(exc.__cause__, TimeoutException):
-            raise
-        logger.error("Timeout while creating global logflare entities")
     # start async background monitor
     asyncio.create_task(run_backup_monitor())
     asyncio.create_task(monitor_resources(60))
