@@ -1,6 +1,5 @@
 import asyncio
 import json
-import logging
 import logging.config
 import re
 import sys
@@ -12,11 +11,9 @@ from alembic.config import Config
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
-from httpx import TimeoutException
 from pydantic import BaseModel
 
 from ..deployment.monitors.resize import ResizeMonitor
-from ..exceptions import VelaLogflareError
 from ._util.resourcelimit import create_system_resource_limits
 from ._util.role import create_access_rights_if_emtpy
 from .backup import router as backup_router

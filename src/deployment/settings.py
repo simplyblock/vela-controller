@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Annotated
 
-from pydantic import Field, HttpUrl, StringConstraints
+from pydantic import StringConstraints
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,20 +16,6 @@ class Settings(BaseSettings):
             pattern=r"^[a-z][a-z0-9._-]*[a-z0-9]$",
         ),
     ] = "vela"
-    logflare_private_access_token: Annotated[
-        str,
-        Field(default="", description="Private access token for authenticating with the Logflare API."),
-    ]
-
-    logflare_public_access_token: Annotated[
-        str,
-        Field(default="", description="Public access token for authenticating with the Logflare API."),
-    ]
-
-    logflare_url: Annotated[
-        HttpUrl,
-        Field(default="http://localhost:4000", description="Base URL of the Logflare API (e.g. http://localhost:4000)"),
-    ]
     deployment_release_name: str = "vela"
     server_root_url: str = "http://localhost:8000"
     deployment_service_port: int = 443
