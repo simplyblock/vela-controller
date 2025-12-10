@@ -28,9 +28,11 @@ spec:
           args:
             - --config
             - /etc/vector/vector.yml
-          image: "timberio/vector:0.34.0-alpine"
+          image: "timberio/vector:0.51.1-alpine"
           imagePullPolicy: IfNotPresent
           env:
+            - name: VECTOR_LOG # TODO: disable eventually
+              value: debug
             - name: VECTOR_SELF_NODE_NAME
               valueFrom:
                 fieldRef:
