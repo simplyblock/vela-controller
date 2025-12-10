@@ -41,7 +41,6 @@ from ..models.resources import (
 from ._util.resourcelimit import (
     check_resource_limits,
     create_or_update_branch_provisioning,
-    dict_to_resource_limits,
     format_limit_violation_details,
     get_current_branch_allocations,
     get_effective_branch_limits,
@@ -122,7 +121,7 @@ async def get_project_usage(
     session: SessionDep, project_id: Identifier, cycle_start: datetime | None = None, cycle_end: datetime | None = None
 ) -> ResourceLimitsPublic:
     usage_cycle = make_usage_cycle(cycle_start, cycle_end)
-    return dict_to_resource_limits(await get_project_resource_usage(session, project_id, usage_cycle))
+    return ResourceLimitsPublic.model_validate(await get_project_resource_usage(session, project_id, usage_cycle))
 
 
 @router.get("/organizations/{organization_id}/usage")
@@ -133,7 +132,9 @@ async def get_org_usage(
     cycle_end: datetime | None = None,
 ) -> ResourceLimitsPublic:
     usage_cycle = make_usage_cycle(cycle_start, cycle_end)
-    return dict_to_resource_limits(await get_organization_resource_usage(session, organization_id, usage_cycle))
+    return ResourceLimitsPublic.model_validate(
+        await get_organization_resource_usage(session, organization_id, usage_cycle)
+    )
 
 
 # ---------------------------

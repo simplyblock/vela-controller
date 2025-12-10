@@ -76,8 +76,7 @@ async def create_or_update_branch_provisioning(
     *,
     commit: bool = True,
 ) -> None:
-    requests = resource_limits_to_dict(resource_requests)
-    for resource_type, amount in requests.items():
+    for resource_type, amount in resource_limits_to_dict(resource_requests).model_dump().items():
         if amount is None:
             continue
 
@@ -178,26 +177,6 @@ async def initialize_organization_resource_limits(session: SessionDep, organizat
             )
     await session.commit()
     await session.refresh(organization)
-
-
-def dict_to_resource_limits(value: dict[ResourceType, int]) -> ResourceLimitsPublic:
-    return ResourceLimitsPublic(
-        milli_vcpu=value.get(ResourceType.milli_vcpu),
-        ram=value.get(ResourceType.ram),
-        iops=value.get(ResourceType.iops),
-        database_size=value.get(ResourceType.database_size),
-        storage_size=value.get(ResourceType.storage_size),
-    )
-
-
-def resource_limits_to_dict(value: ResourceLimitsPublic) -> dict[ResourceType, int | None]:
-    return {
-        ResourceType.milli_vcpu: value.milli_vcpu,
-        ResourceType.ram: value.ram,
-        ResourceType.iops: value.iops,
-        ResourceType.database_size: value.database_size,
-        ResourceType.storage_size: value.storage_size,
-    }
 
 
 def make_usage_cycle(start: datetime | None, end: datetime | None) -> UsageCycle:
@@ -365,7 +344,7 @@ async def get_remaining_project_resources(
 
         effective_limits[resource_type] = int(max(min(per_branch_limit, remaining_organization, remaining_project), 0))
 
-    return dict_to_resource_limits(effective_limits)
+    return ResourceLimitsPublic.model_validate(effective_limits)
 
 
 async def get_system_resource_limits(session: SessionDep) -> dict[ResourceType, ResourceLimit]:
