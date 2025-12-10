@@ -1,6 +1,6 @@
 ### using for local development
 
-During local development, Logflare, Grafana, Vector, Studio, and certificate provisioning can be disabled if not needed.
+During local development, Loki, Grafana, Vector, Studio, and certificate provisioning can be disabled if not needed.
 ```
 helm upgrade --install vela --namespace vela --create-namespace ./chart/ \
     --set vector.enabled=false \

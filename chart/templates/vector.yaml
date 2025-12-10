@@ -37,11 +37,8 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
-            - name: LOGFLARE_PUBLIC_ACCESS_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: vela-logflare-secret
-                  key: LOGFLARE_PUBLIC_ACCESS_TOKEN
+            - name: LOKI_URL
+              value: "http://{{ .Values.loki.name }}.{{ .Values.loki.namespace }}.svc.cluster.local:3100"
           ports:
             - containerPort: 9001
               protocol: TCP

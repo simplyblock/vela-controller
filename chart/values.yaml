@@ -36,7 +36,6 @@ controller:
     VELA_DEPLOYMENT_NAMESPACE_PREFIX: 'vela'
     VELA_KEYCLOAK_URL: 'http://vela-auth-service:8080/auth/'
     VELA_JWT_SECRET: 'http://vela-auth-service:8080/auth/realms/vela/protocol/openid-connect/certs'
-    VELA_LOGFLARE_URL: 'http://vela-logflare:4000'
     VELA_GRAFANA_URL: 'http://vela-grafana:3000'
     VELA_ENABLE_DB_EXTERNAL_IPV6_LOADBALANCER: 'true'
     VELA_SYSTEM_LIMIT_MILLIS_VCPU: '100000'
@@ -57,20 +56,6 @@ issuer: ca-issuer
 prometheus:
   name: vela-prometheus
   namespace: monitoring
-
-analytics:
-  DB_HOST: database
-  DB_DATABASE: logflare
-  DB_DRIVER: postgresql
-  DB_PORT: 5432
-  DB_SCHEMA: _analytics
-  LOGFLARE_NODE_HOST: 127.0.0.1
-  LOGFLARE_SINGLE_TENANT: true
-  LOGFLARE_SUPABASE_MODE: false
-  LOGFLARE_MIN_CLUSTER_SIZE: "1"
-  FEATURE_FLAG_OVERRIDE: multibackend=true
-  LOGFLARE_PUBLIC_ACCESS_TOKEN: my-super-secret-api-key
-  LOGFLARE_PRIVATE_ACCESS_TOKEN: your-super-secret-and-long-logflare-key-private
 
 monitoring:
   VELA_GRAFANA_SECURITY_ADMIN_USER: admin
