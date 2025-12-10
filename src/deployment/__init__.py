@@ -48,7 +48,6 @@ from .deployment import DeploymentParameters
 from .grafana import create_vela_grafana_obj, delete_vela_grafana_obj
 from .kubernetes import KubernetesService
 from .kubernetes._util import custom_api_client
-from .logflare import create_branch_logflare_objects, delete_branch_logflare_objects
 from .settings import get_settings
 from .simplyblock_api import create_simplyblock_api
 
@@ -530,7 +529,6 @@ async def delete_deployment(branch_id: Identifier) -> None:
     await cleanup_branch_dns(branch_id)
     await _delete_autoscaler_vm(namespace)
     try:
-        await delete_branch_logflare_objects(branch_id)
         await kube_service.delete_namespace(namespace)
     except ApiException as exc:
         if exc.status == 404:
@@ -1207,7 +1205,6 @@ async def deploy_branch_environment(
 
     results = await asyncio.gather(
         _serial_deploy(),
-        create_branch_logflare_objects(branch_id=branch_id),
         create_vela_grafana_obj(organization_id, branch_id, credential),
         return_exceptions=True,
     )
