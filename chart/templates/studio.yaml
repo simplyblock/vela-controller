@@ -54,7 +54,6 @@ kind: ConfigMap
 metadata:
   name: vela-studio-config
 data:
-  LOGFLARE_PRIVATE_ACCESS_TOKEN: {{ .Values.analytics.LOGFLARE_PRIVATE_ACCESS_TOKEN | quote }}
   PLATFORM_PG_META_URL: {{ .Values.studio.env.PLATFORM_PG_META_URL | quote }}
   SUPABASE_URL: "https://{{ .Values.domain }}:{{ .Values.port }}"
   SUPABASE_ANON_KEY: {{ .Values.studio.env.SUPABASE_ANON_KEY | quote }}
@@ -62,7 +61,7 @@ data:
   OPENAI_API_KEY: {{ .Values.studio.env.OPENAI_API_KEY | quote }}
   AUTH_JWT_SECRET: {{ .Values.studio.env.AUTH_JWT_SECRET | quote }}
   NEXTAUTH_SECRET: {{ .Values.studio.env.NEXTAUTH_SECRET | quote }}
-  LOGFLARE_URL: "http://vela-logflare:4000/logs"
+  LOKI_URL: "http://vela-loki:3100"
   VELA_PLATFORM_KEYCLOAK_ISSUER: "https://{{ .Values.domain }}:{{ .Values.port }}/auth/realms/vela"
   VELA_PLATFORM_KEYCLOAK_CLIENT_ID: {{ .Values.studio.env.VELA_PLATFORM_KEYCLOAK_CLIENT_ID | quote }}
   VELA_PLATFORM_KEYCLOAK_CLIENT_SECRET: {{ .Values.studio.env.VELA_PLATFORM_KEYCLOAK_CLIENT_SECRET | quote }}
