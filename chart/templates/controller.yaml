@@ -19,28 +19,20 @@ spec:
       serviceAccountName: vela-controller
       initContainers:
 {{ include "vela.waitForPostgresInitContainer" (dict) | nindent 8 }}
-        - name: wait-for-logflare
-          image: curlimages/curl:8.11.1
+        - name: wait-for-database
+          image: alpine
           imagePullPolicy: IfNotPresent
-          env:
-            - name: LOGFLARE_URL
-              value: {{ .Values.controller.env.VELA_LOGFLARE_URL | quote }}
-            - name: LOGFLARE_PRIVATE_ACCESS_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: vela-logflare-secret
-                  key: LOGFLARE_PRIVATE_ACCESS_TOKEN
-          command: ["/bin/sh", "-c"]
+          command: [
+            "/bin/sh", "-c"
+          ]
           args:
             - |
-              echo "Waiting for Logflare..."
-              CLEAN_URL="${LOGFLARE_URL%%/}"
-              AUTH_HEADER="Authorization: Bearer ${LOGFLARE_PRIVATE_ACCESS_TOKEN}"
-              until curl -fsS -H "${AUTH_HEADER}" "${CLEAN_URL}/api/endpoints" >/dev/null; do
-                echo "Logflare not ready yet. Sleeping..."
+              echo "Waiting for Postgres..."
+              until nc -z -w3 ${DB_HOST} 5432; do
+                echo "Postgres not ready yet. Sleeping..."
                 sleep 5
               done
-              echo "Logflare is ready."
+              exit 0
 
       containers:
         - name: vela-controller
