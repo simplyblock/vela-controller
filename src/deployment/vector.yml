@@ -15,7 +15,7 @@ transforms:
     inputs:
       - docker_host
     source: |-
-      .project = "${VELA_BRANCH?VELA_BRANCH is required}"
+      .branch_id = "${VELA_BRANCH?VELA_BRANCH is required}"
       .event_message = del(.message)
       .appname = del(.container_name)
       del(.container_created_at)
@@ -46,7 +46,7 @@ transforms:
       if err == null {
           .event_message = parsed.msg
           .timestamp = to_timestamp!(parsed.time)
-          .metadata.host = .project
+          .metadata.host = .branch_id
       }
   # Realtime logs are structured so we parse the severity level using regex (ignore time because it has no date)
   realtime_logs:
@@ -54,8 +54,8 @@ transforms:
     inputs:
       - router.realtime
     source: |-
-      .metadata.project = del(.project)
-      .metadata.external_id = .metadata.project
+      .metadata.branch_id = del(.branch_id)
+      .metadata.external_id = .metadata.branch_id
       parsed, err = parse_regex(.event_message, r'^(?P<time>\d+:\d+:\d+\.\d+) \[(?P<level>\w+)\] (?P<msg>.*)$')
       if err == null {
           .event_message = parsed.msg
@@ -67,8 +67,8 @@ transforms:
     inputs:
       - router.storage
     source: |-
-      .metadata.project = del(.project)
-      .metadata.tenantId = .metadata.project
+      .metadata.branch_id = del(.branch_id)
+      .metadata.tenantId = .metadata.branch_id
       parsed, err = parse_json(.event_message)
       if err == null {
           .event_message = parsed.msg
@@ -100,63 +100,19 @@ transforms:
       .metadata.parsed.error_severity = upcase!(.metadata.parsed.error_severity)
 
 sinks:
-  logflare_realtime:
-    type: 'http'
-    inputs:
-      - realtime_logs
-    encoding:
-      codec: 'json'
-    method: 'post'
-    request:
-      retry_max_duration_secs: 30
-      headers:
-        x-api-key: "${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}"
-    uri: 'http://vela-logflare.${NAMESPACE}.svc.cluster.local:4000/api/logs?source_name=${VELA_BRANCH}.realtime.logs.prod'
-  logflare_rest:
-    type: 'http'
-    inputs:
-      - rest_logs
-    encoding:
-      codec: 'json'
-    method: 'post'
-    request:
-      retry_max_duration_secs: 30
-      headers:
-        x-api-key: "${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}"
-    uri: 'http://vela-logflare.${NAMESPACE}.svc.cluster.local:4000/api/logs?source_name=${VELA_BRANCH}.postgREST.logs.prod'
-  logflare_db:
-    type: 'http'
+  loki:
+    type: 'loki'
     inputs:
       - db_logs
+      - studio_logs
+      - controller_logs
+    endpoint: 'http://loki.loki.svc.cluster.local:3100'
+    labels:
+      branch_id: '${VELA_BRANCH?VELA_BRANCH is required}'
+      level: '{{ .metadata.parsed.error_severity }}'
+      appname: '{{ .appname }}'
+      status: '{{ .metadata.response.status_code }}'
+      method: '{{ .metadata.request.method }}'
+      path: '{{ .metadata.request.path }}'
     encoding:
-      codec: 'json'
-    method: 'post'
-    request:
-      retry_max_duration_secs: 30
-      headers:
-        x-api-key: "${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}"
-    uri: 'http://vela-logflare.${NAMESPACE}.svc.cluster.local:4000/api/logs?source_name=${VELA_BRANCH}.postgres.logs'
-  logflare_functions:
-    type: 'http'
-    inputs:
-      - router.functions
-    encoding:
-      codec: 'json'
-    method: 'post'
-    request:
-      retry_max_duration_secs: 30
-      headers:
-        x-api-key: "${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}"
-    uri: 'http://vela-logflare.${NAMESPACE}.svc.cluster.local:4000/api/logs?source_name=${VELA_BRANCH}.deno-relay-logs'
-  logflare_storage:
-    type: 'http'
-    inputs:
-      - storage_logs
-    encoding:
-      codec: 'json'
-    method: 'post'
-    request:
-      retry_max_duration_secs: 30
-      headers:
-        x-api-key: "${LOGFLARE_PUBLIC_ACCESS_TOKEN?LOGFLARE_PUBLIC_ACCESS_TOKEN is required}"
-    uri: 'http://vela-logflare.${NAMESPACE}.svc.cluster.local:4000/api/logs?source_name=${VELA_BRANCH}.storage.logs.prod.2'
+      codec: json

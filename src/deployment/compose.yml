@@ -166,9 +166,8 @@ services:
       interval: 5s
       retries: 3
     environment:
-      LOGFLARE_PUBLIC_ACCESS_TOKEN: ${ANALYTICS_APIKEY}
-      VELA_BRANCH: ${ANALYTICS_BRANCH}
-      NAMESPACE: ${ANALYTICS_NAMESPACE}
+      VELA_BRANCH: ${VELA_BRANCH}
+      NAMESPACE: ${NAMESPACE}
     command:
     - --config
     - /etc/vector/vector.yml
