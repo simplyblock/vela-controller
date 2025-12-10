@@ -494,10 +494,10 @@ async def _collect_branch_statuses(
 
     from ..organization.project import branch as branch_module
 
-    statuses: dict[Identifier, BranchServiceStatus] = {}
-    for branch_id in branch_ids:
-        statuses[branch_id] = await branch_module.refresh_branch_status(branch_id)
-    return statuses
+    return {
+        branch_id: await branch_module.refresh_branch_status(branch_id)
+        for branch_id in branch_ids
+    }
 
 
 def _group_by_resource_type(allocations: list[BranchProvisioning]) -> dict[ResourceType, list[BranchProvisioning]]:
@@ -508,10 +508,10 @@ def _group_by_resource_type(allocations: list[BranchProvisioning]) -> dict[Resou
 
 
 def _map_resource_allocation(provisioning_list: list[BranchProvisioning]) -> dict[ResourceType, int]:
-    result: dict[ResourceType, int] = {}
-    for resource_type in ResourceType:
-        result[resource_type] = _select_resource_allocation_or_zero(resource_type, provisioning_list)
-    return result
+    return {
+        resource_type: _select_resource_allocation_or_zero(resource_type, provisioning_list)
+        for resource_type in ResourceType
+    }
 
 
 def _select_resource_allocation_or_zero(resource_type: ResourceType, allocations: list[BranchProvisioning]):
@@ -532,7 +532,4 @@ def _map_resource_usages(usages: list[ResourceUsageMinute]) -> dict[ResourceType
 
 
 def _select_allocation(resource_type: ResourceType, allocations: list[BranchProvisioning]):
-    for allocation in allocations:
-        if allocation.resource == resource_type:
-            return allocation.amount
-    return None
+    return next((allocation.amount for allocation in allocations if allocation.resource == resource_type), None)
