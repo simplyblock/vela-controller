@@ -193,17 +193,6 @@ class KubernetesService:
                     return
                 raise
 
-    async def get_service_node_port(
-        self,
-        namespace: str,
-        name: str,
-    ) -> int:
-        """
-        Return the NodePort for the specified service name
-        """
-        service = await self.get_service(namespace, name)
-        return service.spec.ports[0].node_port
-
     async def get_service(self, namespace: str, name: str) -> Any:
         async with core_v1_client() as core_v1:
             try:
