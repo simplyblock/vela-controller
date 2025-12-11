@@ -35,11 +35,6 @@ from .settings import get_settings
 VOLUME_SNAPSHOT_CLASS = os.environ.get("VOLUME_SNAPSHOT_CLASS", "simplyblock-csi-snapshotclass")
 POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", "60"))
 
-logging.basicConfig(
-    level=os.environ.get("LOG_LEVEL", "INFO"),
-    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-)
-
 logger = logging.getLogger(__name__)
 
 UNIT_MULTIPLIER = {

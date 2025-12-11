@@ -1,7 +1,9 @@
 import asyncio
 import json
 import logging
+import logging.config
 import re
+import sys
 from importlib.resources import files
 from typing import Any, Literal
 
@@ -27,6 +29,59 @@ from .resources import router as resources_router
 from .settings import get_settings
 from .system import api as system_api
 from .user import api as user_api
+
+
+def _logging_config() -> dict[str, Any]:
+    log_format = "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
+    date_format = "%Y-%m-%dT%H:%M:%S%z"
+    log_level = get_settings().log_level
+    return {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "default": {
+                "format": log_format,
+                "datefmt": date_format,
+            },
+        },
+        "handlers": {
+            "default": {
+                "formatter": "default",
+                "class": "logging.StreamHandler",
+                "stream": sys.stdout,
+            },
+        },
+        "loggers": {
+            "": {  # Root logger
+                "handlers": ["default"],
+                "level": log_level,
+            },
+            "uvicorn": {
+                "handlers": ["default"],
+                "level": log_level,
+                "propagate": False,
+            },
+            "uvicorn.error": {
+                "handlers": ["default"],
+                "level": log_level,
+                "propagate": False,
+            },
+            "uvicorn.access": {
+                "handlers": ["default"],
+                "level": log_level,
+                "propagate": False,
+            },
+            "fastapi": {
+                "handlers": ["default"],
+                "level": log_level,
+                "propagate": False,
+            },
+        },
+    }
+
+
+logging.config.dictConfig(_logging_config())
+logger = logging.getLogger(__name__)
 
 
 class _FastAPI(FastAPI):
@@ -196,7 +251,7 @@ async def on_startup():
     except VelaLogflareError as exc:
         if not isinstance(exc.__cause__, TimeoutException):
             raise
-        logging.error("Timeout while creating global logflare entities")
+        logger.error("Timeout while creating global logflare entities")
     # start async background monitor
     asyncio.create_task(run_backup_monitor())
     asyncio.create_task(monitor_resources(60))
