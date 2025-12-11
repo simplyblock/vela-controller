@@ -19,21 +19,6 @@ spec:
       serviceAccountName: vela-controller
       initContainers:
 {{ include "vela.waitForPostgresInitContainer" (dict) | nindent 8 }}
-        - name: wait-for-database
-          image: alpine
-          imagePullPolicy: IfNotPresent
-          command: [
-            "/bin/sh", "-c"
-          ]
-          args:
-            - |
-              echo "Waiting for Postgres..."
-              until nc -z -w3 ${DB_HOST} 5432; do
-                echo "Postgres not ready yet. Sleeping..."
-                sleep 5
-              done
-              exit 0
-
       containers:
         - name: vela-controller
           image: "{{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag }}"
@@ -46,16 +31,6 @@ spec:
             - configMapRef:
                 name: vela-controller-config
           env:
-            - name: VELA_LOGFLARE_PUBLIC_ACCESS_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: vela-logflare-secret
-                  key: LOGFLARE_PUBLIC_ACCESS_TOKEN
-            - name: VELA_LOGFLARE_PRIVATE_ACCESS_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: vela-logflare-secret
-                  key: LOGFLARE_PRIVATE_ACCESS_TOKEN
             - name: VELA_GRAFANA_SECURITY_ADMIN_USER
               valueFrom:
                 secretKeyRef:
