@@ -7,7 +7,7 @@ from aiohttp import ClientError
 from kubernetes_asyncio import client
 
 from ...exceptions import VelaKubernetesError
-from ._util import core_v1_client, custom_api_client, storage_v1_client
+from ._util import apps_v1_client, core_v1_client, custom_api_client, storage_v1_client
 from .neonvm import NeonVM, get_neon_vm
 
 logger = logging.getLogger(__name__)
@@ -140,6 +140,45 @@ class KubernetesService:
                         name=consumer["metadata"]["name"],
                         body=consumer,
                     )
+            else:
+                raise
+
+    async def apply_config_map(self, namespace: str, config_map: dict[str, Any]) -> None:
+        name = config_map["metadata"]["name"]
+        async with core_v1_client() as core_v1:
+            try:
+                await core_v1.create_namespaced_config_map(namespace=namespace, body=config_map)
+                logger.info("Created ConfigMap %s in %s", name, namespace)
+            except client.exceptions.ApiException as exc:
+                if exc.status == 409:
+                    logger.info("ConfigMap %s already exists in %s; replacing", name, namespace)
+                    await core_v1.replace_namespaced_config_map(name=name, namespace=namespace, body=config_map)
+                else:
+                    raise
+
+    async def apply_service(self, namespace: str, service: dict[str, Any]) -> None:
+        name = service["metadata"]["name"]
+        async with core_v1_client() as core_v1:
+            try:
+                await core_v1.create_namespaced_service(namespace=namespace, body=service)
+                logger.info("Created Service %s in %s", name, namespace)
+            except client.exceptions.ApiException as exc:
+                if exc.status == 409:
+                    logger.info("Service %s already exists in %s; replacing", name, namespace)
+                    await core_v1.replace_namespaced_service(name=name, namespace=namespace, body=service)
+                else:
+                    raise
+
+    async def apply_deployment(self, namespace: str, deployment: dict[str, Any]) -> None:
+        name = deployment["metadata"]["name"]
+        async with apps_v1_client() as apps_v1:
+            try:
+                await apps_v1.create_namespaced_deployment(namespace=namespace, body=deployment)
+                logger.info("Created Deployment %s in %s", name, namespace)
+            except client.exceptions.ApiException as exc:
+                if exc.status == 409:
+                    logger.info("Deployment %s already exists in %s; replacing", name, namespace)
+                    await apps_v1.replace_namespaced_deployment(name=name, namespace=namespace, body=deployment)
                 else:
                     raise
 

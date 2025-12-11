@@ -6,6 +6,7 @@ import math
 import subprocess
 import tempfile
 import textwrap
+import time
 from collections.abc import Mapping
 from importlib import resources
 from typing import TYPE_CHECKING, Annotated, Any, Literal, cast
@@ -77,6 +78,31 @@ _LOAD_BALANCER_TIMEOUT_SECONDS = float(600)
 _LOAD_BALANCER_POLL_INTERVAL_SECONDS = float(2)
 DNSRecordType = Literal["AAAA", "CNAME"]
 DATABASE_DNS_RECORD_TYPE: Literal["AAAA"] = "AAAA"
+
+IPV4_PROXY_CONFIGMAP_NAME = "ipv4-proxy-config"
+IPV4_PROXY_DEPLOYMENT_NAME = "ipv4-proxy"
+IPV4_PROXY_SERVICE_NAME = "overlay-proxy-service"
+IPV4_PROXY_NETWORK_ANNOTATION = "neonvm-system/neonvm-overlay-for-pods"
+IPV4_PROXY_PORT = 5432
+IPV4_PROXY_IP_WAIT_SECONDS = 120
+IPV4_PROXY_POLL_INTERVAL_SECONDS = 5
+
+NGINX_CONF_TEMPLATE = """user  nginx;
+worker_processes  auto;
+error_log  /var/log/nginx/error.log notice;
+pid        /var/run/nginx.pid;
+
+events {
+    worker_connections  1024;
+}
+
+stream {
+    server {
+        listen 5432;
+        proxy_pass ${TARGET_IP}:5432;
+    }
+}
+"""
 
 
 def branch_storage_class_name(branch_id: Identifier) -> str:
@@ -395,6 +421,8 @@ def _configure_vela_values(
 
     autoscaler_spec = values_content.setdefault("autoscalerVm", {})
     autoscaler_spec["enabled"] = True
+    autoscaler_extra_network = autoscaler_spec.setdefault("extraNetwork", {})
+    autoscaler_extra_network["enable"] = True
     autoscaler_resources = autoscaler_spec.setdefault("resources", {})
     autoscaler_resources["cpus"] = calculate_autoscaler_vm_cpus(parameters.milli_vcpu)
     memory_slot_size, memory_slots = calculate_autoscaler_vm_memory(parameters.memory_bytes)
@@ -408,6 +436,124 @@ def _configure_vela_values(
     autoscaler_persistence.setdefault("accessModes", ["ReadWriteMany"])
 
     return values_content
+
+
+def _build_ipv4_proxy_config_map(namespace: str) -> dict[str, Any]:
+    return {
+        "apiVersion": "v1",
+        "kind": "ConfigMap",
+        "metadata": {
+            "name": IPV4_PROXY_CONFIGMAP_NAME,
+            "namespace": namespace,
+            "labels": {"app": IPV4_PROXY_DEPLOYMENT_NAME},
+        },
+        "data": {"nginx.conf.template": NGINX_CONF_TEMPLATE},
+    }
+
+
+def _build_ipv4_proxy_service(namespace: str) -> dict[str, Any]:
+    return {
+        "apiVersion": "v1",
+        "kind": "Service",
+        "metadata": {
+            "name": IPV4_PROXY_SERVICE_NAME,
+            "namespace": namespace,
+            "labels": {"app": IPV4_PROXY_DEPLOYMENT_NAME},
+        },
+        "spec": {
+            "type": "NodePort",
+            "ports": [
+                {
+                    "name": "postgres",
+                    "port": IPV4_PROXY_PORT,
+                    "targetPort": IPV4_PROXY_PORT,
+                }
+            ],
+            "selector": {"app": IPV4_PROXY_DEPLOYMENT_NAME},
+        },
+    }
+
+
+def _build_ipv4_proxy_deployment(namespace: str, target_ip: str) -> dict[str, Any]:
+    return {
+        "apiVersion": "apps/v1",
+        "kind": "Deployment",
+        "metadata": {
+            "name": IPV4_PROXY_DEPLOYMENT_NAME,
+            "namespace": namespace,
+            "labels": {"app": IPV4_PROXY_DEPLOYMENT_NAME},
+        },
+        "spec": {
+            "replicas": 1,
+            "selector": {"matchLabels": {"app": IPV4_PROXY_DEPLOYMENT_NAME}},
+            "template": {
+                "metadata": {
+                    "labels": {"app": IPV4_PROXY_DEPLOYMENT_NAME},
+                    "annotations": {"k8s.v1.cni.cncf.io/networks": IPV4_PROXY_NETWORK_ANNOTATION},
+                },
+                "spec": {
+                    "containers": [
+                        {
+                            "name": "nginx",
+                            "image": "nginx:latest",
+                            "command": [
+                                "/bin/sh",
+                                "-c",
+                                "envsubst < /config/nginx.conf.template > /etc/nginx/nginx.conf && "
+                                "exec nginx -g 'daemon off;'",
+                            ],
+                            "env": [{"name": "TARGET_IP", "value": target_ip}],
+                            "volumeMounts": [
+                                {"name": "config", "mountPath": "/config"},
+                            ],
+                        }
+                    ],
+                    "volumes": [
+                        {
+                            "name": "config",
+                            "configMap": {"name": IPV4_PROXY_CONFIGMAP_NAME},
+                        }
+                    ],
+                },
+            },
+        },
+    }
+
+
+async def _wait_for_autoscaler_extra_net_ip(namespace: str, vm_name: str) -> str:
+    deadline = time.monotonic() + IPV4_PROXY_IP_WAIT_SECONDS
+    last_error: Exception | None = None
+    while True:
+        try:
+            neon_vm = await get_neon_vm(namespace, vm_name)
+        except (RuntimeError, VelaKubernetesError) as exc:
+            last_error = exc
+        else:
+            ip = neon_vm.status.extra_net_ip
+            if ip:
+                return ip
+            last_error = None
+        if time.monotonic() >= deadline:
+            message = (
+                f"Autoscaler VM {vm_name} in namespace {namespace} missing overlay IP "
+                f"after waiting {IPV4_PROXY_IP_WAIT_SECONDS} seconds"
+            )
+            if last_error:
+                message = f"{message}: {last_error}"
+            raise VelaKubernetesError(message)
+        await asyncio.sleep(IPV4_PROXY_POLL_INTERVAL_SECONDS)
+
+
+async def _apply_ipv4_proxy_resources(namespace: str, target_ip: str) -> None:
+    await kube_service.apply_config_map(namespace, _build_ipv4_proxy_config_map(namespace))
+    await kube_service.apply_service(namespace, _build_ipv4_proxy_service(namespace))
+    await kube_service.apply_deployment(namespace, _build_ipv4_proxy_deployment(namespace, target_ip))
+
+
+async def _ensure_ipv4_proxy_resources(branch_id: Identifier) -> None:
+    namespace, vm_name = get_autoscaler_vm_identity(branch_id)
+    target_ip = await _wait_for_autoscaler_extra_net_ip(namespace, vm_name)
+    await _apply_ipv4_proxy_resources(namespace, target_ip)
 
 
 async def create_vela_config(
@@ -501,6 +647,8 @@ async def create_vela_config(
                     raise
                 logger.info("Helm release %s not found during cleanup; continuing", release_name)
             raise
+        else:
+            await _ensure_ipv4_proxy_resources(branch_id)
 
 
 async def _delete_autoscaler_vm(namespace: str) -> None:
