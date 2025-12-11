@@ -79,3 +79,7 @@ studio:
 vector:
   enabled: true
   useHostPath: true
+
+loki:
+  name: loki
+  namespace: loki
