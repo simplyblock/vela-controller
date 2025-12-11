@@ -1,5 +1,5 @@
 database:
-  postgresVersion: 17
+  postgresVersion: "17"
   replicas: 3
 
 podSecurityContext:
