@@ -18,17 +18,15 @@ data:
         type: kubernetes_logs
 
     transforms:
-      project_logs:
+      global_logs:
         type: remap
         inputs:
           - kubernetes_host
         source: |-
-          . = map_keys(., recursive: true) -> |key| { replace(key, ".", "_") }
-          .project = "global"
+          map_keys(., recursive: true) -> |key| { replace(key, ".", "_") }
           .event_message = del(.message)
           .appname = del(.kubernetes.container_name)
           .metadata.id = uuid_v7()
-          log(.kubernetes.pod_labels)
           .database_label = del(.kubernetes.pod_labels."stackgres_io/cluster-name")
           del(.file)
           del(.kubernetes)
@@ -37,13 +35,14 @@ data:
       router:
         type: route
         inputs:
-          - project_logs
+          - global_logs
         route:
           kong: '.appname == "vela-kong"'
           auth: '.appname == "vela-auth"'
           controller: '.appname == "vela-controller"'
           studio: '.appname == "vela-studio"'
           db: '.database_label == "database"'
+
       # Ignores non nginx errors since they are related with kong booting up
       kong_logs:
         type: remap
@@ -53,6 +52,7 @@ data:
           req, err = parse_nginx_log(.event_message, "combined")
           if err == null {
               .timestamp = req.timestamp
+              .level = "info"
               .metadata.request.headers.referer = req.referer
               .metadata.request.headers.user_agent = req.agent
               .metadata.request.headers.cf_connecting_ip = req.client
@@ -64,6 +64,7 @@ data:
           if err != null {
             abort
           }
+
       # Ignores non nginx errors since they are related with kong booting up
       kong_err:
         type: remap
@@ -75,7 +76,7 @@ data:
           parsed, err = parse_nginx_log(.event_message, "error")
           if err == null {
               .timestamp = parsed.timestamp
-              .severity = parsed.severity
+              .level = parsed.severity
               .metadata.request.host = parsed.host
               .metadata.request.headers.cf_connecting_ip = parsed.client
               url, err = split(parsed.request, " ")
@@ -88,15 +89,20 @@ data:
           if err != null {
             abort
           }
+
       auth_logs:
         type: remap
         inputs:
           - router.auth
         source: |-
-          parsed, err = parse_json(.event_message)
+          parsed, err = parse_regex(.event_message, r'^(?P<time>\d+-\d+-\d+ \d+:\d+:\d+[.,]\d+) (?P<level>\w+)\W+(?P<msg>.*)$', numeric_groups: true)
           if err == null {
-              .metadata.timestamp = parsed.time
-              .metadata = merge!(.metadata, parsed)
+              .event_message = parsed.msg
+              .timestamp = timestamp!(parsed.time)
+              .level = "info"
+              if exists(parsed.level) {
+                  .level = parsed.level
+              }
           }
 
       controller_logs:
@@ -104,62 +110,44 @@ data:
         inputs:
           - router.controller
         source: |-
-          parsed, err = parse_regex(.event_message, r'^(?P<time>\d+-\d+-\d+ \d+:\d+:\d+)? ?(?P<level>INFO|NOTICE|WARNING|ERROR|LOG|FATAL|PANIC?):? .*$', numeric_groups: true)
+          parsed, err = parse_regex(.event_message, r'^(?P<time>\d+-\d+-\d+T\d+:\d+:\d+([+|-]\d{2}:?\d{2})|Z)\W+(?P<level>\w+)\W+(?P<msg>.*)$', numeric_groups: true)
           if err == null {
               .event_message = parsed.msg
               .timestamp = now()
               if exists(parsed.time) {
                   .timestamp = timestamp!(parsed.time)
               }
-              .metadata.parsed.error_severity = "info"
-              if  {
-                  .metadata.parsed.error_severity = parsed.level
+              .level = "info"
+              if exists(parsed.level) {
+                  .level = parsed.level
               }
-              .metadata.host = .project
           }
+
       studio_logs:
         type: remap
         inputs:
           - router.studio
         source: |-
-          .metadata.project = del(.project)
-          .metadata.external_id = .metadata.project
+          .level = "info"
           parsed, err = parse_regex(.event_message, r'^(?P<time>\d+:\d+:\d+\.\d+) \[(?P<level>\w+)\] (?P<msg>.*)$')
           if err == null {
               .event_message = parsed.msg
-              .metadata.level = parsed.level
+              .timestamp = timestamp!(parsed.time)
+              .level = parsed.level
           }
-          .metadata.parsed.error_severity = "info"
-          if exists(parsed.level) {
-            .metadata.parsed.error_severity = parsed.level
-          }
-          .metadata.response.status_code = ""
-          .metadata.request.method = ""
-          .metadata.request.path = ""
-      # Postgres logs some messages to stderr which we map to warning severity level
+
       db_logs:
         type: remap
         inputs:
           - router.db
         source: |-
-          .metadata.host = "db-global"
-          .metadata.parsed.timestamp = .timestamp
-          
+          .level = "info"
+          .timestamp = now()
           parsed, err = parse_regex(.event_message, r'.*(?P<level>INFO|NOTICE|WARNING|ERROR|LOG|FATAL|PANIC?):.*', numeric_groups: true)
-
-          if err != null || parsed == null {
-            .metadata.parsed.error_severity = "info"
+          if err == null {
+              .level = parsed.level
           }
-          if parsed != null {
-          .metadata.parsed.error_severity = parsed.level
-          }
-          if .metadata.parsed.error_severity == "info" {
-              .metadata.parsed.error_severity = "log"
-          }
-          .metadata.parsed.error_severity = upcase!(.metadata.parsed.error_severity)
-          .metadata.response.status_code = ""
-          .metadata.request.method = ""
-          .metadata.request.path = ""
+          del(.database_label)
 
     sinks:
       loki:
@@ -173,9 +161,6 @@ data:
           region: 'global'
           level: '{{ "{{" }} .metadata.parsed.error_severity {{ "}}" }}'
           appname: '{{ "{{" }} .appname {{ "}}" }}'
-          status: '{{ "{{" }} .metadata.response.status_code {{ "}}" }}'
-          method: '{{ "{{" }} .metadata.request.method {{ "}}" }}'
-          path: '{{ "{{" }} .metadata.request.path {{ "}}" }}'
         encoding:
           codec: json
 {{- end }}
