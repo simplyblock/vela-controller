@@ -11,7 +11,7 @@ metadata:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: vela-vector-reader
+  name: vela-vector-reader-{{ .Release.Namespace }}
 rules:
   - apiGroups: [""]
     resources: ["nodes", "namespaces", "pods"]
@@ -25,13 +25,13 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: vela-vector-view
+  name: vela-vector-view-{{ .Release.Namespace }}
 subjects:
   - kind: ServiceAccount
     name: vela-vector
     namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
-  name: vela-vector-reader
+  name: vela-vector-reader-{{ .Release.Namespace }}
   apiGroup: rbac.authorization.k8s.io
 {{- end }}
