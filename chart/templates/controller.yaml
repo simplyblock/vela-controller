@@ -90,10 +90,10 @@ data:
   VELA_KEYCLOAK_URL: {{ .Values.controller.env.VELA_KEYCLOAK_URL | quote }}
   VELA_KEYCLOAK_ADMIN_NAME: {{ .Values.controller.env.VELA_KEYCLOAK_ADMIN_NAME | quote }}
   VELA_KEYCLOAK_ADMIN_SECRET: {{ .Values.controller.env.VELA_KEYCLOAK_ADMIN_SECRET | quote }}
-  VELA_CLOUDFLARE_API_TOKEN: {{ .Values.controller.env.VELA_CLOUDFLARE_API_TOKEN | quote }}
-  VELA_CLOUDFLARE_ZONE_ID: {{ .Values.controller.env.VELA_CLOUDFLARE_ZONE_ID | quote }}
-  VELA_CLOUDFLARE_BRANCH_REF_CNAME: {{ .Values.domain | quote }}
-  VELA_CLOUDFLARE_DOMAIN_SUFFIX: {{ .Values.domain | quote }}
+  VELA_CLOUDFLARE__API_TOKEN: {{ .Values.controller.env.VELA_CLOUDFLARE__API_TOKEN | quote }}
+  VELA_CLOUDFLARE__ZONE_ID: {{ .Values.controller.env.VELA_CLOUDFLARE__ZONE_ID | quote }}
+  VELA_CLOUDFLARE__BRANCH_REF_CNAME: {{ .Values.domain | quote }}
+  VELA_CLOUDFLARE__DOMAIN_SUFFIX: {{ .Values.domain | quote }}
   VELA_DEPLOYMENT_NAMESPACE_PREFIX: {{ .Values.controller.env.VELA_DEPLOYMENT_NAMESPACE_PREFIX | quote }}
   VELA_DEPLOYMENT_SERVICE_PORT: {{ .Values.port | quote }}
   VELA_SERVER_ROOT_URL: "https://{{ .Values.domain }}:{{ .Values.port }}"

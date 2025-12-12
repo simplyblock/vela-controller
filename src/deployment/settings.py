@@ -1,12 +1,23 @@
 from functools import lru_cache
 from typing import Annotated
 
-from pydantic import StringConstraints
+from pydantic import BaseModel, StringConstraints
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+class CloudflareSettings(BaseModel):
+    api_token: str
+    zone_id: str
+    branch_ref_cname: str
+    domain_suffix: str
+
+
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="vela_", case_sensitive=False)
+    model_config = SettingsConfigDict(
+        env_prefix="vela_",
+        env_nested_delimiter="__",
+        case_sensitive=False,
+    )
 
     deployment_namespace_prefix: Annotated[
         str,
@@ -21,10 +32,7 @@ class Settings(BaseSettings):
     deployment_service_port: int = 443
     enable_db_external_ipv6_loadbalancer: bool = True  # Expose Vela Postgres via external IPv6 LB when true
     pgmeta_crypto_key: str
-    cloudflare_api_token: str
-    cloudflare_zone_id: str
-    cloudflare_branch_ref_cname: str
-    cloudflare_domain_suffix: str
+    cloudflare: CloudflareSettings
     gateway_name: str = "vela-public-gateway"
     gateway_namespace: str = "kong-system"
     grafana_url: str = "http://localhost:3000"
