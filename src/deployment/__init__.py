@@ -158,20 +158,6 @@ def branch_service_name(component: str) -> str:
     return f"{_release_fullname()}-{component}"
 
 
-def inject_branch_env(compose: dict[str, Any], branch_id: Identifier) -> dict[str, Any]:
-    try:
-        vector_service = compose["services"]["vector"]
-    except KeyError as e:
-        raise RuntimeError("Failed to inject branch env into compose file: missing services.vector") from e
-
-    vector_env = vector_service.setdefault("environment", {})
-    vector_env["LOGFLARE_PUBLIC_ACCESS_TOKEN"] = get_settings().logflare_public_access_token
-    vector_env["NAMESPACE"] = get_settings().deployment_namespace_prefix
-    vector_env["VELA_BRANCH"] = str(branch_id).lower()
-
-    return compose
-
-
 def _build_storage_class_manifest(*, storage_class_name: str, iops: int, base_storage_class: Any) -> dict[str, Any]:
     provisioner = getattr(base_storage_class, "provisioner", None)
     if not provisioner:
@@ -322,12 +308,12 @@ async def ensure_branch_storage_class(branch_id: Identifier, *, iops: int) -> st
     return storage_class_name
 
 
-def _load_compose_manifest(branch_id: Identifier) -> dict[str, Any]:
+def _load_compose_manifest() -> dict[str, Any]:
     compose_resource = resources.files(__package__).joinpath("compose.yml")
     compose_content = yaml.safe_load(compose_resource.read_text())
     if not isinstance(compose_content, dict):
         raise VelaDeploymentError("docker-compose manifest must be a mapping")
-    return inject_branch_env(compose_content, branch_id)
+    return compose_content
 
 
 def _configure_compose_storage(compose: dict[str, Any], *, enable_file_storage: bool) -> dict[str, Any]:
@@ -447,7 +433,7 @@ async def create_vela_config(
 
     chart = resources.files(__package__) / "charts" / "vela"
     compose_file = _configure_compose_storage(
-        _load_compose_manifest(branch_id),
+        _load_compose_manifest(),
         enable_file_storage=parameters.enable_file_storage,
     )
     vector_resource = resources.files(__package__).joinpath("vector.yml")
