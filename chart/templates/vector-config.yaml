@@ -160,7 +160,7 @@ data:
           - db_logs
           - studio_logs
           - controller_logs
-        endpoint: 'http://loki.loki.svc.cluster.local:3100'
+        endpoint: 'http://{{ .Values.loki.name }}.{{ .Values.loki.namespace }}.svc.cluster.local:3100'
         labels:
           region: 'global'
           level: '{{ "{{" }} .metadata.parsed.error_severity {{ "}}" }}'
