@@ -27,11 +27,8 @@ secret:
   # analytics Logflare API key
   analytics:
     apiKey: your-super-secret-and-long-logflare-key
-    # specify existing secret, which takes precedence over variable above
-    secretRef: ""
-    # override secret keys for existing secret refs
-    secretRefKey:
-      apiKey: apiKey
+
+
 
 # Database service settings
 db:
@@ -58,7 +55,7 @@ autoscalerVm:
   image:
     repository: docker.io/manoharbrm/vela-vm
     tag: latest
-  mountPath: /var/lib/postgresql
+  mountPath: /mnt/postgres_data
   resources: # Placeholder values. Actual values are filled by create_vela_config
     cpus:
       min: "1m"

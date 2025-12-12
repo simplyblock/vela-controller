@@ -76,13 +76,13 @@ spec:
           claimName: {{ $pvcName }}
     {{- if .Values.storage.enabled }}
     - name: storage
-      mountPath: "/var/storage"
+      mountPath: "/mnt/postgres_data/storage"
       blockDevice:
         persistentVolumeClaim:
           claimName: {{ include "vela.autoscaler.name" . }}-storage-pvc
     {{- end }}
     - name: compose
-      mountPath: "/vela/config/"
+      mountPath: "/vela/config"
       configMap:
         name: {{ include "vela.autoscaler.composeConfigName" . }}
     - name: vela-db-secret
@@ -93,4 +93,8 @@ spec:
       mountPath: "/vela/secrets/jwt"
       secret:
         secretName: {{ include "vela.secret.jwt" . }}
+    - name: vela-analytics-secret
+      mountPath: "/vela/secrets/analytics"
+      secret:
+        secretName: {{ include "vela.secret.analytics" . }}
 {{- end }}

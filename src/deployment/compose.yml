@@ -4,8 +4,8 @@ services:
     container_name: vela-db
     image: docker.io/supabase/postgres:15.1.0.147
     environment:
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      JWT_SECRET: ${VELA_JWT_SECRET}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
       JWT_EXP: '3600'
     volumes:
     - /mnt/postgres_data/pgdata:/var/lib/postgresql/data
@@ -40,16 +40,16 @@ services:
     environment:
       DB_HOST: db
       DB_PORT: '5432'
-      DB_NAME: ${POSTGRES_DB}
+      DB_NAME: postgres
       DB_USER: authenticator
-      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_PASSWORD: ${DB_PASSWORD}
       DB_DRIVER: postgres
       DB_SSL: disable
       PGRST_DB_SCHEMAS: public,storage,graphql_public
       PGRST_DB_USE_LEGACY_GUCS: 'false'
       PGRST_APP_SETTINGS_JWT_EXP: '3600'
-      PGRST_JWT_SECRET: ${VELA_JWT_SECRET}
-      PGRST_APP_SETTINGS_JWT_SECRET: ${VELA_JWT_SECRET}
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      PGRST_APP_SETTINGS_JWT_SECRET: ${JWT_SECRET}
     ports:
     - 3000:3000
     networks:
@@ -92,13 +92,13 @@ services:
       PG_META_PORT: 8080
       PG_META_DB_HOST: db
       PG_META_DB_PORT: "5432"
-      PG_META_DB_NAME: ${POSTGRES_DB}
+      PG_META_DB_NAME: postgres
       PG_META_DB_USER: supabase_admin
-      PG_META_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      PG_META_DB_PASSWORD: ${DB_PASSWORD}
       PG_META_DB_DRIVER: postgres
       PG_META_DB_SSL_MODE: disable
       PG_META_DB_URL: '' # DB URI is decrypted from x-connection-encrypted header
-      CRYPTO_KEY: ${PGMETA_CRYPTO_KEY}
+      CRYPTO_KEY: ${DB_PGMETA_CRYPTO_KEY}
     ports:
     - 8080:8080
     networks:
@@ -108,6 +108,7 @@ services:
       options:
         max-size: 25m
         max-file: "1"
+
   storage:
     container_name: vela-storage
     image: docker.io/supabase/storage-api:v0.46.4
@@ -118,21 +119,22 @@ services:
     environment:
       DB_HOST: db
       DB_PORT: '5432'
-      DB_NAME: ${POSTGRES_DB}
+      DB_NAME: postgres
       DB_USER: supabase_storage_admin
-      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_PASSWORD: ${DB_PASSWORD}
       DB_DRIVER: postgres
       DB_SSL: disable
       FILE_SIZE_LIMIT: '52428800'
       STORAGE_BACKEND: file
       PGOPTIONS: -c search_path=storage,public
       FILE_STORAGE_BACKEND_PATH: /var/lib/storage
+      DATABASE_URL: postgres://supabase_storage_admin:${DB_PASSWORD}@db:5432/postgres?sslmode=disable
       TENANT_ID: stub
       REGION: stub
       GLOBAL_S3_BUCKET: stub
-      PGRST_JWT_SECRET: ${VELA_JWT_SECRET}
-      ANON_KEY: ${VELA_ANON_KEY}
-      SERVICE_KEY: ${VELA_SERVICE_KEY}
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      ANON_KEY: ${JWT_ANONKEY}
+      SERVICE_KEY: ${JWT_SERVICEKEY}
       POSTGREST_URL: http://rest:3000
     volumes:
     - /mnt/postgres_data/storage:/var/lib/storage
@@ -151,7 +153,7 @@ services:
     restart: unless-stopped
     volumes:
     - ./vector.yml:/etc/vector/vector.yml:ro,z
-    - /var/run/podman/podman.sock:/var/run/docker.sock:ro,z
+    - /run/podman/podman.sock:/var/run/docker.sock:ro,z
     healthcheck:
       test:
       - CMD
@@ -164,9 +166,9 @@ services:
       interval: 5s
       retries: 3
     environment:
-      LOGFLARE_PUBLIC_ACCESS_TOKEN: ${LOGFLARE_PUBLIC_ACCESS_TOKEN}
-      VELA_BRANCH: ${VELA_BRANCH}
-      NAMESPACE: ${NAMESPACE}
+      LOGFLARE_PUBLIC_ACCESS_TOKEN: ${ANALYTICS_APIKEY}
+      VELA_BRANCH: ${ANALYTICS_BRANCH}
+      NAMESPACE: ${ANALYTICS_NAMESPACE}
     command:
     - --config
     - /etc/vector/vector.yml
