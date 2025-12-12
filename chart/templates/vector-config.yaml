@@ -143,9 +143,13 @@ data:
         source: |-
           .level = "info"
           .timestamp = now()
-          parsed, err = parse_regex(.event_message, r'.*(?P<level>INFO|NOTICE|WARNING|ERROR|LOG|FATAL|PANIC?):.*', numeric_groups: true)
+          parsed, err = parse_regex(.event_message, r'^(?P<time>\d+-\d+-\d+ \d+:\d+:\d+(,\d+| UTC)) ((?P<level>\w+)|(\[\d+\])): (?P<msg>.*)$', numeric_groups: true)
           if err == null {
-              .level = parsed.level
+              .event_message = parsed.msg
+              .timestamp = timestamp!(parsed.time)
+              if exists(parsed.level) {
+                  .level = parsed.level
+              }
           }
           del(.database_label)
 
