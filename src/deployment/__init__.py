@@ -48,7 +48,7 @@ from .deployment import DeploymentParameters
 from .grafana import create_vela_grafana_obj, delete_vela_grafana_obj
 from .kubernetes import KubernetesService, get_neon_vm
 from .kubernetes._util import custom_api_client
-from .settings import get_settings
+from .settings import CloudflareSettings, get_settings
 from .simplyblock_api import create_simplyblock_api
 
 if TYPE_CHECKING:
@@ -726,22 +726,6 @@ async def update_branch_database_password(
             await connection.close()
 
 
-class CloudflareConfig(BaseModel):
-    api_token: str
-    zone_id: str
-    branch_ref_cname: str
-    domain_suffix: str
-
-
-def _cloudflare_config() -> CloudflareConfig:
-    return CloudflareConfig(
-        api_token=get_settings().cloudflare_api_token,
-        zone_id=get_settings().cloudflare_zone_id,
-        branch_ref_cname=get_settings().cloudflare_branch_ref_cname,
-        domain_suffix=get_settings().cloudflare_domain_suffix,
-    )
-
-
 class KubeGatewayConfig(BaseModel):
     namespace: str = ""
     gateway_name: str = Field(default_factory=lambda: get_settings().gateway_name)
@@ -776,7 +760,7 @@ class BranchEndpointResult(BaseModel):
 
 
 async def _create_dns_record(
-    cf: CloudflareConfig,
+    cf: CloudflareSettings,
     *,
     domain: str,
     record_type: DNSRecordType,
@@ -802,7 +786,7 @@ async def _create_dns_record(
     logger.info("Created DNS %s record %s -> %s", record_type, domain, content)
 
 
-async def _delete_dns_records(cf: CloudflareConfig, *, domain: str, record_type: DNSRecordType) -> None:
+async def _delete_dns_records(cf: CloudflareSettings, *, domain: str, record_type: DNSRecordType) -> None:
     """
     Delete all Cloudflare DNS records matching the given domain and type.
 
@@ -853,7 +837,7 @@ async def cleanup_branch_dns(branch_id: Identifier) -> None:
     Args:
         branch_id: The branch identifier to clean up DNS records for
     """
-    cf_cfg = _cloudflare_config()
+    cf_cfg = get_settings().cloudflare
     deletions = []
     record_types = []
 
@@ -965,7 +949,7 @@ async def provision_branch_database_endpoint(branch_id: Identifier) -> None:
     namespace = deployment_namespace(branch_id)
     service_name = f"{branch_service_name('db')}-ext"
     ipv6_address = await _wait_for_service_ipv6(namespace, service_name)
-    cf_cfg = _cloudflare_config()
+    cf_cfg = get_settings().cloudflare
     await _create_dns_record(
         cf_cfg,
         domain=domain,
@@ -1194,7 +1178,7 @@ async def provision_branch_endpoints(
 ) -> BranchEndpointResult:
     """Provision DNS + HTTPRoute resources (PostgREST + optional Storage + PGMeta) for a branch."""
 
-    cf_cfg = _cloudflare_config()
+    cf_cfg = get_settings().cloudflare
 
     gateway_cfg = KubeGatewayConfig().for_namespace(deployment_namespace(spec.branch_id))
 
