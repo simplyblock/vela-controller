@@ -57,7 +57,8 @@
             "secret": "{{ .Values.studio.env.VELA_PLATFORM_KEYCLOAK_CLIENT_SECRET }}",
             "protocol": "openid-connect",
             "attributes": {
-                "access.token.lifespan": "3600"
+                "access.token.lifespan": "3600",
+                "post.logout.redirect.uris": "https://{{ .Values.domain }}:{{ .Values.port }}/logout"
             }
         },
         {

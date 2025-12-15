@@ -68,7 +68,7 @@ data:
   VELA_PLATFORM_KEYCLOAK_AUTHORIZATION_ENDPOINT: "https://{{ .Values.domain }}:{{ .Values.port }}/auth/realms/vela/protocol/openid-connect/auth"
   VELA_PLATFORM_KEYCLOAK_TOKEN_ENDPOINT: "http://vela-auth-service:8080/auth/realms/vela/protocol/openid-connect/token"
   VELA_PLATFORM_KEYCLOAK_USERINFO_ENDPOINT: "http://vela-auth-service:8080/auth/realms/vela/protocol/openid-connect/userinfo"
-  VELA_PLATFORM_KEYCLOAK_LOGOUT_ENDPOINT: "http://vela-auth-service:8080/auth/protocol/openid-connect/logout"
+  VELA_PLATFORM_KEYCLOAK_LOGOUT_ENDPOINT: "https://{{ .Values.domain }}:{{ .Values.port }}/auth/realms/vela/protocol/openid-connect/logout"
   VELA_PLATFORM_KEYCLOAK_JWKS_ENDPOINT: "http://vela-auth-service:8080/auth/realms/vela/protocol/openid-connect/certs"
   VELA_PLATFORM_EXT_SIGN_IN_URL: "https://{{ .Values.domain }}:{{ .Values.port }}/sign-in"
   VELA_PLATFORM_EXT_BASE_URL: "https://{{ .Values.domain }}:{{ .Values.port }}/"
