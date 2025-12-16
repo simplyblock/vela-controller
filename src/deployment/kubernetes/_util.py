@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 
 from aiohttp import ClientTimeout
-from kubernetes_asyncio.client import ApiClient, CoreV1Api, CustomObjectsApi, StorageV1Api
+from kubernetes_asyncio.client import ApiClient, CoreV1Api, CustomObjectsApi, DiscoveryV1Api, StorageV1Api
 from kubernetes_asyncio.config import load_incluster_config, load_kube_config
 from kubernetes_asyncio.config.config_exception import ConfigException
 
@@ -57,3 +57,9 @@ async def custom_api_client():
 async def storage_v1_client():
     async with api_client() as client:
         yield StorageV1Api(api_client=client)
+
+
+@asynccontextmanager
+async def discovery_v1_client():
+    async with api_client() as client:
+        yield DiscoveryV1Api(api_client=client)

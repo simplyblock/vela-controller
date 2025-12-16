@@ -7,7 +7,7 @@ from aiohttp import ClientError
 from kubernetes_asyncio import client
 
 from ...exceptions import VelaKubernetesError
-from ._util import core_v1_client, custom_api_client, storage_v1_client
+from ._util import core_v1_client, custom_api_client, discovery_v1_client, storage_v1_client
 from .neonvm import NeonVM, get_neon_vm
 
 logger = logging.getLogger(__name__)
@@ -142,6 +142,64 @@ class KubernetesService:
                     )
                 else:
                     raise
+
+    async def ensure_endpoint_slice(
+        self,
+        namespace: str,
+        slice_name: str,
+        service_name: str,
+        address: str,
+        port: int,
+        port_name: str,
+    ) -> None:
+        body = {
+            "apiVersion": "discovery.k8s.io/v1",
+            "kind": "EndpointSlice",
+            "metadata": {
+                "name": slice_name,
+                "namespace": namespace,
+                "labels": {
+                    "kubernetes.io/service-name": service_name,
+                },
+            },
+            "addressType": "IPv4",
+            "endpoints": [
+                {
+                    "addresses": [address],
+                    "conditions": {"ready": True},
+                }
+            ],
+            "ports": [
+                {
+                    "name": port_name,
+                    "port": port,
+                    "protocol": "TCP",
+                }
+            ],
+        }
+
+        async with discovery_v1_client() as discovery:
+            try:
+                await discovery.create_namespaced_endpoint_slice(namespace, body=body)
+                logger.info(
+                    "Created EndpointSlice %s for service %s/%s via %s",
+                    slice_name,
+                    namespace,
+                    service_name,
+                    address,
+                )
+            except client.exceptions.ApiException as exc:
+                if exc.status == 409:
+                    logger.info(
+                        "EndpointSlice %s already exists for service %s/%s, skipping",
+                        slice_name,
+                        namespace,
+                        service_name,
+                    )
+                    return
+                raise VelaKubernetesError(
+                    f"Failed to create EndpointSlice {slice_name} for {service_name} in {namespace}: {exc.reason}"
+                ) from exc
 
     async def apply_secret(self, namespace: str, secret: dict[str, Any]) -> None:
         name = secret["metadata"]["name"]

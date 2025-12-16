@@ -13,6 +13,4 @@ spec:
       targetPort: 6432
       protocol: TCP
       name: pgbouncer
-  selector:
-{{ include "vela.autoscaler.selectorLabel" . | nindent 4 }}
 {{- end }}
