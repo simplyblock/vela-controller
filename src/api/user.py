@@ -138,14 +138,13 @@ async def list_user_permissions(
             RoleUserLink.env_type,
         )
         .select_from(RoleUserLink)
-        .join(Role, Role.id == RoleUserLink.role_id, isouter=True)
-        .join(RoleAccessRight, RoleAccessRight.role_id == Role.id, isouter=True)
-        .join(AccessRight, AccessRight.id == RoleAccessRight.access_right_id, isouter=True)
-        .join(User, User.id == RoleUserLink.user_id, isouter=True)
+        .join(Role, Role.id == RoleUserLink.role_id)
+        .join(RoleAccessRight, RoleAccessRight.role_id == Role.id)
+        .join(AccessRight, AccessRight.id == RoleAccessRight.access_right_id)
+        .join(User, User.id == RoleUserLink.user_id)
         .join(
             Membership,
             and_(Membership.user_id == User.id, Membership.organization_id == RoleUserLink.organization_id),
-            isouter=True,
         )
         .where(and_(Role.is_active, User.id == (await _user_id(user_ref))))
     )
