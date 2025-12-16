@@ -57,9 +57,9 @@ class AccessCheckRequest(BaseModel):
 
 class RoleAssignmentPayload(BaseModel):
     # Single or multiple projects/branches/environments
-    project_ids: list[Identifier] | None = None
-    branch_ids: list[Identifier] | None = None
-    env_types: list[str] | None = None
+    project_ids: list[Identifier] = []
+    branch_ids: list[Identifier] = []
+    env_types: list[str] = []
 
 
 @api.post("/")
@@ -255,51 +255,46 @@ async def assign_role(
     """
     Assign a role to a user in one or more contexts. The context is passed as JSON.
     """
-    # Prepare combinations of context assignments
-    project_ids = payload.project_ids or None
-    branch_ids = payload.branch_ids or None
-    env_types = payload.env_types or None
-
     created_links = []
 
     # Create RoleUserLink for every combination
-    def has_values(lst):
-        return lst is not None and any(x is not None for x in lst)
-
     if (
-        (has_values(project_ids) and int(role.role_type.value) != 2)
-        or (has_values(env_types) and int(role.role_type.value) != 1)
-        or (has_values(branch_ids) and int(role.role_type.value) != 3)
+        (payload.project_ids and role.role_type != RoleType.project)
+        or (payload.env_types and role.role_type != RoleType.environment)
+        or (payload.branch_ids and role.role_type != RoleType.branch)
         or (
-            not has_values(project_ids)
-            and not has_values(env_types)
-            and not has_values(branch_ids)
-            and int(role.role_type.value) != 0
+            not payload.project_ids
+            and not payload.env_types
+            and not payload.branch_ids
+            and role.role_type != RoleType.organization
         )
     ):
         raise HTTPException(
-            422, f"Role type {role.role_type.name} does not match entities: {project_ids}, {branch_ids}, {env_types}"
+            422,
+            f"Role type {role.role_type.name} does not match entities: {payload.project_ids}, {payload.branch_ids}, {
+                payload.env_types
+            }",
         )
 
-    if project_ids:
-        for project_id in project_ids:
-            link = RoleUserLink(
-                organization_id=organization.id, role_id=role.id, user_id=user_id, project_id=project_id
-            )
-            session.add(link)
-            created_links.append(link)
+    if role.role_type == RoleType.organization:
+        link = RoleUserLink(organization_id=organization.id, role_id=role.id, user_id=user_id)
+        session.add(link)
+        created_links.append(link)
 
-    if env_types:
-        for env_type in env_types:
-            link = RoleUserLink(organization_id=organization.id, role_id=role.id, user_id=user_id, env_type=env_type)
-            session.add(link)
-            created_links.append(link)
+    for project_id in payload.project_ids:
+        link = RoleUserLink(organization_id=organization.id, role_id=role.id, user_id=user_id, project_id=project_id)
+        session.add(link)
+        created_links.append(link)
 
-    if branch_ids:
-        for branch_id in branch_ids:
-            link = RoleUserLink(organization_id=organization.id, role_id=role.id, user_id=user_id, branch_id=branch_id)
-            session.add(link)
-            created_links.append(link)
+    for env_type in payload.env_types:
+        link = RoleUserLink(organization_id=organization.id, role_id=role.id, user_id=user_id, env_type=env_type)
+        session.add(link)
+        created_links.append(link)
+
+    for branch_id in payload.branch_ids:
+        link = RoleUserLink(organization_id=organization.id, role_id=role.id, user_id=user_id, branch_id=branch_id)
+        session.add(link)
+        created_links.append(link)
 
     await session.commit()
 
