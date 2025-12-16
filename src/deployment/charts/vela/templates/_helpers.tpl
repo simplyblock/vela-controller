@@ -45,13 +45,6 @@ Return the PgBouncer config map name that lives next to the autoscaler VM.
 {{- end }}
 
 {{/*
-Selector label used to identify the autoscaler VM pods.
-*/}}
-{{- define "vela.autoscaler.selectorLabel" -}}
-vm.neon.tech/name: {{ include "vela.autoscaler.name" . }}
-{{- end }}
-
-{{/*
 Create chart name and version as used by the chart label.
 */}}
 {{- define "vela.chart" -}}

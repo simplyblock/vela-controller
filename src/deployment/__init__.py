@@ -46,7 +46,7 @@ from ..exceptions import (
 from ._util import deployment_namespace
 from .deployment import DeploymentParameters
 from .grafana import create_vela_grafana_obj, delete_vela_grafana_obj
-from .kubernetes import KubernetesService
+from .kubernetes import KubernetesService, get_neon_vm
 from .kubernetes._util import custom_api_client
 from .settings import get_settings
 from .simplyblock_api import create_simplyblock_api
@@ -75,6 +75,8 @@ DATABASE_PVC_SUFFIX = "-db-pvc"
 AUTOSCALER_PVC_SUFFIX = "-block-data"
 _LOAD_BALANCER_TIMEOUT_SECONDS = float(600)
 _LOAD_BALANCER_POLL_INTERVAL_SECONDS = float(2)
+_OVERLAY_IP_TIMEOUT_SECONDS = float(300)
+_OVERLAY_IP_POLL_INTERVAL_SECONDS = float(5)
 DNSRecordType = Literal["AAAA", "CNAME"]
 DATABASE_DNS_RECORD_TYPE: Literal["AAAA"] = "AAAA"
 
@@ -155,6 +157,68 @@ def _autoscaler_vm_name() -> str:
 
 def branch_service_name(component: str) -> str:
     return f"{_release_fullname()}-{component}"
+
+
+async def _wait_for_autoscaler_overlay_ip(namespace: str, vm_name: str) -> str:
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + _OVERLAY_IP_TIMEOUT_SECONDS
+    last_error: Exception | None = None
+    logger.info("Waiting for overlay IP for autoscaler VM %s/%s", namespace, vm_name)
+
+    while True:
+        try:
+            vm = await get_neon_vm(namespace, vm_name)
+        except (VelaKubernetesError, RuntimeError) as exc:
+            last_error = exc
+            vm = None
+
+        if vm:
+            overlay_ip = (vm.status.extra_net_ip or "").strip()
+            if overlay_ip:
+                logger.info(
+                    "Autoscaler VM %s/%s overlay network %s is ready",
+                    namespace,
+                    vm_name,
+                    overlay_ip,
+                )
+                return overlay_ip
+
+        if loop.time() >= deadline:
+            message = f"Timed out waiting for overlay IP for autoscaler VM {vm_name} in namespace {namespace}"
+            if last_error is not None:
+                raise VelaDeploymentError(message) from last_error
+            raise VelaDeploymentError(message)
+
+        await asyncio.sleep(_OVERLAY_IP_POLL_INTERVAL_SECONDS)
+
+
+def _overlay_service_specs() -> list[tuple[str, int, str]]:
+    return [
+        (branch_service_name("db"), 5432, "postgres"),
+        (branch_service_name("pgbouncer"), 6432, "pgbouncer"),
+        (branch_service_name("rest"), 3000, "http"),
+        (branch_service_name("storage"), 5000, "http"),
+        (branch_service_name("meta"), 8080, "http"),
+        (branch_service_name("pgexporter"), 9187, "http"),
+    ]
+
+
+async def _ensure_autoscaler_overlay_endpoint_slices(namespace: str, overlay_ip: str) -> None:
+    for service_name, port, port_name in _overlay_service_specs():
+        await kube_service.ensure_endpoint_slice(
+            namespace=namespace,
+            slice_name=service_name,
+            service_name=service_name,
+            address=overlay_ip,
+            port=port,
+            port_name=port_name,
+        )
+
+
+async def _initialize_autoscaler_overlay_endpoints(namespace: str) -> None:
+    vm_name = _autoscaler_vm_name()
+    overlay_ip = await _wait_for_autoscaler_overlay_ip(namespace, vm_name)
+    await _ensure_autoscaler_overlay_endpoint_slices(namespace, overlay_ip)
 
 
 def _build_storage_class_manifest(*, storage_class_name: str, iops: int, base_storage_class: Any) -> dict[str, Any]:
@@ -486,6 +550,7 @@ async def create_vela_config(
                 stderr=subprocess.PIPE,
                 text=True,
             )
+            await _initialize_autoscaler_overlay_endpoints(namespace)
         except subprocess.CalledProcessError as e:
             logger.exception(f"Failed to create deployment: {e.stderr}")
             release_name = _release_name()
