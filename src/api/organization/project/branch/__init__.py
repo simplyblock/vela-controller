@@ -1025,11 +1025,14 @@ async def _public(branch: Branch) -> BranchPublic:
     project = await branch.awaitable_attrs.project
 
     db_host = _resolve_db_host(branch) or ""
-    port = (
-        (await kube_service.get_service(namespace=deployment_namespace(branch.id), name=branch_service_name("db")))
-        .spec.ports[0]
-        .node_port
-    )
+    #try:
+    #    port = (
+    #        (await kube_service.get_service(namespace=deployment_namespace(branch.id), name=branch_service_name("db")))
+    #        .spec.ports[0]
+    #        .node_port
+    #    )
+    #except VelaKubernetesError:
+    port = 5432
 
     # pg-meta and pg are in the same network. So password is not required in connection string.
     connection_string = _build_connection_string(branch.database_user, "postgres", port)
