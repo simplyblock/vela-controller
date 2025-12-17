@@ -11,8 +11,8 @@ helm upgrade --install kong-operator kong/gateway-operator -n kong-system \
 # create TLS certificate
 ```sh
  kubectl create secret tls vela-staging-cert \
-   --cert=letsencrypt/live/staging.vela.run/fullchain.pem \
-   --key=letsencrypt/live/staging.vela.run/privkey.pem \
+   --cert=letsencrypt/live/demo.vela.run/fullchain.pem \
+   --key=letsencrypt/live/demo.vela.run/privkey.pem \
    -n kong-system
 ```
 
