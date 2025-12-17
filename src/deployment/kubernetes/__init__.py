@@ -1,5 +1,6 @@
 import logging
 import math
+from collections.abc import Mapping
 from copy import deepcopy
 from typing import Any
 
@@ -18,9 +19,13 @@ class KubernetesService:
         async with core_v1_client() as core_v1:
             await core_v1.delete_namespace(name=namespace)
 
-    async def ensure_namespace(self, namespace: str) -> None:
+    async def ensure_namespace(self, namespace: str, *, labels: Mapping[str, str] | None = None) -> None:
+        metadata_kwargs: dict[str, Any] = {"name": namespace}
+        if labels:
+            metadata_kwargs["labels"] = labels
+
         async with core_v1_client() as core_v1:
-            body = client.V1Namespace(metadata=client.V1ObjectMeta(name=namespace))
+            body = client.V1Namespace(metadata=client.V1ObjectMeta(**metadata_kwargs))
             try:
                 await core_v1.create_namespace(body=body)
             except client.exceptions.ApiException as exc:
