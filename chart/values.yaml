@@ -15,7 +15,7 @@ containerSecurityContext:
   seccompProfile:
     type: 'RuntimeDefault'
 
-domain: staging.vela.run
+domain: demo.vela.run
 port: 30808
 
 keycloak:
