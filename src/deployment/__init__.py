@@ -77,6 +77,11 @@ _LOAD_BALANCER_TIMEOUT_SECONDS = float(600)
 _LOAD_BALANCER_POLL_INTERVAL_SECONDS = float(2)
 _OVERLAY_IP_TIMEOUT_SECONDS = float(300)
 _OVERLAY_IP_POLL_INTERVAL_SECONDS = float(5)
+_POD_SECURITY_LABELS = {
+    "pod-security.kubernetes.io/enforce": "privileged",
+    "pod-security.kubernetes.io/audit": "privileged",
+    "pod-security.kubernetes.io/warn": "privileged",
+}
 DNSRecordType = Literal["AAAA", "CNAME"]
 DATABASE_DNS_RECORD_TYPE: Literal["AAAA"] = "AAAA"
 
@@ -493,6 +498,8 @@ async def create_vela_config(
         branch,
         branch_id,
     )
+
+    await kube_service.ensure_namespace(namespace, labels=_POD_SECURITY_LABELS)
 
     chart = resources.files(__package__) / "charts" / "vela"
     compose_file = _configure_compose_storage(
