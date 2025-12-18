@@ -119,7 +119,7 @@ def branch_dns_label(branch_id: Identifier) -> str:
 def branch_domain(branch_id: Identifier) -> str | None:
     """Return the database host domain for a branch."""
 
-    suffix = get_settings().cloudflare_domain_suffix.strip()
+    suffix = get_settings().cloudflare.domain_suffix.strip()
     if not suffix:
         return None
     return f"db.{branch_dns_label(branch_id)}.{suffix}".lower()
@@ -128,7 +128,7 @@ def branch_domain(branch_id: Identifier) -> str | None:
 def branch_api_domain(branch_id: Identifier) -> str | None:
     """Return the API host domain for a branch."""
 
-    suffix = get_settings().cloudflare_domain_suffix.strip()
+    suffix = get_settings().cloudflare.domain_suffix.strip()
     if not suffix:
         return None
     return f"{branch_dns_label(branch_id)}.{suffix}".lower()
