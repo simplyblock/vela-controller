@@ -83,7 +83,9 @@ _POD_SECURITY_LABELS = {
     "pod-security.kubernetes.io/warn": "privileged",
 }
 DNSRecordType = Literal["AAAA", "CNAME"]
-DATABASE_DNS_RECORD_TYPE: Literal["AAAA"] = "AAAA"
+# TODO: Autoscaler VM's overlay IP is currently IPv4 only.
+# https://github.com/simplyblock/vela/issues/347
+DATABASE_DNS_RECORD_TYPE: Literal["CNAME"] = "CNAME"
 
 
 def branch_storage_class_name(branch_id: Identifier) -> str:
@@ -116,12 +118,12 @@ def branch_dns_label(branch_id: Identifier) -> str:
     return str(branch_id).lower()
 
 
-def branch_domain(branch_id: Identifier) -> str | None:
+def branch_db_domain(branch_id: Identifier) -> str:
     """Return the database host domain for a branch."""
 
     suffix = get_settings().cloudflare.domain_suffix.strip()
     if not suffix:
-        return None
+        raise VelaDeploymentError("cloudflare dns domain suffix not configured")
     return f"db.{branch_dns_label(branch_id)}.{suffix}".lower()
 
 
@@ -846,7 +848,7 @@ async def cleanup_branch_dns(branch_id: Identifier) -> None:
         deletions.append(_delete_dns_records(cf_cfg, domain=api_domain, record_type="CNAME"))
         record_types.append(f"API CNAME ({api_domain})")
 
-    db_domain = branch_domain(branch_id)
+    db_domain = branch_db_domain(branch_id)
     if db_domain:
         deletions.append(
             _delete_dns_records(
@@ -855,7 +857,7 @@ async def cleanup_branch_dns(branch_id: Identifier) -> None:
                 record_type=DATABASE_DNS_RECORD_TYPE,
             )
         )
-        record_types.append(f"database AAAA ({db_domain})")
+        record_types.append(f"database CNAME ({db_domain})")
 
     if not deletions:
         logger.info(
@@ -934,29 +936,6 @@ async def _wait_for_service_ipv6(namespace: str, service_name: str) -> str:
             raise VelaKubernetesError(timeout_msg)
 
         await asyncio.sleep(_LOAD_BALANCER_POLL_INTERVAL_SECONDS)
-
-
-async def provision_branch_database_endpoint(branch_id: Identifier) -> None:
-    domain = branch_domain(branch_id)
-    if not domain:
-        logger.info(
-            "Skipping database %s record for branch_id=%s because Cloudflare domain suffix is not configured",
-            DATABASE_DNS_RECORD_TYPE,
-            branch_id,
-        )
-        return
-
-    namespace = deployment_namespace(branch_id)
-    service_name = f"{branch_service_name('db')}-ext"
-    ipv6_address = await _wait_for_service_ipv6(namespace, service_name)
-    cf_cfg = get_settings().cloudflare
-    await _create_dns_record(
-        cf_cfg,
-        domain=domain,
-        record_type=DATABASE_DNS_RECORD_TYPE,
-        content=ipv6_address,
-        proxied=False,
-    )
 
 
 def _build_http_route(cfg: KubeGatewayConfig, spec: HTTPRouteSpec) -> dict[str, Any]:
@@ -1210,7 +1189,15 @@ async def provision_branch_endpoints(
     route_specs += _pgmeta_route_specs(ref, domain, gateway_cfg.namespace)
     routes = [_build_http_route(gateway_cfg, route_spec) for route_spec in route_specs]
     await _apply_http_routes(gateway_cfg.namespace, routes)
-    await provision_branch_database_endpoint(spec.branch_id)
+
+    db_domain = branch_db_domain(spec.branch_id)
+    await _create_dns_record(
+        cf_cfg,
+        domain=db_domain,
+        record_type=DATABASE_DNS_RECORD_TYPE,
+        content=cf_cfg.branch_ref_cname,
+        proxied=False,
+    )
 
     return BranchEndpointResult(ref=ref, domain=domain)
 
