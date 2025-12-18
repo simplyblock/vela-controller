@@ -70,7 +70,7 @@ CPU_REQUEST_FRACTION = 0.25  # request = 25% of limit
 SIMPLYBLOCK_NAMESPACE = "simplyblock"
 SIMPLYBLOCK_CSI_CONFIGMAP = "simplyblock-csi-cm"
 SIMPLYBLOCK_CSI_SECRET = "simplyblock-csi-secret"
-STORAGE_PVC_SUFFIX = "-db-storage-pvc"
+STORAGE_PVC_SUFFIX = "-storage-pvc"
 DATABASE_PVC_SUFFIX = "-db-pvc"
 AUTOSCALER_PVC_SUFFIX = "-block-data"
 _LOAD_BALANCER_TIMEOUT_SECONDS = float(600)
@@ -339,7 +339,7 @@ async def _resolve_volume_identifiers(namespace: str, pvc_name: str) -> tuple[st
 
 
 async def resolve_storage_volume_identifiers(namespace: str) -> tuple[str, str | None]:
-    pvc_name = f"{_release_name()}{STORAGE_PVC_SUFFIX}"
+    pvc_name = f"{_autoscaler_vm_name()}{STORAGE_PVC_SUFFIX}"
     return await _resolve_volume_identifiers(namespace, pvc_name)
 
 
