@@ -27,7 +27,7 @@ from .....deployment import (
     DeploymentParameters,
     ResizeParameters,
     branch_api_domain,
-    branch_domain,
+    branch_db_domain,
     branch_rest_endpoint,
     branch_service_name,
     delete_deployment,
@@ -989,7 +989,7 @@ async def _restore_branch_environment_task(
 
 
 def _resolve_db_host(branch: Branch) -> str | None:
-    return branch.endpoint_domain or branch_domain(branch.id)
+    return branch.endpoint_domain or branch_db_domain(branch.id)
 
 
 def _build_connection_string(user: str, database: str, port: int) -> str:
@@ -1590,7 +1590,7 @@ async def reset_password(
     parameters: BranchPasswordReset,
 ) -> Response:
     admin_password = branch.database_password
-    db_host = branch.endpoint_domain or branch_domain(branch.id)
+    db_host = branch.endpoint_domain or branch_db_domain(branch.id)
     if not db_host:
         logging.error("Database host unavailable for branch %s", branch.id)
         raise HTTPException(status_code=500, detail="Branch database host is not configured.")
