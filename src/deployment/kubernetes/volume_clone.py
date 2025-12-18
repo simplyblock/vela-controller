@@ -6,7 +6,7 @@ from typing import Any
 
 from ..._util import Identifier
 from ...exceptions import VelaKubernetesError
-from .. import AUTOSCALER_PVC_SUFFIX, get_autoscaler_vm_identity, kube_service
+from .. import _POD_SECURITY_LABELS, AUTOSCALER_PVC_SUFFIX, get_autoscaler_vm_identity, kube_service
 from ..settings import get_settings
 from .pvc import (
     build_pvc_manifest_from_existing,
@@ -138,7 +138,7 @@ class _VolumeCloneOperation:
 
     async def run(self) -> None:
         """Perform the full clone flow end-to-end for the configured branches."""
-        await kube_service.ensure_namespace(self.ids.target_namespace)
+        await kube_service.ensure_namespace(self.ids.target_namespace, labels=_POD_SECURITY_LABELS)
 
         async with self._cleanup_on_failure():
             await self._clear_previous_artifacts()
@@ -338,7 +338,7 @@ class _SnapshotRestoreOperation:
         )
 
     async def run(self) -> None:
-        await kube_service.ensure_namespace(self.ids.target_namespace)
+        await kube_service.ensure_namespace(self.ids.target_namespace, labels=_POD_SECURITY_LABELS)
 
         async with self._cleanup_on_failure():
             await self._clear_previous_artifacts()
