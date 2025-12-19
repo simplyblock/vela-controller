@@ -496,6 +496,7 @@ async def create_vela_config(
     pgbouncer_admin_password: str,
     *,
     use_existing_db_pvc: bool = False,
+    ensure_namespace: bool = True,
     pgbouncer_config: Mapping[str, int] | None = None,
 ):
     namespace = deployment_namespace(branch_id)
@@ -506,7 +507,8 @@ async def create_vela_config(
         branch_id,
     )
 
-    await kube_service.ensure_namespace(namespace, labels=_POD_SECURITY_LABELS)
+    if ensure_namespace:
+        await kube_service.ensure_namespace(namespace, labels=_POD_SECURITY_LABELS)
 
     chart = resources.files(__package__) / "charts" / "vela"
     compose_file = _configure_compose_storage(
@@ -1175,18 +1177,19 @@ async def provision_branch_endpoints(
         domain,
     )
 
-    await _create_dns_record(
-        cf_cfg,
-        domain=domain,
-        record_type="CNAME",
-        content=cf_cfg.branch_ref_cname,
-        proxied=False,
+    domain_dns_task = asyncio.create_task(
+        _create_dns_record(
+            cf_cfg,
+            domain=domain,
+            record_type="CNAME",
+            content=cf_cfg.branch_ref_cname,
+            proxied=False,
+        )
     )
 
     # Apply the KongPlugins required for the branch routes
     kong_plugins = _build_kong_plugins(gateway_cfg.namespace, [anon_key, service_key])
-    for plugin in kong_plugins:
-        await _apply_kong_plugin(gateway_cfg.namespace, plugin)
+    await asyncio.gather(*(_apply_kong_plugin(gateway_cfg.namespace, plugin) for plugin in kong_plugins))
 
     route_specs = _postgrest_route_specs(ref, domain, gateway_cfg.namespace)
     if spec.enable_file_storage:
@@ -1196,13 +1199,16 @@ async def provision_branch_endpoints(
     await _apply_http_routes(gateway_cfg.namespace, routes)
 
     db_domain = branch_db_domain(spec.branch_id)
-    await _create_dns_record(
-        cf_cfg,
-        domain=db_domain,
-        record_type=DATABASE_DNS_RECORD_TYPE,
-        content=cf_cfg.branch_ref_cname,
-        proxied=False,
+    db_domain_dns_task = asyncio.create_task(
+        _create_dns_record(
+            cf_cfg,
+            domain=db_domain,
+            record_type=DATABASE_DNS_RECORD_TYPE,
+            content=cf_cfg.branch_ref_cname,
+            proxied=False,
+        )
     )
+    await asyncio.gather(domain_dns_task, db_domain_dns_task)
 
     return BranchEndpointResult(ref=ref, domain=domain)
 
@@ -1223,9 +1229,11 @@ async def deploy_branch_environment(
     use_existing_pvc: bool = False,
 ) -> None:
     """Background task: provision infra for a branch and persist the resulting endpoint."""
+    await kube_service.ensure_namespace(deployment_namespace(branch_id), labels=_POD_SECURITY_LABELS)
+    ref = branch_dns_label(branch_id)
 
-    async def _serial_deploy():
-        await create_vela_config(
+    results = await asyncio.gather(
+        create_vela_config(
             branch_id=branch_id,
             parameters=parameters,
             branch=branch_slug,
@@ -1234,11 +1242,10 @@ async def deploy_branch_environment(
             service_key=service_key,
             pgbouncer_admin_password=pgbouncer_admin_password,
             use_existing_db_pvc=use_existing_pvc,
+            ensure_namespace=False,
             pgbouncer_config=pgbouncer_config,
-        )
-
-        ref = branch_dns_label(branch_id)
-        await provision_branch_endpoints(
+        ),
+        provision_branch_endpoints(
             spec=BranchEndpointProvisionSpec(
                 project_id=project_id,
                 branch_id=branch_id,
@@ -1249,10 +1256,7 @@ async def deploy_branch_environment(
             ref=ref,
             anon_key=anon_key,
             service_key=service_key,
-        )
-
-    results = await asyncio.gather(
-        _serial_deploy(),
+        ),
         create_vela_grafana_obj(organization_id, branch_id, credential),
         return_exceptions=True,
     )
