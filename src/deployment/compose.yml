@@ -38,13 +38,7 @@ services:
     - db
     restart: unless-stopped
     environment:
-      DB_HOST: db
-      DB_PORT: '5432'
-      DB_NAME: postgres
-      DB_USER: authenticator
-      DB_PASSWORD: ${DB_PASSWORD}
-      DB_DRIVER: postgres
-      DB_SSL: disable
+      PGRST_DB_URI: postgres://authenticator@db:5432/postgres?sslmode=disable
       PGRST_DB_SCHEMAS: public,storage,graphql_public
       PGRST_DB_USE_LEGACY_GUCS: 'false'
       PGRST_APP_SETTINGS_JWT_EXP: '3600'
@@ -128,7 +122,7 @@ services:
       STORAGE_BACKEND: file
       PGOPTIONS: -c search_path=storage,public
       FILE_STORAGE_BACKEND_PATH: /var/lib/storage
-      DATABASE_URL: postgres://supabase_storage_admin:${DB_PASSWORD}@db:5432/postgres?sslmode=disable
+      DATABASE_URL: postgres://supabase_storage_admin@db:5432/postgres?sslmode=disable
       TENANT_ID: stub
       REGION: stub
       GLOBAL_S3_BUCKET: stub
