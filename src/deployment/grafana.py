@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from collections.abc import AsyncGenerator
@@ -38,14 +39,16 @@ async def create_vela_grafana_obj(organization_id: Identifier, branch_id: Identi
 
     namespace = deployment_namespace(branch_id)
 
-    team_id = await create_team(str(branch_id))
-    parent_folder_id = await create_folder(str(organization_id))
+    team_id, parent_folder_id, user_id = await asyncio.gather(
+        create_team(str(branch_id)),
+        create_folder(str(organization_id)),
+        get_user_via_jwt(credential),
+    )
 
     await set_folder_permissions(parent_folder_id, team_id)
     folder_id = await create_folder(str(branch_id), parent_uid=parent_folder_id)
     await set_folder_permissions(folder_id, team_id)
 
-    user_id = await get_user_via_jwt(credential)
     await add_user_to_team(team_id, user_id)
     await create_dashboard(folder_id, str(branch_id), namespace)
 
