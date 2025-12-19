@@ -876,6 +876,7 @@ async def _clone_branch_environment_task(
                 snapshot_poll_interval_seconds=_SNAPSHOT_POLL_INTERVAL_SECONDS,
                 pvc_timeout_seconds=_PVC_CLONE_TIMEOUT_SECONDS,
                 pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
+                database_size=parameters.database_size,
             )
         except VelaError:
             await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
@@ -948,6 +949,7 @@ async def _restore_branch_environment_task(
             snapshot_poll_interval_seconds=_SNAPSHOT_POLL_INTERVAL_SECONDS,
             pvc_timeout_seconds=_PVC_TIMEOUT_SECONDS,
             pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
+            database_size=parameters.database_size,
         )
     except VelaError:
         await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
