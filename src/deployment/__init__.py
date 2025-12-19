@@ -1177,16 +1177,6 @@ async def provision_branch_endpoints(
         domain,
     )
 
-    domain_dns_task = asyncio.create_task(
-        _create_dns_record(
-            cf_cfg,
-            domain=domain,
-            record_type="CNAME",
-            content=cf_cfg.branch_ref_cname,
-            proxied=False,
-        )
-    )
-
     # Apply the KongPlugins required for the branch routes
     kong_plugins = _build_kong_plugins(gateway_cfg.namespace, [anon_key, service_key])
     await asyncio.gather(*(_apply_kong_plugin(gateway_cfg.namespace, plugin) for plugin in kong_plugins))
@@ -1199,6 +1189,15 @@ async def provision_branch_endpoints(
     await _apply_http_routes(gateway_cfg.namespace, routes)
 
     db_domain = branch_db_domain(spec.branch_id)
+    domain_dns_task = asyncio.create_task(
+        _create_dns_record(
+            cf_cfg,
+            domain=domain,
+            record_type="CNAME",
+            content=cf_cfg.branch_ref_cname,
+            proxied=False,
+        )
+    )
     db_domain_dns_task = asyncio.create_task(
         _create_dns_record(
             cf_cfg,
