@@ -211,15 +211,19 @@ def _overlay_service_specs() -> list[tuple[str, int, str]]:
 
 
 async def _ensure_autoscaler_overlay_endpoint_slices(namespace: str, overlay_ip: str) -> None:
-    for service_name, port, port_name in _overlay_service_specs():
-        await kube_service.ensure_endpoint_slice(
-            namespace=namespace,
-            slice_name=service_name,
-            service_name=service_name,
-            address=overlay_ip,
-            port=port,
-            port_name=port_name,
+    await asyncio.gather(
+        *(
+            kube_service.ensure_endpoint_slice(
+                namespace=namespace,
+                slice_name=service_name,
+                service_name=service_name,
+                address=overlay_ip,
+                port=port,
+                port_name=port_name,
+            )
+            for service_name, port, port_name in _overlay_service_specs()
         )
+    )
 
 
 async def _initialize_autoscaler_overlay_endpoints(namespace: str) -> None:
