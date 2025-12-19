@@ -28,11 +28,14 @@ rules:
     - secrets
     - configmaps
     - persistentvolumeclaims
+    - pods
+    - events
   verbs: [ "get", "list", "watch", "create", "update", "patch", "delete" ]
 - apiGroups: [ "apps" ]
   resources:
     - deployments
     - daemonsets
+    - replicasets
   verbs: [ "get", "list", "watch", "create", "update", "patch", "delete" ]
 - apiGroups: [ "gateway.networking.k8s.io" ]
   resources: [ "httproutes" ]
