@@ -30,8 +30,10 @@ from .....deployment import (
     branch_db_domain,
     branch_rest_endpoint,
     branch_service_name,
+    create_vela_grafana_obj,
     delete_deployment,
     deploy_branch_environment,
+    ensure_branch_namespace,
     ensure_branch_storage_class,
     get_autoscaler_vm_identity,
     kube_service,
@@ -47,7 +49,7 @@ from .....deployment.kubernetes.volume_clone import (
     restore_branch_database_volume_from_snapshot,
 )
 from .....deployment.settings import get_settings as get_deployment_settings
-from .....exceptions import VelaError, VelaKubernetesError
+from .....exceptions import VelaDeployError, VelaError, VelaKubernetesError
 from .....models.backups import BackupEntry
 from .....models.branch import (
     ApiKeyDetails,
@@ -863,6 +865,8 @@ async def _clone_branch_environment_task(
     pgbouncer_config: PgbouncerConfigSnapshot,
 ) -> None:
     await _persist_branch_status(branch_id, BranchServiceStatus.CREATING)
+    grafana_task = asyncio.create_task(create_vela_grafana_obj(organization_id, branch_id, credential))
+    namespace_task = asyncio.create_task(ensure_branch_namespace(branch_id))
     storage_class_name: str | None = None
     if copy_data:
         try:
@@ -879,6 +883,9 @@ async def _clone_branch_environment_task(
                 database_size=parameters.database_size,
             )
         except VelaError:
+            for task in (grafana_task, namespace_task):
+                task.cancel()
+            await asyncio.gather(grafana_task, namespace_task, return_exceptions=True)
             await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
             logging.exception(
                 "Branch data clone failed for project_id=%s branch_id=%s branch_slug=%s",
@@ -889,20 +896,31 @@ async def _clone_branch_environment_task(
             return
 
     try:
-        await deploy_branch_environment(
-            organization_id=organization_id,
-            project_id=project_id,
-            branch_id=branch_id,
-            branch_slug=branch_slug,
-            credential=credential,
-            parameters=parameters,
-            jwt_secret=jwt_secret,
-            anon_key=anon_key,
-            service_key=service_key,
-            pgbouncer_admin_password=pgbouncer_admin_password,
-            use_existing_pvc=copy_data,
-            pgbouncer_config=pgbouncer_snapshot_to_mapping(pgbouncer_config),
+        await namespace_task
+        deploy_task = asyncio.create_task(
+            deploy_branch_environment(
+                organization_id=organization_id,
+                project_id=project_id,
+                branch_id=branch_id,
+                branch_slug=branch_slug,
+                credential=credential,
+                parameters=parameters,
+                jwt_secret=jwt_secret,
+                anon_key=anon_key,
+                service_key=service_key,
+                pgbouncer_admin_password=pgbouncer_admin_password,
+                use_existing_pvc=copy_data,
+                ensure_namespace=False,
+                include_grafana=False,
+                pgbouncer_config=pgbouncer_snapshot_to_mapping(pgbouncer_config),
+            )
         )
+        results = await asyncio.gather(deploy_task, grafana_task, return_exceptions=True)
+        exceptions = [result for result in results if isinstance(result, Exception)]
+        if exceptions:
+            if len(exceptions) == 1:
+                raise exceptions[0]
+            raise VelaDeployError("Failed operations during vela deployment", exceptions)
     except VelaError:
         await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
         logging.exception(
@@ -912,6 +930,11 @@ async def _clone_branch_environment_task(
             branch_slug,
         )
         return
+    except Exception:
+        if not grafana_task.done():
+            grafana_task.cancel()
+            await asyncio.gather(grafana_task, return_exceptions=True)
+        raise
     await _persist_branch_status(branch_id, BranchServiceStatus.STARTING)
 
 
@@ -934,6 +957,8 @@ async def _restore_branch_environment_task(
     pgbouncer_config: PgbouncerConfigSnapshot,
 ) -> None:
     await _persist_branch_status(branch_id, BranchServiceStatus.CREATING)
+    grafana_task = asyncio.create_task(create_vela_grafana_obj(organization_id, branch_id, credential))
+    namespace_task = asyncio.create_task(ensure_branch_namespace(branch_id))
     storage_class_name: str | None = None
     try:
         storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
@@ -952,6 +977,9 @@ async def _restore_branch_environment_task(
             database_size=parameters.database_size,
         )
     except VelaError:
+        for task in (grafana_task, namespace_task):
+            task.cancel()
+        await asyncio.gather(grafana_task, namespace_task, return_exceptions=True)
         await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
         logging.exception(
             "Branch restore failed for project_id=%s branch_id=%s branch_slug=%s using snapshot %s/%s",
@@ -964,20 +992,31 @@ async def _restore_branch_environment_task(
         return
 
     try:
-        await deploy_branch_environment(
-            organization_id=organization_id,
-            project_id=project_id,
-            branch_id=branch_id,
-            branch_slug=branch_slug,
-            credential=credential,
-            parameters=parameters,
-            jwt_secret=jwt_secret,
-            anon_key=anon_key,
-            service_key=service_key,
-            pgbouncer_admin_password=pgbouncer_admin_password,
-            use_existing_pvc=True,
-            pgbouncer_config=pgbouncer_snapshot_to_mapping(pgbouncer_config),
+        await namespace_task
+        deploy_task = asyncio.create_task(
+            deploy_branch_environment(
+                organization_id=organization_id,
+                project_id=project_id,
+                branch_id=branch_id,
+                branch_slug=branch_slug,
+                credential=credential,
+                parameters=parameters,
+                jwt_secret=jwt_secret,
+                anon_key=anon_key,
+                service_key=service_key,
+                pgbouncer_admin_password=pgbouncer_admin_password,
+                use_existing_pvc=True,
+                ensure_namespace=False,
+                include_grafana=False,
+                pgbouncer_config=pgbouncer_snapshot_to_mapping(pgbouncer_config),
+            )
         )
+        results = await asyncio.gather(deploy_task, grafana_task, return_exceptions=True)
+        exceptions = [result for result in results if isinstance(result, Exception)]
+        if exceptions:
+            if len(exceptions) == 1:
+                raise exceptions[0]
+            raise VelaDeployError("Failed operations during vela deployment", exceptions)
     except VelaError:
         await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
         logging.exception(
@@ -987,6 +1026,11 @@ async def _restore_branch_environment_task(
             branch_slug,
         )
         return
+    except Exception:
+        if not grafana_task.done():
+            grafana_task.cancel()
+            await asyncio.gather(grafana_task, return_exceptions=True)
+        raise
     await _persist_branch_status(branch_id, BranchServiceStatus.STARTING)
 
 

@@ -118,6 +118,12 @@ def branch_dns_label(branch_id: Identifier) -> str:
     return str(branch_id).lower()
 
 
+async def ensure_branch_namespace(branch_id: Identifier) -> str:
+    namespace = deployment_namespace(branch_id)
+    await kube_service.ensure_namespace(namespace, labels=_POD_SECURITY_LABELS)
+    return namespace
+
+
 def branch_db_domain(branch_id: Identifier) -> str:
     """Return the database host domain for a branch."""
 
@@ -1226,12 +1232,15 @@ async def deploy_branch_environment(
     pgbouncer_admin_password: str,
     pgbouncer_config: Mapping[str, int],
     use_existing_pvc: bool = False,
+    ensure_namespace: bool = True,
+    include_grafana: bool = True,
 ) -> None:
     """Background task: provision infra for a branch and persist the resulting endpoint."""
-    await kube_service.ensure_namespace(deployment_namespace(branch_id), labels=_POD_SECURITY_LABELS)
+    if ensure_namespace:
+        await ensure_branch_namespace(branch_id)
     ref = branch_dns_label(branch_id)
 
-    results = await asyncio.gather(
+    tasks = [
         create_vela_config(
             branch_id=branch_id,
             parameters=parameters,
@@ -1256,9 +1265,11 @@ async def deploy_branch_environment(
             anon_key=anon_key,
             service_key=service_key,
         ),
-        create_vela_grafana_obj(organization_id, branch_id, credential),
-        return_exceptions=True,
-    )
+    ]
+    if include_grafana:
+        tasks.append(create_vela_grafana_obj(organization_id, branch_id, credential))
+
+    results = await asyncio.gather(*tasks, return_exceptions=True)
 
     if exceptions := [result for result in results if isinstance(result, Exception)]:
         raise VelaDeployError("Failed operations during vela deployment", exceptions)
