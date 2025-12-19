@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from ..._util import Identifier
+from ..._util import Identifier, bytes_to_gb
 from ...exceptions import VelaKubernetesError
 from .. import _POD_SECURITY_LABELS, AUTOSCALER_PVC_SUFFIX, get_autoscaler_vm_identity, kube_service
 from ..settings import get_settings
@@ -102,8 +102,9 @@ class _VolumeCloneOperation:
     source_branch_id: Identifier
     target_branch_id: Identifier
     snapshot_class: str
-    timeouts: CloneTimeouts
     storage_class_name: str
+    target_database_size: int
+    timeouts: CloneTimeouts
     ids: CloneIdentifiers = field(init=False)
     created_source_snapshot: bool = field(default=False, init=False)
     created_target_snapshot: bool = field(default=False, init=False)
@@ -259,6 +260,7 @@ class _VolumeCloneOperation:
             branch_id=self.target_branch_id,
             volume_snapshot_name=snapshot_name,
         )
+        new_manifest.spec.resources.requests["storage"] = f"{bytes_to_gb(self.target_database_size)}G"
         new_manifest.spec.storage_class_name = self.storage_class_name
         if hasattr(new_manifest.spec, "storageClassName"):
             new_manifest.spec.storageClassName = self.storage_class_name
@@ -305,6 +307,7 @@ class _SnapshotRestoreOperation:
     snapshot_content_name: str | None
     snapshot_class: str
     storage_class_name: str
+    target_database_size: int
     timeouts: CloneTimeouts
     ids: CloneIdentifiers = field(init=False)
     created_target_snapshot: bool = field(default=False, init=False)
@@ -426,6 +429,7 @@ class _SnapshotRestoreOperation:
             branch_id=self.target_branch_id,
             volume_snapshot_name=self.ids.target_snapshot,
         )
+        new_manifest.spec.resources.requests["storage"] = f"{bytes_to_gb(self.target_database_size)}G"
         new_manifest.spec.storage_class_name = self.storage_class_name
         if hasattr(new_manifest.spec, "storageClassName"):
             new_manifest.spec.storageClassName = self.storage_class_name
@@ -474,6 +478,7 @@ async def clone_branch_database_volume(
     snapshot_poll_interval_seconds: float,
     pvc_timeout_seconds: float,
     pvc_poll_interval_seconds: float,
+    database_size: int,
 ) -> None:
     """
     Clone the database volume from one branch to another using CSI snapshots.
@@ -483,6 +488,7 @@ async def clone_branch_database_volume(
         target_branch_id=target_branch_id,
         snapshot_class=snapshot_class,
         storage_class_name=storage_class_name,
+        target_database_size=database_size,
         timeouts=CloneTimeouts(
             snapshot_ready=snapshot_timeout_seconds,
             snapshot_poll=snapshot_poll_interval_seconds,
@@ -502,6 +508,7 @@ async def restore_branch_database_volume_from_snapshot(
     snapshot_content_name: str | None,
     snapshot_class: str,
     storage_class_name: str,
+    database_size: int,
     snapshot_timeout_seconds: float,
     snapshot_poll_interval_seconds: float,
     pvc_timeout_seconds: float,
@@ -518,6 +525,7 @@ async def restore_branch_database_volume_from_snapshot(
         snapshot_content_name=snapshot_content_name,
         snapshot_class=snapshot_class,
         storage_class_name=storage_class_name,
+        target_database_size=database_size,
         timeouts=CloneTimeouts(
             snapshot_ready=snapshot_timeout_seconds,
             snapshot_poll=snapshot_poll_interval_seconds,

@@ -473,6 +473,7 @@ def _configure_vela_values(
     autoscaler_resources["memorySlots"] = memory_slots
 
     autoscaler_persistence = autoscaler_spec.setdefault("persistence", {})
+    autoscaler_persistence["create"] = not use_existing_db_pvc
     autoscaler_persistence["claimName"] = f"{_autoscaler_vm_name()}{AUTOSCALER_PVC_SUFFIX}"
     autoscaler_persistence["size"] = f"{bytes_to_gb(parameters.database_size)}G"
     autoscaler_persistence["storageClassName"] = storage_class_name

@@ -1,4 +1,4 @@
-{{- if .Values.autoscalerVm.enabled -}}
+{{- if and .Values.autoscalerVm.enabled .Values.autoscalerVm.persistence.create -}}
 {{- $vmName := "" -}}
 {{- if .Values.autoscalerVm.fullnameOverride }}
 {{- $vmName = .Values.autoscalerVm.fullnameOverride | trunc 63 | trimSuffix "-" }}
