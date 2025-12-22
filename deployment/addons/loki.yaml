@@ -62,7 +62,13 @@ loki:
     enable_multi_variant_queries: true
     retention_period: 168h
 
+    # ingestion rate limits (per tenant)
+    ingestion_rate_mb: 10              # steady-state limit
+    ingestion_burst_size_mb: 20        # burst allowance
+
     # stream-related limits
+    per_stream_rate_limit: 3MB         # per-stream limit
+    per_stream_rate_limit_burst: 5MB   # per-stream burst
     max_streams_per_user: 5000          # increase if you really need more
     max_global_streams_per_user: 0      # 0 = disabled global cap
 
