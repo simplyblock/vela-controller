@@ -55,6 +55,8 @@ spec:
               value: database
             - name: VELA_POSTGRES_URL
               value: 'postgresql+asyncpg://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):5432/postgres'
+            - name: VELA_GRAFANA_URL
+              value: "https://{{ .Values.domain }}:{{ .Values.port }}/grafana"
           livenessProbe:
             httpGet:
               path: /health
