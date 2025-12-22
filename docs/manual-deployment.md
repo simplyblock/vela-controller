@@ -172,6 +172,18 @@ helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheu
   --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage=5Gi
 ```
 
+### Loki
+```
+helm repo add grafana https://grafana.github.io/helm-charts
+helm repo update
+
+helm upgrade --install loki grafana/loki \
+  --namespace loki \
+  --create-namespace \
+  --wait \
+  -f deployment/addons/loki.yaml
+```
+
 ### Metrics API 
 
 Deploy the Metrics Server API to provide CPU and memory usage.
