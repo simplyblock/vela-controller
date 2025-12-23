@@ -54,6 +54,8 @@ jobs:
         IMAGE_TAG: ${{ steps.meta.outputs.image_tag }}
         CLOUDFLARE_API_TOKEN: ${{ secrets.VELA_CLOUDFLARE_API_TOKEN }}
         CLOUDFLARE_ZONE_ID: ${{ secrets.VELA_CLOUDFLARE_ZONE_ID }}
+        VELA_KEYCLOAK_ADMIN_SECRET: ${{ secrets.VELA_KEYCLOAK_ADMIN_SECRET }}
+        VELA_KEYCLOAK_ADMIN_NAME: ${{ secrets.VELA_KEYCLOAK_ADMIN_NAME }}
       run: |
         helm upgrade --install vela ./chart \
           --namespace vela \
@@ -62,4 +64,6 @@ jobs:
           --timeout 10m \
           --set-string controller.image.tag="$IMAGE_TAG" \
           --set-string controller.env.VELA_CLOUDFLARE_API_TOKEN="$CLOUDFLARE_API_TOKEN" \
-          --set-string controller.env.VELA_CLOUDFLARE_ZONE_ID="$CLOUDFLARE_ZONE_ID"
+          --set-string controller.env.VELA_CLOUDFLARE_ZONE_ID="$CLOUDFLARE_ZONE_ID" \
+          --set-string controller.env.VELA_KEYCLOAK_ADMIN_NAME="$VELA_KEYCLOAK_ADMIN_NAME" \
+          --set-string controller.env.VELA_KEYCLOAK_ADMIN_SECRET="$VELA_KEYCLOAK_ADMIN_SECRET"
