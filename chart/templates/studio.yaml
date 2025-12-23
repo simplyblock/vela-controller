@@ -62,7 +62,7 @@ data:
   AUTH_JWT_SECRET: {{ .Values.studio.env.AUTH_JWT_SECRET | quote }}
   NEXTAUTH_SECRET: {{ .Values.studio.env.NEXTAUTH_SECRET | quote }}
   LOKI_URL: "http://{{ .Values.loki.name }}.{{ .Values.loki.namespace }}.svc.cluster.local:3100"
-  VELA_PLATFORM_KEYCLOAK_ISSUER: "https://{{ .Values.domain }}:{{ .Values.port }}/auth/realms/vela"
+  VELA_PLATFORM_KEYCLOAK_ISSUER: "https://{{ .Values.domain }}/auth/realms/vela"
   VELA_PLATFORM_KEYCLOAK_CLIENT_ID: {{ .Values.studio.env.VELA_PLATFORM_KEYCLOAK_CLIENT_ID | quote }}
   VELA_PLATFORM_KEYCLOAK_CLIENT_SECRET: {{ .Values.studio.env.VELA_PLATFORM_KEYCLOAK_CLIENT_SECRET | quote }}
   VELA_PLATFORM_KEYCLOAK_AUTHORIZATION_ENDPOINT: "https://{{ .Values.domain }}:{{ .Values.port }}/auth/realms/vela/protocol/openid-connect/auth"

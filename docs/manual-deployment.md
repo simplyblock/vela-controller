@@ -29,7 +29,7 @@ spec:
     network:
       services:
         ingress:
-          type: NodePort
+          type: LoadBalancer
     deployment:
       podTemplateSpec:
         spec:
