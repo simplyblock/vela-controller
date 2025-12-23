@@ -55,7 +55,7 @@ gateway:
 issuer: ca-issuer
 
 prometheus:
-  name: vela-prometheus
+  name: kube-prometheus-stack-prometheus
   namespace: monitoring
 
 monitoring:
