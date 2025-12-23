@@ -148,8 +148,8 @@ kind: ConfigMap
 metadata:
   name: vela-auth-config
 data:
-  KC_BOOTSTRAP_ADMIN_USERNAME: admin
-  KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+  KC_BOOTSTRAP_ADMIN_USERNAME: {{ .Values.controller.env.VELA_KEYCLOAK_ADMIN_NAME | quote }}
+  KC_BOOTSTRAP_ADMIN_PASSWORD: {{ .Values.controller.env.VELA_KEYCLOAK_ADMIN_SECRET | quote }}
   KC_DB: postgres
   KC_DB_URL: jdbc:postgresql://database:5432/keycloak
   KC_DB_USERNAME: keycloak
