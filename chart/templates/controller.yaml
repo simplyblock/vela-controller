@@ -94,13 +94,12 @@ data:
   VELA_KEYCLOAK_ADMIN_SECRET: {{ .Values.controller.env.VELA_KEYCLOAK_ADMIN_SECRET | quote }}
   VELA_CLOUDFLARE__API_TOKEN: {{ .Values.controller.env.VELA_CLOUDFLARE_API_TOKEN | quote }}
   VELA_CLOUDFLARE__ZONE_ID: {{ .Values.controller.env.VELA_CLOUDFLARE_ZONE_ID | quote }}
-  VELA_CLOUDFLARE__BRANCH_REF_CNAME: {{ .Values.domain | quote }}
+  VELA_CLOUDFLARE__BRANCH_REF_CNAME: {{ .Values.controller.env.VELA_BRANCH_REF_CNAME | quote }}
   VELA_CLOUDFLARE__DOMAIN_SUFFIX: {{ .Values.domain | quote }}
   VELA_DEPLOYMENT_NAMESPACE_PREFIX: {{ .Values.controller.env.VELA_DEPLOYMENT_NAMESPACE_PREFIX | quote }}
   VELA_DEPLOYMENT_SERVICE_PORT: {{ .Values.port | quote }}
   VELA_SERVER_ROOT_URL: "https://{{ .Values.domain }}:{{ .Values.port }}"
   VELA_ENABLE_DB_EXTERNAL_IPV6_LOADBALANCER: {{ .Values.controller.env.VELA_ENABLE_DB_EXTERNAL_IPV6_LOADBALANCER | quote }}
-  VELA_LOGFLARE_URL: {{ .Values.controller.env.VELA_LOGFLARE_URL | quote }}
   VELA_GRAFANA_URL: {{ .Values.controller.env.VELA_GRAFANA_URL | quote }}
   VELA_SYSTEM_LIMIT_MILLIS_VCPU: {{ .Values.controller.env.VELA_SYSTEM_LIMIT_MILLIS_VCPU | quote }}
   VELA_SYSTEM_LIMIT_RAM: {{ .Values.controller.env.VELA_SYSTEM_LIMIT_RAM | quote }}
