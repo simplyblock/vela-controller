@@ -168,9 +168,34 @@ helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheu
   --set grafana.enabled=false \
   --set alertmanager.enabled=false \
   --set nodeExporter.enabled=false \
-  --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.storageClassName=openebs-local-hostpath \
+  --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.storageClassName=local-hostpath \
   --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage=5Gi
 ```
+
+Make prometheus scrape from PG Exporter accross all the namespaces. ServiceMonitor cannot be used here because service objects
+connect to branch services as a headless services. In such cases we use `PodMonitor` where we scrape the metrics directly from pod.
+
+```
+cat <<EOF | kubectl apply -f -
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: postgres
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    any: true
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: NeonVM
+  podMetricsEndpoints:
+    - targetPort: 9187
+      interval: 30s
+EOF
+```
+
 
 ### Metrics API 
 
