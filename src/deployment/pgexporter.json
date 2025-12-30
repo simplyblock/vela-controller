@@ -176,7 +176,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "dsType": "prometheus",
-                    "expr": "sum(irate(pg_stat_database_xact_commit{namespace=~\"$namespace\"}[$__rate_interval])) + sum(irate(pg_stat_database_xact_rollback{datname=~\"$db\",job=~\"$job\",instance=~\"$instance\"}[$__rate_interval]))",
+                    "expr": "sum(irate(pg_stat_database_xact_commit{namespace=~\"$namespace\"}[$__rate_interval])) + sum(irate(pg_stat_database_xact_rollback{namespace=~\"$namespace\"}[$__rate_interval]))",
                     "format": "time_series",
                     "groupBy": [
                         {
@@ -1279,7 +1279,7 @@
                         "type": "prometheus",
                         "uid": "PBFA97CFB590B2093"
                     },
-                    "expr": "round(sum by (datname) (rate(pg_stat_database_blks_hit{namespace=~\"$namespace\"}[$__rate_interval])) / (sum by (datname)(rate(pg_stat_database_blks_hit{datname=~\"$db\",job=~\"$job\",instance=~\"$instance\"}[$__rate_interval])) + sum by (datname)(rate(pg_stat_database_blks_read{datname=~\"$db\",job=~\"$job\",instance=~\"$instance\"}[$__rate_interval])))*100,0.001)",
+                    "expr": "round(sum by (datname) (rate(pg_stat_database_blks_hit{namespace=~\"$namespace\"}[$__rate_interval])) / (sum by (datname)(rate(pg_stat_database_blks_hit{namespace=~\"$namespace\"}[$__rate_interval])) + sum by (datname)(rate(pg_stat_database_blks_read{namespace=~\"$namespace\"}[$__rate_interval])))*100,0.001)",
                     "format": "time_series",
                     "legendFormat": "{{datname}} - cache hit rate",
                     "refId": "A",
