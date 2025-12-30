@@ -23,7 +23,7 @@ services:
     container_name: vela-pgexporter
     image: prometheuscommunity/postgres-exporter:v0.17.1
     environment:
-      DATA_SOURCE_NAME: "postgresql://postgres@db:5432/demo?sslmode=disable"
+      DATA_SOURCE_NAME: "postgresql://postgres@db:5432/postgres?sslmode=disable"
     ports:
     - 9187:9187
     logging:
