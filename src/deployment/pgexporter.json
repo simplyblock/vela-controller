@@ -176,7 +176,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "dsType": "prometheus",
-                    "expr": "sum(irate(pg_stat_database_xact_commit{datname=~\"$db\",job=~\"$job\",instance=~\"$instance\",namespace=~\"$namespace\"}[$__rate_interval])) + sum(irate(pg_stat_database_xact_rollback{datname=~\"$db\",job=~\"$job\",instance=~\"$instance\"}[$__rate_interval]))",
+                    "expr": "sum(irate(pg_stat_database_xact_commit{namespace=~\"$namespace\"}[$__rate_interval])) + sum(irate(pg_stat_database_xact_rollback{datname=~\"$db\",job=~\"$job\",instance=~\"$instance\"}[$__rate_interval]))",
                     "format": "time_series",
                     "groupBy": [
                         {
@@ -322,7 +322,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "dsType": "prometheus",
-                    "expr": "sum(irate(pg_stat_database_tup_fetched{datname=~\"$db\",job=~\"$job\",instance=~\"$instance\",namespace=~\"$namespace\"}[$__rate_interval]))",
+                    "expr": "sum(irate(pg_stat_database_tup_fetched{namespace=~\"$namespace\"}[$__rate_interval]))",
                     "format": "time_series",
                     "groupBy": [
                         {
@@ -380,7 +380,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "dsType": "prometheus",
-                    "expr": "sum(irate(pg_stat_database_tup_returned{datname=~\"$db\",job=~\"$job\",instance=~\"$instance\",namespace=~\"$namespace\"}[$__rate_interval]))",
+                    "expr": "sum(irate(pg_stat_database_tup_returned{namespace=~\"$namespace\"}[$__rate_interval]))",
                     "format": "time_series",
                     "groupBy": [
                         {
@@ -438,7 +438,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "dsType": "prometheus",
-                    "expr": "sum(irate(pg_stat_database_tup_inserted{datname=~\"$db\",job=~\"$job\",instance=~\"$instance\",namespace=~\"$namespace\"}[$__rate_interval]))",
+                    "expr": "sum(irate(pg_stat_database_tup_inserted{namespace=~\"$namespace\"}[$__rate_interval]))",
                     "format": "time_series",
                     "groupBy": [
                         {
@@ -495,7 +495,7 @@
                         "uid": "$datasource"
                     },
                     "dsType": "prometheus",
-                    "expr": "sum(irate(pg_stat_database_tup_updated{datname=~\"$db\",job=~\"$job\",instance=~\"$instance\",namespace=~\"$namespace\"}[$__rate_interval]))",
+                    "expr": "sum(irate(pg_stat_database_tup_updated{namespace=~\"$namespace\"}[$__rate_interval]))",
                     "format": "time_series",
                     "groupBy": [
                         {
@@ -553,7 +553,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "dsType": "prometheus",
-                    "expr": "sum(irate(pg_stat_database_tup_deleted{datname=~\"$db\",job=~\"$job\",instance=~\"$instance\",namespace=~\"$namespace\"}[$__rate_interval]))",
+                    "expr": "sum(irate(pg_stat_database_tup_deleted{namespace=~\"$namespace\"}[$__rate_interval]))",
                     "format": "time_series",
                     "groupBy": [
                         {
@@ -700,7 +700,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "dsType": "prometheus",
-                    "expr": "irate(pg_stat_bgwriter_buffers_alloc_total{job=~\"$job\",instance=~\"$instance\",namespace=~\"$namespace\"}[$__rate_interval])",
+                    "expr": "irate(pg_stat_bgwriter_buffers_alloc_total{namespace=~\"$namespace\"}[$__rate_interval])",
                     "format": "time_series",
                     "groupBy": [
                         {
@@ -756,7 +756,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "dsType": "prometheus",
-                    "expr": "irate(pg_stat_bgwriter_buffers_backend_fsync_total{job=~\"$job\",instance=~\"$instance\",namespace=~\"$namespace\"}[$__rate_interval])",
+                    "expr": "irate(pg_stat_bgwriter_buffers_backend_fsync_total{namespace=~\"$namespace\"}[$__rate_interval])",
                     "format": "time_series",
                     "groupBy": [
                         {
@@ -812,7 +812,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "dsType": "prometheus",
-                    "expr": "irate(pg_stat_bgwriter_buffers_backend_total{job=~\"$job\",instance=~\"$instance\",namespace=~\"$namespace\"}[$__rate_interval])",
+                    "expr": "irate(pg_stat_bgwriter_buffers_backend_total{namespace=~\"$namespace\"}[$__rate_interval])",
                     "format": "time_series",
                     "groupBy": [
                         {
@@ -868,7 +868,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "dsType": "prometheus",
-                    "expr": "irate(pg_stat_bgwriter_buffers_clean_total{job=~\"$job\",instance=~\"$instance\",namespace=~\"$namespace\"}[$__rate_interval])",
+                    "expr": "irate(pg_stat_bgwriter_buffers_clean_total{namespace=~\"$namespace\"}[$__rate_interval])",
                     "format": "time_series",
                     "groupBy": [
                         {
@@ -924,7 +924,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "dsType": "prometheus",
-                    "expr": "irate(pg_stat_bgwriter_buffers_checkpoint_total{job=~\"$job\",instance=~\"$instance\",namespace=~\"$namespace\"}[$__rate_interval])",
+                    "expr": "irate(pg_stat_bgwriter_buffers_checkpoint_total{namespace=~\"$namespace\"}[$__rate_interval])",
                     "format": "time_series",
                     "groupBy": [
                         {
@@ -1081,7 +1081,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "dsType": "prometheus",
-                    "expr": "sum(pg_stat_database_deadlocks{datname=~\"$db\",job=~\"$job\",instance=~\"$instance\",namespace=~\"$namespace\"})",
+                    "expr": "sum(pg_stat_database_deadlocks{namespace=~\"$namespace\"})",
                     "format": "time_series",
                     "groupBy": [
                         {
@@ -1138,7 +1138,7 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "sum(pg_stat_database_conflicts{datname=~\"$db\",job=~\"$job\",instance=~\"$instance\",namespace=~\"$namespace\"})",
+                    "expr": "sum(pg_stat_database_conflicts{namespace=~\"$namespace\"})",
                     "format": "time_series",
                     "groupBy": [
                         {
@@ -1279,7 +1279,7 @@
                         "type": "prometheus",
                         "uid": "PBFA97CFB590B2093"
                     },
-                    "expr": "round(sum by (datname) (rate(pg_stat_database_blks_hit{datname=~\"$db\",job=~\"$job\",instance=~\"$instance\",namespace=~\"$namespace\"}[$__rate_interval])) / (sum by (datname)(rate(pg_stat_database_blks_hit{datname=~\"$db\",job=~\"$job\",instance=~\"$instance\"}[$__rate_interval])) + sum by (datname)(rate(pg_stat_database_blks_read{datname=~\"$db\",job=~\"$job\",instance=~\"$instance\"}[$__rate_interval])))*100,0.001)",
+                    "expr": "round(sum by (datname) (rate(pg_stat_database_blks_hit{namespace=~\"$namespace\"}[$__rate_interval])) / (sum by (datname)(rate(pg_stat_database_blks_hit{datname=~\"$db\",job=~\"$job\",instance=~\"$instance\"}[$__rate_interval])) + sum by (datname)(rate(pg_stat_database_blks_read{datname=~\"$db\",job=~\"$job\",instance=~\"$instance\"}[$__rate_interval])))*100,0.001)",
                     "format": "time_series",
                     "legendFormat": "{{datname}} - cache hit rate",
                     "refId": "A",
@@ -1374,7 +1374,7 @@
                         "type": "prometheus",
                         "uid": "PBFA97CFB590B2093"
                     },
-                    "expr": "pg_stat_database_numbackends{datname=~\"$db\",job=~\"$job\",instance=~\"$instance\",namespace=~\"$namespace\"}",
+                    "expr": "pg_stat_database_numbackends{namespace=~\"$namespace\"}",
                     "format": "time_series",
                     "intervalFactor": 2,
                     "legendFormat": "{{datname}} - {{__name__}}",
