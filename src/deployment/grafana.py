@@ -58,6 +58,8 @@ async def delete_vela_grafana_obj(branch_id: Identifier):
 
     async with _client() as client:
         try:
+            await remove_dashboard_by_uid(client, str(branch_id))
+            await remove_dashboards_by_tag(client, str(branch_id))
             res = await client.get("folders")
             folders = res.json()
             branch_folder_uid = next((f["uid"] for f in folders if f["title"] == str(branch_id)), None)
@@ -318,3 +320,30 @@ async def create_dashboard(folder_uid: str, branch_id: str, namespace: str):
         except httpx.HTTPError as exc:
             logger.error(f"Failed to create dashboard for folder '{branch_id}': {exc}")
             raise VelaGrafanaError(f"Failed to create dashboard: {exc}") from exc
+
+
+async def remove_dashboard_by_uid(client: httpx.AsyncClient, dashboard_uid: str) -> None:
+    try:
+        await client.delete(f"dashboards/uid/{dashboard_uid}")
+        logger.info("Deleted Grafana dashboard uid=%s", dashboard_uid)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            logger.info("Grafana dashboard uid=%s not found; skipping delete", dashboard_uid)
+            return
+        raise
+
+
+async def remove_dashboards_by_tag(client: httpx.AsyncClient, tag: str) -> None:
+    try:
+        res = await client.get(f"search?tag={tag}&type=dash-db")
+        results = res.json()
+        for item in results:
+            uid = item.get("uid")
+            if uid:
+                await client.delete(f"dashboards/uid/{uid}")
+                logger.info("Deleted Grafana dashboard uid=%s (tag=%s)", uid, tag)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            logger.info("Grafana dashboards tag=%s not found; skipping delete", tag)
+            return
+        raise
