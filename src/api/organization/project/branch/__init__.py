@@ -918,8 +918,6 @@ async def _clone_branch_environment_task(
         results = await asyncio.gather(deploy_task, grafana_task, return_exceptions=True)
         exceptions = [result for result in results if isinstance(result, Exception)]
         if exceptions:
-            if len(exceptions) == 1:
-                raise exceptions[0]
             raise VelaDeployError("Failed operations during vela deployment", exceptions)
     except VelaError:
         await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
@@ -1014,8 +1012,6 @@ async def _restore_branch_environment_task(
         results = await asyncio.gather(deploy_task, grafana_task, return_exceptions=True)
         exceptions = [result for result in results if isinstance(result, Exception)]
         if exceptions:
-            if len(exceptions) == 1:
-                raise exceptions[0]
             raise VelaDeployError("Failed operations during vela deployment", exceptions)
     except VelaError:
         await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
