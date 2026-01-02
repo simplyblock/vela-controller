@@ -208,3 +208,18 @@ helm upgrade --install metrics-server metrics-server/metrics-server \
   --namespace kube-system \
   --set args="{--kubelet-insecure-tls,--kubelet-preferred-address-types=InternalIP,--metric-resolution=15s}"
 ```
+
+### Loki 
+
+```
+helm repo add grafana https://grafana.github.io/helm-charts
+helm repo update
+
+helm upgrade --install loki grafana/loki \
+  --namespace loki \
+  --create-namespace \
+  --debug \
+  -f deployment/addons/loki.yaml
+```
+
+After loki is installed, a data source `Loki` is added manually in the Grafana dashboard
