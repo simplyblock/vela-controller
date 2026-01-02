@@ -411,8 +411,6 @@ def _configure_vela_values(
     *,
     parameters: DeploymentParameters,
     jwt_secret: str,
-    anon_key: str,
-    service_key: str,
     pgbouncer_admin_password: str,
     storage_class_name: str,
     use_existing_db_pvc: bool,
@@ -442,8 +440,6 @@ def _configure_vela_values(
     secrets = values_content.setdefault("secret", {})
     secrets.setdefault("jwt", {}).update(
         secret=jwt_secret,
-        anonKey=anon_key,
-        serviceKey=service_key,
     )
     secrets.update(pgmeta_crypto_key=get_settings().pgmeta_crypto_key)
     secrets.setdefault("db", {})["password"] = parameters.database_password
@@ -491,8 +487,6 @@ async def create_vela_config(
     parameters: DeploymentParameters,
     branch: Name,
     jwt_secret: str,
-    anon_key: str,
-    service_key: str,
     pgbouncer_admin_password: str,
     *,
     use_existing_db_pvc: bool = False,
@@ -524,8 +518,6 @@ async def create_vela_config(
         values_content,
         parameters=parameters,
         jwt_secret=jwt_secret,
-        anon_key=anon_key,
-        service_key=service_key,
         pgbouncer_admin_password=pgbouncer_admin_password,
         storage_class_name=storage_class_name,
         use_existing_db_pvc=use_existing_db_pvc,
@@ -1237,8 +1229,6 @@ async def deploy_branch_environment(
             parameters=parameters,
             branch=branch_slug,
             jwt_secret=jwt_secret,
-            anon_key=anon_key,
-            service_key=service_key,
             pgbouncer_admin_password=pgbouncer_admin_password,
             use_existing_db_pvc=use_existing_pvc,
             ensure_namespace=False,
