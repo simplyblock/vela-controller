@@ -60,7 +60,7 @@ loki:
     reject_old_samples: true
     metric_aggregation_enabled: true
     enable_multi_variant_queries: true
-    retention_period: 168h
+    retention_period: 168h # 7 days
 
     # stream-related limits
     max_streams_per_user: 5000          # increase if you really need more

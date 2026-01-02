@@ -23,11 +23,11 @@ data:
         inputs:
           - kubernetes_host
         source: |-
+          .database_label = del(.kubernetes.pod_labels."stackgres.io/cluster-name")
           map_keys(., recursive: true) -> |key| { replace(key, ".", "_") }
           .event_message = del(.message)
           .appname = del(.kubernetes.container_name)
           .metadata.id = uuid_v7()
-          .database_label = del(.kubernetes.pod_labels."stackgres_io/cluster-name")
           del(.file)
           del(.kubernetes)
           del(.source_type)
@@ -95,7 +95,7 @@ data:
         inputs:
           - router.auth
         source: |-
-          parsed, err = parse_regex(.event_message, r'^(?P<time>\d+-\d+-\d+ \d+:\d+:\d+[.,]\d+) (?P<level>\w+)\W+(?P<msg>.*)$', numeric_groups: true)
+          parsed, err = parse_regex(.event_message, r'^(?P<time>\d+-\d+-\d+ \d+:\d+:\d+[.,]\d+) (?P<level>\w+)\s+(?:\[(?P<logger>[^\]]+)\]\s+\((?P<thread>[^)]+)\)\s+)?(?P<msg>.*)$', numeric_groups: true)
           if err == null {
               .event_message = parsed.msg
               .timestamp = timestamp!(parsed.time)
@@ -143,7 +143,7 @@ data:
         source: |-
           .level = "info"
           .timestamp = now()
-          parsed, err = parse_regex(.event_message, r'^(?P<time>\d+-\d+-\d+ \d+:\d+:\d+(,\d+| UTC)) ((?P<level>\w+)|(\[\d+\])): (?P<msg>.*)$', numeric_groups: true)
+          parsed, err = parse_regex(.event_message, r'^(?P<time>\d+-\d+-\d+ \d+:\d+:\d+(,\d+| UTC))\s+(?:\[\d+\]:\s+.*?\s+)?(?P<level>\w+):\s+(?P<msg>.*)$', numeric_groups: true)
           if err == null {
               .event_message = parsed.msg
               .timestamp = timestamp!(parsed.time)
@@ -160,6 +160,7 @@ data:
           - db_logs
           - studio_logs
           - controller_logs
+          - auth_logs
         endpoint: 'http://{{ .Values.loki.name }}.{{ .Values.loki.namespace }}.svc.cluster.local:3100'
         labels:
           region: 'global'
