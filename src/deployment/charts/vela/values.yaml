@@ -11,12 +11,9 @@ pgHbaConf: ""
 
 secret:
   # jwt will be used to reference secret in multiple services:
-  # Anon & Service key: Studio, Storage, Kong
   # JWT Secret: Analytics, Auth, Rest, Storage
   pgmeta_crypto_key: ''
   jwt:
-    anonKey: ""
-    serviceKey: ""
     secret: ""
   # database credentials
   # these fields must be provided even if using external database
