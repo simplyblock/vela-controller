@@ -24,3 +24,7 @@ class VelaGrafanaError(VelaDeploymentError):
 
 class VelaResourceLimitError(VelaError):
     """Error when resource limits are exceeded or illegal"""
+
+
+class VelaSnapshotTimeoutError(VelaDeploymentError):
+    """Timed out waiting for a snapshot operation to complete"""

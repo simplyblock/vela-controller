@@ -16,6 +16,7 @@ from ..deployment.kubernetes.snapshot import (
     read_snapshot,
     wait_snapshot_ready,
 )
+from ..exceptions import VelaSnapshotTimeoutError
 
 if TYPE_CHECKING:
     from ulid import ULID
@@ -86,7 +87,7 @@ async def create_branch_snapshot(
                 timeout=time_limit,
                 poll_interval=poll_interval,
             )
-    except TimeoutError:
+    except TimeoutError as exc:
         logger.exception(
             "Timed out creating VolumeSnapshot %s/%s for branch %s within %s seconds",
             namespace,
@@ -94,7 +95,9 @@ async def create_branch_snapshot(
             branch_id,
             time_limit,
         )
-        raise
+        raise VelaSnapshotTimeoutError(
+            f"Timed out creating VolumeSnapshot {namespace}/{snapshot_name} for branch {branch_id}"
+        ) from exc
 
     status = snapshot.get("status") or {}
     content_name = status.get("boundVolumeSnapshotContentName")
