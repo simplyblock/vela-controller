@@ -26,5 +26,5 @@ class VelaResourceLimitError(VelaError):
     """Error when resource limits are exceeded or illegal"""
 
 
-class VelaSnapshotTimeoutError(VelaDeploymentError):
+class VelaSnapshotTimeoutError(VelaDeploymentError, TimeoutError):
     """Timed out waiting for a snapshot operation to complete"""
