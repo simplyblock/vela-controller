@@ -35,6 +35,7 @@ controller:
     VELA_CLOUDFLARE_ZONE_ID: 'your_cloudflare_zone_id'
     VELA_DEPLOYMENT_NAMESPACE_PREFIX: 'vela'
     VELA_BRANCH_REF_CNAME: 'demo-ref.vela.run'
+    VELA_BRANCH_DB_REF_CNAME: 'demo-dbref.vela.run'
     VELA_KEYCLOAK_URL: 'http://vela-auth-service:8080/auth/'
     VELA_JWT_SECRET: 'http://vela-auth-service:8080/auth/realms/vela/protocol/openid-connect/certs'
     VELA_GRAFANA_URL: 'http://vela-grafana:3000'

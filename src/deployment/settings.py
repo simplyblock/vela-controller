@@ -9,6 +9,7 @@ class CloudflareSettings(BaseModel):
     api_token: str
     zone_id: str
     branch_ref_cname: str
+    branch_db_ref_cname: str
     domain_suffix: str
 
 
