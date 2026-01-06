@@ -1186,7 +1186,7 @@ async def provision_branch_endpoints(
             cf_cfg,
             domain=domain,
             record_type="CNAME",
-            content=cf_cfg.branch_ref_cname,
+            content=cf_cfg.branch_ref,
             proxied=False,
         )
     )
@@ -1195,7 +1195,7 @@ async def provision_branch_endpoints(
             cf_cfg,
             domain=db_domain,
             record_type=DATABASE_DNS_RECORD_TYPE,
-            content=cf_cfg.branch_db_ref_cname,
+            content=cf_cfg.branch_db_ref,
             proxied=False,
         )
     )

@@ -8,8 +8,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class CloudflareSettings(BaseModel):
     api_token: str
     zone_id: str
-    branch_ref_cname: str
-    branch_db_ref_cname: str
+    branch_ref: str
+    branch_db_ref: str
     domain_suffix: str
 
 
