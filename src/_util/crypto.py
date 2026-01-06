@@ -1,5 +1,4 @@
 import base64
-import secrets
 from datetime import UTC, datetime, timedelta
 
 import jwt
@@ -71,9 +70,8 @@ def decrypt_with_base64_key(ciphertext: str, key: str) -> str:
     return plaintext.decode("utf-8")
 
 
-def generate_keys(branch_id: str) -> tuple[str, str, str]:
-    """Generates JWT secret, anon key, and service role key"""
-    jwt_secret = secrets.token_urlsafe(32)
+def generate_keys(branch_id: str, jwt_secret: str) -> tuple[str, str]:
+    """Generate anon and service role keys for a branch."""
 
     iat = int(datetime.now(UTC).timestamp())
     # 10 years expiration
@@ -109,4 +107,4 @@ def generate_keys(branch_id: str) -> tuple[str, str, str]:
         headers={"alg": "HS256", "typ": "JWT"},
     )
 
-    return jwt_secret, anon_key, service_key
+    return anon_key, service_key

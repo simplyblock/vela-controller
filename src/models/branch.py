@@ -180,6 +180,16 @@ class Branch(AsyncAttrs, Model, table=True):
         )
 
 
+class BranchApiKey(Model, table=True):
+    branch_id: Identifier = Model.foreign_key_field("branch", nullable=False)
+    name: Annotated[str, Field(sa_column=Column(String(255), nullable=False))]
+    role: Annotated[str, Field(sa_column=Column(String(32), nullable=False))]
+    api_key: Annotated[str, Field(sa_column=Column(Text, nullable=False))]
+    description: Annotated[str | None, Field(default=None, sa_column=Column(Text, nullable=True))] = None
+
+    __table_args__ = (UniqueConstraint("branch_id", "name", name="unique_branch_apikey_name"),)
+
+
 class PgbouncerConfig(Model, table=True):
     DEFAULT_MAX_CLIENT_CONN: ClassVar[int | None] = PGBOUNCER_DEFAULT_MAX_CLIENT_CONN
     DEFAULT_POOL_SIZE: ClassVar[int] = PGBOUNCER_DEFAULT_POOL_SIZE
@@ -419,8 +429,18 @@ class BranchApiKeys(BaseModel):
     service_role: str | None
 
 
+ApiKeyRole = Literal["anon", "service_role"]
+
+
+class ApiKeyCreate(BaseModel):
+    name: Name
+    role: ApiKeyRole
+    description: str | None = None
+
+
 class ApiKeyDetails(BaseModel):
     name: str
+    role: ApiKeyRole
     api_key: str
     id: str
     hash: str
