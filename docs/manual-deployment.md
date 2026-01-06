@@ -25,6 +25,16 @@ metadata:
   name: kong-gw-config
   namespace: kong-system
 spec:
+  controlPlaneOptions:
+    deployment:
+      podTemplateSpec:
+        spec:
+          containers:
+            - name: controller
+              resources:
+                limits:
+                  cpu: 400m
+                  memory: 200Mi
   dataPlaneOptions:
     network:
       services:
