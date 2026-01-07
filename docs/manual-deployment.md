@@ -53,6 +53,8 @@ spec:
                   value: "4 256k"
                 - name: KONG_NGINX_PROXY_PROXY_BUSY_BUFFERS_SIZE
                   value: "256k"
+                - name: KONG_UNTRUSTED_LUA_SANDBOX_REQUIRES
+                  value: "resty.jwt"
 EOF
 ```
 
