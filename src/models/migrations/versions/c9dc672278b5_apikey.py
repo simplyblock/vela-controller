@@ -2,7 +2,7 @@
 
 Revision ID: c9dc672278b5
 Revises: 49c6c4bb94a2
-Create Date: 2026-01-06 12:23:03.259066
+Create Date: 2026-01-07 09:09:33.174624
 
 """
 from typing import Sequence, Union
@@ -30,7 +30,7 @@ def upgrade() -> None:
     sa.Column('role', sa.String(length=32), nullable=False),
     sa.Column('api_key', sa.Text(), nullable=False),
     sa.Column('description', sa.Text(), nullable=True),
-    sa.ForeignKeyConstraint(['branch_id'], ['branch.id'], ),
+    sa.ForeignKeyConstraint(['branch_id'], ['branch.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('branch_id', 'name', name='unique_branch_apikey_name')
     )
