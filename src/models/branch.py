@@ -185,9 +185,9 @@ class Branch(AsyncAttrs, Model, table=True):
 class BranchApiKey(Model, table=True):
     branch_id: Identifier = Model.foreign_key_field("branch", ondelete="CASCADE")
     branch: Branch = Relationship(back_populates="api_keys")
-    name: Annotated[str, Field(sa_column=Column(String(255), nullable=False))]
-    role: Annotated[str, Field(sa_column=Column(String(32), nullable=False))]
-    api_key: Annotated[str, Field(sa_column=Column(Text, nullable=False))]
+    name: Annotated[str, Field(sa_type=String(255))]
+    role: Annotated[str, Field(sa_type=String(32))]
+    api_key: Annotated[str, Field(sa_type=Text)]
     description: Annotated[str | None, Field(default=None, sa_column=Column(Text, nullable=True))] = None
 
     __table_args__ = (UniqueConstraint("branch_id", "name", name="unique_branch_apikey_name"),)
