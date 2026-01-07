@@ -1,5 +1,7 @@
 from uuid import UUID
 
+from sqlalchemy import String, cast
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
@@ -51,7 +53,8 @@ async def get_user_rights(session: AsyncSession, user_id: UUID, context: Permiss
     if context.branch_id is not None:
         stmt = stmt.where(RoleUserLink.branch_id == context.branch_id)
     if context.env_type is not None:
-        stmt = stmt.where(RoleUserLink.env_type == context.env_type)
+        env_types = cast(RoleUserLink.env_types, ARRAY(String))
+        stmt = stmt.where(env_types.contains([context.env_type]))
 
     result = await session.execute(stmt)
     return list(result.scalars().all())
