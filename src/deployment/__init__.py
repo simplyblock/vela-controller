@@ -1035,11 +1035,11 @@ async def _apply_http_routes(namespace: str, routes: list[dict[str, Any]]) -> No
         raise VelaKubernetesError(f"Failed to apply HTTPRoute: {exc}") from exc
 
 
-def _build_kong_plugins(namespace: str, tokens: list[str]) -> list[dict[str, Any]]:
+def _build_kong_plugins(namespace: str, jwt_secret: str) -> list[dict[str, Any]]:
     return [
         _build_cors_plugin(namespace),
         _build_check_encrypted_header_plugin(namespace),
-        _build_apikey_jwt_plugin(namespace, tokens),
+        _build_apikey_jwt_plugin(namespace, jwt_secret),
     ]
 
 
@@ -1086,12 +1086,11 @@ def _build_check_encrypted_header_plugin(namespace: str) -> dict[str, Any]:
     }
 
 
-def _build_apikey_jwt_plugin(namespace: str, tokens: list[str]) -> dict[str, Any]:
-    unique_tokens = [token for token in dict.fromkeys(tokens) if token]
-    if not unique_tokens:
-        raise VelaDeploymentError("No API tokens provided for Kong pre-function plugin")
+def _build_apikey_jwt_plugin(namespace: str, jwt_secret: str) -> dict[str, Any]:
+    if not jwt_secret:
+        raise VelaDeploymentError("JWT secret is required for Kong pre-function plugin")
 
-    allowed_tokens = ",\n            ".join(json.dumps(f"Bearer {token}") for token in unique_tokens)
+    jwt_secret_literal = json.dumps(jwt_secret)
     lua_script = textwrap.dedent(
         f"""
         local method = kong.request.get_method()
@@ -1099,6 +1098,7 @@ def _build_apikey_jwt_plugin(namespace: str, tokens: list[str]) -> dict[str, Any
             return
         end
 
+        -- Allow public paths
         local public_path_prefix = "/storage/object/public"
         local path = kong.request.get_path()
         if path and path:sub(1, public_path_prefix:len()) == public_path_prefix then
@@ -1106,22 +1106,29 @@ def _build_apikey_jwt_plugin(namespace: str, tokens: list[str]) -> dict[str, Any
         end
 
         local auth_header = kong.request.get_header("Authorization")
-
         if not auth_header then
             return kong.response.exit(403, {{ message = "Missing Authorization header" }})
         end
 
-        local allowed = {{
-            {allowed_tokens}
-        }}
-
-        for _, expected in ipairs(allowed) do
-            if auth_header == expected then
-                return
-            end
+        -- Expect: Bearer <token>
+        local token = auth_header:match("^Bearer%s+(.+)$")
+        if not token then
+            return kong.response.exit(401, {{ message = "Invalid Authorization header format" }})
         end
 
-        return kong.response.exit(401, {{ message = "Unauthorized" }})
+        -- Verify JWT: (verifies Signature and its validity)
+        local jwt = require "resty.jwt"
+        local jwt_secret = {jwt_secret_literal}
+        local jwt_obj = jwt:verify(jwt_secret, token)
+
+        if not jwt_obj.verified then
+            return kong.response.exit(401, {{
+                message = "Invalid token",
+                reason = jwt_obj.reason
+            }})
+        end
+
+        return
         """
     ).strip()
 
@@ -1151,8 +1158,6 @@ async def provision_branch_endpoints(
     spec: BranchEndpointProvisionSpec,
     *,
     ref: str,
-    anon_key: str,
-    service_key: str,
 ) -> BranchEndpointResult:
     """Provision DNS + HTTPRoute resources (PostgREST + optional Storage + PGMeta) for a branch."""
 
@@ -1170,7 +1175,7 @@ async def provision_branch_endpoints(
     )
 
     # Apply the KongPlugins required for the branch routes
-    kong_plugins = _build_kong_plugins(gateway_cfg.namespace, [anon_key, service_key])
+    kong_plugins = _build_kong_plugins(gateway_cfg.namespace, spec.jwt_secret)
     await asyncio.gather(*(_apply_kong_plugin(gateway_cfg.namespace, plugin) for plugin in kong_plugins))
 
     route_specs = _postgrest_route_specs(ref, domain, gateway_cfg.namespace)
@@ -1213,8 +1218,6 @@ async def deploy_branch_environment(
     credential: str,
     parameters: DeploymentParameters,
     jwt_secret: str,
-    anon_key: str,
-    service_key: str,
     pgbouncer_admin_password: str,
     pgbouncer_config: Mapping[str, int],
     use_existing_pvc: bool = False,
@@ -1243,8 +1246,6 @@ async def deploy_branch_environment(
                 jwt_secret=jwt_secret,
             ),
             ref=ref,
-            anon_key=anon_key,
-            service_key=service_key,
         ),
         create_vela_grafana_obj(organization_id, branch_id, credential),
         return_exceptions=True,
