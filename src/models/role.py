@@ -104,7 +104,7 @@ class RoleUserLink(AsyncAttrs, SQLModel, table=True):
     organization_id: Identifier = Model.foreign_key_field("organization", nullable=False, primary_key=True)
     role_id: Identifier = Model.foreign_key_field("role", nullable=False, primary_key=True)
     user_id: UUID = Field(foreign_key="user.id", primary_key=True)
-    env_types: list[str] | None = Field(default=None, sa_column=Column(ARRAY(String), nullable=True))
+    env_types: list[str] = Field(default_factory=list, sa_column=Column(ARRAY(String), nullable=False))
     project_id: Identifier | None = Model.foreign_key_field("project", nullable=True)
     branch_id: Identifier | None = Model.foreign_key_field("branch", nullable=True)
 
@@ -171,7 +171,7 @@ class RoleUserLinkPublic(BaseModel):
     branch_id: Identifier | None
     role_id: Identifier
     user_id: UUID
-    env_types: list[str] | None
+    env_types: list[str]
 
 
 class RoleAssignmentPublic(BaseModel):
@@ -213,4 +213,4 @@ class UserPermissionPublic(BaseModel):
     organization_id: Identifier | None
     project_id: Identifier | None
     branch_id: Identifier | None
-    env_types: list[str] | None
+    env_types: list[str]
