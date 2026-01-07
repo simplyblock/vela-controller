@@ -1,6 +1,5 @@
 import asyncio
 import contextlib
-import hashlib
 import logging
 import secrets
 from collections.abc import Sequence
@@ -16,9 +15,8 @@ from fastapi.security import HTTPAuthorizationCredentials
 from keycloak.exceptions import KeycloakError
 from kubernetes_asyncio.client.exceptions import ApiException
 from pydantic import ValidationError
-from sqlalchemy import delete as sql_delete
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import col, select
+from sqlmodel import select
 
 from ....._util import DEFAULT_DB_NAME, DEFAULT_DB_USER, Identifier, bytes_to_gb
 from ....._util.crypto import encrypt_with_passphrase, generate_keys
@@ -53,7 +51,6 @@ from .....models.backups import BackupEntry
 from .....models.branch import (
     ApiKeyCreate,
     ApiKeyDetails,
-    ApiKeyRole,
     Branch,
     BranchApiKey,
     BranchApiKeys,
@@ -1562,7 +1559,6 @@ async def delete(
 ):
     branch_id = branch.id
     await _set_branch_status(session, branch, BranchServiceStatus.DELETING)
-    await session.execute(sql_delete(BranchApiKey).where(col(BranchApiKey.branch_id) == branch_id))
     await delete_deployment(branch_id)
     try:
         await realm_admin("master").a_delete_realm(str(branch_id))
@@ -1934,30 +1930,14 @@ instance_api.include_router(auth_api, prefix="/auth")
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def get_apikeys(
-    session: SessionDep,
     _organization: OrganizationDep,
     _project: ProjectDep,
     branch: BranchDep,
 ) -> list[ApiKeyDetails]:
-    query = select(BranchApiKey).where(BranchApiKey.branch_id == branch.id).order_by(col(BranchApiKey.id))
-    key_entries = await session.exec(query)
-    if not key_entries:
-        raise HTTPException(status_code=404, detail="API keys not found for this branch")
+    key_entries = await branch.awaitable_attrs.api_keys
+    key_entries = sorted(key_entries, key=lambda entry: str(entry.id))
 
-    def create_key_details(entry: BranchApiKey) -> ApiKeyDetails:
-        key = entry.api_key
-        description = entry.description or f"{entry.role} API key"
-        return ApiKeyDetails(
-            name=entry.name,
-            role=cast("ApiKeyRole", entry.role),
-            api_key=key,
-            id=str(entry.id),
-            hash=hashlib.sha256(key.encode()).hexdigest(),
-            prefix=key[:5],
-            description=description,
-        )
-
-    return [create_key_details(entry) for entry in key_entries]
+    return [ApiKeyDetails.from_entry(entry) for entry in key_entries]
 
 
 @instance_api.post(
@@ -1975,16 +1955,7 @@ async def create_apikey(
     parameters: ApiKeyCreate,
 ) -> ApiKeyDetails:
     if not branch.jwt_secret:
-        raise HTTPException(status_code=500, detail="Branch JWT secret is not configured.")
-
-    existing = await session.scalar(
-        select(BranchApiKey).where(
-            BranchApiKey.branch_id == branch.id,
-            BranchApiKey.name == parameters.name,
-        )
-    )
-    if existing is not None:
-        raise HTTPException(status_code=409, detail=f"API key name {parameters.name} already exists.")
+        raise HTTPException(status_code=400, detail="Branch JWT secret is not configured.")
 
     anon_key, service_key = generate_keys(str(branch.id), branch.jwt_secret)
     api_key = anon_key if parameters.role == "anon" else service_key
@@ -2006,15 +1977,7 @@ async def create_apikey(
         raise
     await session.refresh(entry)
 
-    return ApiKeyDetails(
-        name=entry.name,
-        role=cast("ApiKeyRole", entry.role),
-        api_key=entry.api_key,
-        id=str(entry.id),
-        hash=hashlib.sha256(entry.api_key.encode()).hexdigest(),
-        prefix=entry.api_key[:5],
-        description=entry.description or f"{entry.role} API key",
-    )
+    return ApiKeyDetails.from_entry(entry)
 
 
 @instance_api.delete(

@@ -1,7 +1,8 @@
+import hashlib
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Literal, Optional
+from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Literal, Optional, cast
 
 from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 from pydantic import Field as PydanticField
@@ -64,6 +65,7 @@ class Branch(AsyncAttrs, Model, table=True):
     next_backups: list["NextBackup"] = Relationship(back_populates="branch", cascade_delete=True)
     backup_entries: list["BackupEntry"] = Relationship(back_populates="branch", cascade_delete=True)
     backup_logs: list["BackupLog"] = Relationship(back_populates="branch", cascade_delete=True)
+    api_keys: list["BranchApiKey"] = Relationship(back_populates="branch", cascade_delete=True)
 
     # Deployment parameters specific to this branch
     database: Annotated[str, Field(sa_column=Column(String(255)))]
@@ -181,7 +183,8 @@ class Branch(AsyncAttrs, Model, table=True):
 
 
 class BranchApiKey(Model, table=True):
-    branch_id: Identifier = Model.foreign_key_field("branch", nullable=False)
+    branch_id: Identifier = Model.foreign_key_field("branch", ondelete="CASCADE")
+    branch: Branch = Relationship(back_populates="api_keys")
     name: Annotated[str, Field(sa_column=Column(String(255), nullable=False))]
     role: Annotated[str, Field(sa_column=Column(String(32), nullable=False))]
     api_key: Annotated[str, Field(sa_column=Column(Text, nullable=False))]
@@ -446,6 +449,20 @@ class ApiKeyDetails(BaseModel):
     hash: str
     prefix: str
     description: str
+
+    @classmethod
+    def from_entry(cls, entry: "BranchApiKey") -> "ApiKeyDetails":
+        key = entry.api_key
+        description = entry.description or f"{entry.role} API key"
+        return cls(
+            name=entry.name,
+            role=cast("ApiKeyRole", entry.role),
+            api_key=key,
+            id=str(entry.id),
+            hash=hashlib.sha256(key.encode()).hexdigest(),
+            prefix=key[:5],
+            description=description,
+        )
 
 
 class BranchStatus(BaseModel):
