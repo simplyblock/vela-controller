@@ -21,7 +21,8 @@ async def delete_pvc(namespace: str, name: str) -> None:
             )
         except ApiException as exc:
             if exc.status != 404:
-                raise VelaKubernetesError(f"Failed to delete PVC {namespace}/{name}: {exc.body or exc}") from exc
+                detail = exc.body or exc.reason or exc
+                raise VelaKubernetesError(f"Failed to delete PVC {namespace}/{name}: {detail!r}") from exc
 
 
 async def create_pvc(namespace: str, pvc: kubernetes_client.V1PersistentVolumeClaim) -> None:
@@ -30,9 +31,8 @@ async def create_pvc(namespace: str, pvc: kubernetes_client.V1PersistentVolumeCl
         try:
             await api.create_namespaced_persistent_volume_claim(namespace=namespace, body=pvc)
         except ApiException as exc:
-            raise VelaKubernetesError(
-                f"Failed to create PVC {namespace}/{pvc.metadata.name}: {exc.body or exc}"
-            ) from exc
+            detail = exc.body or exc.reason or exc
+            raise VelaKubernetesError(f"Failed to create PVC {namespace}/{pvc.metadata.name}: {detail!r}") from exc
 
 
 async def wait_for_pvc_absent(
@@ -119,7 +119,7 @@ def build_pvc_manifest_from_existing(
         kind="VolumeSnapshot",
         name=volume_snapshot_name,
     )
-    resource_requirements = kubernetes_client.V1ResourceRequirements(requests={"storage": str(storage_request)})
+    resource_requirements = kubernetes_client.V1VolumeResourceRequirements(requests={"storage": str(storage_request)})
 
     pvc_spec = kubernetes_client.V1PersistentVolumeClaimSpec(
         access_modes=access_modes or None,

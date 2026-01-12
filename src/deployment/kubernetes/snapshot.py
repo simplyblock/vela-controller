@@ -74,7 +74,8 @@ async def create_snapshot_content_from_handle(
                 body=manifest,
             )
         except ApiException as exc:
-            raise VelaKubernetesError(f"Failed to create VolumeSnapshotContent {name}: {exc.body or exc}") from exc
+            detail = exc.body or exc.reason or exc
+            raise VelaKubernetesError(f"Failed to create VolumeSnapshotContent {name}: {detail!r}") from exc
 
 
 async def read_snapshot(namespace: str, name: str) -> dict[str, Any] | None:
@@ -91,7 +92,8 @@ async def read_snapshot(namespace: str, name: str) -> dict[str, Any] | None:
         except ApiException as exc:
             if exc.status == 404:
                 return None
-            raise VelaKubernetesError(f"Failed to read VolumeSnapshot {namespace}/{name}: {exc.body or exc}") from exc
+            detail = exc.body or exc.reason or exc
+            raise VelaKubernetesError(f"Failed to read VolumeSnapshot {namespace}/{name}: {detail!r}") from exc
 
 
 async def read_snapshot_content(name: str) -> dict[str, Any] | None:
@@ -107,7 +109,8 @@ async def read_snapshot_content(name: str) -> dict[str, Any] | None:
         except ApiException as exc:
             if exc.status == 404:
                 return None
-            raise VelaKubernetesError(f"Failed to read VolumeSnapshotContent {name}: {exc.body or exc}") from exc
+            detail = exc.body or exc.reason or exc
+            raise VelaKubernetesError(f"Failed to read VolumeSnapshotContent {name}: {detail!r}") from exc
 
 
 async def delete_snapshot(namespace: str, name: str) -> None:
@@ -124,9 +127,8 @@ async def delete_snapshot(namespace: str, name: str) -> None:
             )
         except ApiException as exc:
             if exc.status != 404:
-                raise VelaKubernetesError(
-                    f"Failed to delete VolumeSnapshot {namespace}/{name}: {exc.body or exc}"
-                ) from exc
+                detail = exc.body or exc.reason or exc
+                raise VelaKubernetesError(f"Failed to delete VolumeSnapshot {namespace}/{name}: {detail!r}") from exc
 
 
 async def delete_snapshot_content(name: str) -> None:
@@ -142,7 +144,8 @@ async def delete_snapshot_content(name: str) -> None:
             )
         except ApiException as exc:
             if exc.status != 404:
-                raise VelaKubernetesError(f"Failed to delete VolumeSnapshotContent {name}: {exc.body or exc}") from exc
+                detail = exc.body or exc.reason or exc
+                raise VelaKubernetesError(f"Failed to delete VolumeSnapshotContent {name}: {detail!r}") from exc
 
 
 async def ensure_snapshot_absent(
@@ -226,6 +229,7 @@ async def _create_snapshot(namespace: str, manifest: dict[str, Any]) -> None:
                 body=manifest,
             )
         except ApiException as exc:
+            detail = exc.body or exc.reason or exc
             raise VelaKubernetesError(
-                f"Failed to create VolumeSnapshot {namespace}/{manifest['metadata']['name']}: {exc.body or exc}"
+                f"Failed to create VolumeSnapshot {namespace}/{manifest['metadata']['name']}: {detail!r}"
             ) from exc
