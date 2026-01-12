@@ -301,9 +301,9 @@ class KubernetesService:
                     body={"spec": {"resources": {"requests": {"storage": storage}}}},
                 )
             except client.exceptions.ApiException as exc:
-                detail = exc.body or exc.reason or str(exc)
+                detail = exc.body or exc.reason or exc
                 raise VelaKubernetesError(
-                    f"Failed to resize PVC {namespace!r}/{name!r} to {storage}: {detail}"
+                    f"Failed to resize PVC {namespace!r}/{name!r} to {storage}: {detail!r}"
                 ) from exc
 
         logger.info("Resized PVC %s/%s to %s", namespace, name, storage)
