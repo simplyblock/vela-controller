@@ -56,6 +56,7 @@ jobs:
         CLOUDFLARE_ZONE_ID: ${{ secrets.VELA_CLOUDFLARE_ZONE_ID }}
         VELA_KEYCLOAK_ADMIN_SECRET: ${{ secrets.VELA_KEYCLOAK_ADMIN_SECRET }}
         VELA_KEYCLOAK_ADMIN_NAME: ${{ secrets.VELA_KEYCLOAK_ADMIN_NAME }}
+        VELA_GRAFANA_SECURITY_ADMIN_PASSWORD: ${{ secrets.VELA_GRAFANA_SECURITY_ADMIN_PASSWORD }}
       run: |
         helm upgrade --install vela ./chart \
           --namespace vela \
@@ -66,4 +67,5 @@ jobs:
           --set-string controller.env.VELA_CLOUDFLARE_API_TOKEN="$CLOUDFLARE_API_TOKEN" \
           --set-string controller.env.VELA_CLOUDFLARE_ZONE_ID="$CLOUDFLARE_ZONE_ID" \
           --set-string controller.env.VELA_KEYCLOAK_ADMIN_NAME="$VELA_KEYCLOAK_ADMIN_NAME" \
-          --set-string controller.env.VELA_KEYCLOAK_ADMIN_SECRET="$VELA_KEYCLOAK_ADMIN_SECRET"
+          --set-string controller.env.VELA_KEYCLOAK_ADMIN_SECRET="$VELA_KEYCLOAK_ADMIN_SECRET" \
+          --set-string monitoring.VELA_GRAFANA_SECURITY_ADMIN_PASSWORD="$VELA_GRAFANA_SECURITY_ADMIN_PASSWORD"
