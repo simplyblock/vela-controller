@@ -5,7 +5,6 @@
 # |-- 4.  Storage API
 
 # docker-compose payload injected via helm --set-file composeYaml
-composeYaml: ""
 vectorYaml: ""
 pgHbaConf: ""
 
@@ -45,8 +44,8 @@ autoscalerVm:
   extraNetwork:
     enable: true
   image:
-    repository: docker.io/manoharbrm/vela-vm
-    tag: latest
+    repository: ghcr.io/simplyblock/vela-os/vela-image
+    tag: main
   mountPath: /mnt/postgres_data
   resources: # Placeholder values. Actual values are filled by create_vela_config
     cpus:

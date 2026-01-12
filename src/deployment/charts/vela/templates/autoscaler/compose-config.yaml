@@ -8,8 +8,8 @@ metadata:
 data:
   vector.yml: |
 {{- .Values.vectorYaml | nindent 4 }}
-  docker-compose.yml: |
-{{- .Values.composeYaml | nindent 4 }}
+  postgresql.conf: |-
+{{- .Values.postgresqlConf | nindent 4 }}
   pg_hba.conf: |-
 {{- .Values.pgHbaConf | nindent 4 }}
   {{- if .Values.pgbouncer.enabled }}

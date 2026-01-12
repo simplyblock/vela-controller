@@ -382,23 +382,6 @@ async def ensure_branch_storage_class(branch_id: Identifier, *, iops: int) -> st
     return storage_class_name
 
 
-def _load_compose_manifest() -> dict[str, Any]:
-    compose_resource = resources.files(__package__).joinpath("compose.yml")
-    compose_content = yaml.safe_load(compose_resource.read_text())
-    if not isinstance(compose_content, dict):
-        raise VelaDeploymentError("docker-compose manifest must be a mapping")
-    return compose_content
-
-
-def _configure_compose_storage(compose: dict[str, Any], *, enable_file_storage: bool) -> dict[str, Any]:
-    services = compose.get("services")
-    if not isinstance(services, dict):
-        raise VelaDeploymentError("docker-compose manifest missing 'services' mapping")
-    if not enable_file_storage:
-        services.pop("storage", None)
-    return compose
-
-
 def _load_chart_values(chart_root: Any) -> dict[str, Any]:
     values_content = yaml.safe_load((chart_root / "values.yaml").read_text())
     if not isinstance(values_content, dict):
@@ -505,12 +488,9 @@ async def create_vela_config(
         await kube_service.ensure_namespace(namespace, labels=_POD_SECURITY_LABELS)
 
     chart = resources.files(__package__) / "charts" / "vela"
-    compose_file = _configure_compose_storage(
-        _load_compose_manifest(),
-        enable_file_storage=parameters.enable_file_storage,
-    )
     vector_resource = resources.files(__package__).joinpath("vector.yml")
     pb_hba_resource = resources.files(__package__).joinpath("pg_hba.conf")
+    postgresql_resource = resources.files(__package__).joinpath("postgresql.conf")
     values_content = _load_chart_values(chart)
 
     storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
@@ -528,12 +508,10 @@ async def create_vela_config(
     with (
         resources.as_file(vector_resource) as vector_file,
         resources.as_file(pb_hba_resource) as pb_hba_conf,
+        resources.as_file(postgresql_resource) as postgresql_conf,
         tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as temp_values,
-        tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as modified_compose,
     ):
-        yaml.safe_dump(compose_file, modified_compose, default_flow_style=False)
         yaml.safe_dump(values_content, temp_values, default_flow_style=False)
-        modified_compose.flush()
         temp_values.flush()
 
         try:
@@ -547,11 +525,11 @@ async def create_vela_config(
                     namespace,
                     "--create-namespace",
                     "--set-file",
-                    f"composeYaml={modified_compose.name}",
-                    "--set-file",
                     f"vectorYaml={vector_file}",
                     "--set-file",
                     f"pgHbaConf={pb_hba_conf}",
+                    "--set-file",
+                    f"postgresqlConf={postgresql_conf}",
                     "-f",
                     temp_values.name,
                 ],
