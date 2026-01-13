@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Literal, Optional, c
 
 from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 from pydantic import Field as PydanticField
-from sqlalchemy import BigInteger, Column, String, Text, UniqueConstraint, text
+from sqlalchemy import BigInteger, Boolean, Column, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship
@@ -109,6 +109,7 @@ class Branch(AsyncAttrs, Model, table=True):
         default_factory=_default_resource_usage_payload,
         sa_column=Column(JSONB, nullable=False, server_default=text("'{}'::jsonb")),
     )
+    pitr_enabled: bool = Field(default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false")))
 
     __table_args__ = (UniqueConstraint("project_id", "name", name="unique_branch_name_per_project"),)
 
@@ -240,6 +241,7 @@ class BranchCreate(BaseModel):
     source: BranchSourceParameters | None = None
     deployment: DeploymentParameters | None = None
     restore: BranchRestoreParameters | None = None
+    pitr_enabled: bool = False
 
     @model_validator(mode="after")
     def _validate_source_or_deployment(self) -> "BranchCreate":

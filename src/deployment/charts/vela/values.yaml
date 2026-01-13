@@ -65,6 +65,15 @@ autoscalerVm:
     accessModes:
       - ReadWriteMany
 
+pg_wal:
+  enabled: false
+  persistence:
+    storageClassName: "simplyblock-csi-sc"
+    size: 10Gi
+    claimName: ''
+    accessModes:
+      - ReadWriteMany
+
 # PgBouncer connection pooler
 pgbouncer:
   enabled: true

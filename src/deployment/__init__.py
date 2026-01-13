@@ -416,6 +416,7 @@ def _configure_vela_values(
     use_existing_db_pvc: bool,
     pgbouncer_config: Mapping[str, int] | None,
     enable_file_storage: bool,
+    pitr_enabled: bool,
 ) -> dict[str, Any]:
     pgbouncer_values = values_content.setdefault("pgbouncer", {})
     pgbouncer_cfg = pgbouncer_values.setdefault("config", {})
@@ -457,6 +458,14 @@ def _configure_vela_values(
     storage_persistence["storageClassName"] = storage_class_name
     storage_spec["enabled"] = enable_file_storage
 
+    wal_archive_spec = values_content.pop("walArchive", None)
+    pg_wal_spec = values_content.setdefault("pg_wal", wal_archive_spec or {})
+    pg_wal_spec["enabled"] = pitr_enabled
+    wal_persistence = pg_wal_spec.setdefault("persistence", {})
+    wal_persistence["size"] = f"{bytes_to_gb(parameters.database_size)}G"
+    wal_persistence["storageClassName"] = storage_class_name
+    wal_persistence.setdefault("accessModes", ["ReadWriteMany"])
+
     db_persistence = db_spec.setdefault("persistence", {})
     db_persistence["size"] = f"{bytes_to_gb(parameters.database_size)}G"
     if use_existing_db_pvc:
@@ -496,6 +505,7 @@ async def create_vela_config(
     use_existing_db_pvc: bool = False,
     ensure_namespace: bool = True,
     pgbouncer_config: Mapping[str, int] | None = None,
+    pitr_enabled: bool = False,
 ):
     namespace = deployment_namespace(branch_id)
     logging.info(
@@ -528,6 +538,7 @@ async def create_vela_config(
         use_existing_db_pvc=use_existing_db_pvc,
         pgbouncer_config=pgbouncer_config,
         enable_file_storage=parameters.enable_file_storage,
+        pitr_enabled=pitr_enabled,
     )
 
     with (
@@ -1229,6 +1240,7 @@ async def deploy_branch_environment(
     pgbouncer_admin_password: str,
     pgbouncer_config: Mapping[str, int],
     use_existing_pvc: bool = False,
+    pitr_enabled: bool = False,
 ) -> None:
     """Background task: provision infra for a branch and persist the resulting endpoint."""
     await kube_service.ensure_namespace(deployment_namespace(branch_id), labels=_POD_SECURITY_LABELS)
@@ -1244,6 +1256,7 @@ async def deploy_branch_environment(
             use_existing_db_pvc=use_existing_pvc,
             ensure_namespace=False,
             pgbouncer_config=pgbouncer_config,
+            pitr_enabled=pitr_enabled,
         ),
         provision_branch_endpoints(
             spec=BranchEndpointProvisionSpec(
