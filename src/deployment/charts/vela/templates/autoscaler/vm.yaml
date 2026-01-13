@@ -26,6 +26,7 @@ spec:
   imagePullSecrets:
   {{- range .Values.autoscalerVm.imagePullSecrets }}
     - name: {{ . }}
+  {{- end }}
 {{- end }}
   powerState: {{ .Values.autoscalerVm.powerState }}
   extraNetwork:
