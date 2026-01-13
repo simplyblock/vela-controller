@@ -22,12 +22,6 @@ metadata:
     {{- include "vela.labels" . | nindent 4 }}
     autoscaling.neon.tech/enabled: "true"
 spec:
-{{- if .Values.autoscalerVm.imagePullSecrets -}}
-  imagePullSecrets:
-  {{- range .Values.autoscalerVm.imagePullSecrets }}
-    - name: {{ . }}
-  {{- end }}
-{{- end }}
   powerState: {{ .Values.autoscalerVm.powerState }}
   extraNetwork:
     enable: {{ .Values.autoscalerVm.extraNetwork.enable }}
