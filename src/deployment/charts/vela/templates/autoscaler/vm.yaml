@@ -103,3 +103,4 @@ spec:
       secret:
         secretName: {{ include "vela.secret.analytics" . }}
 {{- end }}
+{{- end }}
