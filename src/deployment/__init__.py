@@ -472,9 +472,7 @@ def _configure_vela_values(
     autoscaler_image["tag"] = image["tag"]
     if "imagePullSecret" in image:
         autoscaler_spec["imagePullSecrets"] = [
-            {
-                "name": image["imagePullSecret"],
-            }
+            image["imagePullSecret"],
         ]
     autoscaler_resources = autoscaler_spec.setdefault("resources", {})
     autoscaler_resources["cpus"] = calculate_autoscaler_vm_cpus(parameters.milli_vcpu)
