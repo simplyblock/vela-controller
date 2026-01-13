@@ -29,6 +29,7 @@ spec:
     rootDisk:
       image: {{ printf "%s:%s" .Values.autoscalerVm.image.repository .Values.autoscalerVm.image.tag }}
       size: 4G
+      imagePullPolicy: Always
     cpus:
       min: {{ .Values.autoscalerVm.resources.cpus.min }}
       use: {{ .Values.autoscalerVm.resources.cpus.use }}
