@@ -89,5 +89,6 @@ async def list_available_postgresql_versions() -> list[AvailablePostgresqlVersio
             label="15",
             value="15.1.0.147",
             default=True,
-        )
+        ),
+        AvailablePostgresqlVersion(label="18.1 (experimental)", value="18.1-velaos", default=False),
     ]

@@ -294,7 +294,6 @@ _PVC_TIMEOUT_SECONDS = float(600)
 _PVC_CLONE_TIMEOUT_SECONDS = float(10)
 _PVC_POLL_INTERVAL_SECONDS = float(2)
 _VOLUME_SNAPSHOT_CLASS = "simplyblock-csi-snapshotclass"
-_SUPPORTED_DATABASE_IMAGE_TAG = "15.1.0.147"
 
 _BRANCH_SERVICE_ENDPOINTS: dict[str, tuple[str, int]] = {
     "database": ("db", 5432),
@@ -442,17 +441,6 @@ class _DeploymentResourceValues(TypedDict):
     iops: int | None
 
 
-def _normalize_database_image_tag(image_tag: str, branch_id: Identifier) -> str:
-    if image_tag != _SUPPORTED_DATABASE_IMAGE_TAG:  # pragma: no cover - defensive guard against unsupported images
-        logger.warning(
-            "Source branch %s has unexpected database image tag %s; defaulting to supported image",
-            branch_id,
-            image_tag,
-        )
-        return _SUPPORTED_DATABASE_IMAGE_TAG
-    return image_tag
-
-
 def _base_deployment_resources(
     source: Branch,
     source_limits: BranchAllocationPublic | None,
@@ -554,7 +542,6 @@ def _deployment_parameters_from_source(
     source_limits: BranchAllocationPublic | None = None,
     overrides: BranchSourceDeploymentParameters | None = None,
 ) -> DeploymentParameters:
-    image_tag = _normalize_database_image_tag(source.database_image_tag, source.id)
     resource_values = _base_deployment_resources(source, source_limits)
     enable_file_storage = source.enable_file_storage
 
@@ -585,7 +572,7 @@ def _deployment_parameters_from_source(
         milli_vcpu=milli_vcpu,
         memory_bytes=memory_bytes,
         iops=iops,
-        database_image_tag=cast("Literal['15.1.0.147']", image_tag),
+        database_image_tag=cast("Literal['15.1.0.147', '18.1-velaos']", source.database_image_tag),
         enable_file_storage=enable_file_storage,
     )
 
