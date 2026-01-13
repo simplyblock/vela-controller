@@ -85,14 +85,14 @@ spec:
       mountPath: "/vela/config"
       configMap:
         name: {{ include "vela.autoscaler.composeConfigName" . }}
-    - name: init-scripts
+    - name: vela-init-scripts
       mountPath: "/vela/migrations/init-scripts"
       configMap:
-        name: "vela-init-scripts"
-    - name: migrations
+        name: "init-scripts"
+    - name: vela-migrations
       mountPath: "/vela/migrations/migrations"
       configMap:
-        name: "vela-migrations"
+        name: "migrations"
     - name: vela-db-secret
       mountPath: "/vela/secrets/db"
       secret:
