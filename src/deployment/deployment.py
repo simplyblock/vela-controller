@@ -20,6 +20,7 @@ _SUPPORTED_DATABASE_IMAGE_TAG = {
     "18.1-velaos": {
         "image": "ghcr.io/simplyblock/vela-os/vela-image",
         "tag": "main",
+        "imagePullSecret": "regcred",
     },
 }
 

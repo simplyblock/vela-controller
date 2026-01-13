@@ -470,6 +470,12 @@ def _configure_vela_values(
     autoscaler_image = autoscaler_spec.setdefault("image", {})
     autoscaler_image["repository"] = image["image"]
     autoscaler_image["tag"] = image["tag"]
+    if "imagePullSecret" in image:
+        autoscaler_spec["imagePullSecrets"] = [
+            {
+                "name": image["imagePullSecret"],
+            }
+        ]
     autoscaler_resources = autoscaler_spec.setdefault("resources", {})
     autoscaler_resources["cpus"] = calculate_autoscaler_vm_cpus(parameters.milli_vcpu)
     memory_slot_size, memory_slots = calculate_autoscaler_vm_memory(parameters.memory_bytes)
