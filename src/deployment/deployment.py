@@ -18,7 +18,7 @@ _SUPPORTED_DATABASE_IMAGE_TAG = {
         "tag": "",
     },
     "18.1-velaos": {
-        "image": "ghcr.io/simplyblock/vela-os/vela-image",
+        "image": "docker.io/simplyblock/vela-image",
         "tag": "main",
     },
 }
