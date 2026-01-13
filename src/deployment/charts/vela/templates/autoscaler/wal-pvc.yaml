@@ -1,0 +1,35 @@
+{{- $pgWal := (coalesce .Values.pg_wal .Values.walArchive) | default (dict) -}}
+{{- $pgWalPersistence := $pgWal.persistence | default (dict) -}}
+{{- if and .Values.autoscalerVm.enabled ($pgWal.enabled | default false) -}}
+{{- $vmName := "" -}}
+{{- if .Values.autoscalerVm.fullnameOverride }}
+{{- $vmName = .Values.autoscalerVm.fullnameOverride | trunc 63 | trimSuffix "-" }}
+{{- else if .Values.autoscalerVm.nameOverride }}
+{{- $override := .Values.autoscalerVm.nameOverride }}
+{{- if contains $override .Release.Name }}
+{{- $vmName = .Release.Name | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- $vmName = printf "%s-%s" .Release.Name $override | trunc 63 | trimSuffix "-" }}
+{{- end }}
+{{- else }}
+{{- $vmName = printf "%s-autoscaler-vm" (include "vela.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+{{- $pvcName := default (printf "%s-pg-wal" $vmName) ($pgWalPersistence.claimName | default "") -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $pvcName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "vela.labels" . | nindent 4 }}
+spec:
+  {{- if $pgWalPersistence.storageClassName }}
+  storageClassName: {{ $pgWalPersistence.storageClassName }}
+  {{- end }}
+  volumeMode: Block
+  accessModes:
+{{ toYaml ($pgWalPersistence.accessModes | default (list)) | indent 4 }}
+  resources:
+    requests:
+      storage: {{ ($pgWalPersistence.size | default "") | quote }}
+{{- end }}

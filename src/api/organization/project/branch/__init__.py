@@ -615,6 +615,7 @@ async def _build_branch_entity(
             env_type=env_type,
             enable_file_storage=clone_parameters.enable_file_storage,
             status=BranchServiceStatus.CREATING,
+            pitr_enabled=source.pitr_enabled,
         )
         entity.database_password = source.database_password
         entity.pgbouncer_config = (
@@ -638,6 +639,7 @@ async def _build_branch_entity(
         env_type=env_type,
         enable_file_storage=deployment_params.enable_file_storage,
         status=BranchServiceStatus.CREATING,
+        pitr_enabled=parameters.pitr_enabled,
     )
     entity.database_password = deployment_params.database_password
     entity.pgbouncer_config = _default_pgbouncer_config()
@@ -804,6 +806,7 @@ async def _deploy_branch_environment_task(
     jwt_secret: str,
     pgbouncer_admin_password: str,
     pgbouncer_config: PgbouncerConfigSnapshot,
+    pitr_enabled: bool,
 ) -> None:
     await _persist_branch_status(branch_id, BranchServiceStatus.CREATING)
     try:
@@ -817,6 +820,7 @@ async def _deploy_branch_environment_task(
             jwt_secret=jwt_secret,
             pgbouncer_admin_password=pgbouncer_admin_password,
             pgbouncer_config=pgbouncer_snapshot_to_mapping(pgbouncer_config),
+            pitr_enabled=pitr_enabled,
         )
     except VelaError:
         await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
@@ -843,6 +847,7 @@ async def _clone_branch_environment_task(
     source_branch_id: Identifier,
     copy_data: bool,
     pgbouncer_config: PgbouncerConfigSnapshot,
+    pitr_enabled: bool,
 ) -> None:
     await _persist_branch_status(branch_id, BranchServiceStatus.CREATING)
     storage_class_name: str | None = None
@@ -882,6 +887,7 @@ async def _clone_branch_environment_task(
             pgbouncer_admin_password=pgbouncer_admin_password,
             use_existing_pvc=copy_data,
             pgbouncer_config=pgbouncer_snapshot_to_mapping(pgbouncer_config),
+            pitr_enabled=pitr_enabled,
         )
     except VelaError:
         await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
@@ -910,6 +916,7 @@ async def _restore_branch_environment_task(
     snapshot_name: str,
     snapshot_content_name: str | None,
     pgbouncer_config: PgbouncerConfigSnapshot,
+    pitr_enabled: bool,
 ) -> None:
     await _persist_branch_status(branch_id, BranchServiceStatus.CREATING)
     storage_class_name: str | None = None
@@ -953,6 +960,7 @@ async def _restore_branch_environment_task(
             pgbouncer_admin_password=pgbouncer_admin_password,
             use_existing_pvc=True,
             pgbouncer_config=pgbouncer_snapshot_to_mapping(pgbouncer_config),
+            pitr_enabled=pitr_enabled,
         )
     except VelaError:
         await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
@@ -1052,7 +1060,7 @@ async def _public(branch: Branch) -> BranchPublic:
         used_resources=used_resources,
         api_keys=api_keys,
         status=branch_status,
-        pitr_enabled=False,
+        pitr_enabled=branch.pitr_enabled,
         created_at=branch.created_datetime,
         created_by="system",  # TODO: update it when user management is in place
         updated_at=None,
@@ -1243,6 +1251,7 @@ def _schedule_branch_environment_tasks(
                 jwt_secret=jwt_secret,
                 pgbouncer_admin_password=pgbouncer_admin_password,
                 pgbouncer_config=pgbouncer_config,
+                pitr_enabled=branch.pitr_enabled,
             )
         )
         return
@@ -1262,6 +1271,7 @@ def _schedule_branch_environment_tasks(
                 snapshot_name=restore_snapshot["name"],
                 snapshot_content_name=restore_snapshot["content_name"],
                 pgbouncer_config=pgbouncer_config,
+                pitr_enabled=branch.pitr_enabled,
             )
         )
         return
@@ -1279,6 +1289,7 @@ def _schedule_branch_environment_tasks(
                 source_branch_id=source_id,
                 copy_data=copy_data,
                 pgbouncer_config=pgbouncer_config,
+                pitr_enabled=branch.pitr_enabled,
             )
         )
 
