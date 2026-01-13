@@ -44,7 +44,7 @@ from ..exceptions import (
     VelaKubernetesError,
 )
 from ._util import deployment_namespace
-from .deployment import DeploymentParameters
+from .deployment import DeploymentParameters, database_image_tag_to_database_images
 from .grafana import create_vela_grafana_obj, delete_vela_grafana_obj
 from .kubernetes import KubernetesService, get_neon_vm
 from .kubernetes._util import custom_api_client
@@ -433,7 +433,6 @@ def _configure_vela_values(
                 pgbouncer_cfg[key] = value
 
     db_spec = values_content.setdefault("db", {})
-    db_spec.setdefault("image", {})["tag"] = parameters.database_image_tag
     db_service_cfg = db_spec.setdefault("service", {})
     db_service_cfg["externalEnabled"] = get_settings().enable_db_external_ipv6_loadbalancer
 
@@ -466,6 +465,11 @@ def _configure_vela_values(
 
     autoscaler_spec = values_content.setdefault("autoscalerVm", {})
     autoscaler_spec["enabled"] = True
+
+    image = database_image_tag_to_database_images(parameters.database_image_tag)
+    autoscaler_image = autoscaler_spec.setdefault("image", {})
+    autoscaler_image["repository"] = image["image"]
+    autoscaler_image["tag"] = image["tag"]
     autoscaler_resources = autoscaler_spec.setdefault("resources", {})
     autoscaler_resources["cpus"] = calculate_autoscaler_vm_cpus(parameters.milli_vcpu)
     memory_slot_size, memory_slots = calculate_autoscaler_vm_memory(parameters.memory_bytes)
@@ -511,6 +515,7 @@ async def create_vela_config(
     )
     vector_resource = resources.files(__package__).joinpath("vector.yml")
     pb_hba_resource = resources.files(__package__).joinpath("pg_hba.conf")
+    postgresql_resource = resources.files(__package__).joinpath("postgresql.conf")
     values_content = _load_chart_values(chart)
 
     storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
@@ -528,6 +533,7 @@ async def create_vela_config(
     with (
         resources.as_file(vector_resource) as vector_file,
         resources.as_file(pb_hba_resource) as pb_hba_conf,
+        resources.as_file(postgresql_resource) as postgresql_conf,
         tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as temp_values,
         tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as modified_compose,
     ):
@@ -552,6 +558,8 @@ async def create_vela_config(
                     f"vectorYaml={vector_file}",
                     "--set-file",
                     f"pgHbaConf={pb_hba_conf}",
+                    "--set-file",
+                    f"postgresqlConf={postgresql_conf}",
                     "-f",
                     temp_values.name,
                 ],

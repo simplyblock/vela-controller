@@ -12,6 +12,21 @@ from .._util import (
     StatusType,
 )
 
+_SUPPORTED_DATABASE_IMAGE_TAG = {
+    "15.1.0.147": {
+        "image": "docker.io/manoharbrm/vela-vm",
+        "tag": "",
+    },
+    "18.1-velaos": {
+        "image": "ghcr.io/simplyblock/autoscaling/vela-image",
+        "tag": "main",
+    },
+}
+
+
+def database_image_tag_to_database_images(image_tag: str) -> dict[str, str]:
+    return _SUPPORTED_DATABASE_IMAGE_TAG[image_tag]
+
 
 class DeploymentParameters(BaseModel):
     database_password: DBPassword
@@ -20,7 +35,7 @@ class DeploymentParameters(BaseModel):
     milli_vcpu: Annotated[int, Field(**CPU_CONSTRAINTS)]  # units of milli vCPU
     memory_bytes: Annotated[int, Field(**MEMORY_CONSTRAINTS)]
     iops: Annotated[int, Field(**IOPS_CONSTRAINTS)]
-    database_image_tag: Literal["15.1.0.147"]
+    database_image_tag: Literal["15.1.0.147", "18.1-velaos"]
     enable_file_storage: bool = True
 
     @model_validator(mode="after")

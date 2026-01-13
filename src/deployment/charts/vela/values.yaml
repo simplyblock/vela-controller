@@ -44,9 +44,7 @@ autoscalerVm:
   powerState: Running
   extraNetwork:
     enable: true
-  image:
-    repository: docker.io/manoharbrm/vela-vm
-    tag: latest
+# image definition must be added via Python
   mountPath: /mnt/postgres_data
   resources: # Placeholder values. Actual values are filled by create_vela_config
     cpus:
