@@ -27,7 +27,7 @@ spec:
     enable: {{ .Values.autoscalerVm.extraNetwork.enable }}
   guest:
     rootDisk:
-      image: {{ printf "%s:%s" .Values.autoscalerVm.image.repository .Values.autoscalerVm.image.tag }}
+      image: {{ printf "%s:%s" .Values.autoscalerVm.image.repository .Values.autoscalerVm.image.tag | quote }}
       size: 4G
       imagePullPolicy: Always
     cpus:
