@@ -1,13 +1,19 @@
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 import httpx
 
+from ..exceptions import VelaSimplyblockAPIError
+
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
+
+
+logger = logging.getLogger(__name__)
 
 
 class SimplyblockApi:
@@ -89,7 +95,9 @@ class SimplyblockApi:
         response = await self._client.get(url, headers=self._headers(), timeout=self._timeout)
         response.raise_for_status()
         payload = response.json()
-        return payload[0]  # return the most recent one
+        if len(payload) == 0:
+            raise VelaSimplyblockAPIError(f"Empty iostats payload for volume {volume_uuid}")
+        return payload[0]
 
     async def update_volume(
         self,

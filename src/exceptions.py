@@ -28,3 +28,7 @@ class VelaResourceLimitError(VelaError):
 
 class VelaSnapshotTimeoutError(VelaDeploymentError, TimeoutError):
     """Timed out waiting for a snapshot operation to complete"""
+
+
+class VelaSimplyblockAPIError(VelaError):
+    """Error occured while interacting with Simplyblock API"""
