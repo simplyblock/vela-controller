@@ -39,6 +39,27 @@ data:
     log_disconnections = 1
     admin_users = pgbouncer_admin
     stats_users = pgbouncer_admin
+  pgbouncer_pg18.ini: |
+    [databases]
+    postgres = host=db port=5432 user=postgres password={{ $dbPassword | quote }}
+
+    [pgbouncer]
+    listen_addr = 0.0.0.0
+    listen_port = 6432
+    unix_socket_dir =
+    auth_type = plain
+    auth_file = /vela/config/users.txt
+    pool_mode = transaction
+    max_client_conn = {{ $pgbouncerConfig.max_client_conn | default 100 }}
+    default_pool_size = {{ $pgbouncerConfig.default_pool_size | default 20 }}
+    reserve_pool_size = {{ $pgbouncerConfig.reserve_pool_size | default 0 }}
+    query_wait_timeout = {{ $pgbouncerConfig.query_wait_timeout | default 30 }}
+    server_idle_timeout = {{ $pgbouncerConfig.server_idle_timeout | default 60 }}
+    server_lifetime = {{ $pgbouncerConfig.server_lifetime | default 600 }}
+    log_connections = 1
+    log_disconnections = 1
+    admin_users = pgbouncer_admin
+    stats_users = pgbouncer_admin
   users.txt: |
     "postgres" {{ $dbPassword | quote }}
     "pgbouncer_admin" {{ $pgbouncerAdminPassword | quote }}
@@ -81,14 +102,14 @@ data:
     -- defaults to empty publication
     create publication supabase_realtime;
 
-    -- Supabase super admin
+    -- Vela super admin
     create user supabase_admin;
     alter user  supabase_admin with superuser createdb createrole replication bypassrls;
 
-    -- Supabase replication user
+    -- Vela replication user
     create user supabase_replication_admin with login replication;
 
-    -- Supabase read-only user
+    -- Vela read-only user
     create role supabase_read_only_user with login bypassrls;
     grant pg_read_all_data to supabase_read_only_user;
 
