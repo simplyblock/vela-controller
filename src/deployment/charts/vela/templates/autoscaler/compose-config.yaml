@@ -47,12 +47,14 @@ data:
 ---
 kind: ConfigMap
 metadata:
-  name: init-scripts
+  name: migrations
   labels:
     {{- include "vela.labels" . | nindent 4 }}
 apiVersion: v1
 data:
-  00-schema.sql: |-
+  00000000000000-schema.sql: |-
+    -- migrate:up
+    CREATE USER postgres;
     CREATE USER pgbouncer;
 
     REVOKE ALL PRIVILEGES ON SCHEMA public FROM pgbouncer;
@@ -73,8 +75,9 @@ data:
 
     REVOKE ALL ON FUNCTION pgbouncer.get_auth(p_usename TEXT) FROM PUBLIC;
     GRANT EXECUTE ON FUNCTION pgbouncer.get_auth(p_usename TEXT) TO pgbouncer;
+    -- migrate:down
 
-  00000000000000-initial-schema.sql: |-
+  00000000000001-initial-schema.sql: |-
     -- migrate:up
 
     -- Set up realtime
@@ -369,15 +372,12 @@ data:
     GRANT ALL ON ALL ROUTINES IN SCHEMA extensions TO dashboard_user;
 
     -- migrate:down
----
-kind: ConfigMap
-metadata:
-  name: migrations
-apiVersion: v1
-data:
-  00-extension.sql: |-
+
+  00000000000004-extension.sql: |-
+    -- migrate:up
     CREATE SCHEMA IF NOT exists extensions;
     CREATE EXTENSION IF NOT EXISTS pg_stat_statements with schema extensions;
+    -- migrate:down
 
   10000000000000_demote-postgres.sql: |-
     -- migrate:up
