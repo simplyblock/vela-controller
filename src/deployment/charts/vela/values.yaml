@@ -67,6 +67,7 @@ autoscalerVm:
 
 pg_wal:
   enabled: false
+  mountPath: '/mnt/postgres_wal'
   persistence:
     storageClassName: "simplyblock-csi-sc"
     size: 10Gi
