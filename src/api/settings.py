@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     system_limit_storage_size: int
     system_limit_database_size: int
     log_level: Literal["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"] = "INFO"
-    resource_monitor_interval: int = 10
+    resource_monitor_interval: int = 60
 
 
 @lru_cache
