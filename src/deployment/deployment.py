@@ -15,7 +15,7 @@ from .._util import (
 _SUPPORTED_DATABASE_IMAGE_TAG = {
     "15.1.0.147": {
         "image": "docker.io/manoharbrm/vela-vm",
-        "tag": "",
+        "tag": "latest",
     },
     "18.1-velaos": {
         "image": "docker.io/simplyblock/vela-image",
