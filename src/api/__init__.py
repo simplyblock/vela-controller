@@ -244,7 +244,7 @@ async def on_startup():
     await _populate_db()
     # start async background monitor
     asyncio.create_task(run_backup_monitor())
-    asyncio.create_task(monitor_resources(60))
+    asyncio.create_task(monitor_resources())
     _resize_monitor.start()
 
 
