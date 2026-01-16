@@ -432,7 +432,7 @@ async def _collect_branch_resource_usage(branch: Branch) -> ResourceUsageDefinit
     )
 
 
-async def monitor_resources(interval_seconds: int = 60):
+async def monitor_resources():
     while True:
         try:
             async with AsyncSessionLocal() as db:
@@ -485,4 +485,4 @@ async def monitor_resources(interval_seconds: int = 60):
         except Exception:  # noqa: BLE001
             logger.exception("Error running metering monitor iteration")
 
-        await asyncio.sleep(interval_seconds)
+        await asyncio.sleep(get_settings().resource_monitor_interval)
