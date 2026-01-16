@@ -42,6 +42,11 @@ spec:
       max: {{ .Values.autoscalerVm.resources.memorySlots.max }}
       limit: {{ .Values.autoscalerVm.resources.memorySlots.limit }}
     memorySlotSize: {{ .Values.autoscalerVm.resources.memorySlotSize }}
+    {{- if .Values.storage.enabled }}
+    env:
+      - name: ENABLE_STORAGE
+        value: 1
+    {{- end }}
     ports:
     - name: postgres
       port: 5432
@@ -58,9 +63,11 @@ spec:
     - name: meta
       port: 8080
       protocol: TCP
+    {{- if .Values.storage.enabled }}
     - name: storageapi
       port: 5000
       protocol: TCP
+    {{- end }}
     - name: vector
       port: 9001
       protocol: TCP
@@ -86,7 +93,7 @@ spec:
     {{- end }}
     {{- if .Values.storage.enabled }}
     - name: storage
-      mountPath: "/mnt/postgres_data/storage"
+      mountPath: "/mnt/storage"
       blockDevice:
         persistentVolumeClaim:
           claimName: {{ include "vela.autoscaler.name" . }}-storage-pvc
