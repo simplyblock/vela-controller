@@ -19,6 +19,7 @@ from ..deployment import (
 from ..deployment.kubernetes._util import custom_api_client
 from ..deployment.kubernetes.neonvm import resolve_autoscaler_vm_pod_name
 from ..deployment.simplyblock_api import create_simplyblock_api
+from ..exceptions import VelaSimplyblockAPIError
 from ..models._util import Identifier
 from ..models.branch import Branch, BranchServiceStatus, ResourceUsageDefinition
 from ..models.project import Project
@@ -421,7 +422,16 @@ async def _collect_branch_resource_usage(branch: Branch) -> ResourceUsageDefinit
         raise
 
     milli_vcpu, ram_bytes = compute_usage
-    nvme_bytes, iops, storage_bytes = await _collect_branch_volume_usage(branch, namespace)
+    try:
+        nvme_bytes, iops, storage_bytes = await _collect_branch_volume_usage(branch, namespace)
+    except VelaSimplyblockAPIError as exc:
+        logger.error(
+            "Failed to collect volume stats for branch %s (namespace %s): %s",
+            branch.id,
+            namespace,
+            exc,
+        )
+        return None
 
     return ResourceUsageDefinition(
         milli_vcpu=milli_vcpu,
