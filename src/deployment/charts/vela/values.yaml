@@ -69,6 +69,7 @@ pg_wal:
   enabled: false
   mountPath: '/mnt/postgres_wal'
   persistence:
+    create: true
     storageClassName: "simplyblock-csi-sc"
     size: 10Gi
     claimName: ''

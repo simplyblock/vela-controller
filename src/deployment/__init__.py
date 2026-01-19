@@ -73,6 +73,7 @@ SIMPLYBLOCK_CSI_SECRET = "simplyblock-csi-secret"
 STORAGE_PVC_SUFFIX = "-storage-pvc"
 DATABASE_PVC_SUFFIX = "-db-pvc"
 AUTOSCALER_PVC_SUFFIX = "-block-data"
+AUTOSCALER_WAL_PVC_SUFFIX = "-pg-wal"
 _LOAD_BALANCER_TIMEOUT_SECONDS = float(600)
 _LOAD_BALANCER_POLL_INTERVAL_SECONDS = float(2)
 _OVERLAY_IP_TIMEOUT_SECONDS = float(300)
@@ -462,8 +463,12 @@ def _configure_vela_values(
     pg_wal_spec = values_content.setdefault("pg_wal", wal_archive_spec or {})
     pg_wal_spec["enabled"] = pitr_enabled
     wal_persistence = pg_wal_spec.setdefault("persistence", {})
+    wal_persistence["create"] = not use_existing_db_pvc
     wal_persistence["size"] = f"{bytes_to_gb(parameters.database_size)}G"
     wal_persistence["storageClassName"] = storage_class_name
+    wal_persistence["claimName"] = wal_persistence.get("claimName") or (
+        f"{_autoscaler_vm_name()}{AUTOSCALER_WAL_PVC_SUFFIX}"
+    )
     wal_persistence.setdefault("accessModes", ["ReadWriteMany"])
 
     db_persistence = db_spec.setdefault("persistence", {})
