@@ -45,7 +45,7 @@ spec:
     {{- if .Values.storage.enabled }}
     env:
       - name: ENABLE_STORAGE
-        value: 1
+        value: "1"
     {{- end }}
     ports:
     - name: postgres
