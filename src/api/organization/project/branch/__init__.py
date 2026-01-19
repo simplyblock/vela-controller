@@ -361,6 +361,12 @@ class RestoreSnapshotContext(TypedDict):
     content_name: str | None
 
 
+def _format_pitr_restore_timestamp(timestamp: datetime | None) -> str | None:
+    if timestamp is None:
+        return None
+    return timestamp.astimezone(UTC).isoformat(sep=" ", timespec="microseconds")
+
+
 def snapshot_pgbouncer_config(config: PgbouncerConfig | None) -> PgbouncerConfigSnapshot:
     if config is None:
         config = _default_pgbouncer_config()
@@ -918,6 +924,7 @@ async def _restore_branch_environment_task(
     snapshot_content_name: str | None,
     pgbouncer_config: PgbouncerConfigSnapshot,
     pitr_enabled: bool,
+    pitr_restore_timestamp: str | None,
 ) -> None:
     await _persist_branch_status(branch_id, BranchServiceStatus.CREATING)
     storage_class_name: str | None = None
@@ -962,6 +969,7 @@ async def _restore_branch_environment_task(
             use_existing_pvc=True,
             pgbouncer_config=pgbouncer_snapshot_to_mapping(pgbouncer_config),
             pitr_enabled=pitr_enabled,
+            pitr_restore_timestamp=pitr_restore_timestamp,
         )
     except VelaError:
         await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
@@ -1239,6 +1247,7 @@ def _schedule_branch_environment_tasks(
     pgbouncer_admin_password: str,
     pgbouncer_config: PgbouncerConfigSnapshot,
     restore_snapshot: RestoreSnapshotContext | None,
+    pitr_restore_timestamp: str | None,
 ) -> None:
     if deployment_parameters is not None:
         asyncio.create_task(
@@ -1273,6 +1282,7 @@ def _schedule_branch_environment_tasks(
                 snapshot_content_name=restore_snapshot["content_name"],
                 pgbouncer_config=pgbouncer_config,
                 pitr_enabled=branch.pitr_enabled,
+                pitr_restore_timestamp=pitr_restore_timestamp,
             )
         )
         return
@@ -1334,6 +1344,16 @@ async def create(
             name=cast("str", backup_entry.snapshot_name),
             content_name=backup_entry.snapshot_content_name,
         )
+    pitr_restore_timestamp: str | None = None
+    if parameters.restore is not None:
+        requested_pitr_timestamp = parameters.restore.pitr_restore_timestamp
+        if requested_pitr_timestamp is not None:
+            if source is None or not source.pitr_enabled:
+                raise HTTPException(
+                    status_code=400,
+                    detail="pitr_restore_timestamp can only be used when PITR is enabled for the source branch",
+                )
+            pitr_restore_timestamp = _format_pitr_restore_timestamp(requested_pitr_timestamp)
     source_id: Identifier | None = getattr(source, "id", None)
     clone_parameters: DeploymentParameters | None = None
     if source is not None:
@@ -1431,6 +1451,7 @@ async def create(
         pgbouncer_admin_password=pgbouncer_admin_password,
         pgbouncer_config=pgbouncer_config_snapshot,
         restore_snapshot=restore_snapshot,
+        pitr_restore_timestamp=pitr_restore_timestamp,
     )
 
     payload = (await _public(entity)).model_dump(mode="json") if response == "full" else None

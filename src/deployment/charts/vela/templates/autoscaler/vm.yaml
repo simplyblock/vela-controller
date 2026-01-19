@@ -42,10 +42,16 @@ spec:
       max: {{ .Values.autoscalerVm.resources.memorySlots.max }}
       limit: {{ .Values.autoscalerVm.resources.memorySlots.limit }}
     memorySlotSize: {{ .Values.autoscalerVm.resources.memorySlotSize }}
-    {{- if .Values.storage.enabled }}
+    {{- if or .Values.storage.enabled .Values.autoscalerVm.pitrRestoreTimestamp }}
     env:
+    {{- if .Values.storage.enabled }}
       - name: ENABLE_STORAGE
         value: 1
+    {{- end }}
+    {{- if .Values.autoscalerVm.pitrRestoreTimestamp }}
+      - name: VELA_PITR_RESTORE_TS
+        value: {{ .Values.autoscalerVm.pitrRestoreTimestamp | quote }}
+    {{- end }}
     {{- end }}
     ports:
     - name: postgres

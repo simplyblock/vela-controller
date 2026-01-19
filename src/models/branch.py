@@ -233,6 +233,16 @@ class BranchRestoreParameters(BaseModel):
     backup_id: Identifier
     config_copy: bool = True
     deployment_parameters: BranchSourceDeploymentParameters | None = PydanticField(default=None)
+    pitr_restore_timestamp: datetime | None = PydanticField(default=None)
+
+    @model_validator(mode="after")
+    def validate_pitr_restore_timestamp(self) -> "BranchRestoreParameters":
+        timestamp = self.pitr_restore_timestamp
+        if timestamp is None:
+            return self
+        if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+            raise ValueError("pitr_restore_timestamp must include timezone information")
+        return self
 
 
 class BranchCreate(BaseModel):

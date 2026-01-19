@@ -418,6 +418,7 @@ def _configure_vela_values(
     pgbouncer_config: Mapping[str, int] | None,
     enable_file_storage: bool,
     pitr_enabled: bool,
+    pitr_restore_timestamp: str | None = None,
 ) -> dict[str, Any]:
     pgbouncer_values = values_content.setdefault("pgbouncer", {})
     pgbouncer_cfg = pgbouncer_values.setdefault("config", {})
@@ -497,6 +498,11 @@ def _configure_vela_values(
     autoscaler_persistence["storageClassName"] = storage_class_name
     autoscaler_persistence.setdefault("accessModes", ["ReadWriteMany"])
 
+    if pitr_enabled and pitr_restore_timestamp is not None:
+        autoscaler_spec["pitrRestoreTimestamp"] = pitr_restore_timestamp
+    else:
+        autoscaler_spec.pop("pitrRestoreTimestamp", None)
+
     return values_content
 
 
@@ -511,6 +517,7 @@ async def create_vela_config(
     ensure_namespace: bool = True,
     pgbouncer_config: Mapping[str, int] | None = None,
     pitr_enabled: bool = False,
+    pitr_restore_timestamp: str | None = None,
 ):
     namespace = deployment_namespace(branch_id)
     logging.info(
@@ -544,6 +551,7 @@ async def create_vela_config(
         pgbouncer_config=pgbouncer_config,
         enable_file_storage=parameters.enable_file_storage,
         pitr_enabled=pitr_enabled,
+        pitr_restore_timestamp=pitr_restore_timestamp,
     )
 
     with (
@@ -1246,6 +1254,7 @@ async def deploy_branch_environment(
     pgbouncer_config: Mapping[str, int],
     use_existing_pvc: bool = False,
     pitr_enabled: bool = False,
+    pitr_restore_timestamp: str | None = None,
 ) -> None:
     """Background task: provision infra for a branch and persist the resulting endpoint."""
     await kube_service.ensure_namespace(deployment_namespace(branch_id), labels=_POD_SECURITY_LABELS)
@@ -1262,6 +1271,7 @@ async def deploy_branch_environment(
             ensure_namespace=False,
             pgbouncer_config=pgbouncer_config,
             pitr_enabled=pitr_enabled,
+            pitr_restore_timestamp=pitr_restore_timestamp,
         ),
         provision_branch_endpoints(
             spec=BranchEndpointProvisionSpec(
