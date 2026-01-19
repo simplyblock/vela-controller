@@ -39,6 +39,51 @@ kubectl patch clusterrole neonvm-manager-role \
 kubectl delete pod -n neonvm-system -l control-plane=controller 
 ```
 
+Clone the autoscaling repository and apply the required NeonVM CRDs:
+
+```
+git clone git@github.com:simplyblock/autoscaling.git
+cd autoscaling
+kubectl apply -f neonvm/config/crd/bases/vm.neon.tech_virtualmachines.yaml
+kubectl apply -f neonvm/config/crd/bases/vm.neon.tech_virtualmachinemigrations.yaml
+```
+
+Demo environment uses the images that are manually deployed. 
+
+```
+# deploy scheduler
+kubectl -n kube-system \
+  set image deployment/autoscale-scheduler \
+  autoscale-scheduler=docker.io/manoharbrm/autoscale-scheduler:dev22fv12
+kubectl -n kube-system rollout status deployment/autoscale-scheduler 
+
+# deploy autoscaler agent
+kubectl -n kube-system \
+  set image daemonset/autoscaler-agent \
+  autoscaler-agent=docker.io/manoharbrm/autoscaler-agent:dev22fv14
+kubectl -n kube-system rollout status daemonset/autoscaler-agent
+
+# deploy vxlan controller
+kubectl -n neonvm-system \
+  set image daemonset/neonvm-vxlan-controller \
+  vxlan-controller=docker.io/manoharbrm/vxlan-controller:dev22fv12
+kubectl -n neonvm-system rollout status daemonset/neonvm-vxlan-controller
+
+kubectl -n neonvm-system \
+  set image deployment/neonvm-controller \
+  manager=docker.io/manoharbrm/neonvm-controller:dev22fv12
+kubectl -n neonvm-system rollout status deployment/neonvm-controller
+
+kubectl -n neonvm-system \
+  set image daemonset/neonvm-runner-image-loader \
+  neonvm-runner-loader=docker.io/manoharbrm/neonvm-runner:dev22fv12
+kubectl -n neonvm-system rollout status daemonset/neonvm-runner-image-loader
+
+kubectl -n neonvm-system set env deployment/neonvm-controller \
+  VM_RUNNER_IMAGE=docker.io/manoharbrm/neonvm-runner:dev22fv12
+kubectl -n neonvm-system rollout status deployment/neonvm-controller
+```
+
 ### Usage
 
 Create a sample VM:
