@@ -45,7 +45,7 @@ autoscalerVm:
   extraNetwork:
     enable: true
 # image definition must be added via Python
-  mountPath: /mnt/postgres_data
+  mountPath: /var/lib/postgresql
   resources: # Placeholder values. Actual values are filled by create_vela_config
     cpus:
       min: "1m"
