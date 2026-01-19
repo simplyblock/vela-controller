@@ -565,8 +565,12 @@ def _deployment_parameters_from_source(
         enable_file_storage=enable_file_storage,
     )
 
+    database_password = source.database_password
+    if overrides is not None and overrides.database_password is not None:
+        database_password = overrides.database_password
+
     return DeploymentParameters(
-        database_password=source.database_password,
+        database_password=database_password,
         database_size=database_size,
         storage_size=storage_size,
         milli_vcpu=milli_vcpu,
@@ -617,7 +621,7 @@ async def _build_branch_entity(
             status=BranchServiceStatus.CREATING,
             pitr_enabled=source.pitr_enabled,
         )
-        entity.database_password = source.database_password
+        entity.database_password = clone_parameters.database_password
         entity.pgbouncer_config = (
             await _copy_pgbouncer_config_from_source(source) if copy_config else _default_pgbouncer_config()
         )

@@ -214,6 +214,7 @@ class PgbouncerConfig(Model, table=True):
 
 
 class BranchSourceDeploymentParameters(BaseModel):
+    database_password: DBPassword | None = None
     database_size: Annotated[int | None, Field(default=None, **DATABASE_SIZE_CONSTRAINTS)] = None
     storage_size: Annotated[int | None, Field(default=None, **STORAGE_SIZE_CONSTRAINTS)] = None
     milli_vcpu: Annotated[int | None, Field(default=None, **CPU_CONSTRAINTS)] = None
