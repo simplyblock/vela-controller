@@ -868,6 +868,7 @@ async def _clone_branch_environment_task(
                 pvc_timeout_seconds=_PVC_CLONE_TIMEOUT_SECONDS,
                 pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
                 database_size=parameters.database_size,
+                pitr_enabled=pitr_enabled,
             )
         except VelaError:
             await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)

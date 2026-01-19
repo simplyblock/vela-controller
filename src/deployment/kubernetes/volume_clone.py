@@ -1,12 +1,20 @@
+import asyncio
 import contextlib
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
 from ..._util import Identifier, bytes_to_gb
 from ...exceptions import VelaKubernetesError
-from .. import _POD_SECURITY_LABELS, AUTOSCALER_PVC_SUFFIX, get_autoscaler_vm_identity, kube_service
+from .. import (
+    _POD_SECURITY_LABELS,
+    AUTOSCALER_PVC_SUFFIX,
+    AUTOSCALER_WAL_PVC_SUFFIX,
+    get_autoscaler_vm_identity,
+    kube_service,
+)
 from ..settings import get_settings
 from .pvc import (
     build_pvc_manifest_from_existing,
@@ -105,6 +113,8 @@ class _VolumeCloneOperation:
     storage_class_name: str
     target_database_size: int
     timeouts: CloneTimeouts
+    volume_label: str = "data"
+    pvc_suffix: str = AUTOSCALER_PVC_SUFFIX
     ids: CloneIdentifiers = field(init=False)
     created_source_snapshot: bool = field(default=False, init=False)
     created_target_snapshot: bool = field(default=False, init=False)
@@ -113,16 +123,17 @@ class _VolumeCloneOperation:
     def __post_init__(self) -> None:
         source_ns, source_vm_name = get_autoscaler_vm_identity(self.source_branch_id)
         target_ns, target_vm_name = get_autoscaler_vm_identity(self.target_branch_id)
-        pvc_name = f"{source_vm_name}{AUTOSCALER_PVC_SUFFIX}"
-        target_pvc_name = f"{target_vm_name}{AUTOSCALER_PVC_SUFFIX}"
+        pvc_name = f"{source_vm_name}{self.pvc_suffix}"
+        target_pvc_name = f"{target_vm_name}{self.pvc_suffix}"
         if target_pvc_name != pvc_name:
             raise VelaKubernetesError(
                 f"Autoscaler PVC name mismatch between source ({pvc_name}) and target ({target_pvc_name})"
             )
         timestamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
-        source_snapshot = f"{str(self.source_branch_id).lower()}-snapshot-{timestamp}"[:63]
-        target_snapshot = f"{str(self.target_branch_id).lower()}-snapshot-{timestamp}"[:63]
-        snapshot_content = f"snapcontent-crossns-{str(self.target_branch_id).lower()}-{timestamp}"[:63]
+        label_slug = re.sub(r"[^a-z0-9-]", "-", self.volume_label.lower()).strip("-") or "data"
+        source_snapshot = f"{str(self.source_branch_id).lower()}-snapshot-{label_slug}-{timestamp}"[:63]
+        target_snapshot = f"{str(self.target_branch_id).lower()}-snapshot-{label_slug}-{timestamp}"[:63]
+        snapshot_content = f"snapcontent-crossns-{label_slug}-{str(self.target_branch_id).lower()}-{timestamp}"[:63]
 
         object.__setattr__(
             self,
@@ -479,24 +490,45 @@ async def clone_branch_database_volume(
     pvc_timeout_seconds: float,
     pvc_poll_interval_seconds: float,
     database_size: int,
+    pitr_enabled: bool = False,
 ) -> None:
     """
     Clone the database volume from one branch to another using CSI snapshots.
     """
-    operation = _VolumeCloneOperation(
+    timeouts = CloneTimeouts(
+        snapshot_ready=snapshot_timeout_seconds,
+        snapshot_poll=snapshot_poll_interval_seconds,
+        pvc_ready=pvc_timeout_seconds,
+        pvc_poll=pvc_poll_interval_seconds,
+    )
+
+    operations = []
+    if pitr_enabled:
+        wal_operation = _VolumeCloneOperation(
+            source_branch_id=source_branch_id,
+            target_branch_id=target_branch_id,
+            snapshot_class=snapshot_class,
+            storage_class_name=storage_class_name,
+            target_database_size=database_size,
+            timeouts=timeouts,
+            volume_label="wal",
+            pvc_suffix=AUTOSCALER_WAL_PVC_SUFFIX,
+        )
+        operations.append(wal_operation.run())
+
+    data_operation = _VolumeCloneOperation(
         source_branch_id=source_branch_id,
         target_branch_id=target_branch_id,
         snapshot_class=snapshot_class,
         storage_class_name=storage_class_name,
         target_database_size=database_size,
-        timeouts=CloneTimeouts(
-            snapshot_ready=snapshot_timeout_seconds,
-            snapshot_poll=snapshot_poll_interval_seconds,
-            pvc_ready=pvc_timeout_seconds,
-            pvc_poll=pvc_poll_interval_seconds,
-        ),
+        timeouts=timeouts,
+        volume_label="pgdata",
+        pvc_suffix=AUTOSCALER_PVC_SUFFIX,
     )
-    await operation.run()
+    operations.append(data_operation.run())
+
+    await asyncio.gather(*operations)
 
 
 async def restore_branch_database_volume_from_snapshot(

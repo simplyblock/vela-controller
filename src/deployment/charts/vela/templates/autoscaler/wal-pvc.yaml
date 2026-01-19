@@ -1,6 +1,6 @@
 {{- $pgWal := (coalesce .Values.pg_wal .Values.walArchive) | default (dict) -}}
 {{- $pgWalPersistence := $pgWal.persistence | default (dict) -}}
-{{- if and .Values.autoscalerVm.enabled ($pgWal.enabled | default false) -}}
+{{- if and .Values.autoscalerVm.enabled ($pgWal.enabled | default false) ($pgWalPersistence.create | default true) -}}
 {{- $vmName := "" -}}
 {{- if .Values.autoscalerVm.fullnameOverride }}
 {{- $vmName = .Values.autoscalerVm.fullnameOverride | trunc 63 | trimSuffix "-" }}
