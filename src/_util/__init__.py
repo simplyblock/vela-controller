@@ -60,7 +60,7 @@ STORAGE_SIZE_CONSTRAINTS = {"ge": STORAGE_SIZE_MIN, "le": STORAGE_SIZE_MAX, "mul
 IOPS_CONSTRAINTS = {"ge": IOPS_MIN, "le": IOPS_MAX}
 
 DEFAULT_DB_NAME = "postgres"
-DEFAULT_DB_USER = "postgres"
+DEFAULT_DB_USER = "vela"
 
 # Represents the state of Kubevirt VM
 # https://github.com/kubevirt/kubevirt/blob/main/staging/src/kubevirt.io/api/core/v1/types.go#L1897-L1942
