@@ -327,12 +327,13 @@ async def add_or_replace_backup_schedule(
             ) from exc
         raise
     await session.refresh(schedule)
+    await session.refresh(branch)
 
     if response == "full":
         return BackupSchedulePublic(
             id=schedule.id,
             organization_id=schedule.organization_id,
-            project_id=branch.project_id if branch else None,
+            project_id=branch.project_id if branch is not None else None,
             branch_id=schedule.branch_id,
             env_type=schedule.env_type,
             rows=[
