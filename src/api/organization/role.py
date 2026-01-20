@@ -186,7 +186,7 @@ async def list_role_assignments(
             branch_id=link.branch_id,
             role_id=link.role_id,
             user_id=link.user_id,
-            env_type=link.env_type,
+            env_types=link.env_types,
         )
         for link in result.scalars().all()
     ]
@@ -286,10 +286,26 @@ async def assign_role(
         session.add(link)
         created_links.append(link)
 
-    for env_type in payload.env_types:
-        link = RoleUserLink(organization_id=organization.id, role_id=role.id, user_id=user_id, env_type=env_type)
-        session.add(link)
-        created_links.append(link)
+    if payload.env_types:
+        stmt = select(RoleUserLink).where(
+            RoleUserLink.organization_id == organization.id,
+            RoleUserLink.role_id == role.id,
+            RoleUserLink.user_id == user_id,
+        )
+        result = await session.execute(stmt)
+        env_link = result.scalar_one_or_none()  # type: RoleUserLink | None
+        if env_link is None:
+            env_link = RoleUserLink(
+                organization_id=organization.id,
+                role_id=role.id,
+                user_id=user_id,
+                env_types=payload.env_types,
+            )
+            session.add(env_link)
+        else:
+            existing = env_link.env_types or []
+            env_link.env_types = list(dict.fromkeys(existing + payload.env_types))
+        created_links.append(env_link)
 
     for branch_id in payload.branch_ids:
         link = RoleUserLink(organization_id=organization.id, role_id=role.id, user_id=user_id, branch_id=branch_id)
@@ -309,7 +325,7 @@ async def assign_role(
             branch_id=link.branch_id,
             role_id=link.role_id,
             user_id=link.user_id,
-            env_type=link.env_type,
+            env_types=link.env_types,
         )
         for link in created_links
     ]

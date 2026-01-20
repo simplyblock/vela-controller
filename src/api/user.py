@@ -118,7 +118,7 @@ async def list_user_roles(
             branch_id=row.branch_id,
             role_id=row.role_id,
             user_id=row.user_id,
-            env_type=row.env_type,
+            env_types=row.env_types,
         )
         for row in result.scalars().all()
     ]
@@ -135,7 +135,7 @@ async def list_user_permissions(
             RoleUserLink.organization_id,
             RoleUserLink.project_id,
             RoleUserLink.branch_id,
-            RoleUserLink.env_type,
+            RoleUserLink.env_types,
         )
         .select_from(RoleUserLink)
         .join(Role, Role.id == RoleUserLink.role_id)
@@ -152,7 +152,7 @@ async def list_user_permissions(
     result = await session.execute(stmt)
 
     def is_organization_level_permission(row):
-        return row.project_id is None and row.branch_id is None and row.env_type is None
+        return row.project_id is None and row.branch_id is None and not row.env_types
 
     return [
         UserPermissionPublic(
@@ -160,7 +160,7 @@ async def list_user_permissions(
             organization_id=row.organization_id if is_organization_level_permission(row) else None,
             project_id=row.project_id,
             branch_id=row.branch_id,
-            env_type=row.env_type,
+            env_types=row.env_types,
         )
         for row in result.all()
     ]

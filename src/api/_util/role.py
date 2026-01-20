@@ -27,7 +27,7 @@ async def clone_user_role_assignment(
                     branch_id=target.id,
                     role_id=assignment.role_id,
                     user_id=assignment.user_id,
-                    env_type=assignment.env_type,
+                    env_types=assignment.env_types,
                 )
             )
     await session.commit()
