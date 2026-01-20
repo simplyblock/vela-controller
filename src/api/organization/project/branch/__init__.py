@@ -751,8 +751,7 @@ async def _apply_resize_operations(
 
     if "storage_size" in effective_parameters:
         new_storage_size = effective_parameters["storage_size"]
-        release_name = get_deployment_settings().deployment_release_name
-        pvc_name = f"{release_name}{STORAGE_PVC_SUFFIX}"
+        pvc_name = f"{autoscaler_vm_name}{STORAGE_PVC_SUFFIX}"
         storage_size_gb = f"{bytes_to_gb(new_storage_size)}G"
         await kube_service.resize_pvc_storage(namespace, pvc_name, storage_size_gb)
 
