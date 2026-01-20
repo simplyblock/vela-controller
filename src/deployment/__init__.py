@@ -825,19 +825,23 @@ async def _delete_dns_records(cf: CloudflareSettings, *, domain: str, record_typ
     """
     try:
         async with AsyncCloudflare(api_token=cf.api_token) as client:
-            records = await client.dns.records.list(
+            records_response = await client.dns.records.list(
                 zone_id=cf.zone_id,
                 name=cast("CloudflareRecordName", domain),
                 type=record_type,
             )
+            records = getattr(records_response, "result", records_response)
+            if isinstance(records, Mapping):
+                records = records.get("result") or []
             if not records:
                 logger.info("No Cloudflare DNS %s records found for %s", record_type, domain)
                 return
             for record in records:
                 record_id = getattr(record, "id", None)
+                if record_id is None and isinstance(record, Mapping):
+                    record_id = record.get("id")
                 if not record_id:
-                    logger.warning("Skipping Cloudflare DNS record for %s with missing id", domain)
-                    continue
+                    raise CloudflareError(f"Cloudflare DNS record for {domain} missing id")
                 await client.dns.records.delete(zone_id=cf.zone_id, dns_record_id=record_id)
                 logger.info(
                     "Deleted Cloudflare DNS %s record %s (id=%s)",
