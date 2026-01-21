@@ -332,6 +332,7 @@ class BranchServiceStatus(str, Enum):
     RESUMING = "RESUMING", "Branch is resuming from hibernation and services are being restored."
     UNKNOWN = "UNKNOWN", "Branch status is currently indeterminate or unavailable."
     ERROR = "ERROR", "An internal error prevented the branch state from being determined."
+    RESIZING = "RESIZING", "A resize operation is currently in progress."
 
     def __new__(cls, value: str, description: str):
         obj = str.__new__(cls, value)
