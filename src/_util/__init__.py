@@ -29,11 +29,11 @@ PGBOUNCER_DEFAULT_RESERVE_POOL_SIZE: Final[int] = 0
 
 # FIXME: Increasing to have faster boot times.
 # Reduce min vcpu and memory when when the image is optimised and boot time is improved.
-VCPU_MILLIS_MIN = 2000  # in milli vCPU
+VCPU_MILLIS_MIN = 500  # in milli vCPU
 VCPU_MILLIS_MAX = 64000
 VCPU_MILLIS_STEP = 100
 
-MEMORY_MIN = 2 * GIB
+MEMORY_MIN = 1 * GIB
 MEMORY_MAX = 256 * GIB
 MEMORY_STEP = 128 * MIB  # 12.5% of 1 GiB
 AUTOSCALER_MEMORY_SLOT_SIZE_MIB = 512
