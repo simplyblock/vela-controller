@@ -454,7 +454,7 @@ async def monitor_resources():
 
                 for branch in branches:
                     status = await refresh_branch_status(branch.id)
-                    if status != BranchServiceStatus.ACTIVE_HEALTHY:
+                    if status not in [BranchServiceStatus.ACTIVE_HEALTHY, BranchServiceStatus.RESIZING]:
                         logger.debug(
                             "Skipping resource collection for branch %s with non-active status %s",
                             branch.id,
@@ -471,7 +471,7 @@ async def monitor_resources():
                     branch.store_resource_usage(usage)
 
                     status = await get_branch_status(branch.id)
-                    if status == BranchServiceStatus.ACTIVE_HEALTHY:
+                    if status in [BranchServiceStatus.ACTIVE_HEALTHY, BranchServiceStatus.RESIZING]:
                         prov_result = await db.execute(
                             select(BranchProvisioning).where(BranchProvisioning.branch_id == branch.id)
                         )

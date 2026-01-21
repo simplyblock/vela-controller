@@ -60,6 +60,7 @@ from .....models.branch import (
     BranchPgbouncerConfigUpdate,
     BranchPublic,
     BranchResizeService,
+    BranchResizeStatus,
     BranchResizeStatusEntry,
     BranchServiceStatus,
     BranchSourceDeploymentParameters,
@@ -109,8 +110,14 @@ _TRANSITIONAL_BRANCH_STATUSES: set[BranchServiceStatus] = {
     BranchServiceStatus.RESUMING,
     BranchServiceStatus.UPDATING,
     BranchServiceStatus.DELETING,
+    BranchServiceStatus.RESIZING,
 }
 _PROTECTED_BRANCH_STATUSES: set[BranchServiceStatus] = {BranchServiceStatus.PAUSED}
+_ACTIVE_RESIZE_STATUSES: set[BranchResizeStatus] = {
+    "PENDING",
+    "RESIZING",
+    "FILESYSTEM_RESIZE_PENDING",
+}
 
 
 def _parse_branch_status(value: BranchServiceStatus | str | None) -> BranchServiceStatus:
@@ -165,9 +172,14 @@ def _derive_branch_status_from_services(
 def _should_update_branch_status(
     current: BranchServiceStatus,
     derived: BranchServiceStatus,
+    resize_status: BranchResizeStatus,
 ) -> bool:
     if current == derived:
         return False
+    if current == BranchServiceStatus.RESIZING and resize_status in _ACTIVE_RESIZE_STATUSES:
+        # Keep the explicit RESIZING while a resize is still in progress
+        # unless we detect a hard failure.
+        return derived == BranchServiceStatus.ERROR
     if current == BranchServiceStatus.STARTING and derived == BranchServiceStatus.STOPPED:
         logger.debug("Ignoring STARTING -> STOPPED transition detected by branch status monitor")
         return False
@@ -219,7 +231,11 @@ async def refresh_branch_status(branch_id: Identifier) -> BranchServiceStatus:
             logger.exception("Failed to refresh service status for branch %s", branch.id)
             derived_status = BranchServiceStatus.UNKNOWN
 
-        if _should_update_branch_status(current_status, derived_status):
+        if _should_update_branch_status(
+            current_status,
+            derived_status,
+            resize_status=branch.resize_status,
+        ):
             branch.status = derived_status
             await session.commit()
             return derived_status
@@ -267,26 +283,6 @@ async def _branch_service_status(branch: Branch) -> BranchStatus:
         if not branch.enable_file_storage:
             status.storage = BranchServiceStatus.STOPPED
         return status
-
-
-async def _resolve_branch_status(
-    branch: Branch,
-    *,
-    service_status: BranchStatus | None = None,
-) -> BranchServiceStatus:
-    current_status = _parse_branch_status(branch.status)
-    if service_status is None:
-        service_status = await _branch_service_status(branch)
-
-    derived_status = _derive_branch_status_from_services(
-        service_status,
-        storage_enabled=branch.enable_file_storage,
-    )
-    if _should_update_branch_status(current_status, derived_status):
-        await _persist_branch_status(branch.id, derived_status)
-        branch.status = derived_status
-        return derived_status
-    return current_status
 
 
 _SERVICE_PROBE_TIMEOUT_SECONDS = 2
@@ -1785,6 +1781,7 @@ async def resize(
 
     branch_in_session.resize_statuses = updated_statuses
     branch_in_session.resize_status = aggregate_resize_statuses(updated_statuses)
+    branch_in_session.status = BranchServiceStatus.RESIZING
     await session.commit()
     return Response(status_code=202)
 
