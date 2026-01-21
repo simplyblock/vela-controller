@@ -422,6 +422,7 @@ async def _collect_branch_resource_usage(branch: Branch) -> ResourceUsageDefinit
         raise
 
     milli_vcpu, ram_bytes = compute_usage
+    nvme_bytes, iops, storage_bytes = 0, 0, None
     try:
         nvme_bytes, iops, storage_bytes = await _collect_branch_volume_usage(branch, namespace)
     except VelaSimplyblockAPIError as exc:
@@ -431,7 +432,6 @@ async def _collect_branch_resource_usage(branch: Branch) -> ResourceUsageDefinit
             namespace,
             exc,
         )
-        return None
 
     return ResourceUsageDefinition(
         milli_vcpu=milli_vcpu,
