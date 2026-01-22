@@ -38,6 +38,11 @@ from .....deployment import (
     update_branch_volume_iops,
 )
 from .....deployment._util import deployment_namespace
+from .....deployment.health import (
+    collect_branch_service_health,
+    derive_branch_status_from_services,
+    probe_service_socket,
+)
 from .....deployment.kubernetes._util import core_v1_client
 from .....deployment.kubernetes.neonvm import PowerState as NeonVMPowerState
 from .....deployment.kubernetes.neonvm import set_virtualmachine_power_state
@@ -145,30 +150,6 @@ async def _persist_branch_status(branch_id: Identifier, status: BranchServiceSta
         await session.commit()
 
 
-def _derive_branch_status_from_services(
-    service_status: BranchStatus,
-    *,
-    storage_enabled: bool,
-) -> BranchServiceStatus:
-    statuses: list[BranchServiceStatus] = [
-        service_status.database,
-        service_status.meta,
-        service_status.rest,
-    ]
-    if storage_enabled:
-        statuses.append(service_status.storage)
-
-    if all(status == BranchServiceStatus.ACTIVE_HEALTHY for status in statuses):
-        return BranchServiceStatus.ACTIVE_HEALTHY
-    if any(status == BranchServiceStatus.ERROR for status in statuses):
-        return BranchServiceStatus.ERROR
-    if all(status == BranchServiceStatus.STOPPED for status in statuses):
-        return BranchServiceStatus.STOPPED
-    if any(status == BranchServiceStatus.UNKNOWN for status in statuses):
-        return BranchServiceStatus.UNKNOWN
-    return BranchServiceStatus.ACTIVE_UNHEALTHY
-
-
 def _should_update_branch_status(
     current: BranchServiceStatus,
     derived: BranchServiceStatus,
@@ -219,11 +200,11 @@ async def refresh_branch_status(branch_id: Identifier) -> BranchServiceStatus:
         current_status = _parse_branch_status(branch.status)
         try:
             namespace, _ = get_autoscaler_vm_identity(branch.id)
-            service_status = await _collect_branch_service_health(
+            service_status = await collect_branch_service_health(
                 namespace,
                 storage_enabled=branch.enable_file_storage,
             )
-            derived_status = _derive_branch_status_from_services(
+            derived_status = derive_branch_status_from_services(
                 service_status,
                 storage_enabled=branch.enable_file_storage,
             )
@@ -276,7 +257,7 @@ _DEFAULT_SERVICE_STATUS = BranchStatus(
 async def _branch_service_status(branch: Branch) -> BranchStatus:
     namespace, _ = get_autoscaler_vm_identity(branch.id)
     try:
-        return await _collect_branch_service_health(namespace, storage_enabled=branch.enable_file_storage)
+        return await collect_branch_service_health(namespace, storage_enabled=branch.enable_file_storage)
     except Exception:  # pragma: no cover - defensive guard
         logging.exception("Failed to determine service health via socket probes")
         status = _DEFAULT_SERVICE_STATUS.model_copy(deep=True)
@@ -285,20 +266,11 @@ async def _branch_service_status(branch: Branch) -> BranchStatus:
         return status
 
 
-_SERVICE_PROBE_TIMEOUT_SECONDS = 2
 _PVC_TIMEOUT_SECONDS = float(600)
 _PVC_CLONE_TIMEOUT_SECONDS = float(10)
 _PVC_POLL_INTERVAL_SECONDS = float(2)
 _VOLUME_SNAPSHOT_CLASS = "simplyblock-csi-snapshotclass"
 
-_BRANCH_SERVICE_ENDPOINTS: dict[str, tuple[str, int]] = {
-    "database": ("db", 5432),
-    "pgbouncer": ("pgbouncer", 6432),
-    "storage": ("storage", 5000),
-    "meta": ("meta", 8080),
-    "rest": ("rest", 3000),
-    "pgexporter": ("pgexporter", 9187),
-}
 
 _PGBOUNCER_ADMIN_USER = "pgbouncer_admin"
 _PGBOUNCER_ADMIN_DATABASE = "pgbouncer"
@@ -644,64 +616,6 @@ async def _build_branch_entity(
     entity.database_password = deployment_params.database_password
     entity.pgbouncer_config = _default_pgbouncer_config()
     return entity
-
-
-async def _probe_service_socket(host: str, port: int, *, label: str) -> BranchServiceStatus:
-    try:
-        _reader, writer = await asyncio.wait_for(
-            asyncio.open_connection(host=host, port=port),
-            timeout=_SERVICE_PROBE_TIMEOUT_SECONDS,
-        )
-    except (TimeoutError, OSError):
-        logger.debug("Service %s unavailable at %s:%s", label, host, port)
-        return BranchServiceStatus.STOPPED
-    except Exception:  # pragma: no cover - defensive guard
-        logger.exception("Unexpected error probing service %s", label)
-        return BranchServiceStatus.UNKNOWN
-
-    writer.close()
-    try:
-        await writer.wait_closed()
-    except OSError:  # pragma: no cover - best effort socket cleanup
-        logger.debug("Failed to close probe socket for %s", label, exc_info=True)
-    return BranchServiceStatus.ACTIVE_HEALTHY
-
-
-async def _collect_branch_service_health(namespace: str, *, storage_enabled: bool) -> BranchStatus:
-    endpoints = {
-        label: (branch_service_name(component), port)
-        for label, (component, port) in _BRANCH_SERVICE_ENDPOINTS.items()
-        if storage_enabled or label != "storage"
-    }
-
-    probes = {
-        label: asyncio.create_task(
-            _probe_service_socket(
-                host=f"{service_name}.{namespace}.svc.cluster.local",
-                port=port,
-                label=label,
-            )
-        )
-        for label, (service_name, port) in endpoints.items()
-    }
-
-    results: dict[str, BranchServiceStatus] = {}
-    for label, task in probes.items():
-        try:
-            results[label] = await task
-        except Exception:  # pragma: no cover - unexpected failures
-            logger.exception("Service health probe failed for %s", label)
-            results[label] = BranchServiceStatus.UNKNOWN
-
-    return BranchStatus(
-        database=results["database"],
-        storage=results.get(
-            "storage",
-            BranchServiceStatus.STOPPED if not storage_enabled else BranchServiceStatus.UNKNOWN,
-        ),
-        meta=results["meta"],
-        rest=results["rest"],
-    )
 
 
 _PARAMETER_TO_SERVICE: dict[CapaResizeKey, BranchResizeService] = {
@@ -1607,7 +1521,7 @@ async def get_pgbouncer_config(
     config_snapshot = snapshot_pgbouncer_config(config)
 
     namespace, _ = get_autoscaler_vm_identity(branch.id)
-    pgbouncer_status = await _probe_service_socket(
+    pgbouncer_status = await probe_service_socket(
         host=_pgbouncer_host_for_namespace(namespace),
         port=_PGBOUNCER_SERVICE_PORT,
         label="pgbouncer",
