@@ -39,7 +39,7 @@ from ulid import ULID
 
 from ....api._util.resourcelimit import create_or_update_branch_provisioning
 from ....api.db import engine
-from ....deployment import deployment_branch
+from ....deployment import deployment_branch, get_autoscaler_vm_identity
 from ....exceptions import VelaDeploymentError, VelaKubernetesError
 from ....models.branch import (
     RESIZE_STATUS_PRIORITY,
@@ -50,6 +50,7 @@ from ....models.branch import (
     should_transition_resize_status,
 )
 from ....models.resources import ResourceLimitsPublic
+from ...health import collect_branch_service_health, derive_branch_status_from_services
 from .pvc_resize import (
     INITIAL_BACKOFF_SECONDS,
     VOLUME_SERVICE_MAP,
@@ -103,11 +104,11 @@ async def _apply_volume_status(
                 }
                 branch.resize_statuses = statuses
                 branch.resize_status = aggregate_resize_statuses(statuses)
-                set_branch_status(branch.resize_status, branch)
+                await set_branch_status(branch.resize_status, branch)
                 status_updated = True
         elif status is not None and should_transition_resize_status(branch.resize_status, status):
             branch.resize_status = status
-            set_branch_status(branch.resize_status, branch)
+            await set_branch_status(branch.resize_status, branch)
             status_updated = True
 
         if status_updated and status == "COMPLETED" and capacity is not None:
@@ -131,11 +132,19 @@ async def _apply_volume_status(
         await session.commit()
 
 
-def set_branch_status(status: BranchResizeStatus, branch: Branch) -> None:
+async def set_branch_status(status: BranchResizeStatus, branch: Branch) -> None:
     if status == "FAILED":
         branch.status = BranchServiceStatus.ERROR
     elif status == "COMPLETED":
-        branch.status = BranchServiceStatus.ACTIVE_HEALTHY
+        namespace, _ = get_autoscaler_vm_identity(branch.id)
+        service_status = await collect_branch_service_health(
+            namespace,
+            storage_enabled=branch.enable_file_storage,
+        )
+        branch.status = derive_branch_status_from_services(
+            service_status,
+            storage_enabled=branch.enable_file_storage,
+        )
 
 
 async def _handle_pvc_event(core_v1: CoreV1Api, event: CoreV1Event) -> None:
