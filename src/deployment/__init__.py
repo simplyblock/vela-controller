@@ -1281,5 +1281,13 @@ async def deploy_branch_environment(
         return_exceptions=True,
     )
 
-    if exceptions := [result for result in results if isinstance(result, Exception)]:
+    config_result, endpoint_result, grafana_result = results
+    if isinstance(grafana_result, Exception):
+        logger.error(
+            "Grafana object creation failed for organization_id=%s branch_id=%s",
+            organization_id,
+            branch_id,
+            exc_info=grafana_result,
+        )
+    if exceptions := [result for result in (config_result, endpoint_result) if isinstance(result, Exception)]:
         raise VelaDeployError("Failed operations during vela deployment", exceptions)
