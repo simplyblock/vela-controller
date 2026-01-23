@@ -3,7 +3,7 @@ import contextlib
 import logging
 import secrets
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal, TypedDict, cast
 from urllib.parse import urlsplit, urlunsplit
 
@@ -123,6 +123,7 @@ _ACTIVE_RESIZE_STATUSES: set[BranchResizeStatus] = {
     "RESIZING",
     "FILESYSTEM_RESIZE_PENDING",
 }
+_CREATING_STATUS_ERROR_GRACE_PERIOD = timedelta(minutes=5)
 
 
 def _parse_branch_status(value: BranchServiceStatus | str | None) -> BranchServiceStatus:
@@ -187,6 +188,21 @@ def _should_update_branch_status(
     return True
 
 
+def _adjust_derived_status_for_stuck_creation(
+    branch: Branch, current: BranchServiceStatus, derived: BranchServiceStatus
+) -> BranchServiceStatus:
+    if current == BranchServiceStatus.CREATING and derived == BranchServiceStatus.STOPPED:
+        elapsed = datetime.now(UTC) - branch.created_datetime
+        if elapsed >= _CREATING_STATUS_ERROR_GRACE_PERIOD:
+            logger.warning(
+                "Branch %s still CREATING after %s with STOPPED services; marking ERROR",
+                branch.id,
+                elapsed,
+            )
+            return BranchServiceStatus.ERROR
+    return derived
+
+
 async def refresh_branch_status(branch_id: Identifier) -> BranchServiceStatus:
     """
     Probe branch services, derive an overall lifecycle state, and persist it when appropriate.
@@ -211,6 +227,12 @@ async def refresh_branch_status(branch_id: Identifier) -> BranchServiceStatus:
         except Exception:
             logger.exception("Failed to refresh service status for branch %s", branch.id)
             derived_status = BranchServiceStatus.UNKNOWN
+
+        derived_status = _adjust_derived_status_for_stuck_creation(
+            branch,
+            current_status,
+            derived_status,
+        )
 
         if _should_update_branch_status(
             current_status,
