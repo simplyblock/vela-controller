@@ -152,6 +152,24 @@ async def _persist_branch_status(branch_id: Identifier, status: BranchServiceSta
         await session.commit()
 
 
+async def _cleanup_failed_branch_deployment(branch_id: Identifier) -> None:
+    """Best-effort cleanup when provisioning fails so allocations aren't stranded."""
+    try:
+        await delete_deployment(branch_id)
+    except Exception:
+        logger.exception("Failed to clean deployment resources for branch %s", branch_id)
+
+    try:
+        async with AsyncSessionLocal() as session:
+            try:
+                await delete_branch_provisioning(session, branch_id)
+            except Exception:
+                await session.rollback()
+                logger.exception("Failed to clean provisioning records for branch %s", branch_id)
+    except Exception:
+        logger.exception("Failed to initialize cleanup session for branch %s", branch_id)
+
+
 def _should_update_branch_status(
     current: BranchServiceStatus,
     derived: BranchServiceStatus,
@@ -775,6 +793,7 @@ async def _deploy_branch_environment_task(
         )
     except VelaError:
         await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
+        await _cleanup_failed_branch_deployment(branch_id)
         logging.exception(
             "Branch deployment failed for project_id=%s branch_id=%s branch_slug=%s",
             project_id,
@@ -819,6 +838,7 @@ async def _clone_branch_environment_task(
             )
         except VelaError:
             await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
+            await _cleanup_failed_branch_deployment(branch_id)
             logging.exception(
                 "Branch data clone failed for project_id=%s branch_id=%s branch_slug=%s",
                 project_id,
@@ -843,6 +863,7 @@ async def _clone_branch_environment_task(
         )
     except VelaError:
         await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
+        await _cleanup_failed_branch_deployment(branch_id)
         logging.exception(
             "Branch deployment (clone) failed for project_id=%s branch_id=%s branch_slug=%s",
             project_id,
@@ -890,6 +911,7 @@ async def _restore_branch_environment_task(
         )
     except VelaError:
         await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
+        await _cleanup_failed_branch_deployment(branch_id)
         logging.exception(
             "Branch restore failed for project_id=%s branch_id=%s branch_slug=%s using snapshot %s/%s",
             project_id,
@@ -916,6 +938,7 @@ async def _restore_branch_environment_task(
         )
     except VelaError:
         await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
+        await _cleanup_failed_branch_deployment(branch_id)
         logging.exception(
             "Branch deployment (restore) failed for project_id=%s branch_id=%s branch_slug=%s",
             project_id,
