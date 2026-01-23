@@ -956,7 +956,7 @@ async def _public(branch: Branch) -> BranchPublic:
                 )
             )
             .spec.ports[0]
-            .node_port
+            .port
         )
     except VelaKubernetesError:
         logger.error("Branch %s PgBouncer service is not ready yet", branch.id)
