@@ -88,7 +88,7 @@ pgbouncer:
     tag: "v1.24.1-p0"
   imagePullSecrets: []
   service:
-    type: ClusterIP
+    type: NodePort
     port: 6432
   resources:
     limits:
