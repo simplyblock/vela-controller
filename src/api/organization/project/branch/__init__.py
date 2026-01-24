@@ -955,13 +955,11 @@ async def _resolve_branch_db_port(branch_id: Identifier) -> int:
         if port is not None:
             return port
 
-    fallback_port = 0
     logger.error(
-        "Branch %s falling back to default database port %s",
+        "Retrieving public port for branch %s failed. Returning illegal port 0",
         branch_id,
-        fallback_port,
     )
-    return fallback_port
+    return 0
 
 
 def _service_endpoint_url(rest_endpoint: str | None, api_domain: str | None, db_host: str | None) -> str:
