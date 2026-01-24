@@ -955,7 +955,7 @@ async def _resolve_branch_db_port(branch_id: Identifier) -> int:
         if port is not None:
             return port
 
-    fallback_port = 6432
+    fallback_port = 0
     logger.error(
         "Branch %s falling back to default database port %s",
         branch_id,
