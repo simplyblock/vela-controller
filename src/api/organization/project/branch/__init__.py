@@ -933,6 +933,37 @@ def _ensure_service_port(url: str, port: int) -> str:
     return urlunsplit((split.scheme, netloc, split.path, split.query, split.fragment))
 
 
+async def _get_node_port(
+    branch_id: Identifier,
+    service_name: str,
+) -> int | None:
+    namespace = deployment_namespace(branch_id)
+    svc_name = branch_service_name(service_name)
+
+    try:
+        service = await kube_service.get_service(namespace, svc_name)
+        ports = service.spec.ports
+        return ports[0].node_port if ports else None
+    except (AttributeError, IndexError):
+        return None
+
+
+async def _resolve_branch_db_port(branch_id: Identifier) -> int:
+    # Support existing branches where vela-db is exposed as a NodePort service.
+    for service in ("pgbouncer", "db"):
+        port = await _get_node_port(branch_id, service)
+        if port is not None:
+            return port
+
+    fallback_port = 6432
+    logger.error(
+        "Branch %s falling back to default database port %s",
+        branch_id,
+        fallback_port,
+    )
+    return fallback_port
+
+
 def _service_endpoint_url(rest_endpoint: str | None, api_domain: str | None, db_host: str | None) -> str:
     if rest_endpoint:
         candidate = rest_endpoint.removesuffix("/rest")
@@ -947,19 +978,7 @@ async def _public(branch: Branch) -> BranchPublic:
     project = await branch.awaitable_attrs.project
 
     db_host = _resolve_db_host(branch) or ""
-    port = 6432
-    try:
-        port = (
-            (
-                await kube_service.get_service(
-                    namespace=deployment_namespace(branch.id), name=branch_service_name("pgbouncer")
-                )
-            )
-            .spec.ports[0]
-            .port
-        )
-    except VelaKubernetesError:
-        logger.error("Branch %s PgBouncer service is not ready yet", branch.id)
+    port = await _resolve_branch_db_port(branch.id)
 
     # pg-meta and pg are in the same network. So password is not required in connection string.
     connection_string = _build_connection_string(branch.database_user, "postgres", port)
