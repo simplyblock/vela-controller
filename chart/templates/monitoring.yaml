@@ -11,6 +11,18 @@ stringData:
 
 ---
 apiVersion: v1
+kind: Secret
+metadata:
+  name: vela-grafana-db-secret
+  namespace: {{ .Release.Namespace }}
+type: Opaque
+stringData:
+  GF_DATABASE_USER: "{{ .Values.monitoring.grafanaDatabase.user }}"
+  GF_DATABASE_PASSWORD: "{{ .Values.monitoring.grafanaDatabase.password }}"
+  GF_DATABASE_NAME: "{{ .Values.monitoring.grafanaDatabase.name }}"
+
+---
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: vela-grafana-datasource
@@ -64,6 +76,53 @@ spec:
         fsGroup: 472
         supplementalGroups:
           - 0
+      initContainers:
+{{ include "vela.waitForPostgresInitContainer" (dict "host" .Values.monitoring.grafanaDatabase.host "port" .Values.monitoring.grafanaDatabase.port) | nindent 8 }}
+        - name: configure-grafana-db
+          image: postgres:17-alpine
+          env:
+            - name: DB_HOST
+              value: "{{ .Values.monitoring.grafanaDatabase.host }}"
+            - name: DB_PORT
+              value: "{{ .Values.monitoring.grafanaDatabase.port | quote }}"
+            - name: DB_SUPERUSER
+              valueFrom:
+                secretKeyRef:
+                  name: database
+                  key: superuser-username
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: database
+                  key: superuser-password
+            - name: GRAFANA_DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: vela-grafana-db-secret
+                  key: GF_DATABASE_USER
+            - name: GRAFANA_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: vela-grafana-db-secret
+                  key: GF_DATABASE_PASSWORD
+            - name: GRAFANA_DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: vela-grafana-db-secret
+                  key: GF_DATABASE_NAME
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              PSQL="psql -h \"$DB_HOST\" -p \"$DB_PORT\" -U \"$DB_SUPERUSER\" -d postgres -v ON_ERROR_STOP=1"
+
+              $PSQL -tc "SELECT 1 FROM pg_roles WHERE rolname='${GRAFANA_DB_USER}'" | grep -q 1 || \
+                $PSQL -c "CREATE ROLE ${GRAFANA_DB_USER} LOGIN PASSWORD '${GRAFANA_DB_PASSWORD}'"
+
+              $PSQL -tc "SELECT 1 FROM pg_database WHERE datname='${GRAFANA_DB_NAME}'" | grep -q 1 || \
+                $PSQL -c "CREATE DATABASE ${GRAFANA_DB_NAME} OWNER ${GRAFANA_DB_USER}"
+
+              $PSQL -c "ALTER DATABASE ${GRAFANA_DB_NAME} OWNER TO ${GRAFANA_DB_USER}"
       containers:
         - name: grafana
           image: grafana/grafana:12.2.0
@@ -102,6 +161,27 @@ spec:
               value: "false"
             - name: "GF_AUTH_JWT_JWK_SET_URL" 
               value: "https://{{ .Values.domain }}:{{ .Values.port }}/auth/realms/vela/protocol/openid-connect/certs"
+            - name: GF_DATABASE_TYPE
+              value: "postgres"
+            - name: GF_DATABASE_HOST
+              value: "{{ printf \"%s:%v\" .Values.monitoring.grafanaDatabase.host .Values.monitoring.grafanaDatabase.port }}"
+            - name: GF_DATABASE_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: vela-grafana-db-secret
+                  key: GF_DATABASE_NAME
+            - name: GF_DATABASE_USER
+              valueFrom:
+                secretKeyRef:
+                  name: vela-grafana-db-secret
+                  key: GF_DATABASE_USER
+            - name: GF_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: vela-grafana-db-secret
+                  key: GF_DATABASE_PASSWORD
+            - name: GF_DATABASE_SSL_MODE
+              value: "{{ .Values.monitoring.grafanaDatabase.sslMode }}"
           volumeMounts:
             - name: datasource-config
               mountPath: /etc/grafana/provisioning/datasources

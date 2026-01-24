@@ -118,6 +118,12 @@ services:
       GF_AUTH_JWT_JWK_SET_URL: "https://caddy:8443/auth/realms/vela/protocol/openid-connect/certs"
       GF_AUTH_JWT_ALLOW_INSECURE_CERTIFICATE: "true"
       GF_AUTH_JWT_TLS_SKIP_VERIFY_INSECURE: "true"
+      GF_DATABASE_TYPE: "postgres"
+      GF_DATABASE_HOST: "database:5432"
+      GF_DATABASE_NAME: "grafana"
+      GF_DATABASE_USER: "grafana"
+      GF_DATABASE_PASSWORD: "grafana"
+      GF_DATABASE_SSL_MODE: "disable"
     user: "472:0" 
 
   caddy:

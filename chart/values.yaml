@@ -62,6 +62,13 @@ prometheus:
 monitoring:
   VELA_GRAFANA_SECURITY_ADMIN_USER: admin
   VELA_GRAFANA_SECURITY_ADMIN_PASSWORD: password
+  grafanaDatabase:
+    host: database
+    port: 5432
+    name: grafana
+    user: grafana
+    password: grafana
+    sslMode: disable
   
 studio:
   enabled: true

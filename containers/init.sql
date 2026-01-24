@@ -3,6 +3,11 @@ CREATE DATABASE keycloak OWNER keycloak;
 GRANT ALL PRIVILEGES ON DATABASE keycloak TO keycloak;
 ALTER ROLE keycloak SET search_path TO keycloak,public;
 
+CREATE USER grafana WITH PASSWORD 'grafana';
+CREATE DATABASE grafana OWNER grafana;
+GRANT ALL PRIVILEGES ON DATABASE grafana TO grafana;
+ALTER ROLE grafana SET search_path TO grafana,public;
+
 CREATE USER logflare WITH PASSWORD 'logflare';
 CREATE DATABASE logflare OWNER logflare;
 GRANT ALL PRIVILEGES ON DATABASE logflare TO logflare;
