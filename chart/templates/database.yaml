@@ -20,6 +20,14 @@ spec:
   instances: {{ .Values.database.replicas }}
   postgres:
     version: '{{ .Values.database.postgresVersion }}'
+    extensions:
+      - name: 'timescaledb-tsl'
+        version: '2.24.0'
+      - name: 'timescaledb_toolkit'
+  configurations:
+    postgres:
+      postgresql.conf:
+        shared_preload_libraries: pg_stat_statements, auto_explain, timescaledb
   pods:
     persistentVolume:
       size: '20Gi'
