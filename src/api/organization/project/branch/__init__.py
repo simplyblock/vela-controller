@@ -944,7 +944,7 @@ async def _get_node_port(
         service = await kube_service.get_service(namespace, svc_name)
         ports = service.spec.ports
         return ports[0].node_port if ports else None
-    except (AttributeError, IndexError):
+    except (VelaKubernetesError, AttributeError, IndexError):
         return None
 
 
