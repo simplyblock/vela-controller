@@ -124,6 +124,7 @@ _ACTIVE_RESIZE_STATUSES: set[BranchResizeStatus] = {
     "FILESYSTEM_RESIZE_PENDING",
 }
 _CREATING_STATUS_ERROR_GRACE_PERIOD = timedelta(minutes=5)
+_STARTING_STATUS_ERROR_GRACE_PERIOD = timedelta(minutes=5)
 
 
 def _parse_branch_status(value: BranchServiceStatus | str | None) -> BranchServiceStatus:
@@ -148,6 +149,7 @@ async def _persist_branch_status(branch_id: Identifier, status: BranchServiceSta
         if _parse_branch_status(branch.status) == status:
             return
         branch.status = status
+        branch.status_updated_at = datetime.now(UTC)
         await session.commit()
 
 
@@ -191,15 +193,28 @@ def _should_update_branch_status(
 def _adjust_derived_status_for_stuck_creation(
     branch: Branch, current: BranchServiceStatus, derived: BranchServiceStatus
 ) -> BranchServiceStatus:
-    if current == BranchServiceStatus.CREATING and derived == BranchServiceStatus.STOPPED:
-        elapsed = datetime.now(UTC) - branch.created_datetime
-        if elapsed >= _CREATING_STATUS_ERROR_GRACE_PERIOD:
-            logger.warning(
-                "Branch %s still CREATING after %s with STOPPED services; marking ERROR",
-                branch.id,
-                elapsed,
-            )
-            return BranchServiceStatus.ERROR
+    if derived != BranchServiceStatus.STOPPED:
+        return derived
+
+    status_timestamp = branch.status_updated_at or branch.created_datetime
+    elapsed = datetime.now(UTC) - status_timestamp
+
+    if current == BranchServiceStatus.CREATING and elapsed >= _CREATING_STATUS_ERROR_GRACE_PERIOD:
+        logger.warning(
+            "Branch %s still CREATING after %s with STOPPED services; marking ERROR",
+            branch.id,
+            elapsed,
+        )
+        return BranchServiceStatus.ERROR
+
+    if current == BranchServiceStatus.STARTING and elapsed >= _STARTING_STATUS_ERROR_GRACE_PERIOD:
+        logger.warning(
+            "Branch %s still STARTING after %s with STOPPED services; marking ERROR",
+            branch.id,
+            elapsed,
+        )
+        return BranchServiceStatus.ERROR
+
     return derived
 
 
@@ -240,6 +255,7 @@ async def refresh_branch_status(branch_id: Identifier) -> BranchServiceStatus:
             resize_status=branch.resize_status,
         ):
             branch.status = derived_status
+            branch.status_updated_at = datetime.now(UTC)
             await session.commit()
             return derived_status
 
@@ -609,6 +625,7 @@ async def _build_branch_entity(
             env_type=env_type,
             enable_file_storage=clone_parameters.enable_file_storage,
             status=BranchServiceStatus.CREATING,
+            status_updated_at=datetime.now(UTC),
             pitr_enabled=source.pitr_enabled,
         )
         entity.database_password = clone_parameters.database_password
@@ -633,6 +650,7 @@ async def _build_branch_entity(
         env_type=env_type,
         enable_file_storage=deployment_params.enable_file_storage,
         status=BranchServiceStatus.CREATING,
+        status_updated_at=datetime.now(UTC),
         pitr_enabled=parameters.pitr_enabled,
     )
     entity.database_password = deployment_params.database_password
@@ -1739,6 +1757,7 @@ async def resize(
     branch_in_session.resize_statuses = updated_statuses
     branch_in_session.resize_status = aggregate_resize_statuses(updated_statuses)
     branch_in_session.status = BranchServiceStatus.RESIZING
+    branch_in_session.status_updated_at = datetime.now(UTC)
     await session.commit()
     return Response(status_code=202)
 
@@ -1773,6 +1792,7 @@ _CONTROL_TRANSITION_FINAL: dict[str, BranchServiceStatus | None] = {
 
 async def _set_branch_status(session: SessionDep, branch: Branch, status: BranchServiceStatus):
     branch.status = status
+    branch.status_updated_at = datetime.now(UTC)
     await session.commit()
 
 
