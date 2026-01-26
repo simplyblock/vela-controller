@@ -184,7 +184,6 @@ data:
         endpoint: 'http://{{ .Values.loki.name }}.{{ .Values.loki.namespace }}.svc.cluster.local:3100'
         labels:
           branch_id: '{{ "{{" }} .branch_id {{ "}}" }}'
-          message_id: '{{ "{{" }} .message_id {{ "}}" }}'
           level: '{{ "{{" }} .level {{ "}}" }}'
           severity: '{{ "{{" }} .severity {{ "}}" }}'
           appname: '{{ "{{" }} .appname {{ "}}" }}'
