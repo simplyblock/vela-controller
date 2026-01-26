@@ -29,6 +29,7 @@ services. The design emphasizes:
 import asyncio
 import logging
 from contextlib import suppress
+from datetime import UTC, datetime
 from typing import Any, cast
 
 from kubernetes_asyncio.client import CoreV1Api
@@ -135,6 +136,7 @@ async def _apply_volume_status(
 async def set_branch_status(status: BranchResizeStatus, branch: Branch) -> None:
     if status == "FAILED":
         branch.status = BranchServiceStatus.ERROR
+        branch.status_updated_at = datetime.now(UTC)
     elif status == "COMPLETED":
         namespace, _ = get_autoscaler_vm_identity(branch.id)
         service_status = await collect_branch_service_health(
@@ -145,6 +147,7 @@ async def set_branch_status(status: BranchResizeStatus, branch: Branch) -> None:
             service_status,
             storage_enabled=branch.enable_file_storage,
         )
+        branch.status_updated_at = datetime.now(UTC)
 
 
 async def _handle_pvc_event(core_v1: CoreV1Api, event: CoreV1Event) -> None:

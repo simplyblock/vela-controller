@@ -34,7 +34,7 @@ from .._util.crypto import (
     encrypt_with_random_passphrase,
 )
 from ..deployment import DeploymentParameters
-from ._util import Model
+from ._util import DateTimeTZ, Model
 from .project import Project
 
 if TYPE_CHECKING:
@@ -94,6 +94,7 @@ class Branch(AsyncAttrs, Model, table=True):
         default="UNKNOWN",
         sa_column=Column(String(length=64), nullable=False, server_default="UNKNOWN"),
     )
+    status_updated_at: datetime | None = Field(default=None, sa_column=Column(DateTimeTZ(), nullable=True))
     jwt_secret: Annotated[str, Field(default=None, sa_column=Column(Text, nullable=True))]
     anon_key: Annotated[str, Field(default=None, sa_column=Column(Text, nullable=True))]
     service_key: Annotated[str, Field(default=None, sa_column=Column(Text, nullable=True))]
