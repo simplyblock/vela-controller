@@ -54,6 +54,14 @@ def _default_resource_usage_payload() -> dict[str, Any]:
 class Branch(AsyncAttrs, Model, table=True):
     DEFAULT_SLUG: ClassVar[Name] = "main"
 
+    def __init__(self, **data: Any):
+        status_value = data.get("status")
+        status_timestamp = data.get("status_updated_at")
+        super().__init__(**data)
+        if status_value is not None and status_timestamp is None:
+            # Force timestamp on initial construction when a status is provided.
+            self.set_status(status_value, force_timestamp=True)
+
     name: Name
     env_type: str | None = Field(default=None, sa_column=Column(String(255), nullable=True))
     project_id: Identifier = Model.foreign_key_field("project")
@@ -124,6 +132,20 @@ class Branch(AsyncAttrs, Model, table=True):
             iops=self.iops,
             storage_bytes=self.storage_size,
         )
+
+    def set_status(self, status: "BranchServiceStatus | str", *, force_timestamp: bool = False) -> None:
+        parsed_status: BranchServiceStatus
+        if isinstance(status, BranchServiceStatus):
+            parsed_status = status
+        else:
+            normalized = str(status)
+            member = BranchServiceStatus._value2member_map_.get(normalized)
+            parsed_status = member if isinstance(member, BranchServiceStatus) else BranchServiceStatus.UNKNOWN
+
+        if not force_timestamp and getattr(self, "status", None) == parsed_status:
+            return
+        self.status = parsed_status
+        self.status_updated_at = datetime.now(UTC)
 
     @property
     def database_password(self) -> str:

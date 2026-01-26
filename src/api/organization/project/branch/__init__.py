@@ -148,8 +148,7 @@ async def _persist_branch_status(branch_id: Identifier, status: BranchServiceSta
             return
         if _parse_branch_status(branch.status) == status:
             return
-        branch.status = status
-        branch.status_updated_at = datetime.now(UTC)
+        branch.set_status(status)
         await session.commit()
 
 
@@ -254,8 +253,7 @@ async def refresh_branch_status(branch_id: Identifier) -> BranchServiceStatus:
             derived_status,
             resize_status=branch.resize_status,
         ):
-            branch.status = derived_status
-            branch.status_updated_at = datetime.now(UTC)
+            branch.set_status(derived_status)
             await session.commit()
             return derived_status
 
@@ -1756,8 +1754,7 @@ async def resize(
 
     branch_in_session.resize_statuses = updated_statuses
     branch_in_session.resize_status = aggregate_resize_statuses(updated_statuses)
-    branch_in_session.status = BranchServiceStatus.RESIZING
-    branch_in_session.status_updated_at = datetime.now(UTC)
+    branch_in_session.set_status(BranchServiceStatus.RESIZING)
     await session.commit()
     return Response(status_code=202)
 
@@ -1791,8 +1788,7 @@ _CONTROL_TRANSITION_FINAL: dict[str, BranchServiceStatus | None] = {
 
 
 async def _set_branch_status(session: SessionDep, branch: Branch, status: BranchServiceStatus):
-    branch.status = status
-    branch.status_updated_at = datetime.now(UTC)
+    branch.set_status(status)
     await session.commit()
 
 
