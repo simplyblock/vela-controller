@@ -443,7 +443,10 @@ async def _collect_branch_resource_usage(branch: Branch) -> ResourceUsageDefinit
 
 
 async def monitor_resources():
+    interval = get_settings().resource_monitor_interval
+
     while True:
+        start = datetime.now()
         try:
             async with AsyncSessionLocal() as db:
                 ts_minute = datetime.now(UTC).replace(second=0, microsecond=0)
@@ -495,4 +498,8 @@ async def monitor_resources():
         except Exception:  # noqa: BLE001
             logger.exception("Error running metering monitor iteration")
 
-        await asyncio.sleep(get_settings().resource_monitor_interval)
+        elapsed = datetime.now() - start
+        if elapsed < interval:
+            await asyncio.sleep((interval - elapsed).total_seconds())
+        else:
+            logger.warning("Resource monitor execution exeeded desired interval")
