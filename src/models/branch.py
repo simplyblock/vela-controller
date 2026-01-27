@@ -133,7 +133,7 @@ class Branch(AsyncAttrs, Model, table=True):
             storage_bytes=self.storage_size,
         )
 
-    def set_status(self, status: "BranchServiceStatus | str", *, force_timestamp: bool = False) -> None:
+    def set_status(self, status: "BranchServiceStatus", *, force_timestamp: bool = False) -> None:
         parsed_status: BranchServiceStatus
         if isinstance(status, BranchServiceStatus):
             parsed_status = status
