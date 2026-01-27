@@ -1,12 +1,13 @@
 import asyncio
 import contextlib
 import logging
+import math
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from ..._util import Identifier, bytes_to_gb
+from ..._util import GIB, Identifier, quantity_to_bytes
 from ...exceptions import VelaKubernetesError
 from .. import (
     _POD_SECURITY_LABELS,
@@ -271,7 +272,9 @@ class _VolumeCloneOperation:
             branch_id=self.target_branch_id,
             volume_snapshot_name=snapshot_name,
         )
-        new_manifest.spec.resources.requests["storage"] = f"{bytes_to_gb(self.target_database_size)}G"
+        source_bytes = _storage_bytes_from_pvc(source_pvc) or 0
+        target_bytes = max(self.target_database_size, source_bytes)
+        new_manifest.spec.resources.requests["storage"] = _format_gib_quantity(target_bytes)
         new_manifest.spec.storage_class_name = self.storage_class_name
         if hasattr(new_manifest.spec, "storageClassName"):
             new_manifest.spec.storageClassName = self.storage_class_name
@@ -440,7 +443,9 @@ class _SnapshotRestoreOperation:
             branch_id=self.target_branch_id,
             volume_snapshot_name=self.ids.target_snapshot,
         )
-        new_manifest.spec.resources.requests["storage"] = f"{bytes_to_gb(self.target_database_size)}G"
+        source_bytes = _storage_bytes_from_pvc(source_pvc) or 0
+        target_bytes = max(self.target_database_size, source_bytes)
+        new_manifest.spec.resources.requests["storage"] = _format_gib_quantity(target_bytes)
         new_manifest.spec.storage_class_name = self.storage_class_name
         if hasattr(new_manifest.spec, "storageClassName"):
             new_manifest.spec.storageClassName = self.storage_class_name
@@ -566,3 +571,27 @@ async def restore_branch_database_volume_from_snapshot(
         ),
     )
     await operation.run()
+
+
+def _storage_bytes_from_pvc(pvc: Any) -> int | None:
+    """Resolve the effective storage capacity for a PVC in bytes."""
+    status_capacity = getattr(getattr(pvc, "status", None), "capacity", None) or {}
+    if isinstance(status_capacity, dict):
+        storage = status_capacity.get("storage")
+        if storage is not None:
+            resolved = quantity_to_bytes(storage)
+            if resolved is not None:
+                return resolved
+
+    resources = getattr(getattr(pvc, "spec", None), "resources", None)
+    requests = getattr(resources, "requests", None) or {}
+    requested = requests.get("storage")
+    if requested is not None:
+        return quantity_to_bytes(requested)
+    return None
+
+
+def _format_gib_quantity(bytes_value: int) -> str:
+    """Format a byte count as a GiB quantity string suitable for PVC requests."""
+    gib = max(1, math.ceil(bytes_value / GIB))
+    return f"{gib}Gi"
