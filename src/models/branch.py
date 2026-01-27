@@ -98,10 +98,7 @@ class Branch(AsyncAttrs, Model, table=True):
         default="UNKNOWN",
         sa_column=Column(String(length=64), nullable=False, server_default="UNKNOWN"),
     )
-    status_updated_at: datetime | None = Field(
-        default_factory=_utcnow,
-        sa_column=Column(DateTimeTZ(), nullable=True),
-    )
+    status_updated_at: datetime = Field(default_factory=_utcnow, sa_type=DateTimeTZ, nullable=False)
     jwt_secret: Annotated[str, Field(default=None, sa_column=Column(Text, nullable=True))]
     anon_key: Annotated[str, Field(default=None, sa_column=Column(Text, nullable=True))]
     service_key: Annotated[str, Field(default=None, sa_column=Column(Text, nullable=True))]

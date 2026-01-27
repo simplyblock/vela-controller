@@ -22,7 +22,15 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.add_column('branch', sa.Column('status_updated_at', sa.DateTime(timezone=True), nullable=True))
+    op.add_column(
+        'branch',
+        sa.Column(
+            'status_updated_at',
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text('now()'),
+        ),
+    )
 
 
 def downgrade() -> None:
