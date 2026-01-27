@@ -58,9 +58,9 @@ class Branch(AsyncAttrs, Model, table=True):
         status_value = data.get("status")
         status_timestamp = data.get("status_updated_at")
         super().__init__(**data)
-        if status_value is not None and status_timestamp is None:
-            # Force timestamp on initial construction when a status is provided.
-            self.set_status(status_value, force_timestamp=True)
+        if isinstance(status_value, BranchServiceStatus) and status_timestamp is None:
+            # Seed initial timestamp on construction when a status is present.
+            self.set_status(status_value)
 
     name: Name
     env_type: str | None = Field(default=None, sa_column=Column(String(255), nullable=True))
@@ -133,18 +133,11 @@ class Branch(AsyncAttrs, Model, table=True):
             storage_bytes=self.storage_size,
         )
 
-    def set_status(self, status: "BranchServiceStatus", *, force_timestamp: bool = False) -> None:
-        parsed_status: BranchServiceStatus
-        if isinstance(status, BranchServiceStatus):
-            parsed_status = status
-        else:
-            normalized = str(status)
-            member = BranchServiceStatus._value2member_map_.get(normalized)
-            parsed_status = member if isinstance(member, BranchServiceStatus) else BranchServiceStatus.UNKNOWN
-
-        if not force_timestamp and getattr(self, "status", None) == parsed_status:
+    def set_status(self, status: "BranchServiceStatus") -> None:
+        current = getattr(self, "status", None)
+        if current == status and self.status_updated_at is not None:
             return
-        self.status = parsed_status
+        self.status = status
         self.status_updated_at = datetime.now(UTC)
 
     @property
