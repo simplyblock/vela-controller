@@ -63,7 +63,7 @@ loki:
     retention_period: 168h # 7 days
 
     # stream-related limits
-    max_streams_per_user: 5000          # increase if you really need more
+    max_streams_per_user: 10000          # increase if you really need more
     max_global_streams_per_user: 0      # 0 = disabled global cap
 
   tracing:
