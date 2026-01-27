@@ -51,16 +51,12 @@ def _default_resource_usage_payload() -> dict[str, Any]:
     }
 
 
+def _utcnow() -> datetime:
+    return datetime.now(UTC)
+
+
 class Branch(AsyncAttrs, Model, table=True):
     DEFAULT_SLUG: ClassVar[Name] = "main"
-
-    def __init__(self, **data: Any):
-        status_value = data.get("status")
-        status_timestamp = data.get("status_updated_at")
-        super().__init__(**data)
-        if isinstance(status_value, BranchServiceStatus) and status_timestamp is None:
-            # Seed initial timestamp on construction when a status is present.
-            self.set_status(status_value)
 
     name: Name
     env_type: str | None = Field(default=None, sa_column=Column(String(255), nullable=True))
@@ -102,7 +98,10 @@ class Branch(AsyncAttrs, Model, table=True):
         default="UNKNOWN",
         sa_column=Column(String(length=64), nullable=False, server_default="UNKNOWN"),
     )
-    status_updated_at: datetime | None = Field(default=None, sa_column=Column(DateTimeTZ(), nullable=True))
+    status_updated_at: datetime | None = Field(
+        default_factory=_utcnow,
+        sa_column=Column(DateTimeTZ(), nullable=True),
+    )
     jwt_secret: Annotated[str, Field(default=None, sa_column=Column(Text, nullable=True))]
     anon_key: Annotated[str, Field(default=None, sa_column=Column(Text, nullable=True))]
     service_key: Annotated[str, Field(default=None, sa_column=Column(Text, nullable=True))]
