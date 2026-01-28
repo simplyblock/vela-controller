@@ -40,6 +40,7 @@ spec:
       services:
         ingress:
           type: LoadBalancer
+          externalTrafficPolicy: Local
     deployment:
       podTemplateSpec:
         spec:
