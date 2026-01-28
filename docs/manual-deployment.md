@@ -56,6 +56,12 @@ spec:
                   value: "256k"
                 - name: KONG_UNTRUSTED_LUA_SANDBOX_REQUIRES
                   value: "resty.jwt"
+                - name: KONG_TRUSTED_IPS
+                  value: "0.0.0.0/0"
+                - name: KONG_REAL_IP_HEADER
+                  value: "X-Forwarded-For"
+                - name: KONG_REAL_IP_RECURSIVE
+                  value: "on"
 EOF
 ```
 
