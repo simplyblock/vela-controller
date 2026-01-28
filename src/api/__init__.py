@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
 from pydantic import BaseModel
 
+from ..deployment.monitors.health import vm_monitor
 from ..deployment.monitors.resize import ResizeMonitor
 from ._util.resourcelimit import create_system_resource_limits
 from ._util.role import create_access_rights_if_emtpy
@@ -246,6 +247,7 @@ async def on_startup():
     asyncio.create_task(run_backup_monitor())
     asyncio.create_task(monitor_resources())
     _resize_monitor.start()
+    asyncio.create_task(vm_monitor.run())
 
 
 @app.on_event("shutdown")
