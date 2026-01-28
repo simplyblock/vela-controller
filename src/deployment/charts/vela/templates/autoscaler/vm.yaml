@@ -54,7 +54,7 @@ spec:
     - name: pgexporter
       port: 9187
       protocol: TCP
-    - name: pgbouncerexporter
+    - name: pgexporter2
       port: 9127
       protocol: TCP
     - name: rest
