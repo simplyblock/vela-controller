@@ -2,13 +2,22 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from pydantic import BaseModel, Field
+
 from .._util import Identifier, quantity_to_bytes
-from ..deployment import AUTOSCALER_PVC_SUFFIX, get_autoscaler_vm_identity
+from .._util.backup_config import (
+    SNAPSHOT_POLL_INTERVAL_SEC,
+    SNAPSHOT_TIMEOUT_SEC,
+    VOLUME_SNAPSHOT_CLASS,
+)
+from ..deployment import (
+    AUTOSCALER_PVC_SUFFIX,
+    get_autoscaler_vm_identity,
+)
 from ..deployment.kubernetes.snapshot import (
     create_snapshot_from_pvc,
     ensure_snapshot_absent,
@@ -21,12 +30,38 @@ from ..exceptions import VelaSnapshotTimeoutError
 if TYPE_CHECKING:
     from ulid import ULID
 
+    from ..models.backups import BackupEntry
+
 logger = logging.getLogger(__name__)
 
-SNAPSHOT_TIMEOUT_SEC = int(os.environ.get("SNAPSHOT_TIMEOUT_SEC", "120"))
-SNAPSHOT_POLL_INTERVAL_SEC = int(os.environ.get("SNAPSHOT_POLL_INTERVAL_SEC", "5"))
-
 _K8S_NAME_MAX_LENGTH = 63
+DEFAULT_SNAPSHOT_TIMEOUT_SEC = float(SNAPSHOT_TIMEOUT_SEC)
+DEFAULT_SNAPSHOT_POLL_INTERVAL_SEC = float(SNAPSHOT_POLL_INTERVAL_SEC)
+
+
+class SnapshotMetadata(BaseModel):
+    name: str = Field(..., min_length=1)
+    namespace: str = Field(..., min_length=1)
+    # content_name stays optional because there are runtime scenarios where the
+    # VolumeSnapshotContent hasn’t been bound yet
+    content_name: str | None
+
+
+def build_snapshot_metadata(backup: BackupEntry) -> SnapshotMetadata | None:
+    name = backup.snapshot_name
+    namespace = backup.snapshot_namespace
+    if not name or not namespace:
+        logger.debug(
+            "Skipping metadata for missing snapshot identifiers (name=%r namespace=%r)",
+            name,
+            namespace,
+        )
+        return None
+    return SnapshotMetadata(
+        name=name,
+        namespace=namespace,
+        content_name=backup.snapshot_content_name,
+    )
 
 
 @dataclass(frozen=True)
@@ -59,20 +94,18 @@ def _build_snapshot_name(*, label: str, backup_id: ULID) -> str:
     return f"{label_component}{separator}{backup_component}"
 
 
-async def create_branch_snapshot(
-    branch_id: Identifier,
+async def _create_snapshot_from_pvc(
     *,
+    namespace: str,
+    pvc_name: str,
     backup_id: ULID,
     snapshot_class: str,
-    poll_interval: float,
     label: str,
+    poll_interval: float,
     time_limit: float,
 ) -> SnapshotDetails:
-    namespace, autoscaler_vm_name = get_autoscaler_vm_identity(branch_id)
-    pvc_name = f"{autoscaler_vm_name}{AUTOSCALER_PVC_SUFFIX}"
     snapshot_name = _build_snapshot_name(label=label, backup_id=backup_id)
-
-    logger.info("Creating VolumeSnapshot %s/%s for branch %s", namespace, snapshot_name, branch_id)
+    logger.info("Creating VolumeSnapshot %s/%s for branch PVC %s", namespace, snapshot_name, pvc_name)
     try:
         async with asyncio.timeout(time_limit):
             await create_snapshot_from_pvc(
@@ -89,14 +122,14 @@ async def create_branch_snapshot(
             )
     except TimeoutError as exc:
         logger.exception(
-            "Timed out creating VolumeSnapshot %s/%s for branch %s within %s seconds",
+            "Timed out creating VolumeSnapshot %s/%s for PVC %s within %s seconds",
             namespace,
             snapshot_name,
-            branch_id,
+            pvc_name,
             time_limit,
         )
         raise VelaSnapshotTimeoutError(
-            f"Timed out creating VolumeSnapshot {namespace}/{snapshot_name} for branch {branch_id}"
+            f"Timed out creating VolumeSnapshot {namespace}/{snapshot_name} for namespace {namespace}"
         ) from exc
 
     status = snapshot.get("status") or {}
@@ -118,29 +151,43 @@ async def create_branch_snapshot(
     )
 
 
-async def delete_branch_snapshot(
+async def create_branch_db_snapshot(
+    branch_id: Identifier,
     *,
-    name: str | None,
-    namespace: str | None,
-    content_name: str | None,
-    time_limit: float = SNAPSHOT_TIMEOUT_SEC,
-    poll_interval: float = SNAPSHOT_POLL_INTERVAL_SEC,
-) -> None:
-    if not name or not namespace:
-        logger.debug(
-            "Skipping deletion for VolumeSnapshot with missing metadata (name=%s namespace=%s)",
-            name,
-            namespace,
-        )
-        return
+    backup_id: ULID,
+    snapshot_class: str = VOLUME_SNAPSHOT_CLASS,
+    poll_interval: float = DEFAULT_SNAPSHOT_POLL_INTERVAL_SEC,
+    label: str,
+    time_limit: float = DEFAULT_SNAPSHOT_TIMEOUT_SEC,
+) -> SnapshotDetails:
+    namespace, autoscaler_vm_name = get_autoscaler_vm_identity(branch_id)
+    pvc_name = f"{autoscaler_vm_name}{AUTOSCALER_PVC_SUFFIX}"
+    return await _create_snapshot_from_pvc(
+        namespace=namespace,
+        pvc_name=pvc_name,
+        backup_id=backup_id,
+        snapshot_class=snapshot_class,
+        poll_interval=poll_interval,
+        label=label,
+        time_limit=time_limit,
+    )
 
-    derived_content_name = content_name
+
+async def delete_snapshot(
+    metadata: SnapshotMetadata,
+    *,
+    time_limit: float = DEFAULT_SNAPSHOT_TIMEOUT_SEC,
+    poll_interval: float = DEFAULT_SNAPSHOT_POLL_INTERVAL_SEC,
+) -> None:
+    name = metadata.name
+    namespace = metadata.namespace
+    content_name = metadata.content_name
     try:
         async with asyncio.timeout(time_limit):
             snapshot = await read_snapshot(namespace, name)
             if snapshot is not None:
                 status = snapshot.get("status") or {}
-                derived_content_name = derived_content_name or status.get("boundVolumeSnapshotContentName")
+                content_name = content_name or status.get("boundVolumeSnapshotContentName")
                 logger.info("Deleting VolumeSnapshot %s/%s", namespace, name)
                 await ensure_snapshot_absent(
                     namespace,
@@ -151,10 +198,10 @@ async def delete_branch_snapshot(
             else:
                 logger.info("VolumeSnapshot %s/%s already absent", namespace, name)
 
-            if derived_content_name:
-                logger.info("Ensuring VolumeSnapshotContent %s is absent", derived_content_name)
+            if content_name:
+                logger.info("Ensuring VolumeSnapshotContent %s is absent", content_name)
                 await ensure_snapshot_content_absent(
-                    derived_content_name,
+                    content_name,
                     timeout=time_limit,
                     poll_interval=poll_interval,
                 )

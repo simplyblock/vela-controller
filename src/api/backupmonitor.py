@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlmodel import SQLModel, asc, delete, select
 from ulid import ULID
 
+from .._util.backup_config import SNAPSHOT_POLL_INTERVAL_SEC, SNAPSHOT_TIMEOUT_SEC, VOLUME_SNAPSHOT_CLASS
 from ..models.backups import (
     BackupEntry,
     BackupLog,
@@ -21,10 +22,9 @@ from ..models.branch import Branch, BranchServiceStatus
 from ..models.organization import Organization
 from ..models.project import Project
 from .backup_snapshots import (
-    SNAPSHOT_POLL_INTERVAL_SEC,
-    SNAPSHOT_TIMEOUT_SEC,
-    create_branch_snapshot,
-    delete_branch_snapshot,
+    build_snapshot_metadata,
+    create_branch_db_snapshot,
+    delete_snapshot,
 )
 from .organization.project.branch import refresh_branch_status
 from .settings import get_settings
@@ -32,7 +32,6 @@ from .settings import get_settings
 # ---------------------------
 # Config
 # ---------------------------
-VOLUME_SNAPSHOT_CLASS = os.environ.get("VOLUME_SNAPSHOT_CLASS", "simplyblock-csi-snapshotclass")
 POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", "60"))
 
 logger = logging.getLogger(__name__)
@@ -204,11 +203,15 @@ class BackupMonitor:
 
         deleted_ids: list[ULID] = []
         for backup in backups:
+            metadata = build_snapshot_metadata(backup)
+            if metadata is None:
+                logger.warning("Skipping snapshot deletion for backup %s because metadata was incomplete", backup.id)
+                continue
             try:
-                await delete_branch_snapshot(
-                    name=backup.snapshot_name,
-                    namespace=backup.snapshot_namespace,
-                    content_name=backup.snapshot_content_name,
+                await delete_snapshot(
+                    metadata,
+                    time_limit=SNAPSHOT_TIMEOUT_SEC,
+                    poll_interval=SNAPSHOT_POLL_INTERVAL_SEC,
                 )
             except Exception:
                 context = {
@@ -303,13 +306,11 @@ class BackupMonitor:
         backup_id = ULID()
 
         try:
-            snapshot = await create_branch_snapshot(
+            snapshot = await create_branch_db_snapshot(
                 branch.id,
                 backup_id=backup_id,
                 snapshot_class=VOLUME_SNAPSHOT_CLASS,
-                poll_interval=SNAPSHOT_POLL_INTERVAL_SEC,
                 label=f"row-{row.row_index}",
-                time_limit=SNAPSHOT_TIMEOUT_SEC,
             )
         except Exception:
             nb.next_at = next_due
