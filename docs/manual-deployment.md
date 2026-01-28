@@ -205,6 +205,8 @@ spec:
   podMetricsEndpoints:
     - targetPort: 9187
       interval: 30s
+    - targetPort: 9127
+      interval: 30s
 EOF
 ```
 
