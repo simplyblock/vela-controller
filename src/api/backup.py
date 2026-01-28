@@ -33,11 +33,7 @@ from ..models.organization import Organization
 from ..models.project import Project
 from ._util.backups import _remove_existing_schedule, _validate_project_retention_budget
 from .auth import authenticated_user
-from .backup_snapshots import (
-    SNAPSHOT_POLL_INTERVAL_SEC,
-    create_branch_snapshot,
-    delete_branch_snapshot,
-)
+from .backup_snapshots import build_snapshot_metadata, create_branch_db_snapshot, delete_snapshot
 from .db import SessionDep
 from .dependencies import OrganizationDep
 
@@ -46,7 +42,6 @@ router = APIRouter(dependencies=[Depends(authenticated_user)], tags=["backup"])
 # ---------------------------
 # Constants
 # ---------------------------
-VOLUME_SNAPSHOT_CLASS = os.environ.get("VOLUME_SNAPSHOT_CLASS", "simplyblock-csi-snapshotclass")
 MANUAL_BACKUP_TIMEOUT_SEC = int(os.environ.get("MANUAL_BACKUP_TIMEOUT_SEC", "10"))
 
 UNIT_MULTIPLIER = {
@@ -539,13 +534,10 @@ async def manual_backup(session: SessionDep, branch_id: Identifier) -> BackupCre
     recorded_at = datetime.now(UTC)
 
     try:
-        snapshot = await create_branch_snapshot(
+        snapshot = await create_branch_db_snapshot(
             branch.id,
             backup_id=backup_id,
-            snapshot_class=VOLUME_SNAPSHOT_CLASS,
-            poll_interval=SNAPSHOT_POLL_INTERVAL_SEC,
             label="manual",
-            time_limit=MANUAL_BACKUP_TIMEOUT_SEC,
         )
     except Exception as exc:
         logger.exception("Manual backup failed for branch %s within timeout", branch.id)
@@ -586,15 +578,13 @@ async def delete_backup(session: SessionDep, backup_id: Identifier) -> BackupDel
     if not backup:
         raise HTTPException(status_code=404, detail="Backup not found")
 
-    try:
-        await delete_branch_snapshot(
-            name=backup.snapshot_name,
-            namespace=backup.snapshot_namespace,
-            content_name=backup.snapshot_content_name,
-        )
-    except Exception as exc:
-        logger.exception("Failed to delete snapshot for backup %s", backup_id)
-        raise HTTPException(status_code=500, detail="Failed to delete backup snapshot") from exc
+    metadata = build_snapshot_metadata(backup)
+    if metadata is not None:
+        try:
+            await delete_snapshot(metadata)
+        except Exception as exc:
+            logger.exception("Failed to delete snapshot for backup %s", backup_id)
+            raise HTTPException(status_code=500, detail="Failed to delete backup snapshot") from exc
 
     await session.delete(backup)
 
