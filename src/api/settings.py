@@ -1,9 +1,11 @@
 from datetime import timedelta
 from functools import lru_cache
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import HttpUrl, PostgresDsn
+from pydantic import BeforeValidator, HttpUrl, PostgresDsn
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from .._util import permissive_numeric_timedelta
 
 
 class Settings(BaseSettings):
@@ -25,7 +27,9 @@ class Settings(BaseSettings):
     system_limit_storage_size: int
     system_limit_database_size: int
     log_level: Literal["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"] = "INFO"
-    resource_monitor_interval: timedelta = timedelta(60)
+    resource_monitor_interval: Annotated[timedelta, BeforeValidator(permissive_numeric_timedelta)] = timedelta(
+        seconds=60
+    )
 
 
 @lru_cache

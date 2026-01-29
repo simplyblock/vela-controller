@@ -249,3 +249,19 @@ def quantity_to_bytes(value: str | Decimal | None) -> int | None:
         return None
 
     return int(quantity)
+
+
+def permissive_numeric_timedelta(value: Any) -> Any:
+    """Parses the given value into timedelta
+
+    Defers to base-pydantic handling, but parses the value into int or float if
+    applicable, s.t. they are interpreted as seconds.
+    """
+    if isinstance(value, str):
+        try:
+            return int(value)
+            return float(value)
+        except ValueError:
+            pass
+
+    return value
