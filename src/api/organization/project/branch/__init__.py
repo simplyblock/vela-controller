@@ -230,10 +230,7 @@ async def refresh_branch_status(branch_id: Identifier) -> BranchServiceStatus:
         current_status = _parse_branch_status(branch.status)
         try:
             namespace, _ = get_autoscaler_vm_identity(branch.id)
-            service_status = await collect_branch_service_health(
-                namespace,
-                storage_enabled=branch.enable_file_storage,
-            )
+            service_status = await collect_branch_service_health(branch_id)
             derived_status = derive_branch_status_from_services(
                 service_status,
                 storage_enabled=branch.enable_file_storage,
@@ -288,18 +285,6 @@ _DEFAULT_SERVICE_STATUS = BranchStatus(
     meta=BranchServiceStatus.UNKNOWN,
     rest=BranchServiceStatus.UNKNOWN,
 )
-
-
-async def _branch_service_status(branch: Branch) -> BranchStatus:
-    namespace, _ = get_autoscaler_vm_identity(branch.id)
-    try:
-        return await collect_branch_service_health(namespace, storage_enabled=branch.enable_file_storage)
-    except Exception:  # pragma: no cover - defensive guard
-        logging.exception("Failed to determine service health via socket probes")
-        status = _DEFAULT_SERVICE_STATUS.model_copy(deep=True)
-        if not branch.enable_file_storage:
-            status.storage = BranchServiceStatus.STOPPED
-        return status
 
 
 _PVC_TIMEOUT_SECONDS = float(600)
@@ -1443,7 +1428,7 @@ async def status(
     branch: BranchDep,
 ) -> BranchStatusPublic:
     normalized_resize_statuses = _normalize_resize_statuses(branch)
-    service_status = await _branch_service_status(branch)
+    service_status = await collect_branch_service_health(branch.id)
     return BranchStatusPublic(
         resize_status=branch.resize_status,
         resize_statuses=normalized_resize_statuses,

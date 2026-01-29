@@ -39,7 +39,7 @@ from ulid import ULID
 
 from ....api._util.resourcelimit import create_or_update_branch_provisioning
 from ....api.db import engine
-from ....deployment import deployment_branch, get_autoscaler_vm_identity
+from ....deployment import deployment_branch
 from ....exceptions import VelaDeploymentError, VelaKubernetesError
 from ....models.branch import (
     RESIZE_STATUS_PRIORITY,
@@ -135,11 +135,7 @@ async def set_branch_status(status: BranchResizeStatus, branch: Branch) -> None:
     if status not in {"FAILED", "COMPLETED"}:
         return
 
-    namespace, _ = get_autoscaler_vm_identity(branch.id)
-    service_status = await collect_branch_service_health(
-        namespace,
-        storage_enabled=branch.enable_file_storage,
-    )
+    service_status = await collect_branch_service_health(branch.id)
     branch.set_status(
         derive_branch_status_from_services(
             service_status,

@@ -1,8 +1,9 @@
 import asyncio
 import logging
 
+from .._util import Identifier
 from ..models.branch import BranchServiceStatus, BranchStatus
-from . import branch_service_name
+from .monitors.health import vm_monitor
 
 logger = logging.getLogger(__name__)
 
@@ -63,38 +64,22 @@ async def probe_service_socket(host: str, port: int, *, label: str) -> BranchSer
     return BranchServiceStatus.ACTIVE_HEALTHY
 
 
-async def collect_branch_service_health(namespace: str, *, storage_enabled: bool) -> BranchStatus:
-    endpoints = {
-        label: (branch_service_name(component), port)
-        for label, (component, port) in BRANCH_SERVICE_ENDPOINTS.items()
-        if storage_enabled or label != "storage"
-    }
-
-    probes = {
-        label: asyncio.create_task(
-            probe_service_socket(
-                host=f"{service_name}.{namespace}.svc.cluster.local",
-                port=port,
-                label=label,
-            )
+async def collect_branch_service_health(id_: Identifier) -> BranchStatus:
+    status = vm_monitor.status(id_)
+    if status is None or status.services is None:
+        return BranchStatus(
+            database=BranchServiceStatus.UNKNOWN,
+            storage=BranchServiceStatus.UNKNOWN,
+            meta=BranchServiceStatus.UNKNOWN,
+            rest=BranchServiceStatus.UNKNOWN,
         )
-        for label, (service_name, port) in endpoints.items()
-    }
 
-    results: dict[str, BranchServiceStatus] = {}
-    for label, task in probes.items():
-        try:
-            results[label] = await task
-        except Exception:  # pragma: no cover - unexpected failures
-            logger.exception("Service health probe failed for %s", label)
-            results[label] = BranchServiceStatus.UNKNOWN
-
+    services = status.services
     return BranchStatus(
-        database=results["database"],
-        storage=results.get(
-            "storage",
-            BranchServiceStatus.STOPPED if not storage_enabled else BranchServiceStatus.UNKNOWN,
-        ),
-        meta=results["meta"],
-        rest=results["rest"],
+        database=BranchServiceStatus.ACTIVE_HEALTHY if services.get("postgres", False) else BranchServiceStatus.STOPPED,
+        storage=BranchServiceStatus.ACTIVE_HEALTHY
+        if services.get("storageapi", False)
+        else BranchServiceStatus.STOPPED,
+        meta=BranchServiceStatus.ACTIVE_HEALTHY if services.get("meta", False) else BranchServiceStatus.STOPPED,
+        rest=BranchServiceStatus.ACTIVE_HEALTHY if services.get("rest", False) else BranchServiceStatus.STOPPED,
     )
