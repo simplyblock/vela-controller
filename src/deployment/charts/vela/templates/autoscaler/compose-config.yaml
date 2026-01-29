@@ -35,6 +35,7 @@ data:
     query_wait_timeout = {{ $pgbouncerConfig.query_wait_timeout | default 30 }}
     server_idle_timeout = {{ $pgbouncerConfig.server_idle_timeout | default 60 }}
     server_lifetime = {{ $pgbouncerConfig.server_lifetime | default 600 }}
+    ignore_startup_parameters = extra_float_digits
     log_connections = 1
     log_disconnections = 1
     admin_users = pgbouncer_admin
