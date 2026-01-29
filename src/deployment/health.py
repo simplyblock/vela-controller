@@ -1,4 +1,3 @@
-import asyncio
 import logging
 
 from .._util import Identifier
@@ -41,27 +40,6 @@ def derive_branch_status_from_services(
     if any(status == BranchServiceStatus.UNKNOWN for status in statuses):
         return BranchServiceStatus.UNKNOWN
     return BranchServiceStatus.ACTIVE_UNHEALTHY
-
-
-async def probe_service_socket(host: str, port: int, *, label: str) -> BranchServiceStatus:
-    try:
-        _reader, writer = await asyncio.wait_for(
-            asyncio.open_connection(host=host, port=port),
-            timeout=SERVICE_PROBE_TIMEOUT_SECONDS,
-        )
-    except (TimeoutError, OSError):
-        logger.debug("Service %s unavailable at %s:%s", label, host, port)
-        return BranchServiceStatus.STOPPED
-    except Exception:  # pragma: no cover - defensive guard
-        logger.exception("Unexpected error probing service %s", label)
-        return BranchServiceStatus.UNKNOWN
-
-    writer.close()
-    try:
-        await writer.wait_closed()
-    except OSError:  # pragma: no cover - best effort socket cleanup
-        logger.debug("Failed to close probe socket for %s", label, exc_info=True)
-    return BranchServiceStatus.ACTIVE_HEALTHY
 
 
 async def collect_branch_service_health(id_: Identifier) -> BranchStatus:

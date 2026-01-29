@@ -41,7 +41,6 @@ from .....deployment._util import deployment_namespace
 from .....deployment.health import (
     collect_branch_service_health,
     derive_branch_status_from_services,
-    probe_service_socket,
 )
 from .....deployment.kubernetes._util import core_v1_client
 from .....deployment.kubernetes.neonvm import PowerState as NeonVMPowerState
@@ -1587,16 +1586,8 @@ async def get_pgbouncer_config(
     config = await branch.awaitable_attrs.pgbouncer_config
     config_snapshot = snapshot_pgbouncer_config(config)
 
-    namespace, _ = get_autoscaler_vm_identity(branch.id)
-    pgbouncer_status = await probe_service_socket(
-        host=_pgbouncer_host_for_namespace(namespace),
-        port=_PGBOUNCER_SERVICE_PORT,
-        label="pgbouncer",
-    )
-
     return BranchPgbouncerConfigStatus(
         pgbouncer_enabled=config is not None,
-        pgbouncer_status=pgbouncer_status,
         pool_mode="transaction",
         max_client_conn=config_snapshot["max_client_conn"],
         default_pool_size=config_snapshot["default_pool_size"],
@@ -1660,7 +1651,6 @@ async def update_pgbouncer_config(
 
     return BranchPgbouncerConfigStatus(
         pgbouncer_enabled=True,
-        pgbouncer_status="RELOADING",
         pool_mode="transaction",
         max_client_conn=config.max_client_conn,
         default_pool_size=config.default_pool_size,
