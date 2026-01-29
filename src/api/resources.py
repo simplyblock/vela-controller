@@ -4,6 +4,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from kubernetes_asyncio.client.exceptions import ApiException
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -372,7 +373,10 @@ async def _resolve_volume_stats(
     volume_uuid, _ = await volume_identifier_resolver(namespace)
 
     async with create_simplyblock_api() as sb_api:
-        return await sb_api.volume_iostats(volume_uuid=volume_uuid)
+        try:
+            return await sb_api.volume_iostats(volume_uuid=volume_uuid)
+        except httpx.HTTPStatusError as exc:
+            raise VelaSimplyblockAPIError(f"Failed to fetch iostats for volume {volume_uuid}: {exc}") from exc
 
 
 async def _collect_database_volume_usage(namespace: str) -> tuple[int, int]:
