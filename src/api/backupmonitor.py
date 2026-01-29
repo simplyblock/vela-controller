@@ -325,6 +325,7 @@ class BackupMonitor:
             row_index=row.row_index,
             created_at=created_at,
             size_bytes=snapshot.size_bytes or 0,
+            used_size_bytes=snapshot.used_size_bytes or 0,
             snapshot_name=snapshot.name,
             snapshot_namespace=snapshot.namespace,
             snapshot_content_name=snapshot.content_name,

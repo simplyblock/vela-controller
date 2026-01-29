@@ -5,7 +5,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from .._util import Identifier, quantity_to_bytes
 from ..deployment import AUTOSCALER_PVC_SUFFIX, get_autoscaler_vm_identity
@@ -14,8 +14,10 @@ from ..deployment.kubernetes.snapshot import (
     ensure_snapshot_absent,
     ensure_snapshot_content_absent,
     read_snapshot,
+    read_snapshot_content,
     wait_snapshot_ready,
 )
+from ..deployment.simplyblock_api import create_simplyblock_api
 from ..exceptions import VelaSnapshotTimeoutError
 
 if TYPE_CHECKING:
@@ -35,6 +37,7 @@ class SnapshotDetails:
     namespace: str
     content_name: str | None
     size_bytes: int | None
+    used_size_bytes: int | None
 
 
 def _sanitize_label(label: str) -> str:
@@ -102,12 +105,18 @@ async def create_branch_snapshot(
     status = snapshot.get("status") or {}
     content_name = status.get("boundVolumeSnapshotContentName")
     size_bytes = quantity_to_bytes(status.get("restoreSize"))
+    try:
+        used_size_bytes = await _snapshot_used_size(content_name)
+    except Exception:
+        logger.exception("Failed to derive used_size for snapshot %s/%s", namespace, snapshot_name)
+        used_size_bytes = None
     logger.info(
-        "VolumeSnapshot %s/%s ready (content=%s size_bytes=%s)",
+        "VolumeSnapshot %s/%s ready (content=%s size_bytes=%s used_size_bytes=%s)",
         namespace,
         snapshot_name,
         content_name,
         size_bytes,
+        used_size_bytes,
     )
 
     return SnapshotDetails(
@@ -115,6 +124,7 @@ async def create_branch_snapshot(
         namespace=namespace,
         content_name=content_name,
         size_bytes=size_bytes,
+        used_size_bytes=used_size_bytes,
     )
 
 
@@ -166,3 +176,23 @@ async def delete_branch_snapshot(
             time_limit,
         )
         raise
+
+
+async def _snapshot_used_size(content_name: str | None) -> int:
+    if content_name is None:
+        raise ValueError("vollume snapshot content_name empty")
+
+    content = await read_snapshot_content(content_name)
+    snapshot_handle = (content or {}).get("status", {}).get("snapshotHandle")
+    if not snapshot_handle:
+        raise ValueError("snapshotHandle missing")
+
+    snapshot_uuid = snapshot_handle.split(":")[1]
+
+    async with create_simplyblock_api() as sb_api:
+        details = await sb_api.snapshot_details(snapshot_uuid)
+
+    used_size: Any = details.get("used_size")
+    if not isinstance(used_size, (int, float)):
+        raise ValueError("used_size missing or not numeric")
+    return int(used_size)

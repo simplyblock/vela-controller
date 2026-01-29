@@ -557,6 +557,7 @@ async def manual_backup(session: SessionDep, branch_id: Identifier) -> BackupCre
         row_index=-1,  # -1 for manual backup
         created_at=recorded_at,
         size_bytes=snapshot.size_bytes or 0,
+        used_size_bytes=snapshot.used_size_bytes or 0,
         snapshot_name=snapshot.name,
         snapshot_namespace=snapshot.namespace,
         snapshot_content_name=snapshot.content_name,

@@ -116,6 +116,13 @@ class SimplyblockApi:
         )
         response.raise_for_status()
 
+    async def snapshot_details(self, snapshot_uuid: str) -> dict[str, Any]:
+        base_url = await self._cluster_pool_base()
+        url = f"{base_url}/snapshots/{snapshot_uuid}/"
+        response = await self._client.get(url, headers=self._headers(), timeout=self._timeout)
+        response.raise_for_status()
+        return response.json()
+
 
 @asynccontextmanager
 async def create_simplyblock_api(
