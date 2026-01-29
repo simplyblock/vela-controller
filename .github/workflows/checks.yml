@@ -68,6 +68,9 @@ jobs:
         python-version: '3.13'
         cache: 'pip'
 
+    - name: Cache mypy cache
+      uses: AustinScola/mypy-cache-github-action@v1
+
     - name: Install type checker
       run: pip install mypy .
 
