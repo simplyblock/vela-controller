@@ -2,7 +2,7 @@ from typing import Any, Literal
 
 from aiohttp.client_exceptions import ClientError
 from kubernetes_asyncio.client.exceptions import ApiException
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from ..._util import quantity_to_bytes, quantity_to_milli_cpu
 from ...exceptions import VelaKubernetesError
@@ -49,8 +49,8 @@ class CamelModel(BaseModel):
 
 class NeonVMStatus(CamelModel):
     phase: str
-    pod_name: str = Field(default="", alias="podName")
-    extra_net_ip: str | None = Field(default=None, alias="extraNetIP")
+    pod_name: str = ""
+    extra_net_ip: str | None = None
 
 
 class GuestCPUs(CamelModel):
@@ -92,7 +92,7 @@ class MemorySlots(CamelModel):
 class Guest(CamelModel):
     cpus: GuestCPUs
     memory_slots: MemorySlots
-    memory_slot_size: Any = Field(alias="memorySlotSize")
+    memory_slot_size: Any
 
     @property
     def slot_size_bytes(self) -> int:
@@ -100,7 +100,7 @@ class Guest(CamelModel):
 
 
 class NeonVMSpec(CamelModel):
-    power_state: PowerState = Field(alias="powerState")
+    power_state: PowerState
     guest: Guest
 
 
