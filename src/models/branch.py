@@ -317,7 +317,6 @@ class BranchPgbouncerConfigUpdate(BaseModel):
 
 class BranchPgbouncerConfigStatus(BaseModel):
     pgbouncer_enabled: bool
-    pgbouncer_status: Annotated[str, PydanticField(min_length=1)]
     pool_mode: Annotated[str, PydanticField(min_length=1)]
     max_client_conn: int | None = None
     default_pool_size: int
