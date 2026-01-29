@@ -1,8 +1,9 @@
+from enum import Enum
 from typing import Any, Literal
 
 from aiohttp.client_exceptions import ClientError
 from kubernetes_asyncio.client.exceptions import ApiException
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from ..._util import quantity_to_bytes, quantity_to_milli_cpu
 from ...exceptions import VelaKubernetesError
@@ -47,9 +48,20 @@ class CamelModel(BaseModel):
     model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
 
 
+class Phase(Enum):
+    running = "Running"
+    pre_migrating = "PreMigrating"
+    migrating = "Migrating"
+    scaling = "Scaling"
+    pending = "Pending"
+    succeeded = "Succeeded"
+    failed = "Failed"
+
+
 class NeonVMStatus(CamelModel):
-    phase: str
+    phase: Phase
     pod_name: str = ""
+    pod_ip: str | None = Field(default=None, alias="podIP")
     extra_net_ip: str | None = None
 
 
@@ -89,10 +101,17 @@ class MemorySlots(CamelModel):
         return _require_int(self.max, "guest.memorySlots.max")
 
 
+class Port(CamelModel):
+    name: str
+    port: int
+    protocol: Literal["TCP", "UDP"]
+
+
 class Guest(CamelModel):
     cpus: GuestCPUs
     memory_slots: MemorySlots
     memory_slot_size: Any
+    ports: list[Port]
 
     @property
     def slot_size_bytes(self) -> int:

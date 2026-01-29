@@ -2,11 +2,12 @@ import asyncio
 import logging
 import re
 from datetime import datetime, timedelta
-from enum import Enum
 
 from kubernetes_asyncio import client, watch
 from pydantic import BaseModel
 from ulid import ULID
+
+from ..kubernetes.neonvm import NeonVM, Phase
 
 logger = logging.getLogger(__name__)
 
@@ -22,17 +23,8 @@ async def _check_port(ip, port, timeout=1.0):
         return False
 
 
-class Phase(Enum):
-    running = "Running"
-    pre_migrating = "PreMigrating"
-    migrating = "Migrating"
-    scaling = "Scaling"
-    pending = "Pending"
-    succeeded = "Succeeded"
-    failed = "Failed"
-
-    def online(self):
-        return self in {Phase.running, Phase.pre_migrating, Phase.migrating, Phase.scaling}
+def _is_online(phase: Phase):
+    return phase in {Phase.running, Phase.pre_migrating, Phase.migrating, Phase.scaling}
 
 
 class VMStatus(BaseModel):
@@ -58,7 +50,8 @@ class VMMonitor:
                     continue
 
                 id_ = ULID.from_str(match.group("id").upper())
-                phase = Phase(event["object"]["status"]["phase"])
+                vm = NeonVM.model_validate(event["object"])
+                phase = vm.status.phase
 
                 if id_ not in self._statuses:
                     self._statuses[id_] = VMStatus(phase=phase)
@@ -67,25 +60,23 @@ class VMMonitor:
 
                 monitoring = id_ in monitors
 
-                if ((not monitoring) and event["type"] in {"ADDED", "MODIFIED"}) and phase.online():
-                    # Ideally we'd use the overlay network (extraNetIP),
-                    # that is not routed reachable from this pod though.
-                    vm_ip = event["object"]["status"]["podIP"]
+                # Ideally we'd use the overlay network (extraNetIP),
+                # that is not routed reachable from this pod though.
+                vm_ip = vm.status.pod_ip
+                if vm_ip is None:
+                    continue
 
+                if ((not monitoring) and event["type"] in {"ADDED", "MODIFIED"}) and _is_online(phase):
                     monitors[id_] = tg.create_task(
                         self._monitor_vm(
                             id_,
                             vm_ip,
-                            services={
-                                port["name"]: port["port"]
-                                for port in event["object"]["spec"]["guest"]["ports"]
-                                if port["protocol"] == "TCP"
-                            },
+                            services={port.name: port.port for port in vm.spec.guest.ports if port.protocol == "TCP"},
                         ),
                         name=f"VM {id_} monitor",
                     )
                 elif monitoring and (
-                    (event["type"] == "DELETED") or ((event["type"] == "MODIFIED") and not phase.online())
+                    (event["type"] == "DELETED") or ((event["type"] == "MODIFIED") and not _is_online(phase))
                 ):
                     monitors[id_].cancel()
                     del monitors[id_]
