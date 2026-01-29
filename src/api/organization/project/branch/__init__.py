@@ -964,18 +964,18 @@ async def _get_node_port(
         return None
 
 
-async def _resolve_branch_db_port(branch_id: Identifier) -> int:
-    # Support existing branches where vela-db is exposed as a NodePort service.
-    for service in ("pgbouncer", "db"):
-        port = await _get_node_port(branch_id, service)
-        if port is not None:
-            return port
-
-    logger.error(
-        "Retrieving public port for branch %s failed. Returning illegal port 0",
-        branch_id,
+async def _resolve_branch_db_port(branch_id: Identifier) -> int | None:
+    return await anext(
+        (
+            port
+            for service in (
+                "pgbouncer",
+                "db",
+            )  # Support existing branches where vela-db is exposed as a NodePort service.
+            if (port := await _get_node_port(branch_id, service)) is not None
+        ),
+        None,
     )
-    return 0
 
 
 def _service_endpoint_url(rest_endpoint: str | None, api_domain: str | None, db_host: str | None) -> str:
@@ -992,7 +992,7 @@ async def _public(branch: Branch) -> BranchPublic:
     project = await branch.awaitable_attrs.project
 
     db_host = _resolve_db_host(branch) or ""
-    port = await _resolve_branch_db_port(branch.id)
+    port = (await _resolve_branch_db_port(branch.id)) or 0
 
     # pg-meta and pg are in the same network. So password is not required in connection string.
     connection_string = _build_connection_string(branch.database_user, "postgres", port)
