@@ -180,7 +180,7 @@ async def _wait_for_autoscaler_overlay_ip(namespace: str, vm_name: str) -> str:
             last_error = exc
             vm = None
 
-        if vm:
+        if vm is not None and vm.status is not None:
             overlay_ip = (vm.status.extra_net_ip or "").strip()
             if overlay_ip:
                 logger.info(

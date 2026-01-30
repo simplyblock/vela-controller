@@ -125,7 +125,7 @@ class NeonVMSpec(CamelModel):
 
 class NeonVM(CamelModel):
     spec: NeonVMSpec
-    status: NeonVMStatus
+    status: NeonVMStatus | None = None
 
     @property
     def guest(self) -> Guest:
@@ -156,6 +156,8 @@ async def get_neon_vm(namespace: str, name: str) -> NeonVM:
 
 async def resolve_autoscaler_vm_pod_name(namespace: str, vm_name: str) -> str:
     neon_vm = await get_neon_vm(namespace, vm_name)
+    if neon_vm.status is None:
+        raise VelaKubernetesError("VM does not have a  Pod yet")
     return neon_vm.status.pod_name
 
 

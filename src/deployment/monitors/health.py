@@ -23,12 +23,12 @@ async def _check_port(ip, port, timeout=1.0):
         return False
 
 
-def _is_online(phase: Phase):
-    return phase in {Phase.running, Phase.pre_migrating, Phase.migrating, Phase.scaling}
+def _is_online(phase: Phase | None):
+    return phase is not None and phase in {Phase.running, Phase.pre_migrating, Phase.migrating, Phase.scaling}
 
 
 class VMStatus(BaseModel):
-    phase: Phase
+    phase: Phase | None
     services: dict[str, bool] | None = None
 
 
@@ -51,7 +51,7 @@ class VMMonitor:
 
                 id_ = ULID.from_str(match.group("id").upper())
                 vm = NeonVM.model_validate(event["object"])
-                phase = vm.status.phase
+                phase = vm.status.phase if vm.status is not None else None
 
                 if id_ not in self._statuses:
                     self._statuses[id_] = VMStatus(phase=phase)
@@ -62,7 +62,7 @@ class VMMonitor:
 
                 # Ideally we'd use the overlay network (extraNetIP),
                 # that is not routed reachable from this pod though.
-                vm_ip = vm.status.pod_ip
+                vm_ip = vm.status.pod_ip if vm.status is not None else None
                 if vm_ip is None:
                     continue
 
