@@ -7,6 +7,8 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+import httpx
+
 from .._util import Identifier, quantity_to_bytes
 from ..deployment import AUTOSCALER_PVC_SUFFIX, get_autoscaler_vm_identity
 from ..deployment.kubernetes.snapshot import (
@@ -18,7 +20,7 @@ from ..deployment.kubernetes.snapshot import (
     wait_snapshot_ready,
 )
 from ..deployment.simplyblock_api import create_simplyblock_api
-from ..exceptions import VelaSnapshotTimeoutError
+from ..exceptions import VelaKubernetesError, VelaSnapshotTimeoutError
 
 if TYPE_CHECKING:
     from ulid import ULID
@@ -105,11 +107,13 @@ async def create_branch_snapshot(
     status = snapshot.get("status") or {}
     content_name = status.get("boundVolumeSnapshotContentName")
     size_bytes = quantity_to_bytes(status.get("restoreSize"))
-    try:
-        used_size_bytes = await _snapshot_used_size(content_name)
-    except Exception:
-        logger.exception("Failed to derive used_size for snapshot %s/%s", namespace, snapshot_name)
-        used_size_bytes = None
+
+    used_size_bytes = None
+    if content_name:
+        try:
+            used_size_bytes = await _snapshot_used_size(content_name)
+        except (ValueError, VelaKubernetesError, httpx.HTTPError):
+            logger.exception("Failed to derive used_size for snapshot %s/%s", namespace, snapshot_name)
     logger.info(
         "VolumeSnapshot %s/%s ready (content=%s size_bytes=%s used_size_bytes=%s)",
         namespace,
