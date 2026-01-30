@@ -62,7 +62,7 @@ class NeonVMStatus(CamelModel):
     phase: Phase
     pod_name: str = ""
     pod_ip: str | None = Field(default=None, alias="podIP")
-    extra_net_ip: str | None = None
+    extra_net_ip: str | None = Field(default=None, alias="extraNetIP")
 
 
 class GuestCPUs(CamelModel):
