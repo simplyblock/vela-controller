@@ -40,6 +40,7 @@ data:
     log_disconnections = 1
     admin_users = pgbouncer_admin
     stats_users = pgbouncer_admin
+    log_stats = 0
   pgbouncer_pg18.ini: |
     [databases]
     postgres = host=db port=5432 user=postgres password={{ $dbPassword | quote }}
@@ -62,6 +63,7 @@ data:
     log_disconnections = 1
     admin_users = pgbouncer_admin
     stats_users = pgbouncer_admin
+    log_stats = 0
   users.txt: |
     "postgres" {{ $dbPassword | quote }}
     "pgbouncer_admin" {{ $pgbouncerAdminPassword | quote }}
