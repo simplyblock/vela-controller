@@ -202,6 +202,8 @@ def _should_update_branch_status(
     }:
         return True
     if derived == BranchServiceStatus.UNKNOWN:
+        if current == BranchServiceStatus.ERROR:
+            return False
         return current not in _TRANSITIONAL_BRANCH_STATUSES and current not in _PROTECTED_BRANCH_STATUSES
     return True
 
