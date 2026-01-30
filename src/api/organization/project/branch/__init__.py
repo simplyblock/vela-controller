@@ -68,7 +68,6 @@ from .....models.branch import (
     BranchResizeStatusEntry,
     BranchServiceStatus,
     BranchSourceDeploymentParameters,
-    BranchStatus,
     BranchStatusPublic,
     BranchUpdate,
     CapaResizeKey,
@@ -294,14 +293,6 @@ def _normalize_resize_statuses(branch: Branch) -> dict[str, BranchResizeStatusEn
                 service,
             )
     return normalized
-
-
-_DEFAULT_SERVICE_STATUS = BranchStatus(
-    database=BranchServiceStatus.UNKNOWN,
-    storage=BranchServiceStatus.UNKNOWN,
-    meta=BranchServiceStatus.UNKNOWN,
-    rest=BranchServiceStatus.UNKNOWN,
-)
 
 
 _PVC_TIMEOUT_SECONDS = float(600)
