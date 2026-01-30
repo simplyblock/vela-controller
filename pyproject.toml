@@ -44,24 +44,28 @@ description = 'Run linter'
 labels = ['static']
 deps = ['ruff']
 commands = [['ruff', 'check']]
+basepython = ['python3.13']
 
 [tool.tox.env.type-check]
 description = 'Run type checks'
 labels = ['static']
 deps = ['mypy']
 commands = [['mypy', '--python-executable=python', 'src']]
+basepython = ['python3.13']
 
 [tool.tox.env.format-check]
 description = 'Check code format'
 labels = ['static']
 deps = ['ruff']
 commands = [['ruff', 'format', '--check']]
+basepython = ['python3.13']
 
 [tool.tox.env.alembic]
 description = 'Manage migrations'
 deps = ['testcontainers', 'psycopg[binary]']
 commands = [['python3', 'scripts/alembic.py', '{posargs}']]
 passenv = ['DOCKER_HOST']
+basepython = ['python3.13']
 
 
 [tool.ruff]
