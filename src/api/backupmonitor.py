@@ -26,7 +26,7 @@ from .backup_snapshots import (
     create_branch_snapshot,
     delete_branch_snapshot,
 )
-from .organization.project.branch import refresh_branch_status
+from .organization.project.branch.status import refresh_branch_status
 from .settings import get_settings
 
 # ---------------------------

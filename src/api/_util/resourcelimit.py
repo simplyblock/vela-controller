@@ -548,11 +548,11 @@ async def _collect_branch_statuses(
     if not branch_ids:
         return {}
 
-    from ..organization.project import branch as branch_module
+    from ..organization.project.branch.status import refresh_branch_status
 
     statuses: dict[Identifier, BranchServiceStatus] = {}
     for branch_id in branch_ids:
-        statuses[branch_id] = await branch_module.refresh_branch_status(branch_id)
+        statuses[branch_id] = await refresh_branch_status(branch_id)
     return statuses
 
 
