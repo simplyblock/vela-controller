@@ -3,7 +3,7 @@ import contextlib
 import logging
 import secrets
 from collections.abc import Sequence
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Annotated, Any, Literal, TypedDict, cast
 from urllib.parse import urlsplit, urlunsplit
 
@@ -14,7 +14,6 @@ from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials
 from keycloak.exceptions import KeycloakError
 from kubernetes_asyncio.client.exceptions import ApiException
-from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
@@ -38,10 +37,6 @@ from .....deployment import (
     update_branch_volume_iops,
 )
 from .....deployment._util import deployment_namespace
-from .....deployment.health import (
-    collect_branch_service_health,
-    derive_branch_status_from_services,
-)
 from .....deployment.kubernetes._util import core_v1_client
 from .....deployment.kubernetes.neonvm import PowerState as NeonVMPowerState
 from .....deployment.kubernetes.neonvm import set_virtualmachine_power_state
@@ -64,11 +59,8 @@ from .....models.branch import (
     BranchPgbouncerConfigUpdate,
     BranchPublic,
     BranchResizeService,
-    BranchResizeStatus,
-    BranchResizeStatusEntry,
     BranchServiceStatus,
     BranchSourceDeploymentParameters,
-    BranchStatus,
     BranchStatusPublic,
     BranchUpdate,
     CapaResizeKey,
@@ -99,56 +91,29 @@ from ....dependencies import BranchDep, OrganizationDep, ProjectDep, branch_look
 from ....keycloak import realm_admin
 from ....settings import get_settings as get_api_settings
 from .auth import api as auth_api
+from .status import (
+    collect_branch_service_health,
+    normalize_resize_statuses,
+    parse_branch_status,
+    persist_branch_status,
+)
 
 api = APIRouter(tags=["branch"])
 
 logger = logging.getLogger(__name__)
 
 
-_TRANSITIONAL_BRANCH_STATUSES: set[BranchServiceStatus] = {
-    BranchServiceStatus.CREATING,
-    BranchServiceStatus.STARTING,
-    BranchServiceStatus.STOPPING,
-    BranchServiceStatus.RESTARTING,
-    BranchServiceStatus.PAUSING,
-    BranchServiceStatus.RESUMING,
-    BranchServiceStatus.UPDATING,
-    BranchServiceStatus.DELETING,
-    BranchServiceStatus.RESIZING,
-}
-_PROTECTED_BRANCH_STATUSES: set[BranchServiceStatus] = {BranchServiceStatus.PAUSED}
-_ACTIVE_RESIZE_STATUSES: set[BranchResizeStatus] = {
-    "PENDING",
-    "RESIZING",
-    "FILESYSTEM_RESIZE_PENDING",
-}
-_CREATING_STATUS_ERROR_GRACE_PERIOD = timedelta(minutes=5)
-_STARTING_STATUS_ERROR_GRACE_PERIOD = timedelta(minutes=5)
+_PVC_TIMEOUT_SECONDS = float(600)
+_PVC_CLONE_TIMEOUT_SECONDS = float(10)
+_PVC_POLL_INTERVAL_SECONDS = float(2)
+_VOLUME_SNAPSHOT_CLASS = "simplyblock-csi-snapshotclass"
 
 
-def _parse_branch_status(value: BranchServiceStatus | str | None) -> BranchServiceStatus:
-    if isinstance(value, BranchServiceStatus):
-        return value
-    if value:
-        # Normalize to the canonical representation expected by the enum ("STARTING", "STOPPED", etc.).
-        normalized_value = str(value).upper()
-        member = BranchServiceStatus._value2member_map_.get(normalized_value)
-        if member is not None:
-            return cast("BranchServiceStatus", member)
-        logger.warning("Encountered unknown branch status %s; defaulting to UNKNOWN", value)
-    return BranchServiceStatus.UNKNOWN
-
-
-async def _persist_branch_status(branch_id: Identifier, status: BranchServiceStatus) -> None:
-    async with AsyncSessionLocal() as session:
-        branch = await session.get(Branch, branch_id)
-        if branch is None:
-            logger.warning("Branch %s missing while updating status to %s", branch_id, status)
-            return
-        if _parse_branch_status(branch.status) == status:
-            return
-        branch.set_status(status)
-        await session.commit()
+_PGBOUNCER_ADMIN_USER = "pgbouncer_admin"
+_PGBOUNCER_ADMIN_DATABASE = "pgbouncer"
+_PGBOUNCER_SERVICE_PORT = 6432
+_PGBOUNCER_CONFIG_TEMPLATE_ERROR = "PgBouncer configuration template missing required entries."
+_PGBOUNCER_CONFIG_UPDATE_ERROR = "Failed to update PgBouncer configuration."
 
 
 async def _cleanup_failed_branch_deployment(branch_id: Identifier) -> None:
@@ -167,154 +132,6 @@ async def _cleanup_failed_branch_deployment(branch_id: Identifier) -> None:
                 logger.exception("Failed to clean provisioning records for branch %s", branch_id)
     except Exception:
         logger.exception("Failed to initialize cleanup session for branch %s", branch_id)
-
-
-def _should_update_branch_status(
-    current: BranchServiceStatus,
-    derived: BranchServiceStatus,
-    resize_status: BranchResizeStatus,
-) -> bool:
-    if current == derived:
-        return False
-    if current == BranchServiceStatus.RESIZING and resize_status in _ACTIVE_RESIZE_STATUSES:
-        # Keep the explicit RESIZING while a resize is still in progress
-        # unless we detect a hard failure.
-        return derived == BranchServiceStatus.ERROR
-    if current == BranchServiceStatus.STARTING and derived == BranchServiceStatus.STOPPED:
-        logger.debug("Ignoring STARTING -> STOPPED transition detected by branch status monitor")
-        return False
-    if current in _PROTECTED_BRANCH_STATUSES and derived not in {
-        BranchServiceStatus.ACTIVE_HEALTHY,
-        BranchServiceStatus.ERROR,
-    }:
-        return False
-    if (
-        derived == BranchServiceStatus.STOPPED
-        and current in _TRANSITIONAL_BRANCH_STATUSES
-        and current != BranchServiceStatus.STOPPING
-    ):
-        return False
-    if derived in {
-        BranchServiceStatus.ACTIVE_HEALTHY,
-        BranchServiceStatus.ACTIVE_UNHEALTHY,
-        BranchServiceStatus.STOPPED,
-        BranchServiceStatus.ERROR,
-    }:
-        return True
-    if derived == BranchServiceStatus.UNKNOWN:
-        return current not in _TRANSITIONAL_BRANCH_STATUSES and current not in _PROTECTED_BRANCH_STATUSES
-    return True
-
-
-def _adjust_derived_status_for_stuck_creation(
-    branch: Branch, current: BranchServiceStatus, derived: BranchServiceStatus
-) -> BranchServiceStatus:
-    if derived != BranchServiceStatus.STOPPED:
-        return derived
-
-    status_timestamp = branch.status_updated_at or branch.created_datetime
-    elapsed = datetime.now(UTC) - status_timestamp
-
-    if current == BranchServiceStatus.CREATING and elapsed >= _CREATING_STATUS_ERROR_GRACE_PERIOD:
-        logger.warning(
-            "Branch %s still CREATING after %s with STOPPED services; marking ERROR",
-            branch.id,
-            elapsed,
-        )
-        return BranchServiceStatus.ERROR
-
-    if current == BranchServiceStatus.STARTING and elapsed >= _STARTING_STATUS_ERROR_GRACE_PERIOD:
-        logger.warning(
-            "Branch %s still STARTING after %s with STOPPED services; marking ERROR",
-            branch.id,
-            elapsed,
-        )
-        return BranchServiceStatus.ERROR
-
-    return derived
-
-
-async def refresh_branch_status(branch_id: Identifier) -> BranchServiceStatus:
-    """
-    Probe branch services, derive an overall lifecycle state, and persist it when appropriate.
-    """
-    async with AsyncSessionLocal() as session:
-        branch = await session.get(Branch, branch_id)
-        if branch is None:
-            logger.warning("Branch %s not found while refreshing status", branch_id)
-            return BranchServiceStatus.UNKNOWN
-
-        current_status = _parse_branch_status(branch.status)
-        try:
-            namespace, _ = get_autoscaler_vm_identity(branch.id)
-            service_status = await collect_branch_service_health(branch_id)
-            derived_status = derive_branch_status_from_services(
-                service_status,
-                storage_enabled=branch.enable_file_storage,
-            )
-        except Exception:
-            logger.exception("Failed to refresh service status for branch %s", branch.id)
-            derived_status = BranchServiceStatus.UNKNOWN
-
-        derived_status = _adjust_derived_status_for_stuck_creation(
-            branch,
-            current_status,
-            derived_status,
-        )
-
-        if _should_update_branch_status(
-            current_status,
-            derived_status,
-            resize_status=branch.resize_status,
-        ):
-            branch.set_status(derived_status)
-            await session.commit()
-            return derived_status
-
-        await session.rollback()
-        return current_status
-
-
-def _normalize_resize_statuses(branch: Branch) -> dict[str, BranchResizeStatusEntry]:
-    statuses = branch.resize_statuses or {}
-    if not statuses:
-        return {}
-
-    normalized: dict[str, BranchResizeStatusEntry] = {}
-    for service, entry in statuses.items():
-        if isinstance(entry, BranchResizeStatusEntry):
-            normalized[service] = entry
-            continue
-        try:
-            normalized[service] = BranchResizeStatusEntry.model_validate(entry)
-        except ValidationError:
-            logger.warning(
-                "Skipping invalid resize status entry for branch %s service %s",
-                branch.id,
-                service,
-            )
-    return normalized
-
-
-_DEFAULT_SERVICE_STATUS = BranchStatus(
-    database=BranchServiceStatus.UNKNOWN,
-    storage=BranchServiceStatus.UNKNOWN,
-    meta=BranchServiceStatus.UNKNOWN,
-    rest=BranchServiceStatus.UNKNOWN,
-)
-
-
-_PVC_TIMEOUT_SECONDS = float(600)
-_PVC_CLONE_TIMEOUT_SECONDS = float(10)
-_PVC_POLL_INTERVAL_SECONDS = float(2)
-_VOLUME_SNAPSHOT_CLASS = "simplyblock-csi-snapshotclass"
-
-
-_PGBOUNCER_ADMIN_USER = "pgbouncer_admin"
-_PGBOUNCER_ADMIN_DATABASE = "pgbouncer"
-_PGBOUNCER_SERVICE_PORT = 6432
-_PGBOUNCER_CONFIG_TEMPLATE_ERROR = "PgBouncer configuration template missing required entries."
-_PGBOUNCER_CONFIG_UPDATE_ERROR = "Failed to update PgBouncer configuration."
 
 
 def generate_pgbouncer_password(length: int = 32) -> str:
@@ -761,7 +578,7 @@ async def _deploy_branch_environment_task(
     pgbouncer_config: PgbouncerConfigSnapshot,
     pitr_enabled: bool,
 ) -> None:
-    await _persist_branch_status(branch_id, BranchServiceStatus.CREATING)
+    await persist_branch_status(branch_id, BranchServiceStatus.CREATING)
     try:
         await deploy_branch_environment(
             organization_id=organization_id,
@@ -776,7 +593,7 @@ async def _deploy_branch_environment_task(
             pitr_enabled=pitr_enabled,
         )
     except VelaError:
-        await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
+        await persist_branch_status(branch_id, BranchServiceStatus.ERROR)
         await _cleanup_failed_branch_deployment(branch_id)
         logging.exception(
             "Branch deployment failed for project_id=%s branch_id=%s branch_slug=%s",
@@ -785,7 +602,7 @@ async def _deploy_branch_environment_task(
             branch_slug,
         )
         return
-    await _persist_branch_status(branch_id, BranchServiceStatus.STARTING)
+    await persist_branch_status(branch_id, BranchServiceStatus.STARTING)
 
 
 async def _clone_branch_environment_task(
@@ -803,7 +620,7 @@ async def _clone_branch_environment_task(
     pgbouncer_config: PgbouncerConfigSnapshot,
     pitr_enabled: bool,
 ) -> None:
-    await _persist_branch_status(branch_id, BranchServiceStatus.CREATING)
+    await persist_branch_status(branch_id, BranchServiceStatus.CREATING)
     storage_class_name: str | None = None
     if copy_data:
         try:
@@ -821,7 +638,7 @@ async def _clone_branch_environment_task(
                 pitr_enabled=pitr_enabled,
             )
         except VelaError:
-            await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
+            await persist_branch_status(branch_id, BranchServiceStatus.ERROR)
             await _cleanup_failed_branch_deployment(branch_id)
             logging.exception(
                 "Branch data clone failed for project_id=%s branch_id=%s branch_slug=%s",
@@ -846,7 +663,7 @@ async def _clone_branch_environment_task(
             pitr_enabled=pitr_enabled,
         )
     except VelaError:
-        await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
+        await persist_branch_status(branch_id, BranchServiceStatus.ERROR)
         await _cleanup_failed_branch_deployment(branch_id)
         logging.exception(
             "Branch deployment (clone) failed for project_id=%s branch_id=%s branch_slug=%s",
@@ -855,7 +672,7 @@ async def _clone_branch_environment_task(
             branch_slug,
         )
         return
-    await _persist_branch_status(branch_id, BranchServiceStatus.STARTING)
+    await persist_branch_status(branch_id, BranchServiceStatus.STARTING)
 
 
 async def _restore_branch_environment_task(
@@ -875,7 +692,7 @@ async def _restore_branch_environment_task(
     pgbouncer_config: PgbouncerConfigSnapshot,
     pitr_enabled: bool,
 ) -> None:
-    await _persist_branch_status(branch_id, BranchServiceStatus.CREATING)
+    await persist_branch_status(branch_id, BranchServiceStatus.CREATING)
     storage_class_name: str | None = None
     try:
         storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
@@ -894,7 +711,7 @@ async def _restore_branch_environment_task(
             database_size=parameters.database_size,
         )
     except VelaError:
-        await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
+        await persist_branch_status(branch_id, BranchServiceStatus.ERROR)
         await _cleanup_failed_branch_deployment(branch_id)
         logging.exception(
             "Branch restore failed for project_id=%s branch_id=%s branch_slug=%s using snapshot %s/%s",
@@ -921,7 +738,7 @@ async def _restore_branch_environment_task(
             pitr_enabled=pitr_enabled,
         )
     except VelaError:
-        await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
+        await persist_branch_status(branch_id, BranchServiceStatus.ERROR)
         await _cleanup_failed_branch_deployment(branch_id)
         logging.exception(
             "Branch deployment (restore) failed for project_id=%s branch_id=%s branch_slug=%s",
@@ -930,7 +747,7 @@ async def _restore_branch_environment_task(
             branch_slug,
         )
         return
-    await _persist_branch_status(branch_id, BranchServiceStatus.STARTING)
+    await persist_branch_status(branch_id, BranchServiceStatus.STARTING)
 
 
 def _resolve_db_host(branch: Branch) -> str | None:
@@ -1024,7 +841,7 @@ async def _public(branch: Branch) -> BranchPublic:
     )
 
     used_resources = branch.resource_usage_snapshot()
-    branch_status = _parse_branch_status(branch.status)
+    branch_status = parse_branch_status(branch.status)
 
     api_keys = BranchApiKeys(anon=branch.anon_key, service_role=branch.service_key)
 
@@ -1449,7 +1266,7 @@ async def status(
     _project: ProjectDep,
     branch: BranchDep,
 ) -> BranchStatusPublic:
-    normalized_resize_statuses = _normalize_resize_statuses(branch)
+    normalized_resize_statuses = normalize_resize_statuses(branch)
     service_status = await collect_branch_service_health(branch.id)
     return BranchStatusPublic(
         resize_status=branch.resize_status,

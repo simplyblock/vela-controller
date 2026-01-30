@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlmodel import select
 
 from .._util import quantity_to_bytes, quantity_to_milli_cpu
-from ..check_branch_status import get_branch_status
 from ..deployment import (
     get_autoscaler_vm_identity,
     resolve_autoscaler_volume_identifiers,
@@ -56,7 +55,7 @@ from ._util.resourcelimit import (
 from .auth import authenticated_user
 from .db import SessionDep
 from .dependencies import OrganizationDep
-from .organization.project.branch import refresh_branch_status
+from .organization.project.branch.status import refresh_branch_status
 from .settings import get_settings
 
 router = APIRouter(dependencies=[Depends(authenticated_user)], tags=["resource"])
@@ -496,7 +495,6 @@ async def monitor_resources():
                         continue
                     branch.store_resource_usage(usage)
 
-                    status = await get_branch_status(branch.id)
                     if status in [BranchServiceStatus.ACTIVE_HEALTHY, BranchServiceStatus.RESIZING]:
                         prov_result = await db.execute(
                             select(BranchProvisioning).where(BranchProvisioning.branch_id == branch.id)

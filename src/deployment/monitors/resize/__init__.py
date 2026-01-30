@@ -49,7 +49,6 @@ from ....models.branch import (
     should_transition_resize_status,
 )
 from ....models.resources import ResourceLimitsPublic
-from ...health import collect_branch_service_health, derive_branch_status_from_services
 from .pvc_resize import (
     INITIAL_BACKOFF_SECONDS,
     VOLUME_SERVICE_MAP,
@@ -103,11 +102,9 @@ async def _apply_volume_status(
                 }
                 branch.resize_statuses = statuses
                 branch.resize_status = aggregate_resize_statuses(statuses)
-                await set_branch_status(branch.resize_status, branch)
                 status_updated = True
         elif status is not None and should_transition_resize_status(branch.resize_status, status):
             branch.resize_status = status
-            await set_branch_status(branch.resize_status, branch)
             status_updated = True
 
         if status_updated and status == "COMPLETED" and capacity is not None:
@@ -129,19 +126,6 @@ async def _apply_volume_status(
                 branch.database_size = capacity
 
         await session.commit()
-
-
-async def set_branch_status(status: BranchResizeStatus, branch: Branch) -> None:
-    if status not in {"FAILED", "COMPLETED"}:
-        return
-
-    service_status = await collect_branch_service_health(branch.id)
-    branch.set_status(
-        derive_branch_status_from_services(
-            service_status,
-            storage_enabled=branch.enable_file_storage,
-        )
-    )
 
 
 async def _handle_pvc_event(core_v1: CoreV1Api, event: CoreV1Event) -> None:
