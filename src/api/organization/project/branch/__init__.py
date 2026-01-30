@@ -971,15 +971,6 @@ async def _get_node_port(
         service = await kube_service.get_service(namespace, svc_name)
         ports = service.spec.ports
         return ports[0].node_port if ports else None
-    except TimeoutError as exc:
-        logger.error(
-            "Timed out while retrieving service %s in namespace %s for branch %s",
-            svc_name,
-            namespace,
-            branch_id,
-            exc_info=exc,
-        )
-        return None
     except (VelaKubernetesError, AttributeError, IndexError):
         return None
 
