@@ -130,8 +130,9 @@ class Branch(AsyncAttrs, Model, table=True):
         )
 
     def set_status(self, status: "BranchServiceStatus") -> None:
-        current = getattr(self, "status", None)
-        if current == status and self.status_updated_at is not None:
+        current = self.__dict__.get("status")
+        updated_at = self.__dict__.get("status_updated_at")
+        if current == status and updated_at is not None:
             return
         self.status = status
         self.status_updated_at = datetime.now(UTC)
