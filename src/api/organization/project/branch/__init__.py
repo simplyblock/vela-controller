@@ -246,35 +246,37 @@ async def refresh_branch_status(branch_id: Identifier) -> BranchServiceStatus:
             logger.warning("Branch %s not found while refreshing status", branch_id)
             return BranchServiceStatus.UNKNOWN
 
-        current_status = _parse_branch_status(branch.status)
-        try:
-            namespace, _ = get_autoscaler_vm_identity(branch.id)
-            service_status = await collect_branch_service_health(branch_id)
-            derived_status = derive_branch_status_from_services(
-                service_status,
-                storage_enabled=branch.enable_file_storage,
-            )
-        except Exception:
-            logger.exception("Failed to refresh service status for branch %s", branch.id)
-            derived_status = BranchServiceStatus.UNKNOWN
-
-        derived_status = _adjust_derived_status_for_stuck_creation(
-            branch,
-            current_status,
-            derived_status,
-        )
-
-        if _should_update_branch_status(
-            current_status,
-            derived_status,
-            resize_status=branch.resize_status,
-        ):
-            branch.set_status(derived_status)
+        current_status = branch.status
+        new_status = await _refresh_branch_status(branch)
+        if new_status != current_status:
             await session.commit()
-            return derived_status
 
-        await session.rollback()
-        return current_status
+        return new_status
+
+
+async def _refresh_branch_status(branch: Branch) -> BranchServiceStatus:
+    current_status = _parse_branch_status(branch.status)
+    service_status = await collect_branch_service_health(branch.id)
+    derived_status = derive_branch_status_from_services(
+        service_status,
+        storage_enabled=branch.enable_file_storage,
+    )
+
+    derived_status = _adjust_derived_status_for_stuck_creation(
+        branch,
+        current_status,
+        derived_status,
+    )
+
+    if _should_update_branch_status(
+        current_status,
+        derived_status,
+        resize_status=branch.resize_status,
+    ):
+        branch.set_status(derived_status)
+        return derived_status
+
+    return current_status
 
 
 def _normalize_resize_statuses(branch: Branch) -> dict[str, BranchResizeStatusEntry]:
@@ -1026,7 +1028,7 @@ async def _public(branch: Branch) -> BranchPublic:
     )
 
     used_resources = branch.resource_usage_snapshot()
-    branch_status = _parse_branch_status(branch.status)
+    branch_status = await _refresh_branch_status(branch)
 
     api_keys = BranchApiKeys(anon=branch.anon_key, service_role=branch.service_key)
 
