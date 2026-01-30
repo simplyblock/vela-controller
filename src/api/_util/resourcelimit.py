@@ -302,9 +302,44 @@ def format_limit_violation_details(
     return "; ".join(details)
 
 
+# FIXME: @Chris This call should return the limits on the branch which is only meaningful for resizing, however in this
+# case, the calculation is wrong, since it includes it's own allocations. Fixing this requires a change on the
+# frontend,hence it's pushed for now.
 async def get_effective_branch_limits(session: SessionDep, branch: Branch) -> ResourceLimitsPublic:
     organization_id = (await branch.awaitable_attrs.project).organization_id
     return await get_remaining_project_resources(session, organization_id, branch.project_id)
+
+
+async def get_effective_branch_creation_limits(session: SessionDep, project: Project) -> ResourceLimitsPublic:
+    return await get_remaining_project_resources(session, project.organization_id, project.id)
+
+
+async def get_effective_project_creation_limits(
+    session: SessionDep, organization: Organization
+) -> ResourceLimitsPublic:
+    return await get_remaining_organization_resources(session, organization.id)
+
+
+async def get_remaining_organization_resources(
+    session: SessionDep, organization_id: Identifier, *, exclude_branch_ids: Sequence[Identifier] | None = None
+) -> ResourceLimitsPublic:
+    organization_limits = await get_organization_resource_limits(session, organization_id)
+    organization_allocations = await get_current_organization_allocations(
+        session,
+        organization_id,
+        exclude_branch_ids=exclude_branch_ids,
+    )
+    effective_limits: dict[ResourceType, int] = {}
+    for resource_type in ResourceType:
+        organization_limit = organization_limits.get(resource_type)
+        current_organization_allocation = organization_allocations.get(resource_type) or 0
+        remaining_organization = (
+            (organization_limit.max_total - current_organization_allocation)
+            if organization_limit and current_organization_allocation
+            else 0
+        )
+        effective_limits[resource_type] = int(max(remaining_organization, 0))
+    return dict_to_resource_limits(effective_limits)
 
 
 async def get_remaining_project_resources(
