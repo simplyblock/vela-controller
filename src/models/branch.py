@@ -183,15 +183,21 @@ class Branch(AsyncAttrs, Model, table=True):
     def store_resource_usage(self, usage: "ResourceUsageDefinition") -> None:
         self.resource_usage = usage.model_dump()
 
-    def resource_usage_snapshot(self) -> "ResourceUsageDefinition":
+    def resource_usage_snapshot(self, snapshot_used_size: int | None = None) -> "ResourceUsageDefinition":
         payload = self.resource_usage or {}
         storage_value = payload.get("storage_bytes")
+        snapshot_value = payload.get("snapshot_used_size")
         return ResourceUsageDefinition(
             milli_vcpu=int(payload.get("milli_vcpu") or 0),
             ram_bytes=int(payload.get("ram_bytes") or 0),
             nvme_bytes=int(payload.get("nvme_bytes") or 0),
             iops=int(payload.get("iops") or 0),
             storage_bytes=None if storage_value is None else int(storage_value),
+            snapshot_used_size=(
+                snapshot_used_size
+                if snapshot_used_size is not None
+                else (None if snapshot_value is None else int(snapshot_value))
+            ),
         )
 
 
@@ -439,6 +445,13 @@ class ResourceUsageDefinition(BaseModel):
         PydanticField(
             ge=0,
             description="Measured storage usage in bytes, if available.",
+        ),
+    ] = None
+    snapshot_used_size: Annotated[
+        int | None,
+        PydanticField(
+            ge=0,
+            description="Measured total snapshot used size in bytes, if available.",
         ),
     ] = None
 

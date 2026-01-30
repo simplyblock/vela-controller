@@ -5,9 +5,10 @@ import logging
 import os
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import httpx
+from sqlalchemy import func, select
 
 from .._util import Identifier, quantity_to_bytes
 from ..deployment import AUTOSCALER_PVC_SUFFIX, get_autoscaler_vm_identity
@@ -21,8 +22,11 @@ from ..deployment.kubernetes.snapshot import (
 )
 from ..deployment.simplyblock_api import create_simplyblock_api
 from ..exceptions import VelaKubernetesError, VelaSnapshotTimeoutError
+from ..models.backups import BackupEntry
 
 if TYPE_CHECKING:
+    from sqlalchemy.sql.elements import ColumnElement
+    from sqlmodel.ext.asyncio.session import AsyncSession
     from ulid import ULID
 
 logger = logging.getLogger(__name__)
@@ -182,10 +186,7 @@ async def delete_branch_snapshot(
         raise
 
 
-async def _snapshot_used_size(content_name: str | None) -> int:
-    if content_name is None:
-        raise ValueError("vollume snapshot content_name empty")
-
+async def _snapshot_used_size(content_name: str) -> int:
     content = await read_snapshot_content(content_name)
     snapshot_handle = (content or {}).get("status", {}).get("snapshotHandle")
     if not snapshot_handle:
@@ -200,3 +201,12 @@ async def _snapshot_used_size(content_name: str | None) -> int:
     if not isinstance(used_size, (int, float)):
         raise ValueError("used_size missing or not numeric")
     return int(used_size)
+
+
+async def branch_snapshots_used_size(branch_id: Identifier, session: AsyncSession) -> int | None:
+    """Sum used sizes of all snapshots for a branch from stored backup records."""
+    used_col = cast("ColumnElement[int | None]", BackupEntry.used_size_bytes)
+    branch_col = cast("ColumnElement[Any]", BackupEntry.branch_id)
+    stmt = select(func.sum(used_col)).where(branch_col == branch_id, used_col.is_not(None))
+    total = await session.scalar(stmt)
+    return None if total is None else int(total)
