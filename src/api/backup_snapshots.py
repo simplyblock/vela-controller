@@ -5,7 +5,11 @@ import logging
 import os
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
+from uuid import UUID
+
+import httpx
+from sqlmodel import select
 
 from .._util import Identifier, quantity_to_bytes
 from ..deployment import AUTOSCALER_PVC_SUFFIX, get_autoscaler_vm_identity
@@ -14,11 +18,15 @@ from ..deployment.kubernetes.snapshot import (
     ensure_snapshot_absent,
     ensure_snapshot_content_absent,
     read_snapshot,
+    read_snapshot_content,
     wait_snapshot_ready,
 )
-from ..exceptions import VelaSnapshotTimeoutError
+from ..deployment.simplyblock_api import create_simplyblock_api
+from ..exceptions import VelaKubernetesError, VelaSimplyblockAPIError, VelaSnapshotTimeoutError
+from ..models.backups import BackupEntry
 
 if TYPE_CHECKING:
+    from sqlmodel.ext.asyncio.session import AsyncSession
     from ulid import ULID
 
 logger = logging.getLogger(__name__)
@@ -29,11 +37,20 @@ SNAPSHOT_POLL_INTERVAL_SEC = int(os.environ.get("SNAPSHOT_POLL_INTERVAL_SEC", "5
 _K8S_NAME_MAX_LENGTH = 63
 
 
+def parse_snapshot_id(handle: str) -> UUID:
+    try:
+        _, uuid_part = handle.split(":", 1)
+        return UUID(uuid_part)
+    except (AttributeError, IndexError, ValueError) as err:
+        raise ValueError("invalid snapshotHandle") from err
+
+
 @dataclass(frozen=True)
 class SnapshotDetails:
     name: str
     namespace: str
     content_name: str | None
+    snapshot_uuid: UUID | None
     size_bytes: int | None
 
 
@@ -102,18 +119,29 @@ async def create_branch_snapshot(
     status = snapshot.get("status") or {}
     content_name = status.get("boundVolumeSnapshotContentName")
     size_bytes = quantity_to_bytes(status.get("restoreSize"))
+
+    snapshot_uuid: UUID | None = None
+    if content_name:
+        try:
+            handle = (await read_snapshot_content(content_name) or {}).get("status", {}).get("snapshotHandle")
+            if handle:
+                snapshot_uuid = parse_snapshot_id(handle)
+        except (ValueError, VelaKubernetesError, httpx.HTTPError):
+            logger.exception("Failed to derive used_size for snapshot %s/%s", namespace, snapshot_name)
     logger.info(
-        "VolumeSnapshot %s/%s ready (content=%s size_bytes=%s)",
+        "VolumeSnapshot %s/%s ready (content=%s size_bytes=%s snapshot_uuid=%s)",
         namespace,
         snapshot_name,
         content_name,
         size_bytes,
+        snapshot_uuid,
     )
 
     return SnapshotDetails(
         name=snapshot_name,
         namespace=namespace,
         content_name=content_name,
+        snapshot_uuid=snapshot_uuid,
         size_bytes=size_bytes,
     )
 
@@ -166,3 +194,45 @@ async def delete_branch_snapshot(
             time_limit,
         )
         raise
+
+
+async def branch_snapshots_used_size(
+    branch_id: Identifier,
+    session: AsyncSession,
+) -> int:
+    """
+    Return total used size (bytes) of all snapshots belonging to a branch.
+    """
+    snapshot_uuid_col = cast("Any", BackupEntry.snapshot_uuid)
+    branch_col = cast("Any", BackupEntry.branch_id)
+    where_clause = cast("Any", branch_col == branch_id)
+    stmt = select(snapshot_uuid_col).where(where_clause)
+    result = await session.exec(stmt)
+    snapshot_ids = [str(uuid) for uuid in result.all() if uuid is not None]
+    if not snapshot_ids:
+        raise VelaSimplyblockAPIError(f"No snapshots found for branch {branch_id}")
+
+    try:
+        async with create_simplyblock_api() as sb_api:
+            snapshots = await sb_api.list_snapshots()
+    except httpx.HTTPError as exc:
+        logger.exception(
+            "Failed to list Simplyblock snapshots for branch %s",
+            branch_id,
+        )
+        raise VelaSimplyblockAPIError(f"Failed to list Simplyblock snapshots for branch {branch_id}") from exc
+
+    used_size_by_id: dict[str, int | None] = {str(snapshot.id): snapshot.used_size for snapshot in snapshots}
+
+    total_used = 0
+    found = False
+
+    for snapshot_id in snapshot_ids:
+        used_size = used_size_by_id.get(snapshot_id)
+        if isinstance(used_size, (int, float)):
+            total_used += int(used_size)
+            found = True
+
+    if not found:
+        raise VelaSimplyblockAPIError(f"Used size unavailable for snapshots of branch {branch_id}")
+    return total_used
