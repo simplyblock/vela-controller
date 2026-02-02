@@ -35,6 +35,7 @@ spec:
     cpus:
       min: {{ .Values.autoscalerVm.resources.cpus.min }}
       use: {{ .Values.autoscalerVm.resources.cpus.use }}
+      limit: {{ .Values.autoscalerVm.resources.cpus.limit }}
       max: {{ .Values.autoscalerVm.resources.cpus.max }}
     memorySlots:
       min: {{ .Values.autoscalerVm.resources.memorySlots.min }}
