@@ -39,6 +39,13 @@ kubectl patch clusterrole neonvm-manager-role \
 kubectl delete pod -n neonvm-system -l control-plane=controller 
 ```
 
+Edit the scaling unit to match the steps the vela-controller assumes. Modify `data.config.json.scaling.computeUnit`.
+The relevant values are defined in `VCPU_MILLIS_STEP` and `MEMORY_STEP`.
+```
+kubectl -n kube-system edit configmap autoscaler-agent-config
+```
+
+
 Clone the autoscaling repository and apply the required NeonVM CRDs:
 
 ```
