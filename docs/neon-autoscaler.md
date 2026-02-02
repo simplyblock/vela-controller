@@ -100,8 +100,8 @@ spec:
   guest:
     rootDisk:
       image: docker.io/manoharbrm/pg16-test:dev9 # TODO: update image
-    cpus: { min: 1, use: 1, max: 64 }
-    memorySlots: { min: 4, use: 16, max: 16 }
+    cpus: { min: 1, use: 1, limit: 64, max: 64 }
+    memorySlots: { min: 4, use: 4, limit: 16, max: 16 }
     memorySlotSize: 128Mi
   disks:
     - name: data

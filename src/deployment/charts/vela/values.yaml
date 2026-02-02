@@ -50,6 +50,7 @@ autoscalerVm:
     cpus:
       min: "1m"
       use: "1m"
+      limit: "1m"
       max: "64000m"
     memorySlots:
       min: 0
