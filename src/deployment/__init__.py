@@ -667,12 +667,11 @@ def calculate_autoscaler_vm_cpus(milli_vcpu: int) -> dict[str, str]:
     """
     Return min/use/max CPU core counts for the autoscaler VM derived from milli vCPU.
     """
-
-    vm_millis = max(1, milli_vcpu)
-    cpu_value = f"{vm_millis}m"
+    vm_millis = max(VCPU_MILLIS_MIN, milli_vcpu)
     min_value = f"{VCPU_MILLIS_MIN}m"
+    limit_value = f"{vm_millis}m"
     max_value = f"{VCPU_MILLIS_MAX}m"
-    return {"min": min_value, "use": cpu_value, "max": max_value}
+    return {"min": min_value, "use": min_value, "limit": limit_value, "max": max_value}
 
 
 def calculate_autoscaler_vm_memory(memory_bytes: int) -> tuple[str, dict[str, int]]:
@@ -686,7 +685,7 @@ def calculate_autoscaler_vm_memory(memory_bytes: int) -> tuple[str, dict[str, in
     target_memory_slots = min(max(desired_slots, AUTOSCALER_MEMORY_SLOTS_MIN), AUTOSCALER_MEMORY_SLOTS_MAX)
     slots = {
         "min": AUTOSCALER_MEMORY_SLOTS_MIN,
-        "use": target_memory_slots,
+        "use": AUTOSCALER_MEMORY_SLOTS_MIN,
         "limit": target_memory_slots,
         "max": AUTOSCALER_MEMORY_SLOTS_MAX,
     }
