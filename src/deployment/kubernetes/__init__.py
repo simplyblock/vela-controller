@@ -339,7 +339,6 @@ class KubernetesService:
         limit_milli = cpu_milli if cpu_milli is not None else guest.cpus.use_milli
         cpu_block["min"] = _milli_to_cores(min_milli)
         cpu_block["max"] = _milli_to_cores(max_milli)
-        cpu_block["use"] = _milli_to_cores(min_milli)
         cpu_block["limit"] = _milli_to_cores(limit_milli)
 
         if memory_bytes is not None:
@@ -361,7 +360,6 @@ class KubernetesService:
                     "Requested autoscaler memory is lower than current utilization; downsizing is not permitted"
                 )
 
-            guest_spec.setdefault("memorySlots", {})["use"] = min_slots
             guest_spec.setdefault("memorySlots", {})["limit"] = desired_slots
 
         return await self.apply_autoscaler_vm(namespace, name, vm_manifest)
