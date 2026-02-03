@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlmodel import Field, Relationship, SQLModel
+from sqlmodel import Field, Relationship
 
 from .._util import Identifier
 from ._util import Model
@@ -98,10 +98,10 @@ class RoleType(PyEnum):
     branch = 3
 
 
-class RoleUserLink(AsyncAttrs, SQLModel, table=True):
-    organization_id: Identifier = Model.foreign_key_field("organization", nullable=False, primary_key=True)
-    role_id: Identifier = Model.foreign_key_field("role", nullable=False, primary_key=True)
-    user_id: UUID = Field(foreign_key="user.id", primary_key=True)
+class RoleUserLink(AsyncAttrs, Model, table=True):
+    organization_id: Identifier = Model.foreign_key_field("organization", nullable=False)
+    role_id: Identifier = Model.foreign_key_field("role", nullable=False)
+    user_id: UUID = Field(foreign_key="user.id")
     env_type: str | None
     project_id: Identifier | None = Model.foreign_key_field("project", nullable=True)
     branch_id: Identifier | None = Model.foreign_key_field("branch", nullable=True)
