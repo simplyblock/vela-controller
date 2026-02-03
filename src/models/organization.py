@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, StrictBool
 from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlmodel import Field, Relationship
+from sqlmodel import Relationship
 
 from .._util import Name
 from ._util import Model
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 
 class Organization(AsyncAttrs, Model, table=True):
-    name: Name = Field(unique=True)
+    name: Name
     locked: bool = False
     projects: list["Project"] = Relationship(back_populates="organization", cascade_delete=True)
     roles: list["Role"] = Relationship(back_populates="organization", cascade_delete=True)
