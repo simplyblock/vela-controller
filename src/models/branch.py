@@ -1,7 +1,7 @@
 import hashlib
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Literal, Optional, cast
 
 from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
@@ -327,7 +327,7 @@ class BranchPgbouncerConfigStatus(BaseModel):
     reserve_pool_size: int | None = None
 
 
-class BranchServiceStatus(str, Enum):
+class BranchServiceStatus(StrEnum):
     description: str
 
     ACTIVE_HEALTHY = "ACTIVE_HEALTHY", "All branch services report healthy and are serving traffic."
