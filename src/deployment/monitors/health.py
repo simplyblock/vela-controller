@@ -29,7 +29,7 @@ class VMStatus(BaseModel):
 class VMMonitor:
     _NAMESPACE_PATTERN = re.compile(r"^vela-(?P<id>[0-9a-hjkmnp-tv-z]{26})$")
 
-    def __init__(self, interval: timedelta = timedelta(5), timeout: float = 0.5):
+    def __init__(self, interval: timedelta = timedelta(2), timeout: float = 0.5):
         self._statuses: dict[ULID, VMStatus] = {}
         self._interval = interval
         self._timeout = timeout
@@ -87,12 +87,13 @@ class VMMonitor:
                     else:
                         logger.warning("VM monitor execution exceeded interval")
 
+                except Exception:  # noqa: BLE001
+                    logger.exception("Execution failed")
+
                 except asyncio.CancelledError:
                     self._statuses = {}
                     logger.info("Cancelled VM monitor")
                     raise
-                except Exception:  # noqa: BLE001
-                    pass
 
     def status(self, id_: ULID) -> VMStatus | None:
         return self._statuses.get(id_)
