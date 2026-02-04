@@ -1,9 +1,9 @@
 from collections.abc import Sequence
-from typing import cast
+from typing import Annotated, assert_never, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Response
+from pydantic import BaseModel, Field, computed_field
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -15,7 +15,6 @@ from ...models.role import (
     PermissionCheckContextPublic,
     Role,
     RoleAccessRight,
-    RoleAssignmentPublic,
     RoleCreate,
     RoleDeletePublic,
     RolePublic,
@@ -27,10 +26,11 @@ from ...models.role import (
     RoleUserLinkPublic,
     RoleWithPermissionsPublic,
 )
+from .._util import Forbidden, NotFound, Unauthenticated
 from ..access_right_utils import check_access
 from ..auth import authenticated_user
 from ..db import SessionDep
-from ..dependencies import OrganizationDep, RoleDep
+from ..dependencies import OrganizationDep, RoleDep, branch_lookup, project_lookup
 
 api = APIRouter(dependencies=[Depends(authenticated_user)], tags=["role"])
 
@@ -53,13 +53,6 @@ class AccessCheckRequest(BaseModel):
     project_id: Identifier | None = None
     branch_id: Identifier | None = None
     env_type: str | None = None
-
-
-class RoleAssignmentPayload(BaseModel):
-    # Single or multiple projects/branches/environments
-    project_ids: list[Identifier] = []
-    branch_ids: list[Identifier] = []
-    env_types: list[str] = []
 
 
 @api.post("/")
@@ -244,77 +237,91 @@ async def delete_role(
     return RoleDeletePublic(status="deleted")
 
 
-@instance_api.post("/assign/{user_id}/")
-async def assign_role(
+class Assignment(BaseModel):
+    contexts: Annotated[list[Identifier], Field(min_length=1)] | Annotated[list[str], Field(min_length=1)] | None
+
+    @computed_field
+    def context_type(self) -> type[Identifier] | type[str] | type[None]:
+        if self.contexts is None:
+            return type(None)
+        elif isinstance(self.contexts[0], Identifier):
+            return Identifier
+        elif isinstance(self.contexts[0], str):
+            return str
+        else:
+            assert_never(self.contexts)
+
+
+@instance_api.post(
+    "/assign/{user_id}/",
+    status_code=204,
+    responses={
+        204: {
+            "content": None,
+        },
+        401: Unauthenticated,
+        403: Forbidden,
+        404: NotFound,
+    },
+)
+async def assign_role(  # noqa: C901 (complexity justified by clear structure)
     session: SessionDep,
     organization: OrganizationDep,
     role: RoleDep,
     user_id: UUID,
-    payload: RoleAssignmentPayload,
-) -> RoleAssignmentPublic:
+    payload: Assignment,
+) -> Response:
     """
     Assign a role to a user in one or more contexts. The context is passed as JSON.
     """
-    created_links = []
+    match role.role_type:
+        case RoleType.organization:
+            if payload.context_type is not type(None):
+                raise HTTPException(400, "Context must be empty when assigning organization role")
 
-    # Create RoleUserLink for every combination
-    if (
-        (payload.project_ids and role.role_type != RoleType.project)
-        or (payload.env_types and role.role_type != RoleType.environment)
-        or (payload.branch_ids and role.role_type != RoleType.branch)
-        or (
-            not payload.project_ids
-            and not payload.env_types
-            and not payload.branch_ids
-            and role.role_type != RoleType.organization
-        )
-    ):
-        raise HTTPException(
-            422,
-            f"Role type {role.role_type.name} does not match entities: {payload.project_ids}, {payload.branch_ids}, {
-                payload.env_types
-            }",
-        )
+            session.add(RoleUserLink(organization_id=organization.id, role_id=role.id, user_id=user_id))
+        case RoleType.project:
+            if payload.context_type is not Identifier:
+                raise HTTPException(400, "Context must be a valid project identifier when assigning project role")
 
-    if role.role_type == RoleType.organization:
-        link = RoleUserLink(organization_id=organization.id, role_id=role.id, user_id=user_id)
-        session.add(link)
-        created_links.append(link)
+            for project_id in cast("list[Identifier]", payload.contexts):
+                session.add(
+                    RoleUserLink(
+                        organization_id=organization.id,
+                        role_id=role.id,
+                        user_id=user_id,
+                        project_id=(await project_lookup(session, project_id)).id,  # Ensure the project exists
+                    )
+                )
 
-    for project_id in payload.project_ids:
-        link = RoleUserLink(organization_id=organization.id, role_id=role.id, user_id=user_id, project_id=project_id)
-        session.add(link)
-        created_links.append(link)
+        case RoleType.branch:
+            if payload.context_type is not Identifier:
+                raise HTTPException(400, "Context must be a valid project identifier when assigning branch role")
 
-    for env_type in payload.env_types:
-        link = RoleUserLink(organization_id=organization.id, role_id=role.id, user_id=user_id, env_type=env_type)
-        session.add(link)
-        created_links.append(link)
+            for branch_id in cast("list[Identifier]", payload.contexts):
+                session.add(
+                    RoleUserLink(
+                        organization_id=organization.id,
+                        role_id=role.id,
+                        user_id=user_id,
+                        branch_id=(await branch_lookup(session, branch_id)).id,  # Ensure the branch exists
+                    )
+                )
 
-    for branch_id in payload.branch_ids:
-        link = RoleUserLink(organization_id=organization.id, role_id=role.id, user_id=user_id, branch_id=branch_id)
-        session.add(link)
-        created_links.append(link)
+        case RoleType.environment:
+            if payload.context_type is not str:
+                raise HTTPException(400, "Context must be an environment when assigning environment role")
+
+            for env in cast("list[str]", payload.contexts):
+                session.add(
+                    RoleUserLink(organization_id=organization.id, role_id=role.id, user_id=user_id, env_type=env)
+                )
+
+        case _ as unreachable:
+            assert_never(unreachable)
 
     await session.commit()
-
-    # Refresh all links
-    for link in created_links:
-        await session.refresh(link)
-
-    result_links = [
-        RoleUserLinkPublic(
-            organization_id=link.organization_id,
-            project_id=link.project_id,
-            branch_id=link.branch_id,
-            role_id=link.role_id,
-            user_id=link.user_id,
-            env_type=link.env_type,
-        )
-        for link in created_links
-    ]
-
-    return RoleAssignmentPublic(status="assigned", count=len(created_links), links=result_links)
+    return Response(status_code=204)
 
 
 @instance_api.post("/unassign/{user_id}/")

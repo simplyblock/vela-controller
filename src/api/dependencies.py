@@ -15,17 +15,17 @@ from .auth import authenticated_user
 from .db import SessionDep
 
 
-async def _organization_lookup(session: SessionDep, organization_id: Identifier) -> Organization:
+async def organization_lookup(session: SessionDep, organization_id: Identifier) -> Organization:
     try:
         return (await session.execute(select(Organization).where(Organization.id == organization_id))).scalars().one()
     except NoResultFound as e:
         raise HTTPException(404, f"Organization {organization_id} not found") from e
 
 
-OrganizationDep = Annotated[Organization, Depends(_organization_lookup)]
+OrganizationDep = Annotated[Organization, Depends(organization_lookup)]
 
 
-async def _project_lookup(session: SessionDep, project_id: Identifier) -> Project:
+async def project_lookup(session: SessionDep, project_id: Identifier) -> Project:
     try:
         query = select(Project).where(Project.id == project_id)
         return (await session.execute(query)).scalars().one()
@@ -33,7 +33,7 @@ async def _project_lookup(session: SessionDep, project_id: Identifier) -> Projec
         raise HTTPException(404, f"Project {project_id} not found") from e
 
 
-ProjectDep = Annotated[Project, Depends(_project_lookup)]
+ProjectDep = Annotated[Project, Depends(project_lookup)]
 
 
 async def _role_lookup(session: SessionDep, role_id: Identifier) -> Role:
