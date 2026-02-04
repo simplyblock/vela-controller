@@ -25,9 +25,9 @@ async def _organization_lookup(session: SessionDep, organization_id: Identifier)
 OrganizationDep = Annotated[Organization, Depends(_organization_lookup)]
 
 
-async def _project_lookup(session: SessionDep, organization: OrganizationDep, project_id: Identifier) -> Project:
+async def _project_lookup(session: SessionDep, project_id: Identifier) -> Project:
     try:
-        query = select(Project).where(Project.organization_id == organization.id, Project.id == project_id)
+        query = select(Project).where(Project.id == project_id)
         return (await session.execute(query)).scalars().one()
     except NoResultFound as e:
         raise HTTPException(404, f"Project {project_id} not found") from e
@@ -36,9 +36,9 @@ async def _project_lookup(session: SessionDep, organization: OrganizationDep, pr
 ProjectDep = Annotated[Project, Depends(_project_lookup)]
 
 
-async def _role_lookup(session: SessionDep, organization: OrganizationDep, role_id: Identifier) -> Role:
+async def _role_lookup(session: SessionDep, role_id: Identifier) -> Role:
     try:
-        query = select(Role).where(Role.id == role_id, Role.organization_id == organization.id)
+        query = select(Role).where(Role.id == role_id)
         return (await session.exec(query)).one()
     except NoResultFound as e:
         raise HTTPException(404, f"Role {role_id} not found") from e
@@ -47,9 +47,9 @@ async def _role_lookup(session: SessionDep, organization: OrganizationDep, role_
 RoleDep = Annotated[Role, Depends(_role_lookup)]
 
 
-async def branch_lookup(session: SessionDep, project: ProjectDep, branch_id: Identifier) -> Branch:
+async def branch_lookup(session: SessionDep, branch_id: Identifier) -> Branch:
     try:
-        query = select(Branch).where(Branch.project_id == project.id, Branch.id == branch_id)
+        query = select(Branch).where(Branch.id == branch_id)
         branch = (await session.execute(query)).scalars().one()
         status_value = branch.status
         if (
