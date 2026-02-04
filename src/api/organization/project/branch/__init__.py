@@ -1098,13 +1098,10 @@ def _validate_branch_create_request(parameters: BranchCreate) -> None:
 
 
 async def _resolve_source_branch(
-    session: SessionDep,
-    project: ProjectDep,
-    _organization: OrganizationDep,
-    parameters: BranchCreate,
+    session: SessionDep, parameters: BranchCreate
 ) -> tuple[Branch | None, BackupEntry | None]:
     if parameters.source is not None:
-        branch = await branch_lookup(session, project, parameters.source.branch_id)
+        branch = await branch_lookup(session, parameters.source.branch_id)
         return branch, None
 
     if parameters.restore is not None:
@@ -1114,7 +1111,7 @@ async def _resolve_source_branch(
         if backup is None:
             raise HTTPException(404, f"Backup {backup_id} not found")
         try:
-            branch = await branch_lookup(session, project, backup.branch_id)
+            branch = await branch_lookup(session, backup.branch_id)
         except HTTPException as exc:
             if exc.status_code == 404:
                 raise HTTPException(404, f"Backup {backup_id} not found") from exc
@@ -1309,7 +1306,7 @@ async def create(
     response: Literal["empty", "full"] = "empty",
 ) -> JSONResponse:
     _validate_branch_create_request(parameters)
-    source, backup_entry = await _resolve_source_branch(session, project, organization, parameters)
+    source, backup_entry = await _resolve_source_branch(session, parameters)
     restore_snapshot_context: RestoreSnapshotContext | None = None
     if backup_entry is not None:
         restore_snapshot_context = RestoreSnapshotContext(
