@@ -69,7 +69,7 @@ class VMMonitor:
                                 version="v1",
                                 plural="virtualmachines",
                             )
-                        ).items
+                        )["items"]
                         if (match := re.match(self._NAMESPACE_PATTERN, item["metadata"]["namespace"])) is not None
                     }
 
