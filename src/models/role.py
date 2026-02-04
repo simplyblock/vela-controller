@@ -99,12 +99,12 @@ class RoleType(PyEnum):
 
 
 class RoleUserLink(AsyncAttrs, Model, table=True):
-    organization_id: Identifier = Model.foreign_key_field("organization", nullable=False)
-    role_id: Identifier = Model.foreign_key_field("role", nullable=False)
+    organization_id: Identifier = Model.foreign_key_field("organization")
+    role_id: Identifier = Model.foreign_key_field("role")
     user_id: UUID = Field(foreign_key="user.id")
     env_type: str | None
-    project_id: Identifier | None = Model.foreign_key_field("project", nullable=True)
-    branch_id: Identifier | None = Model.foreign_key_field("branch", nullable=True)
+    project_id: Identifier | None = Model.foreign_key_field("project")
+    branch_id: Identifier | None = Model.foreign_key_field("branch")
 
 
 class AccessRight(AsyncAttrs, Model, table=True):
