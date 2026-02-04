@@ -49,8 +49,8 @@ kubectl -n kube-system edit configmap autoscaler-agent-config
 Apply the required NeonVM CRDs:
 
 ```
-https://raw.githubusercontent.com/simplyblock/autoscaling/refs/heads/main/neonvm/config/crd/bases/vm.neon.tech_virtualmachines.yaml
-https://raw.githubusercontent.com/simplyblock/autoscaling/refs/heads/main/neonvm/config/crd/bases/vm.neon.tech_virtualmachinemigrations.yaml
+kubectl apply -f https://raw.githubusercontent.com/simplyblock/autoscaling/refs/heads/main/neonvm/config/crd/bases/vm.neon.tech_virtualmachines.yaml
+kubectl apply -f https://raw.githubusercontent.com/simplyblock/autoscaling/refs/heads/main/neonvm/config/crd/bases/vm.neon.tech_virtualmachinemigrations.yaml
 ```
 
 Demo environment uses the images that are manually deployed. 
