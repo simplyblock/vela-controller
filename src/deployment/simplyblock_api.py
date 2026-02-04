@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 import httpx
+from pydantic import BaseModel, Field, ValidationError
 
 from ..exceptions import VelaSimplyblockAPIError
 
@@ -14,6 +16,28 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+
+class SnapshotInfo(BaseModel):
+    id: UUID = Field(..., description="Simplyblock snapshot UUID")
+    name: str
+    status: str
+    health_check: bool | None = None
+    size: int | None = None
+    used_size: int | None = None
+    lvol: Any | None = None
+
+    @classmethod
+    def list_from_payload(cls, payload: Any) -> list[SnapshotInfo]:
+        if not isinstance(payload, Iterable):
+            return []
+        snapshots: list[SnapshotInfo] = []
+        for item in payload:
+            try:
+                snapshots.append(cls.model_validate(item))
+            except (ValidationError, TypeError, ValueError) as err:
+                raise VelaSimplyblockAPIError(f"Skipping invalid snapshot payload item: {item!r}") from err
+        return snapshots
 
 
 class SimplyblockApi:
@@ -115,6 +139,14 @@ class SimplyblockApi:
             timeout=self._timeout,
         )
         response.raise_for_status()
+
+    async def list_snapshots(self) -> list[SnapshotInfo]:
+        """Return all snapshots for the configured storage pool."""
+        base_url = await self._cluster_pool_base()
+        url = f"{base_url}/snapshots/"
+        response = await self._client.get(url, headers=self._headers(), timeout=self._timeout)
+        response.raise_for_status()
+        return SnapshotInfo.list_from_payload(response.json())
 
 
 @asynccontextmanager

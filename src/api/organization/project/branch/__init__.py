@@ -50,7 +50,7 @@ from .....deployment.kubernetes.volume_clone import (
     restore_branch_database_volume_from_snapshot,
 )
 from .....deployment.settings import get_settings as get_deployment_settings
-from .....exceptions import VelaError, VelaKubernetesError
+from .....exceptions import VelaError, VelaKubernetesError, VelaSimplyblockAPIError
 from .....models.backups import BackupEntry
 from .....models.branch import (
     ApiKeyCreate,
@@ -94,6 +94,7 @@ from ....backup_snapshots import (
 from ....backup_snapshots import (
     SNAPSHOT_TIMEOUT_SEC as _SNAPSHOT_TIMEOUT_SECONDS,
 )
+from ....backup_snapshots import branch_snapshots_used_size
 from ....db import AsyncSessionLocal, SessionDep
 from ....dependencies import BranchDep, OrganizationDep, ProjectDep, branch_lookup
 from ....keycloak import realm_admin
@@ -999,7 +1000,7 @@ def _service_endpoint_url(rest_endpoint: str | None, api_domain: str | None, db_
     return _ensure_service_port(candidate, get_deployment_settings().deployment_service_port)
 
 
-async def _public(branch: Branch) -> BranchPublic:
+async def _public(branch: Branch, session: SessionDep) -> BranchPublic:
     project = await branch.awaitable_attrs.project
 
     db_host = _resolve_db_host(branch) or ""
@@ -1027,7 +1028,12 @@ async def _public(branch: Branch) -> BranchPublic:
         has_replicas=False,
     )
 
-    used_resources = branch.resource_usage_snapshot()
+    try:
+        snapshot_used_size = await branch_snapshots_used_size(branch.id, session)
+    except VelaSimplyblockAPIError:
+        snapshot_used_size = None
+    used_resources = branch.get_resource_usage()
+    used_resources.snapshot_used_size = snapshot_used_size
     branch_status = await _refresh_branch_status(branch)
 
     api_keys = BranchApiKeys(anon=branch.anon_key, service_role=branch.service_key)
@@ -1064,7 +1070,7 @@ async def list_branches(
 ) -> Sequence[BranchPublic]:
     await session.refresh(project, ["branches"])
     branches = await project.awaitable_attrs.branches
-    return [await _public(branch) for branch in branches]
+    return [await _public(branch, session) for branch in branches]
 
 
 _links = {
@@ -1174,7 +1180,7 @@ def _ensure_clone_storage_capacity(
     storage_size: int | None,
     enable_file_storage: bool,
 ) -> None:
-    usage = source.resource_usage_snapshot()
+    usage = source.get_resource_usage()
     errors: list[str] = []
     if database_size <= usage.nvme_bytes:
         errors.append(
@@ -1416,7 +1422,7 @@ async def create(
         restore_snapshot=restore_snapshot,
     )
 
-    payload = (await _public(entity)).model_dump(mode="json") if response == "full" else None
+    payload = (await _public(entity, session)).model_dump(mode="json") if response == "full" else None
 
     return JSONResponse(
         content=payload,
@@ -1435,11 +1441,12 @@ instance_api = APIRouter(prefix="/{branch_id}", tags=["branch"])
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def detail(
+    session: SessionDep,
     _organization: OrganizationDep,
     _project: ProjectDep,
     branch: BranchDep,
 ) -> BranchPublic:
-    return await _public(branch)
+    return await _public(branch, session)
 
 
 @instance_api.get(
