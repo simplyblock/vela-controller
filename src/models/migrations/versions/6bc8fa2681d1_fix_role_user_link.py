@@ -23,7 +23,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.add_column('roleuserlink', sa.Column('id', sa.UUID(as_uuid=True), nullable=False))
+    op.add_column('roleuserlink', sa.Column('id', sa.UUID(as_uuid=True), nullable=True))
 
     connection = op.get_bind()
     result = connection.execute(sa.text("SELECT * FROM roleuserlink WHERE id IS NULL"))
