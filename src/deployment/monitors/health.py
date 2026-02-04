@@ -29,7 +29,7 @@ class VMStatus(BaseModel):
 class VMMonitor:
     _NAMESPACE_PATTERN = re.compile(r"^vela-(?P<id>[0-9a-hjkmnp-tv-z]{26})$")
 
-    def __init__(self, interval: timedelta = timedelta(2), timeout: float = 0.5):
+    def __init__(self, interval: timedelta = timedelta(seconds=2), timeout: float = 0.5):
         self._statuses: dict[ULID, VMStatus] = {}
         self._interval = interval
         self._timeout = timeout
