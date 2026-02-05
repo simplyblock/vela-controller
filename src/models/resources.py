@@ -1,16 +1,20 @@
 from datetime import datetime
 from enum import Enum as PyEnum
-from typing import Annotated, Literal
+from typing import TYPE_CHECKING, Annotated, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict
 from pydantic import Field as PydanticField
 from sqlalchemy import BigInteger
 from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlmodel import Field
+from sqlmodel import Field, Relationship
 from ulid import ULID
 
 from .._util import Identifier
 from ._util import DatabaseIdentifier, DateTime, Model
+
+if TYPE_CHECKING:
+    from .organization import Organization
+    from .project import Project
 
 
 # ---------------------------
@@ -37,8 +41,10 @@ class ResourceLimit(AsyncAttrs, Model, table=True):
     entity_type: EntityType
     resource: ResourceType
     org_id: Identifier | None = Model.foreign_key_field("organization", ondelete="CASCADE")
+    org: Optional["Organization"] = Relationship(back_populates="limits")
     env_type: str | None = None
     project_id: Identifier | None = Model.foreign_key_field("project", ondelete="CASCADE")
+    project: Optional["Project"] = Relationship(back_populates="limits")
     max_total: Annotated[int, Field(sa_type=BigInteger)]
     max_per_branch: Annotated[int, Field(sa_type=BigInteger)]
 

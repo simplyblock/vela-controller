@@ -145,7 +145,25 @@ async def get_available_organization_provisioning_resources(
 async def set_organization_provisioning_limit(
     session: SessionDep, organization: OrganizationDep, payload: ProvLimitPayload
 ) -> LimitResultPublic:
-    return await set_provisioning_limit(session, EntityType.org, organization.id, payload)
+    if (
+        limit := next(
+            (limit for limit in await organization.awaitable_attrs.limits if limit.resource == payload.resource), None
+        )
+    ) is not None:
+        limit.max_total = payload.max_total
+        limit.max_per_branch = payload.max_per_branch
+    else:
+        limit = ResourceLimit(
+            entity_type=EntityType.project,
+            resource=payload.resource,
+            org_id=organization.id,
+            max_total=payload.max_total,
+            max_per_branch=payload.max_per_branch,
+        )
+        session.add(limit)
+    await session.commit()
+
+    return LimitResultPublic(status="ok", limit=await limit.awaitable_attrs.id)
 
 
 @router.get("/organizations/{organization_id}/limits/provisioning")
@@ -166,7 +184,26 @@ async def get_available_project_provisioning_resources(
 async def set_project_provisioning_limit(
     session: SessionDep, project: ProjectDep, payload: ProvLimitPayload
 ) -> LimitResultPublic:
-    return await set_provisioning_limit(session, EntityType.project, project.id, payload)
+    if (
+        limit := next(
+            (limit for limit in await project.awaitable_attrs.limits if limit.resource == payload.resource), None
+        )
+    ) is not None:
+        limit.max_total = payload.max_total
+        limit.max_per_branch = payload.max_per_branch
+    else:
+        limit = ResourceLimit(
+            entity_type=EntityType.project,
+            resource=payload.resource,
+            org_id=project.organization_id,
+            project_id=project.id,
+            max_total=payload.max_total,
+            max_per_branch=payload.max_per_branch,
+        )
+        session.add(limit)
+    await session.commit()
+
+    return LimitResultPublic(status="ok", limit=await limit.awaitable_attrs.id)
 
 
 @router.get("/projects/{project_id}/limits/provisioning")
@@ -203,58 +240,6 @@ async def get_project_consumption_limits(session: SessionDep, project: ProjectDe
 @router.get("/branches/{branch_id}/limits/")
 async def branch_effective_limit(session: SessionDep, branch: BranchDep) -> ResourceLimitsPublic:
     return await get_effective_branch_limits(session, branch)
-
-
-async def set_provisioning_limit(
-    session: SessionDep, entity_type: EntityType, entity_id: Identifier, payload: ProvLimitPayload
-) -> LimitResultPublic:
-    if entity_type == EntityType.org:
-        org_id, project_id = entity_id, None
-    elif entity_type == EntityType.project:
-        result = await session.execute(select(Project).where(Project.id == entity_id))
-        project = result.scalars().first()
-        if not project:
-            raise HTTPException(404, "Project not found")
-        org_id, project_id = project.organization_id, project.id
-    else:
-        raise HTTPException(400, "Unsupported entity type")
-
-    if project_id is not None:
-        result = await session.execute(
-            select(ResourceLimit).where(
-                ResourceLimit.entity_type == entity_type,
-                ResourceLimit.org_id == org_id,
-                ResourceLimit.project_id == project_id,
-                ResourceLimit.resource == payload.resource,
-            )
-        )
-    else:
-        result = await session.execute(
-            select(ResourceLimit).where(
-                ResourceLimit.entity_type == entity_type,
-                ResourceLimit.org_id == org_id,
-                ResourceLimit.resource == payload.resource,
-            )
-        )
-    limit = result.scalars().first()
-
-    if limit:
-        limit.max_total = payload.max_total
-        limit.max_per_branch = payload.max_per_branch
-    else:
-        limit = ResourceLimit(
-            entity_type=entity_type,
-            org_id=org_id,
-            project_id=project_id,
-            resource=payload.resource,
-            max_total=payload.max_total,
-            max_per_branch=payload.max_per_branch,
-        )
-        session.add(limit)
-
-    limit_id = limit.id
-    await session.commit()
-    return LimitResultPublic(status="ok", limit=limit_id)
 
 
 async def get_provisioning_limits(
