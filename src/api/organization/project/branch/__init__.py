@@ -321,16 +321,6 @@ _PGBOUNCER_CONFIG_TEMPLATE_ERROR = "PgBouncer configuration template missing req
 _PGBOUNCER_CONFIG_UPDATE_ERROR = "Failed to update PgBouncer configuration."
 
 
-def generate_pgbouncer_password(length: int = 32) -> str:
-    if length <= 0:
-        raise ValueError("PgBouncer password length must be positive.")
-    password = ""
-    # secrets.token_urlsafe returns roughly 4/3 * n characters, so loop until we have enough.
-    while len(password) < length:
-        password += secrets.token_urlsafe(length)
-    return password[:length]
-
-
 async def _copy_pgbouncer_config_from_source(source: Branch) -> PgbouncerConfig:
     config = await source.awaitable_attrs.pgbouncer_config
     if config is None:
@@ -1356,7 +1346,7 @@ async def create(
     entity.jwt_secret = jwt_secret
     entity.anon_key = anon_key
     entity.service_key = service_key
-    pgbouncer_admin_password = generate_pgbouncer_password()
+    pgbouncer_admin_password = secrets.token_urlsafe(32)
     entity.pgbouncer_password = pgbouncer_admin_password
     session.add(entity)
     try:
