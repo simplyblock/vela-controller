@@ -7,6 +7,7 @@ from sqlmodel import Relationship
 from .._util import Name
 from ._util import Model
 from .membership import Membership
+from .resources import ResourceLimit
 
 if TYPE_CHECKING:
     from .project import Project
@@ -23,6 +24,7 @@ class Organization(AsyncAttrs, Model, table=True):
     require_mfa: bool = False
     max_backups: int
     environments: str
+    limits: list[ResourceLimit] = Relationship(back_populates="org")  # No cascade-delete due to redundant foreign key
 
 
 class OrganizationCreate(BaseModel):
