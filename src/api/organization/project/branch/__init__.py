@@ -1641,7 +1641,7 @@ async def update_pgbouncer_config(
         await session.rollback()
         raise
 
-    admin_password = _resolve_pgbouncer_password(branch)
+    admin_password = branch.pgbouncer_password
 
     try:
         await _apply_pgbouncer_settings(host=host, password=admin_password, update_commands=update_commands)
@@ -1999,14 +1999,6 @@ def _collect_pgbouncer_updates(parameters: BranchPgbouncerConfigUpdate) -> dict[
 
 def _pgbouncer_host_for_namespace(namespace: str) -> str:
     return f"{get_deployment_settings().deployment_release_name}-pgbouncer.{namespace}.svc.cluster.local"
-
-
-def _resolve_pgbouncer_password(branch: Branch) -> str:
-    try:
-        return branch.pgbouncer_password
-    except ValueError as exc:
-        logger.exception("PgBouncer admin password missing for branch %s", branch.id)
-        raise HTTPException(status_code=500, detail="PgBouncer admin password is unavailable.") from exc
 
 
 async def _update_pgbouncer_config_map(
