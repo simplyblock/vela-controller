@@ -167,10 +167,8 @@ async def set_organization_provisioning_limit(
 
 
 @router.get("/organizations/{organization_id}/limits/provisioning")
-async def get_organization_provisioning_limits(
-    session: SessionDep, organization: OrganizationDep
-) -> list[ProvisioningLimitPublic]:
-    return await get_provisioning_limits(session, EntityType.org, organization.id)
+async def get_organization_provisioning_limits(organization: OrganizationDep) -> list[ProvisioningLimitPublic]:
+    return await organization.awaitable_attrs.limits
 
 
 @router.get("/projects/{project_id}/provisioning/available")
@@ -207,8 +205,8 @@ async def set_project_provisioning_limit(
 
 
 @router.get("/projects/{project_id}/limits/provisioning")
-async def get_project_provisioning_limits(session: SessionDep, project: ProjectDep) -> list[ProvisioningLimitPublic]:
-    return await get_provisioning_limits(session, EntityType.project, project.id)
+async def get_project_provisioning_limits(project: ProjectDep) -> list[ProvisioningLimitPublic]:
+    return await project.awaitable_attrs.limits
 
 
 @router.post("/organizations/{organization_id}/limits/consumption")
@@ -240,24 +238,6 @@ async def get_project_consumption_limits(session: SessionDep, project: ProjectDe
 @router.get("/branches/{branch_id}/limits/")
 async def branch_effective_limit(session: SessionDep, branch: BranchDep) -> ResourceLimitsPublic:
     return await get_effective_branch_limits(session, branch)
-
-
-async def get_provisioning_limits(
-    session: SessionDep, entity_type: EntityType, entity_id: Identifier
-) -> list[ProvisioningLimitPublic]:
-    q = select(ResourceLimit).where(ResourceLimit.entity_type == entity_type)
-    if entity_type == EntityType.org:
-        q = q.where(ResourceLimit.org_id == entity_id)
-    elif entity_type == EntityType.project:
-        q = q.where(ResourceLimit.project_id == entity_id)
-
-    result = await session.execute(q)
-    return [
-        ProvisioningLimitPublic(
-            resource=limit.resource.value, max_total=limit.max_total, max_per_branch=limit.max_per_branch
-        )
-        for limit in result.scalars().all()
-    ]
 
 
 async def set_consumption_limit(
