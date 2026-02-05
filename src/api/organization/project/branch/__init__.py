@@ -1627,9 +1627,6 @@ async def update_pgbouncer_config(
     host = _pgbouncer_host_for_namespace(namespace)
     update_commands = _collect_pgbouncer_updates(parameters)
 
-    if not update_commands:
-        raise HTTPException(status_code=400, detail="No PgBouncer parameters provided for update.")
-
     config_map_name = f"{vmi_name}-pgbouncer"
     try:
         await _update_pgbouncer_config_map(
