@@ -1622,7 +1622,7 @@ async def update_pgbouncer_config(
 
     namespace, vmi_name = get_autoscaler_vm_identity(branch.id)
     host = _pgbouncer_host_for_namespace(namespace)
-    update_commands = _collect_pgbouncer_updates(parameters)
+    update_commands = parameters.model_dump(exclude_defaults=True)
 
     config_map_name = f"{vmi_name}-pgbouncer"
     try:
@@ -1972,23 +1972,6 @@ async def _ensure_pgbouncer_config(session: SessionDep, branch: Branch) -> Pgbou
     else:
         branch.pgbouncer_config = config
     return config
-
-
-def _collect_pgbouncer_updates(parameters: BranchPgbouncerConfigUpdate) -> dict[str, int]:
-    updates: dict[str, int] = {}
-    if parameters.default_pool_size is not None:
-        updates["default_pool_size"] = parameters.default_pool_size
-    if parameters.max_client_conn is not None:
-        updates["max_client_conn"] = parameters.max_client_conn
-    if parameters.server_idle_timeout is not None:
-        updates["server_idle_timeout"] = parameters.server_idle_timeout
-    if parameters.server_lifetime is not None:
-        updates["server_lifetime"] = parameters.server_lifetime
-    if parameters.query_wait_timeout is not None:
-        updates["query_wait_timeout"] = parameters.query_wait_timeout
-    if parameters.reserve_pool_size is not None:
-        updates["reserve_pool_size"] = parameters.reserve_pool_size
-    return updates
 
 
 def _pgbouncer_host_for_namespace(namespace: str) -> str:
