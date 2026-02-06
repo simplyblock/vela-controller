@@ -26,17 +26,14 @@ class SimplyblockApi:
         cluster_id: UUID,
         cluster_secret: str,
         *,
-        client: httpx.AsyncClient | None = None,
-        timeout: float | httpx.Timeout | None = None,
+        timeout: float | httpx.Timeout = API_TIMEOUT_SECONDS,
     ) -> None:
         self._endpoint = endpoint.rstrip("/")
         self._cluster_id = cluster_id
         self._cluster_secret = cluster_secret
         self._pool_id_cache: dict[str, UUID] = {}
-        fallback_timeout = client.timeout if client is not None else self.API_TIMEOUT_SECONDS
-        self._timeout = timeout if timeout is not None else fallback_timeout
-        self._owns_client = client is None
-        self._client = client or httpx.AsyncClient(
+        self._timeout = timeout
+        self._client = httpx.AsyncClient(
             base_url=self._endpoint,
             headers=self._headers(),
             timeout=self._timeout,
@@ -46,11 +43,7 @@ class SimplyblockApi:
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
-        await self.aclose()
-
-    async def aclose(self) -> None:
-        if self._owns_client:
-            await self._client.aclose()
+        await self._client.aclose()
 
     @property
     def _cluster_base(self) -> str:
@@ -118,17 +111,9 @@ class SimplyblockApi:
 
 
 @asynccontextmanager
-async def create_simplyblock_api(
-    client: httpx.AsyncClient | None = None,
-) -> AsyncIterator[SimplyblockApi]:
+async def create_simplyblock_api() -> AsyncIterator[SimplyblockApi]:
     from . import load_simplyblock_credentials
 
-    endpoint, cluster_id, cluster_secret = await load_simplyblock_credentials()
-    api = SimplyblockApi(
-        endpoint=endpoint,
-        cluster_id=cluster_id,
-        cluster_secret=cluster_secret,
-        client=client,
-    )
+    api = SimplyblockApi(*(await load_simplyblock_credentials()))
     async with api:
         yield api
