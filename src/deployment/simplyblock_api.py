@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Self
 from uuid import UUID
 
 import httpx
@@ -16,15 +16,15 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class SimplyblockApi:
+class SimplyblockPoolApi:
     API_TIMEOUT_SECONDS: float = 10.0
-    STORAGE_POOL_NAME: str = "testing1"
 
     def __init__(
         self,
         endpoint: str,
         cluster_id: UUID,
         cluster_secret: str,
+        pool_name: str,
         *,
         timeout: float | httpx.Timeout = API_TIMEOUT_SECONDS,
     ) -> None:
@@ -32,10 +32,11 @@ class SimplyblockApi:
         self._cluster_id = cluster_id
         self._cluster_secret = cluster_secret
         self._pool_id_cache: dict[str, UUID] = {}
+        self._pool_name = pool_name
         self._timeout = timeout
         self._client: httpx.AsyncClient | None = None
 
-    async def __aenter__(self) -> SimplyblockApi:
+    async def __aenter__(self) -> Self:
         if self._client is not None:
             raise RuntimeError("Cannot open instance repeatedly")
 
@@ -64,14 +65,13 @@ class SimplyblockApi:
         }
 
     async def _cluster_pool_base(self) -> str:
-        pool_id = await self.pool_id()
+        pool_id = await self.pool_id(self._pool_name)
         return f"{self._cluster_base}/storage-pools/{pool_id}"
 
-    async def pool(self, name: str | None = None) -> dict[str, Any]:
+    async def pool(self, name: str) -> dict[str, Any]:
         if self._client is None:
             raise RuntimeError("Cannot use unopened instance")
 
-        pool_name = name or self.STORAGE_POOL_NAME
         url = f"{self._cluster_base}/storage-pools/"
         response = await self._client.get(url)
         response.raise_for_status()
@@ -79,21 +79,20 @@ class SimplyblockApi:
         pools = response.json()
         if isinstance(pools, list):
             for pool in pools:
-                if isinstance(pool, dict) and pool.get("name") == pool_name:
+                if isinstance(pool, dict) and pool.get("name") == name:
                     return pool
-        raise KeyError(f"Storage pool {pool_name!r} not found")
+        raise KeyError(f"Storage pool {name!r} not found")
 
-    async def pool_id(self, name: str | None = None) -> UUID:
+    async def pool_id(self, name: str) -> UUID:
         if self._client is None:
             raise RuntimeError("Cannot use unopened instance")
 
-        pool_name = name or self.STORAGE_POOL_NAME
-        cached = self._pool_id_cache.get(pool_name)
+        cached = self._pool_id_cache.get(name)
         if cached:
             return cached
-        pool = await self.pool(pool_name)
+        pool = await self.pool(name)
         identifier = UUID(str(pool["id"]))
-        self._pool_id_cache[pool_name] = identifier
+        self._pool_id_cache[name] = identifier
         return identifier
 
     async def volume_iostats(self, volume_uuid: str) -> dict[str, Any]:
@@ -124,9 +123,9 @@ class SimplyblockApi:
 
 
 @asynccontextmanager
-async def create_simplyblock_api() -> AsyncIterator[SimplyblockApi]:
+async def create_simplyblock_api() -> AsyncIterator[SimplyblockPoolApi]:
     from . import load_simplyblock_credentials
 
-    api = SimplyblockApi(*(await load_simplyblock_credentials()))
+    api = SimplyblockPoolApi(*(await load_simplyblock_credentials()), "testing1")
     async with api:
         yield api
