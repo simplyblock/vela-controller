@@ -33,17 +33,25 @@ class SimplyblockApi:
         self._cluster_secret = cluster_secret
         self._pool_id_cache: dict[str, UUID] = {}
         self._timeout = timeout
-        self._client = httpx.AsyncClient(
+        self._client: httpx.AsyncClient | None = None
+
+    async def __aenter__(self) -> SimplyblockApi:
+        if self._client is not None:
+            raise RuntimeError("Cannot open instance repeatedly")
+
+        self._client = await httpx.AsyncClient(
             base_url=self._endpoint,
             headers=self._headers(),
             timeout=self._timeout,
-        )
-
-    async def __aenter__(self) -> SimplyblockApi:
+        ).__aenter__()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
-        await self._client.aclose()
+        if self._client is None:
+            return
+
+        await self._client.__aexit__(exc_type, exc_val, exc_tb)
+        self._client = None
 
     @property
     def _cluster_base(self) -> str:
@@ -60,6 +68,9 @@ class SimplyblockApi:
         return f"{self._cluster_base}/storage-pools/{pool_id}"
 
     async def pool(self, name: str | None = None) -> dict[str, Any]:
+        if self._client is None:
+            raise RuntimeError("Cannot use unopened instance")
+
         pool_name = name or self.STORAGE_POOL_NAME
         url = f"{self._cluster_base}/storage-pools/"
         response = await self._client.get(url)
@@ -73,6 +84,9 @@ class SimplyblockApi:
         raise KeyError(f"Storage pool {pool_name!r} not found")
 
     async def pool_id(self, name: str | None = None) -> UUID:
+        if self._client is None:
+            raise RuntimeError("Cannot use unopened instance")
+
         pool_name = name or self.STORAGE_POOL_NAME
         cached = self._pool_id_cache.get(pool_name)
         if cached:
@@ -83,6 +97,9 @@ class SimplyblockApi:
         return identifier
 
     async def volume_iostats(self, volume_uuid: str) -> dict[str, Any]:
+        if self._client is None:
+            raise RuntimeError("Cannot use unopened instance")
+
         base_url = await self._cluster_pool_base()
         url = f"{base_url}/volumes/{volume_uuid}/iostats"
         response = await self._client.get(url)
@@ -97,6 +114,9 @@ class SimplyblockApi:
         volume_uuid: str,
         payload: dict[str, Any],
     ) -> None:
+        if self._client is None:
+            raise RuntimeError("Cannot use unopened instance")
+
         base_url = await self._cluster_pool_base()
         url = f"{base_url}/volumes/{volume_uuid}/"
         response = await self._client.put(url, json=payload)
