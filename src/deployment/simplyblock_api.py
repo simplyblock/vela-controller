@@ -28,20 +28,31 @@ class SimplyblockPoolApi:
         *,
         timeout: float | httpx.Timeout = API_TIMEOUT_SECONDS,
     ) -> None:
-        self._endpoint = endpoint.rstrip("/")
         self._cluster_id = cluster_id
         self._cluster_secret = cluster_secret
         self._pool_id_cache: dict[str, UUID] = {}
-        self._pool_name = pool_name
         self._timeout = timeout
         self._client: httpx.AsyncClient | None = None
+
+        storage_pools_url = f"{endpoint}/api/v2/clusters/{self._cluster_id}/storage-pools/"
+        try:
+            response = httpx.get(storage_pools_url, headers=self._headers(), timeout=self._timeout)
+            response.raise_for_status()
+        except httpx.HTTPError as e:
+            raise VelaSimplyblockAPIError("Failed to retrieve storage pools") from e
+
+        pool_id = next((UUID(pool["id"]) for pool in response.json() if pool.get("name") == pool_name), None)
+        if pool_id is None:
+            raise VelaSimplyblockAPIError(f"Failed to retrieve storage pool {pool_name}")
+
+        self._base_url = storage_pools_url + f"{pool_id}/"
 
     async def __aenter__(self) -> Self:
         if self._client is not None:
             raise RuntimeError("Cannot open instance repeatedly")
 
         self._client = await httpx.AsyncClient(
-            base_url=self._endpoint,
+            base_url=self._base_url,
             headers=self._headers(),
             timeout=self._timeout,
         ).__aenter__()
@@ -54,54 +65,17 @@ class SimplyblockPoolApi:
         await self._client.__aexit__(exc_type, exc_val, exc_tb)
         self._client = None
 
-    @property
-    def _cluster_base(self) -> str:
-        return f"{self._endpoint}/api/v2/clusters/{self._cluster_id}"
-
     def _headers(self) -> dict[str, str]:
         return {
             "Authorization": f"Bearer {self._cluster_secret}",
             "Accept": "application/json",
         }
 
-    async def _cluster_pool_base(self) -> str:
-        pool_id = await self.pool_id(self._pool_name)
-        return f"{self._cluster_base}/storage-pools/{pool_id}"
-
-    async def pool(self, name: str) -> dict[str, Any]:
-        if self._client is None:
-            raise RuntimeError("Cannot use unopened instance")
-
-        url = f"{self._cluster_base}/storage-pools/"
-        response = await self._client.get(url)
-        response.raise_for_status()
-
-        pools = response.json()
-        if isinstance(pools, list):
-            for pool in pools:
-                if isinstance(pool, dict) and pool.get("name") == name:
-                    return pool
-        raise KeyError(f"Storage pool {name!r} not found")
-
-    async def pool_id(self, name: str) -> UUID:
-        if self._client is None:
-            raise RuntimeError("Cannot use unopened instance")
-
-        cached = self._pool_id_cache.get(name)
-        if cached:
-            return cached
-        pool = await self.pool(name)
-        identifier = UUID(str(pool["id"]))
-        self._pool_id_cache[name] = identifier
-        return identifier
-
     async def volume_iostats(self, volume_uuid: str) -> dict[str, Any]:
         if self._client is None:
             raise RuntimeError("Cannot use unopened instance")
 
-        base_url = await self._cluster_pool_base()
-        url = f"{base_url}/volumes/{volume_uuid}/iostats"
-        response = await self._client.get(url)
+        response = await self._client.get(f"volumes/{volume_uuid}/iostats")
         response.raise_for_status()
         payload = response.json()
         if len(payload) == 0:
@@ -116,9 +90,7 @@ class SimplyblockPoolApi:
         if self._client is None:
             raise RuntimeError("Cannot use unopened instance")
 
-        base_url = await self._cluster_pool_base()
-        url = f"{base_url}/volumes/{volume_uuid}/"
-        response = await self._client.put(url, json=payload)
+        response = await self._client.put(f"volumes/{volume_uuid}/", json=payload)
         response.raise_for_status()
 
 
