@@ -23,7 +23,7 @@ class SimplyblockApi:
     def __init__(
         self,
         endpoint: str,
-        cluster_id: str,
+        cluster_id: UUID,
         cluster_secret: str,
         *,
         client: httpx.AsyncClient | None = None,
