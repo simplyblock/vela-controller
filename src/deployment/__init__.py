@@ -9,6 +9,7 @@ import textwrap
 from collections.abc import Mapping
 from importlib import resources
 from typing import TYPE_CHECKING, Annotated, Any, Literal, cast
+from uuid import UUID
 
 import asyncpg
 import httpx
@@ -279,7 +280,7 @@ def _build_storage_class_manifest(*, storage_class_name: str, iops: int, base_st
     return manifest
 
 
-async def load_simplyblock_credentials() -> tuple[str, str, str]:
+async def load_simplyblock_credentials() -> tuple[str, UUID, str]:
     config_map = await kube_service.get_config_map(SIMPLYBLOCK_NAMESPACE, SIMPLYBLOCK_CSI_CONFIGMAP)
     config_data = (config_map.data or {}).get("config.json")
     if not config_data:
@@ -294,7 +295,7 @@ async def load_simplyblock_credentials() -> tuple[str, str, str]:
         raise VelaDeploymentError("Simplyblock CSI config missing 'simplybk' section")
 
     endpoint = cluster_cfg.get("ip")
-    cluster_id = cluster_cfg.get("uuid")
+    cluster_id = UUID(cluster_cfg.get("uuid"))
     if not endpoint or not cluster_id:
         raise VelaDeploymentError("Simplyblock CSI config missing required 'ip' or 'uuid'")
 
