@@ -322,7 +322,7 @@ async def load_simplyblock_credentials() -> tuple[str, UUID, str]:
     return endpoint.rstrip("/"), cluster_id, cluster_secret
 
 
-async def _resolve_volume_identifiers(namespace: str, pvc_name: str) -> tuple[str, str | None]:
+async def _resolve_volume_identifiers(namespace: str, pvc_name: str) -> tuple[UUID, UUID | None]:
     pvc = await kube_service.get_persistent_volume_claim(namespace, pvc_name)
     pvc_spec = getattr(pvc, "spec", None)
     volume_name = getattr(pvc_spec, "volume_name", None) if pvc_spec else None
@@ -341,15 +341,15 @@ async def _resolve_volume_identifiers(namespace: str, pvc_name: str) -> tuple[st
     volume_cluster_id = volume_attributes.get("cluster_id")
     if not volume_uuid:
         raise VelaDeploymentError(f"PersistentVolume {volume_name} missing 'uuid' attribute in CSI volume attributes")
-    return volume_uuid, volume_cluster_id
+    return UUID(volume_uuid), UUID(volume_cluster_id) if volume_cluster_id is not None else None
 
 
-async def resolve_storage_volume_identifiers(namespace: str) -> tuple[str, str | None]:
+async def resolve_storage_volume_identifiers(namespace: str) -> tuple[UUID, UUID | None]:
     pvc_name = f"{_autoscaler_vm_name()}{STORAGE_PVC_SUFFIX}"
     return await _resolve_volume_identifiers(namespace, pvc_name)
 
 
-async def resolve_autoscaler_volume_identifiers(namespace: str) -> tuple[str, str | None]:
+async def resolve_autoscaler_volume_identifiers(namespace: str) -> tuple[UUID, UUID | None]:
     pvc_name = f"{_autoscaler_vm_name()}{AUTOSCALER_PVC_SUFFIX}"
     return await _resolve_volume_identifiers(namespace, pvc_name)
 
@@ -357,19 +357,19 @@ async def resolve_autoscaler_volume_identifiers(namespace: str) -> tuple[str, st
 async def update_branch_volume_iops(branch_id: Identifier, iops: int) -> None:
     namespace = deployment_namespace(branch_id)
 
-    volume_uuid, _ = await resolve_autoscaler_volume_identifiers(namespace)
+    volume, _ = await resolve_autoscaler_volume_identifiers(namespace)
     try:
         async with create_simplyblock_api() as sb_api:
-            await sb_api.update_volume(volume_uuid=volume_uuid, payload={"max_rw_iops": iops})
+            await sb_api.update_volume(volume=volume, payload={"max_rw_iops": iops})
     except httpx.HTTPStatusError as exc:
         detail = exc.response.text.strip() or exc.response.reason_phrase or str(exc)
         raise VelaDeploymentError(
-            f"Simplyblock volume API rejected IOPS update for volume {volume_uuid!r}: {detail}"
+            f"Simplyblock volume API rejected IOPS update for volume {volume!r}: {detail}"
         ) from exc
     except httpx.HTTPError as exc:
         raise VelaDeploymentError("Failed to reach Simplyblock volume API") from exc
 
-    logger.info("Updated Simplyblock volume %s IOPS to %s", volume_uuid, iops)
+    logger.info("Updated Simplyblock volume %s IOPS to %s", volume, iops)
 
 
 async def ensure_branch_storage_class(branch_id: Identifier, *, iops: int) -> str:

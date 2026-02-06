@@ -3,6 +3,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
+from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
@@ -386,16 +387,16 @@ async def _collect_compute_usage(namespace: str, vm_name: str) -> tuple[int, int
 
 async def _resolve_volume_stats(
     *,
-    volume_identifier_resolver: Callable[[str], Awaitable[tuple[str, str | None]]],
+    volume_identifier_resolver: Callable[[str], Awaitable[tuple[UUID, UUID | None]]],
     namespace: str,
 ) -> dict[str, int]:
-    volume_uuid, _ = await volume_identifier_resolver(namespace)
+    volume, _ = await volume_identifier_resolver(namespace)
 
     async with create_simplyblock_api() as sb_api:
         try:
-            return await sb_api.volume_iostats(volume_uuid=volume_uuid)
+            return await sb_api.volume_iostats(volume=volume)
         except httpx.HTTPStatusError as exc:
-            raise VelaSimplyblockAPIError(f"Failed to fetch iostats for volume {volume_uuid}: {exc}") from exc
+            raise VelaSimplyblockAPIError(f"Failed to fetch iostats for volume {volume}: {exc}") from exc
 
 
 async def _collect_database_volume_usage(namespace: str) -> tuple[int, int]:
