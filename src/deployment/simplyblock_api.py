@@ -94,18 +94,18 @@ class SimplyblockPoolApi:
         except httpx.HTTPError as e:
             raise VelaSimplyblockAPIError("Request failed") from e
 
-    async def volume_iostats(self, volume_uuid: str) -> dict[str, Any]:
-        iostats = await self._get(f"volumes/{volume_uuid}/iostats")
+    async def volume_iostats(self, volume: UUID) -> dict[str, Any]:
+        iostats = await self._get(f"volumes/{volume}/iostats")
         if len(iostats) == 0:
-            raise VelaSimplyblockAPIError(f"Empty iostats payload for volume {volume_uuid}")
+            raise VelaSimplyblockAPIError(f"Empty iostats payload for volume {volume}")
         return iostats[0]
 
     async def update_volume(
         self,
-        volume_uuid: str,
+        volume: UUID,
         payload: dict[str, Any],
     ) -> None:
-        await self._put(f"volumes/{volume_uuid}/", data=payload)
+        await self._put(f"volumes/{volume}/", data=payload)
 
 
 @asynccontextmanager
