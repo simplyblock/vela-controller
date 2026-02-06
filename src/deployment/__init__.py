@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING, Annotated, Any, Literal, cast
 from uuid import UUID
 
 import asyncpg
-import httpx
 import yaml
 from cloudflare import AsyncCloudflare, CloudflareError
 from kubernetes_asyncio import client as kubernetes_client
@@ -43,6 +42,7 @@ from ..exceptions import (
     VelaDeploymentError,
     VelaGrafanaError,
     VelaKubernetesError,
+    VelaSimplyblockAPIError,
 )
 from ._util import deployment_namespace
 from .deployment import DeploymentParameters, database_image_tag_to_database_images
@@ -361,13 +361,8 @@ async def update_branch_volume_iops(branch_id: Identifier, iops: int) -> None:
     try:
         async with create_simplyblock_api() as sb_api:
             await sb_api.update_volume(volume=volume, payload={"max_rw_iops": iops})
-    except httpx.HTTPStatusError as exc:
-        detail = exc.response.text.strip() or exc.response.reason_phrase or str(exc)
-        raise VelaDeploymentError(
-            f"Simplyblock volume API rejected IOPS update for volume {volume!r}: {detail}"
-        ) from exc
-    except httpx.HTTPError as exc:
-        raise VelaDeploymentError("Failed to reach Simplyblock volume API") from exc
+    except VelaSimplyblockAPIError as exc:
+        raise VelaDeploymentError("Failed to update volume") from exc
 
     logger.info("Updated Simplyblock volume %s IOPS to %s", volume, iops)
 
