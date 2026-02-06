@@ -62,7 +62,7 @@ class SimplyblockApi:
     async def pool(self, name: str | None = None) -> dict[str, Any]:
         pool_name = name or self.STORAGE_POOL_NAME
         url = f"{self._cluster_base}/storage-pools/"
-        response = await self._client.get(url, headers=self._headers(), timeout=self._timeout)
+        response = await self._client.get(url)
         response.raise_for_status()
 
         pools = response.json()
@@ -85,7 +85,7 @@ class SimplyblockApi:
     async def volume_iostats(self, volume_uuid: str) -> dict[str, Any]:
         base_url = await self._cluster_pool_base()
         url = f"{base_url}/volumes/{volume_uuid}/iostats"
-        response = await self._client.get(url, headers=self._headers(), timeout=self._timeout)
+        response = await self._client.get(url)
         response.raise_for_status()
         payload = response.json()
         if len(payload) == 0:
@@ -97,16 +97,9 @@ class SimplyblockApi:
         volume_uuid: str,
         payload: dict[str, Any],
     ) -> None:
-        headers = self._headers()
-        headers["Content-Type"] = "application/json"
         base_url = await self._cluster_pool_base()
         url = f"{base_url}/volumes/{volume_uuid}/"
-        response = await self._client.put(
-            url,
-            headers=headers,
-            json=payload,
-            timeout=self._timeout,
-        )
+        response = await self._client.put(url, json=payload)
         response.raise_for_status()
 
 
