@@ -71,6 +71,7 @@ CPU_REQUEST_FRACTION = 0.25  # request = 25% of limit
 SIMPLYBLOCK_NAMESPACE = "simplyblock"
 SIMPLYBLOCK_CSI_CONFIGMAP = "simplyblock-csi-cm"
 SIMPLYBLOCK_CSI_SECRET = "simplyblock-csi-secret"
+SIMPLYBLOCK_CSI_STORAGE_CLASS = "simplyblock-csi-sc"
 STORAGE_PVC_SUFFIX = "-storage-pvc"
 DATABASE_PVC_SUFFIX = "-db-pvc"
 AUTOSCALER_PVC_SUFFIX = "-block-data"
@@ -280,46 +281,23 @@ def _build_storage_class_manifest(*, storage_class_name: str, iops: int, base_st
     return manifest
 
 
-async def load_simplyblock_credentials() -> tuple[str, UUID, str]:
-    config_map = await kube_service.get_config_map(SIMPLYBLOCK_NAMESPACE, SIMPLYBLOCK_CSI_CONFIGMAP)
-    config_data = (config_map.data or {}).get("config.json")
-    if not config_data:
-        raise VelaDeploymentError("ConfigMap simplyblock-csi-cm missing 'config.json'")
+async def load_simplyblock_credentials() -> tuple[str, UUID, str, str]:
     try:
-        config = json.loads(config_data)
-    except (TypeError, ValueError) as exc:
-        raise VelaDeploymentError("Failed to parse Simplyblock CSI config JSON") from exc
+        config_map = await kube_service.get_config_map(SIMPLYBLOCK_NAMESPACE, SIMPLYBLOCK_CSI_CONFIGMAP)
+        config = json.loads(config_map.data.get["config.json"])
+        cluster_endpoint = config["simplybk"]["ip"].rstrip("/")
+        cluster_id = UUID(config["simplybk"]["uuid"])
 
-    cluster_cfg = config.get("simplybk")
-    if not isinstance(cluster_cfg, dict):
-        raise VelaDeploymentError("Simplyblock CSI config missing 'simplybk' section")
+        encoded_secret = await kube_service.get_secret(SIMPLYBLOCK_NAMESPACE, SIMPLYBLOCK_CSI_SECRET)
+        secret = json.loads(base64.b64decode(encoded_secret["secret.json"]).decode())
+        cluster_secret = secret["secret"]
 
-    endpoint = cluster_cfg.get("ip")
-    cluster_id = UUID(cluster_cfg.get("uuid"))
-    if not endpoint or not cluster_id:
-        raise VelaDeploymentError("Simplyblock CSI config missing required 'ip' or 'uuid'")
+        storage_class = await kube_service.get_storage_class(SIMPLYBLOCK_CSI_STORAGE_CLASS)
+        pool_name = storage_class.parameters["pool_name"]
 
-    secret = await kube_service.get_secret(SIMPLYBLOCK_NAMESPACE, SIMPLYBLOCK_CSI_SECRET)
-    secret_blob = (secret.data or {}).get("secret.json")
-    if not secret_blob:
-        raise VelaDeploymentError("Secret simplyblock-csi-secret missing 'secret.json'")
-    try:
-        decoded_secret = base64.b64decode(secret_blob).decode()
-    except (TypeError, ValueError, UnicodeDecodeError) as exc:
-        raise VelaDeploymentError("Failed to decode Simplyblock CSI secret") from exc
-    try:
-        secret_json = json.loads(decoded_secret)
-    except (TypeError, ValueError) as exc:
-        raise VelaDeploymentError("Failed to parse Simplyblock CSI secret JSON") from exc
-
-    secret_cfg = secret_json.get("simplybk")
-    if not isinstance(secret_cfg, dict):
-        raise VelaDeploymentError("Simplyblock CSI secret missing 'simplybk' section")
-    cluster_secret = secret_cfg.get("secret")
-    if not cluster_secret:
-        raise VelaDeploymentError("Simplyblock CSI secret missing 'secret'")
-
-    return endpoint.rstrip("/"), cluster_id, cluster_secret
+        return cluster_endpoint, cluster_id, cluster_secret, pool_name
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError, VelaKubernetesError) as e:
+        raise VelaDeploymentError("Failed to load simplyblock credentials") from e
 
 
 async def _resolve_volume_identifiers(namespace: str, pvc_name: str) -> tuple[UUID, UUID | None]:
@@ -369,7 +347,7 @@ async def update_branch_volume_iops(branch_id: Identifier, iops: int) -> None:
 
 async def ensure_branch_storage_class(branch_id: Identifier, *, iops: int) -> str:
     storage_class_name = branch_storage_class_name(branch_id)
-    base_storage_class = await kube_service.get_storage_class("simplyblock-csi-sc")
+    base_storage_class = await kube_service.get_storage_class(SIMPLYBLOCK_CSI_STORAGE_CLASS)
     storage_class_manifest = _build_storage_class_manifest(
         storage_class_name=storage_class_name,
         iops=iops,
