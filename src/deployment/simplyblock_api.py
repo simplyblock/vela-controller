@@ -112,6 +112,6 @@ class SimplyblockPoolApi:
 async def create_simplyblock_api() -> AsyncIterator[SimplyblockPoolApi]:
     from . import load_simplyblock_credentials
 
-    api = SimplyblockPoolApi(*(await load_simplyblock_credentials()), "testing1")
+    api = SimplyblockPoolApi(*(await load_simplyblock_credentials()))
     async with api:
         yield api
