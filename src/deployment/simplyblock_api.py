@@ -71,27 +71,41 @@ class SimplyblockPoolApi:
             "Accept": "application/json",
         }
 
-    async def volume_iostats(self, volume_uuid: str) -> dict[str, Any]:
+    async def _get(self, url) -> dict | list:
         if self._client is None:
             raise RuntimeError("Cannot use unopened instance")
 
-        response = await self._client.get(f"volumes/{volume_uuid}/iostats")
-        response.raise_for_status()
-        payload = response.json()
-        if len(payload) == 0:
+        try:
+            response = await self._client.get(url)
+            response.raise_for_status()
+            result = response.json()
+        except httpx.HTTPError as e:
+            raise VelaSimplyblockAPIError("Request failed") from e
+
+        return result
+
+    async def _put(self, url, data) -> None:
+        if self._client is None:
+            raise RuntimeError("Cannot use unopened instance")
+
+        try:
+            response = await self._client.put(url, json=data)
+            response.raise_for_status()
+        except httpx.HTTPError as e:
+            raise VelaSimplyblockAPIError("Request failed") from e
+
+    async def volume_iostats(self, volume_uuid: str) -> dict[str, Any]:
+        iostats = await self._get(f"volumes/{volume_uuid}/iostats")
+        if len(iostats) == 0:
             raise VelaSimplyblockAPIError(f"Empty iostats payload for volume {volume_uuid}")
-        return payload[0]
+        return iostats[0]
 
     async def update_volume(
         self,
         volume_uuid: str,
         payload: dict[str, Any],
     ) -> None:
-        if self._client is None:
-            raise RuntimeError("Cannot use unopened instance")
-
-        response = await self._client.put(f"volumes/{volume_uuid}/", json=payload)
-        response.raise_for_status()
+        await self._put(f"volumes/{volume_uuid}/", data=payload)
 
 
 @asynccontextmanager
