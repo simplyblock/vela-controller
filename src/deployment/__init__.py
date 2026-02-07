@@ -290,7 +290,7 @@ async def load_simplyblock_credentials() -> tuple[str, UUID, str, str]:
 
         encoded_secret = await kube_service.get_secret(SIMPLYBLOCK_NAMESPACE, SIMPLYBLOCK_CSI_SECRET)
         secret = json.loads(base64.b64decode(encoded_secret.data["secret.json"]).decode())
-        cluster_secret = secret["secret"]
+        cluster_secret = secret["simplybk"]["secret"]
 
         storage_class = await kube_service.get_storage_class(SIMPLYBLOCK_CSI_STORAGE_CLASS)
         pool_name = storage_class.parameters["pool_name"]
