@@ -284,7 +284,7 @@ def _build_storage_class_manifest(*, storage_class_name: str, iops: int, base_st
 async def load_simplyblock_credentials() -> tuple[str, UUID, str, str]:
     try:
         config_map = await kube_service.get_config_map(SIMPLYBLOCK_NAMESPACE, SIMPLYBLOCK_CSI_CONFIGMAP)
-        config = json.loads(config_map.data.get["config.json"])
+        config = json.loads(config_map.data["config.json"])
         cluster_endpoint = config["simplybk"]["ip"].rstrip("/")
         cluster_id = UUID(config["simplybk"]["uuid"])
 
