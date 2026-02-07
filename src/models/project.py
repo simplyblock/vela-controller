@@ -44,7 +44,7 @@ class Project(AsyncAttrs, Model, table=True):
     organization_id: Identifier = Model.foreign_key_field("organization")
     organization: Organization = Relationship(back_populates="projects")
     branches: list["Branch"] = Relationship(back_populates="project", cascade_delete=True)
-    limits: list[ResourceLimit] = Relationship(back_populates="project_id", cascade_delete=True)
+    limits: list[ResourceLimit] = Relationship(back_populates="project", cascade_delete=True)
 
     __table_args__ = (UniqueConstraint("organization_id", "name", name="unique_project_name"),)
 
