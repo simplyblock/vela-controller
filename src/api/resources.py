@@ -168,7 +168,7 @@ async def set_organization_provisioning_limit(
 
 @router.get("/organizations/{organization_id}/limits/provisioning")
 async def get_organization_provisioning_limits(organization: OrganizationDep) -> list[ProvisioningLimitPublic]:
-    return await organization.awaitable_attrs.limits
+    return [ProvisioningLimitPublic.from_limit(limit) for limit in (await organization.awaitable_attrs.limits)]
 
 
 @router.get("/projects/{project_id}/provisioning/available")
@@ -206,7 +206,7 @@ async def set_project_provisioning_limit(
 
 @router.get("/projects/{project_id}/limits/provisioning")
 async def get_project_provisioning_limits(project: ProjectDep) -> list[ProvisioningLimitPublic]:
-    return await project.awaitable_attrs.limits
+    return [ProvisioningLimitPublic.from_limit(limit) for limit in (await project.awaitable_attrs.limits)]
 
 
 @router.post("/organizations/{organization_id}/limits/consumption")
