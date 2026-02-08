@@ -16,7 +16,7 @@ from .._util import (
 )
 from ._util import Model
 from .organization import Organization
-from .resources import ResourceLimit, ResourceLimitsPublic
+from .resources import ResourceLimit, Resources
 
 if TYPE_CHECKING:
     from .branch import Branch
@@ -51,8 +51,8 @@ class Project(AsyncAttrs, Model, table=True):
 
 class ProjectCreate(BaseModel):
     name: Name
-    per_branch_limits: ResourceLimitsPublic
-    project_limits: ResourceLimitsPublic
+    per_branch_limits: Resources
+    project_limits: Resources
     max_backups: int
 
     @model_validator(mode="after")
@@ -64,7 +64,7 @@ class ProjectCreate(BaseModel):
             "storage_size": STORAGE_SIZE_MIN,
             "database_size": DB_SIZE_MIN,
         }
-        for resource_name in ResourceLimitsPublic.model_fields:
+        for resource_name in Resources.model_fields:
             per_branch_value = getattr(self.per_branch_limits, resource_name)
             project_value = getattr(self.project_limits, resource_name)
             min_value = minimums.get(resource_name)

@@ -76,7 +76,7 @@ from .....models.branch import (
     PgbouncerConfig,
     aggregate_resize_statuses,
 )
-from .....models.resources import BranchAllocationPublic, ResourceLimitsPublic, ResourceType
+from .....models.resources import BranchAllocationPublic, Resources, ResourceType
 from ...._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ...._util.backups import copy_branch_backup_schedules, delete_branch_backups
 from ...._util.resourcelimit import (
@@ -581,8 +581,8 @@ def _deployment_parameters_from_source(
     )
 
 
-def _resource_limits_from_deployment(parameters: DeploymentParameters) -> ResourceLimitsPublic:
-    return ResourceLimitsPublic(
+def _resource_limits_from_deployment(parameters: DeploymentParameters) -> Resources:
+    return Resources(
         milli_vcpu=parameters.milli_vcpu,
         ram=parameters.memory_bytes,
         iops=parameters.iops,
@@ -706,7 +706,7 @@ async def _apply_resize_operations(
         await create_or_update_branch_provisioning(
             session,
             branch,
-            ResourceLimitsPublic(iops=new_iops),
+            Resources(iops=new_iops),
             commit=False,
         )
 
@@ -728,7 +728,7 @@ async def _apply_resize_operations(
             await create_or_update_branch_provisioning(
                 session,
                 branch,
-                ResourceLimitsPublic(milli_vcpu=milli_vcpu),
+                Resources(milli_vcpu=milli_vcpu),
                 commit=False,
             )
 
@@ -737,7 +737,7 @@ async def _apply_resize_operations(
             await create_or_update_branch_provisioning(
                 session,
                 branch,
-                ResourceLimitsPublic(ram=memory),
+                Resources(ram=memory),
                 commit=False,
             )
 
@@ -1115,17 +1115,17 @@ async def _resolve_source_branch(
 
 def _ensure_branch_resource_limits(
     exceeded_limits: Sequence[ResourceType],
-    resource_requests: ResourceLimitsPublic,
-    remaining_limits: ResourceLimitsPublic,
+    resource_requests: Resources,
+    remaining_limits: Resources,
 ) -> None:
     if exceeded_limits:
         violation_details = format_limit_violation_details(exceeded_limits, resource_requests, remaining_limits)
         raise HTTPException(422, f"New branch will exceed limit(s): {violation_details}")
 
 
-def _build_target_allocations(branch: Branch, updates: dict[CapaResizeKey, int]) -> ResourceLimitsPublic:
+def _build_target_allocations(branch: Branch, updates: dict[CapaResizeKey, int]) -> Resources:
     storage_override = updates.get("storage_size")
-    return ResourceLimitsPublic(
+    return Resources(
         milli_vcpu=updates.get("milli_vcpu", branch.milli_vcpu),
         ram=updates.get("memory_bytes", branch.memory),
         iops=updates.get("iops", branch.iops),

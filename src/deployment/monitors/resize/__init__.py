@@ -48,7 +48,7 @@ from ....models.branch import (
     aggregate_resize_statuses,
     should_transition_resize_status,
 )
-from ....models.resources import ResourceLimitsPublic
+from ....models.resources import Resources
 from ...health import collect_branch_service_health, derive_branch_status_from_services
 from .pvc_resize import (
     INITIAL_BACKOFF_SECONDS,
@@ -115,7 +115,7 @@ async def _apply_volume_status(
                 await create_or_update_branch_provisioning(
                     session,
                     branch,
-                    ResourceLimitsPublic(storage_size=capacity),
+                    Resources(storage_size=capacity),
                     commit=False,
                 )
                 branch.storage_size = capacity
@@ -123,7 +123,7 @@ async def _apply_volume_status(
                 await create_or_update_branch_provisioning(
                     session,
                     branch,
-                    ResourceLimitsPublic(database_size=capacity),
+                    Resources(database_size=capacity),
                     commit=False,
                 )
                 branch.database_size = capacity

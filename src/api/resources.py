@@ -36,7 +36,7 @@ from ..models.resources import (
     ProvLimitPayload,
     ResourceConsumptionLimit,
     ResourceLimit,
-    ResourceLimitsPublic,
+    Resources,
     ResourceUsageMinute,
 )
 from ._util.resourcelimit import (
@@ -89,9 +89,7 @@ logger = logging.getLogger(__name__)
 # Provisioning endpoints
 # ---------------------------
 @router.post("/branches/{branch_id}/allocations")
-async def set_branch_allocations(
-    session: SessionDep, branch: BranchDep, payload: ResourceLimitsPublic
-) -> BranchProvisionPublic:
+async def set_branch_allocations(session: SessionDep, branch: BranchDep, payload: Resources) -> BranchProvisionPublic:
     exceeded_limits, effective_limits = await check_resource_limits(session, branch, payload)
     if exceeded_limits:
         violation_details = format_limit_violation_details(exceeded_limits, payload, effective_limits)
@@ -114,7 +112,7 @@ async def get_branch_allocations(session: SessionDep, branch: BranchDep) -> Bran
 @router.get("/projects/{project_id}/usage")
 async def get_project_usage(
     session: SessionDep, project: ProjectDep, cycle_start: datetime | None = None, cycle_end: datetime | None = None
-) -> ResourceLimitsPublic:
+) -> Resources:
     usage_cycle = make_usage_cycle(cycle_start, cycle_end)
     return dict_to_resource_limits(await get_project_resource_usage(session, project.id, usage_cycle))
 
@@ -125,7 +123,7 @@ async def get_org_usage(
     organization: OrganizationDep,
     cycle_start: datetime | None = None,
     cycle_end: datetime | None = None,
-) -> ResourceLimitsPublic:
+) -> Resources:
     usage_cycle = make_usage_cycle(cycle_start, cycle_end)
     return dict_to_resource_limits(await get_organization_resource_usage(session, organization.id, usage_cycle))
 
@@ -136,7 +134,7 @@ async def get_org_usage(
 @router.get("/organizations/{organization_id}/provisioning/available")
 async def get_available_organization_provisioning_resources(
     session: SessionDep, organization: OrganizationDep
-) -> ResourceLimitsPublic:
+) -> Resources:
     return await get_effective_project_creation_limits(session, organization)
 
 
@@ -175,9 +173,7 @@ async def get_organization_provisioning_limits(organization: OrganizationDep) ->
 
 
 @router.get("/projects/{project_id}/provisioning/available")
-async def get_available_project_provisioning_resources(
-    session: SessionDep, project: ProjectDep
-) -> ResourceLimitsPublic:
+async def get_available_project_provisioning_resources(session: SessionDep, project: ProjectDep) -> Resources:
     return await get_effective_branch_creation_limits(session, project)
 
 
@@ -239,7 +235,7 @@ async def get_project_consumption_limits(session: SessionDep, project: ProjectDe
 
 
 @router.get("/branches/{branch_id}/limits/")
-async def branch_effective_limit(session: SessionDep, branch: BranchDep) -> ResourceLimitsPublic:
+async def branch_effective_limit(session: SessionDep, branch: BranchDep) -> Resources:
     return await get_effective_branch_limits(session, branch)
 
 

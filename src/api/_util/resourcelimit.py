@@ -17,7 +17,7 @@ from ...models.resources import (
     EntityType,
     ProvisioningLog,
     ResourceLimit,
-    ResourceLimitsPublic,
+    Resources,
     ResourceType,
     ResourceUsageMinute,
     UsageCycle,
@@ -72,7 +72,7 @@ async def audit_new_branch_resource_provisioning(
 async def create_or_update_branch_provisioning(
     session: SessionDep,
     branch: Branch,
-    resource_requests: ResourceLimitsPublic,
+    resource_requests: Resources,
     *,
     commit: bool = True,
 ) -> None:
@@ -138,7 +138,7 @@ async def create_system_resource_limits(conn: AsyncConnection):
         return
 
     # Set up initial system resource limits if not yet existing
-    resource_limits = ResourceLimitsPublic(
+    resource_limits = Resources(
         milli_vcpu=get_settings().system_limit_millis_vcpu,
         ram=get_settings().system_limit_ram,
         iops=get_settings().system_limit_iops,
@@ -180,8 +180,8 @@ async def initialize_organization_resource_limits(session: SessionDep, organizat
     await session.refresh(organization)
 
 
-def dict_to_resource_limits(value: dict[ResourceType, int]) -> ResourceLimitsPublic:
-    return ResourceLimitsPublic(
+def dict_to_resource_limits(value: dict[ResourceType, int]) -> Resources:
+    return Resources(
         milli_vcpu=value.get(ResourceType.milli_vcpu),
         ram=value.get(ResourceType.ram),
         iops=value.get(ResourceType.iops),
@@ -190,7 +190,7 @@ def dict_to_resource_limits(value: dict[ResourceType, int]) -> ResourceLimitsPub
     )
 
 
-def resource_limits_to_dict(value: ResourceLimitsPublic) -> dict[ResourceType, int | None]:
+def resource_limits_to_dict(value: Resources) -> dict[ResourceType, int | None]:
     return {
         ResourceType.milli_vcpu: value.milli_vcpu,
         ResourceType.ram: value.ram,
@@ -241,8 +241,8 @@ async def get_project_resource_usage(
 
 
 async def check_resource_limits(
-    session: SessionDep, branch: Branch, provisioning_request: ResourceLimitsPublic
-) -> tuple[list[ResourceType], ResourceLimitsPublic]:
+    session: SessionDep, branch: Branch, provisioning_request: Resources
+) -> tuple[list[ResourceType], Resources]:
     project = await branch.awaitable_attrs.project
     project_id = branch.project_id
     organization_id = project.organization_id
@@ -253,10 +253,10 @@ async def check_available_resources_limits(
     session: SessionDep,
     organization_id: Identifier,
     project_id: Identifier,
-    provisioning_request: ResourceLimitsPublic,
+    provisioning_request: Resources,
     *,
     exclude_branch_ids: Sequence[Identifier] | None = None,
-) -> tuple[list[ResourceType], ResourceLimitsPublic]:
+) -> tuple[list[ResourceType], Resources]:
     effective_branch_limits = await get_remaining_project_resources(
         session,
         organization_id,
@@ -289,8 +289,8 @@ def check_resource_limit(requested: int | None, available: int | None) -> bool:
 
 def format_limit_violation_details(
     exceeded: Iterable[ResourceType],
-    requested: ResourceLimitsPublic,
-    limits: ResourceLimitsPublic,
+    requested: Resources,
+    limits: Resources,
 ) -> str:
     details: list[str] = []
     for resource in exceeded:
@@ -305,24 +305,22 @@ def format_limit_violation_details(
 # FIXME: @Chris This call should return the limits on the branch which is only meaningful for resizing, however in this
 # case, the calculation is wrong, since it includes it's own allocations. Fixing this requires a change on the
 # frontend,hence it's pushed for now.
-async def get_effective_branch_limits(session: SessionDep, branch: Branch) -> ResourceLimitsPublic:
+async def get_effective_branch_limits(session: SessionDep, branch: Branch) -> Resources:
     organization_id = (await branch.awaitable_attrs.project).organization_id
     return await get_remaining_project_resources(session, organization_id, branch.project_id)
 
 
-async def get_effective_branch_creation_limits(session: SessionDep, project: Project) -> ResourceLimitsPublic:
+async def get_effective_branch_creation_limits(session: SessionDep, project: Project) -> Resources:
     return await get_remaining_project_resources(session, project.organization_id, project.id)
 
 
-async def get_effective_project_creation_limits(
-    session: SessionDep, organization: Organization
-) -> ResourceLimitsPublic:
+async def get_effective_project_creation_limits(session: SessionDep, organization: Organization) -> Resources:
     return await get_remaining_organization_resources(session, organization.id)
 
 
 async def get_remaining_organization_resources(
     session: SessionDep, organization_id: Identifier, *, exclude_branch_ids: Sequence[Identifier] | None = None
-) -> ResourceLimitsPublic:
+) -> Resources:
     organization_limits = await get_organization_resource_limits(session, organization_id)
     organization_allocations = await get_current_organization_allocations(
         session,
@@ -348,7 +346,7 @@ async def get_remaining_project_resources(
     project_id: Identifier,
     *,
     exclude_branch_ids: Sequence[Identifier] | None = None,
-) -> ResourceLimitsPublic:
+) -> Resources:
     system_limits = await get_system_resource_limits(session)
     organization_limits = await get_organization_resource_limits(session, organization_id)
     project_limits = await get_project_resource_limits(session, organization_id, project_id)
