@@ -163,10 +163,6 @@ class ResourceLimitsPublic(BaseModel):
     )
 
 
-class ResourcesPayload(BaseModel):
-    resources: ResourceLimitsPublic
-
-
 class ProvLimitPayload(BaseModel):
     resource: ResourceTypePublic
     max_total: int
