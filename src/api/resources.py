@@ -168,7 +168,11 @@ async def set_organization_provisioning_limit(
 
 @router.get("/organizations/{organization_id}/limits/provisioning")
 async def get_organization_provisioning_limits(organization: OrganizationDep) -> list[ProvisioningLimitPublic]:
-    return [ProvisioningLimitPublic.from_limit(limit) for limit in (await organization.awaitable_attrs.limits)]
+    return [
+        ProvisioningLimitPublic.from_limit(limit)
+        for limit in (await organization.awaitable_attrs.limits)
+        if limit.project_id is None
+    ]
 
 
 @router.get("/projects/{project_id}/provisioning/available")
