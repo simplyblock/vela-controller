@@ -37,7 +37,6 @@ from ..models.resources import (
     ResourceConsumptionLimit,
     ResourceLimit,
     ResourceLimitsPublic,
-    ResourcesPayload,
     ResourceUsageMinute,
 )
 from ._util.resourcelimit import (
@@ -91,14 +90,14 @@ logger = logging.getLogger(__name__)
 # ---------------------------
 @router.post("/branches/{branch_id}/allocations")
 async def set_branch_allocations(
-    session: SessionDep, branch: BranchDep, payload: ResourcesPayload
+    session: SessionDep, branch: BranchDep, payload: ResourceLimitsPublic
 ) -> BranchProvisionPublic:
-    exceeded_limits, effective_limits = await check_resource_limits(session, branch, payload.resources)
+    exceeded_limits, effective_limits = await check_resource_limits(session, branch, payload)
     if exceeded_limits:
-        violation_details = format_limit_violation_details(exceeded_limits, payload.resources, effective_limits)
+        violation_details = format_limit_violation_details(exceeded_limits, payload, effective_limits)
         raise HTTPException(422, f"Branch {branch.id} limit(s) exceeded: {violation_details}")
 
-    await create_or_update_branch_provisioning(session, branch, payload.resources)
+    await create_or_update_branch_provisioning(session, branch, payload)
 
     return BranchProvisionPublic(status="ok")
 
