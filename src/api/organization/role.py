@@ -3,7 +3,7 @@ from typing import Annotated, assert_never, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -240,17 +240,6 @@ async def delete_role(
 class Assignment(BaseModel):
     contexts: Annotated[list[Identifier], Field(min_length=1)] | Annotated[list[str], Field(min_length=1)] | None
 
-    @computed_field
-    def context_type(self) -> type[Identifier] | type[str] | type[None]:
-        if self.contexts is None:
-            return type(None)
-        elif isinstance(self.contexts[0], Identifier):
-            return Identifier
-        elif isinstance(self.contexts[0], str):
-            return str
-        else:
-            assert_never(self.contexts)
-
 
 @instance_api.post(
     "/assign/{user_id}/",
@@ -276,12 +265,12 @@ async def assign_role(  # noqa: C901 (complexity justified by clear structure)
     """
     match role.role_type:
         case RoleType.organization:
-            if payload.context_type is not type(None):
+            if payload.contexts is None:
                 raise HTTPException(400, "Context must be empty when assigning organization role")
 
             session.add(RoleUserLink(organization_id=organization.id, role_id=role.id, user_id=user_id))
         case RoleType.project:
-            if payload.context_type is not Identifier:
+            if isinstance(payload.contexts, list) and isinstance(payload.contexts[0], Identifier):
                 raise HTTPException(400, "Context must be a valid project identifier when assigning project role")
 
             for project_id in cast("list[Identifier]", payload.contexts):
@@ -295,7 +284,7 @@ async def assign_role(  # noqa: C901 (complexity justified by clear structure)
                 )
 
         case RoleType.branch:
-            if payload.context_type is not Identifier:
+            if isinstance(payload.contexts, list) and isinstance(payload.contexts[0], Identifier):
                 raise HTTPException(400, "Context must be a valid project identifier when assigning branch role")
 
             for branch_id in cast("list[Identifier]", payload.contexts):
@@ -309,7 +298,7 @@ async def assign_role(  # noqa: C901 (complexity justified by clear structure)
                 )
 
         case RoleType.environment:
-            if payload.context_type is not str:
+            if isinstance(payload.contexts, list) and isinstance(payload.contexts[0], str):
                 raise HTTPException(400, "Context must be an environment when assigning environment role")
 
             for env in cast("list[str]", payload.contexts):
