@@ -213,7 +213,7 @@ def normalize_datetime_to_utc(instant: datetime | None) -> datetime | None:
     return instant.astimezone(UTC).replace(second=0, microsecond=0)
 
 
-async def _get_usage(session: SessionDep, filter_, usage_cycle) -> Resources:
+async def _get_usage(session: SessionDep, filter_, usage_cycle) -> ResourceLimitsPublic:
     query = (
         select(col(ResourceUsageMinute.resource), func.sum(ResourceUsageMinute.amount))
         .where(filter_)
@@ -229,11 +229,13 @@ async def _get_usage(session: SessionDep, filter_, usage_cycle) -> Resources:
 
 async def get_organization_resource_usage(
     session: SessionDep, organization_id: Identifier, usage_cycle: UsageCycle
-) -> Resources:
+) -> ResourceLimitsPublic:
     return await _get_usage(session, ResourceUsageMinute.org_id == organization_id, usage_cycle)
 
 
-async def get_project_resource_usage(session: SessionDep, project_id: Identifier, usage_cycle: UsageCycle) -> Resources:
+async def get_project_resource_usage(
+    session: SessionDep, project_id: Identifier, usage_cycle: UsageCycle
+) -> ResourceLimitsPublic:
     return await _get_usage(session, ResourceUsageMinute.project_id == project_id, usage_cycle)
 
 
@@ -574,11 +576,11 @@ def _select_resource_allocation_or_zero(resource_type: ResourceType, allocations
     return value if value is not None else 0
 
 
-def _list_to_resources(entities: Sequence, attribute: str) -> Resources:
+def _list_to_resources(entities: Sequence, attribute: str) -> ResourceLimitsPublic:
     def keyfunc(entity):
         return entity.resource.value
 
-    return Resources(
+    return ResourceLimitsPublic(
         **{
             key: getattr(single_or_none(group), attribute)
             for key, group in groupby(sorted(entities, key=keyfunc), key=keyfunc)

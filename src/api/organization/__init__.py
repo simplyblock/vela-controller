@@ -13,9 +13,13 @@ from ulid import ULID
 from ...deployment import delete_deployment
 from ...models.audit import OrganizationAuditLog
 from ...models.organization import Organization, OrganizationCreate, OrganizationUpdate
-from ...models.resources import ResourceTypePublic, ResourceUsageMinute
+from ...models.resources import ResourceLimitsPublic, ResourceTypePublic, ResourceUsageMinute
 from .._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
-from .._util.resourcelimit import initialize_organization_resource_limits
+from .._util.resourcelimit import (
+    get_organization_resource_usage,
+    initialize_organization_resource_limits,
+    make_usage_cycle,
+)
 from .._util.role import create_organization_admin_role
 from ..auth import authenticated_user
 from ..dependencies import AuthUserDep, OrganizationDep, SessionDep
@@ -267,6 +271,17 @@ async def metering(
         )
     )
     return (await session.exec(statement)).all()
+
+
+@instance_api.get("/resource-usage/")
+async def get_org_usage(
+    session: SessionDep,
+    organization: OrganizationDep,
+    cycle_start: datetime | None = None,
+    cycle_end: datetime | None = None,
+) -> ResourceLimitsPublic:
+    usage_cycle = make_usage_cycle(cycle_start, cycle_end)
+    return await get_organization_resource_usage(session, organization.id, usage_cycle)
 
 
 instance_api.include_router(project_api, prefix="/projects")

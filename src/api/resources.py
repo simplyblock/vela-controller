@@ -47,9 +47,6 @@ from ._util.resourcelimit import (
     get_effective_branch_creation_limits,
     get_effective_branch_limits,
     get_effective_project_creation_limits,
-    get_organization_resource_usage,
-    get_project_resource_usage,
-    make_usage_cycle,
 )
 from .auth import authenticated_user
 from .db import SessionDep
@@ -104,29 +101,6 @@ async def set_branch_allocations(
 @router.get("/branches/{branch_id}/allocations")
 async def get_branch_allocations(session: SessionDep, branch: BranchDep) -> BranchAllocationPublic:
     return await get_current_branch_allocations(session, branch)
-
-
-# ---------------------------
-# Resource usage endpoints
-# ---------------------------
-#
-@router.get("/projects/{project_id}/usage")
-async def get_project_usage(
-    session: SessionDep, project: ProjectDep, cycle_start: datetime | None = None, cycle_end: datetime | None = None
-) -> ResourceLimitsPublic:
-    usage_cycle = make_usage_cycle(cycle_start, cycle_end)
-    return await get_project_resource_usage(session, project.id, usage_cycle)
-
-
-@router.get("/organizations/{organization_id}/usage")
-async def get_org_usage(
-    session: SessionDep,
-    organization: OrganizationDep,
-    cycle_start: datetime | None = None,
-    cycle_end: datetime | None = None,
-) -> ResourceLimitsPublic:
-    usage_cycle = make_usage_cycle(cycle_start, cycle_end)
-    return await get_organization_resource_usage(session, organization.id, usage_cycle)
 
 
 # ---------------------------
@@ -191,7 +165,6 @@ async def set_project_provisioning_limit(
             None,
         )
     ) is not None:
-        print(limit)
         limit.max_total = payload.max_total
         limit.max_per_branch = payload.max_per_branch
     else:

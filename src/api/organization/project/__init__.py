@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -20,12 +21,14 @@ from ....models.project import (
     ProjectPublic,
     ProjectUpdate,
 )
-from ....models.resources import EntityType, ResourceLimit, ResourceType
+from ....models.resources import EntityType, ResourceLimit, ResourceLimitsPublic, ResourceType
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ..._util.resourcelimit import (
     delete_branch_provisioning,
     get_organization_resource_limits,
     get_project_limit_totals,
+    get_project_resource_usage,
+    make_usage_cycle,
 )
 from ...auth import security
 from ...db import SessionDep
@@ -555,6 +558,14 @@ async def resume(session: SessionDep, _organization: OrganizationDep, project: P
     project.status = "STARTED"
     await session.commit()
     return Response(status_code=204)
+
+
+@instance_api.get("/resource-usage/")
+async def get_project_usage(
+    session: SessionDep, project: ProjectDep, cycle_start: datetime | None = None, cycle_end: datetime | None = None
+) -> ResourceLimitsPublic:
+    usage_cycle = make_usage_cycle(cycle_start, cycle_end)
+    return await get_project_resource_usage(session, project.id, usage_cycle)
 
 
 api.include_router(instance_api)
