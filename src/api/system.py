@@ -104,11 +104,6 @@ async def list_resource_limit_definitions(
 async def list_available_postgresql_versions() -> list[AvailablePostgresqlVersion]:
     return [
         AvailablePostgresqlVersion(
-            label="15",
-            value="15.1.0.147",
-            default=False,
-        ),
-        AvailablePostgresqlVersion(
             label="18.1 (beta)",
             value="18.1-velaos",
             default=True,
