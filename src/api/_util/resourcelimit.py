@@ -1,12 +1,13 @@
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, datetime
+from itertools import groupby
 
 from sqlalchemy import delete, func
 from sqlalchemy.dialects.mysql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 from sqlmodel import col, select
 
-from ..._util import Identifier
+from ..._util import Identifier, single_or_none
 from ...exceptions import VelaResourceLimitError
 from ...models.branch import Branch, BranchServiceStatus
 from ...models.organization import Organization
@@ -212,32 +213,28 @@ def normalize_datetime_to_utc(instant: datetime | None) -> datetime | None:
     return instant.astimezone(UTC).replace(second=0, microsecond=0)
 
 
+async def _get_usage(session: SessionDep, filter_, usage_cycle) -> Resources:
+    query = (
+        select(col(ResourceUsageMinute.resource), func.sum(ResourceUsageMinute.amount))
+        .where(filter_)
+        .group_by(col(ResourceUsageMinute.resource))
+    )
+    if usage_cycle.start:
+        query = query.where(ResourceUsageMinute.ts_minute >= usage_cycle.start)
+    if usage_cycle.end:
+        query = query.where(ResourceUsageMinute.ts_minute < usage_cycle.end)
+
+    return _list_to_resources((await session.execute(query)).all(), "count")
+
+
 async def get_organization_resource_usage(
     session: SessionDep, organization_id: Identifier, usage_cycle: UsageCycle
-) -> dict[ResourceType, int]:
-    query = select(ResourceUsageMinute).where(ResourceUsageMinute.org_id == organization_id)
-    if usage_cycle.start:
-        query = query.where(ResourceUsageMinute.ts_minute >= usage_cycle.start)
-    if usage_cycle.end:
-        query = query.where(ResourceUsageMinute.ts_minute < usage_cycle.end)
-
-    result = await session.execute(query)
-    usages = result.scalars().all()
-    return _map_resource_usages(list(usages))
+) -> Resources:
+    return await _get_usage(session, ResourceUsageMinute.org_id == organization_id, usage_cycle)
 
 
-async def get_project_resource_usage(
-    session: SessionDep, project_id: Identifier, usage_cycle: UsageCycle
-) -> dict[ResourceType, int]:
-    query = select(ResourceUsageMinute).where(ResourceUsageMinute.project_id == project_id)
-    if usage_cycle.start:
-        query = query.where(ResourceUsageMinute.ts_minute >= usage_cycle.start)
-    if usage_cycle.end:
-        query = query.where(ResourceUsageMinute.ts_minute < usage_cycle.end)
-
-    result = await session.execute(query)
-    usages = result.scalars().all()
-    return _map_resource_usages(list(usages))
+async def get_project_resource_usage(session: SessionDep, project_id: Identifier, usage_cycle: UsageCycle) -> Resources:
+    return await _get_usage(session, ResourceUsageMinute.project_id == project_id, usage_cycle)
 
 
 async def check_resource_limits(
@@ -577,11 +574,16 @@ def _select_resource_allocation_or_zero(resource_type: ResourceType, allocations
     return value if value is not None else 0
 
 
-def _map_resource_usages(usages: list[ResourceUsageMinute]) -> dict[ResourceType, int]:
-    result: dict[ResourceType, int] = {}
-    for usage in usages:
-        result[usage.resource] = result.get(usage.resource, 0) + usage.amount
-    return result
+def _list_to_resources(entities: Sequence, attribute: str) -> Resources:
+    def keyfunc(entity):
+        return entity.resource.value
+
+    return Resources(
+        **{
+            key: getattr(single_or_none(group), attribute)
+            for key, group in groupby(sorted(entities, key=keyfunc), key=keyfunc)
+        }
+    )
 
 
 def _select_allocation(resource_type: ResourceType, allocations: list[BranchProvisioning]):
