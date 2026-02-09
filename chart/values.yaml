@@ -15,7 +15,6 @@ containerSecurityContext:
   seccompProfile:
     type: 'RuntimeDefault'
 
-domain: demo.vela.run
 port: 443
 
 keycloak:

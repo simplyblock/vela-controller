@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema#",
   "type": "object",
-  "required": ["database", "gateway", "issuer", "prometheus"],
+  "required": ["database", "domain", "gateway", "issuer", "prometheus"],
   "properties": {
     "database": {
       "type": "object",
@@ -15,6 +15,7 @@
         }
       }
     },
+    "domain": {"type": "string"},
     "gateway": {
       "type": "object",
       "required": ["name", "namespace"],

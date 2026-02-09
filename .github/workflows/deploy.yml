@@ -67,6 +67,7 @@ jobs:
           --create-namespace \
           --wait \
           --timeout 10m \
+          --set-string domain="$DOMAIN" \
           --set-string controller.image.tag="$IMAGE_TAG" \
           --set-string controller.env.VELA_CLOUDFLARE_API_TOKEN="$CLOUDFLARE_API_TOKEN" \
           --set-string controller.env.VELA_CLOUDFLARE_ZONE_ID="$CLOUDFLARE_ZONE_ID" \
