@@ -9,9 +9,7 @@ from sqlmodel import delete, select
 
 from ...models.backups import BackupEntry, BackupSchedule, BackupScheduleRow, NextBackup
 from ...models.branch import Branch
-from ..backup_snapshots import (
-    delete_branch_snapshot,
-)
+from ..backup_snapshots import build_snapshot_metadata, delete_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -114,16 +112,11 @@ async def delete_branch_backups(session: SessionDep, branch_id: Identifier) -> N
         return
 
     for backup in backups:
+        snapshot = build_snapshot_metadata(backup)
+        if snapshot is None:
+            logger.warning("Skipping snapshot deletion for backup %s because metadata was incomplete", backup.id)
+            continue
         try:
-            await delete_branch_snapshot(
-                name=backup.snapshot_name,
-                namespace=backup.snapshot_namespace,
-                content_name=backup.snapshot_content_name,
-            )
+            await delete_snapshot(snapshot)
         except Exception:
-            logger.exception(
-                "Failed to delete snapshot %s/%s for backup %s",
-                backup.snapshot_namespace,
-                backup.snapshot_name,
-                backup.id,
-            )
+            logger.exception("Failed to delete snapshots for branch %s", branch_id)
