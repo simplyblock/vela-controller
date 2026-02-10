@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from ulid import ULID
 
 from ..kubernetes.neonvm import NeonVM, Phase
+from ..settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ class VMStatus(BaseModel):
 
 
 class VMMonitor:
-    _NAMESPACE_PATTERN = re.compile(r"^vela-(?P<id>[0-9a-hjkmnp-tv-z]{26})$")
+    _NAMESPACE_PATTERN = re.compile(rf"^{get_settings().deployment_namespace_prefix}-(?P<id>[0-9a-hjkmnp-tv-z]{{26}})$")
 
     def __init__(self, interval: timedelta = timedelta(seconds=2), timeout: float = 0.5):
         self._statuses: dict[ULID, VMStatus] = {}
