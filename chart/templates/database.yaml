@@ -21,8 +21,7 @@ spec:
   postgres:
     version: '{{ .Values.database.postgresVersion }}'
     extensions:
-      - name: 'timescaledb-tsl'
-        version: '2.24.0'
+      - name: 'timescaledb'
       - name: 'timescaledb_toolkit'
   configurations:
     postgres:
