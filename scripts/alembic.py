@@ -14,6 +14,12 @@ def _run_alembic(args: list[str], postgres, **kwargs):
         env={
             **os.environ,
             "VELA_POSTGRES_URL": postgres.get_connection_url(driver=driver),
+            "VELA_PGMETA_CRYPTO_KEY": "pg_meta_crypto_key",
+            "VELA_CLOUDFLARE__API_TOKEN": "api_token",
+            "VELA_CLOUDFLARE__ZONE_ID": "zone_id",
+            "VELA_CLOUDFLARE__BRANCH_REF": "branch_ref",
+            "VELA_CLOUDFLARE__BRANCH_DB_REF": "branch_db_ref",
+            "VELA_CLOUDFLARE__DOMAIN_SUFFIX": "domain_suffix",
         },
         **kwargs,
     )
