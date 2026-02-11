@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    environment: "${{ github.event.action == 'update-vela-studio-dev' ? 'prod' : 'dev' }}"
+    environment: "${{ github.event.action == 'update-vela-studio-dev' && 'prod' || 'dev' }}"
 
     steps:
       - name: Checkout
