@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Annotated, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict
 from pydantic import Field as PydanticField
-from sqlalchemy import BigInteger
+from sqlalchemy import BigInteger, Index, text
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship
 from ulid import ULID
@@ -38,6 +38,43 @@ class EntityType(PyEnum):
 # RESOURCE LIMITS & PROVISIONING
 # ---------------------------
 class ResourceLimit(AsyncAttrs, Model, table=True):
+    # Ensure unqiueness across resource type for global-, org-, or project-level limits
+    __table_args__ = (
+        Index(
+            "uq_limit_global",
+            "entity_type",
+            "resource",
+            unique=True,
+            postgresql_where=text("org_id IS NULL AND project_id IS NULL"),
+        ),
+        Index(
+            "uq_limit_org",
+            "entity_type",
+            "resource",
+            "org_id",
+            unique=True,
+            postgresql_where=text("project_id IS NULL"),
+        ),
+        Index(
+            "uq_limit_env",
+            "entity_type",
+            "resource",
+            "org_id",
+            "env_type",
+            unique=True,
+            postgresql_where=text("org_id IS NOT NULL AND env_type IS NOT NULL"),
+        ),
+        Index(
+            "uq_limit_project",
+            "entity_type",
+            "resource",
+            "org_id",
+            "project_id",
+            unique=True,
+            postgresql_where=text("org_id IS NOT NULL AND project_id IS NOT NULL"),
+        ),
+    )
+
     entity_type: EntityType
     resource: ResourceType
     org_id: Identifier | None = Model.foreign_key_field("organization", ondelete="CASCADE")

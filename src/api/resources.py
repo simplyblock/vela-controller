@@ -147,7 +147,8 @@ async def set_organization_provisioning_limit(
 ) -> LimitResultPublic:
     if (
         limit := next(
-            (limit for limit in await organization.awaitable_attrs.limits if limit.resource == payload.resource), None
+            (limit for limit in await organization.awaitable_attrs.limits if limit.resource.value == payload.resource),
+            None,
         )
     ) is not None:
         limit.max_total = payload.max_total
@@ -188,9 +189,11 @@ async def set_project_provisioning_limit(
 ) -> LimitResultPublic:
     if (
         limit := next(
-            (limit for limit in await project.awaitable_attrs.limits if limit.resource == payload.resource), None
+            (limit for limit in (await project.awaitable_attrs.limits) if (limit.resource.value == payload.resource)),
+            None,
         )
     ) is not None:
+        print(limit)
         limit.max_total = payload.max_total
         limit.max_per_branch = payload.max_per_branch
     else:
