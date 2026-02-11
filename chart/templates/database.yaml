@@ -30,7 +30,7 @@ spec:
         shared_preload_libraries: pg_stat_statements, auto_explain, timescaledb
   pods:
     persistentVolume:
-      size: '20Gi'
+      size: '100Gi'
       storageClass: simplyblock-csi-sc
     scheduling:
       podAntiAffinity:
