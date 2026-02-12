@@ -1,0 +1,60 @@
+name: Publish image
+
+on:
+  workflow_call:
+    outputs:
+      image_tag:
+        description: "The primary image tag that was pushed"
+        value: ${{ jobs.build-and-push.outputs.image_tag }}
+
+jobs:
+  build-and-push:
+    name: Build and publish image
+    runs-on: ubuntu-latest
+
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ secrets.REGISTRY_USER }}
+        password: ${{ secrets.REGISTRY_TOKEN }}
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5.10.0  # Explicitly use == 5.10.0, otherwise the action linter reports a false-negative. We should be able to remove this soon.
+      with:
+        images: |
+          ${{ vars .REGISTRY }}/simplyblock/vela-controller
+        tags: |
+          type=ref,event=pr
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        file: containers/Containerfile
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        build-args: |
+          GIT_COMMIT_SHA=${{ github.sha }}
+          GIT_COMMIT_TIMESTAMP=${{ github.event.head_commit.timestamp || github.run_started_at }}
+
