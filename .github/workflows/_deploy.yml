@@ -1,0 +1,72 @@
+name: Deploy
+
+on:
+  workflow_call:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy"
+        required: true
+        type: string
+      deployment_name:
+        description: "Deployment name. Used as Kubernetes namespace and release name"
+        required: true
+        type: string
+      environment:
+        description: "GitHub environment (prod or dev)"
+        required: true
+        type: string
+      domain:
+        description: "Domain override (defaults to vars.DOMAIN from the environment)"
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Deploy with Helm
+        env:
+          KUBE_CONFIG_DATA: ${{ secrets.KUBECONFIG }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          DEPLOYMENT_NAME: ${{ inputs.deployment_name }}
+          DOMAIN: ${{ inputs.domain }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.VELA_CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ZONE_ID: ${{ secrets.VELA_CLOUDFLARE_ZONE_ID }}
+          VELA_KEYCLOAK_ADMIN_SECRET: ${{ secrets.VELA_KEYCLOAK_ADMIN_SECRET }}
+          VELA_KEYCLOAK_ADMIN_NAME: ${{ secrets.VELA_KEYCLOAK_ADMIN_NAME }}
+          VELA_GRAFANA_SECURITY_ADMIN_PASSWORD: ${{ secrets.VELA_GRAFANA_SECURITY_ADMIN_PASSWORD }}
+          VELA_BRANCH_REF: ${{ vars.VELA_BRANCH_REF }}
+          VELA_BRANCH_DB_REF: ${{ vars.VELA_BRANCH_DB_REF }}
+          REPLICAS: ${{ inputs.environment == 'prod' && 3 || 1 }}
+        run: |
+          KUBECONFIG="$(mktemp)"
+          (echo "$KUBE_CONFIG_DATA" | base64 -d 2>/dev/null || echo "$KUBE_CONFIG_DATA") > "$KUBECONFIG"
+          export KUBECONFIG
+
+          helm upgrade --install "$DEPLOYMENT_NAME" ./chart \
+            --namespace "$DEPLOYMENT_NAME" \
+            --create-namespace \
+            --wait \
+            --timeout 10m \
+            --set-string domain="$DOMAIN" \
+            --set database.replicas=$REPLICAS \
+            --set-string controller.image.tag="$IMAGE_TAG" \
+            --set-string controller.env.VELA_CLOUDFLARE_API_TOKEN="$CLOUDFLARE_API_TOKEN" \
+            --set-string controller.env.VELA_CLOUDFLARE_ZONE_ID="$CLOUDFLARE_ZONE_ID" \
+            --set-string controller.env.VELA_KEYCLOAK_ADMIN_NAME="$VELA_KEYCLOAK_ADMIN_NAME" \
+            --set-string controller.env.VELA_KEYCLOAK_ADMIN_SECRET="$VELA_KEYCLOAK_ADMIN_SECRET" \
+            --set-string controller.env.VELA_BRANCH_REF="$VELA_BRANCH_REF" \
+            --set-string controller.env.VELA_BRANCH_DB_REF="$VELA_BRANCH_DB_REF" \
+            --set-string monitoring.VELA_GRAFANA_SECURITY_ADMIN_PASSWORD="$VELA_GRAFANA_SECURITY_ADMIN_PASSWORD"

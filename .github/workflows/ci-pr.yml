@@ -1,0 +1,26 @@
+name: "Deploy PR"
+
+on:
+  pull_request:
+    types: [labeled, synchronize, opened, reopened]
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: contains(github.event.pull_request.labels.*.name, 'deploy')
+    uses: ./.github/workflows/_build.yml
+    secrets: inherit
+
+  deploy:
+    if: contains(github.event.pull_request.labels.*.name, 'deploy')
+    needs: build
+    uses: ./.github/workflows/_deploy.yml
+    with:
+      image_tag: ${{ needs.build.outputs.image_tag }}
+      deployment_name: vela-pr${{ github.event.pull_request.number }}
+      environment: dev
+      domain: pr${{ github.event.pull_request.number }}.dev.kernel-labs.org
+    secrets: inherit

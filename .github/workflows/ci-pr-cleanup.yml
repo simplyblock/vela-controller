@@ -1,0 +1,35 @@
+name: "Cleanup PR deployment"
+
+on:
+  pull_request:
+    types: [unlabeled, closed]
+
+jobs:
+  cleanup:
+    if: >-
+      (github.event.action == 'unlabeled' && github.event.label.name == 'deploy') ||
+      (github.event.action == 'closed' && contains(github.event.pull_request.labels.*.name, 'deploy'))
+    runs-on: ubuntu-latest
+    environment: dev
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Delete PR environment
+        env:
+          KUBE_CONFIG_DATA: ${{ secrets.KUBECONFIG }}
+          DEPLOYMENT_NAME: vela-pr${{ github.event.pull_request.number }}
+        run: |
+          export KUBECONFIG="$(mktemp)"
+          echo "$KUBE_CONFIG_DATA" | base64 -d > "$KUBECONFIG"
+
+          echo "Cleaning up DEPLOYMENT_NAME"
+
+          helm uninstall "$DEPLOYMENT_NAME" --namespace "$DEPLOYMENT_NAME" --wait || true
+
+          kubectl -n "$DEPLOYMENT_NAME" delete sgcluster database --ignore-not-found
+          kubectl delete namespace "$DEPLOYMENT_NAME" --ignore-not-found
