@@ -46,10 +46,10 @@
             "name": "Frontend Application",
             "enabled": true,
             "redirectUris": [
-                "https://{{ .Values.domain }}:{{ .Values.port }}/api/auth/callback/keycloak"
+                "https://{{ .Values.domain }}{{ with .Values.port }}:{{ . }}{{ end }}/api/auth/callback/keycloak"
             ],
             "webOrigins": [
-                "https://{{ .Values.domain }}:{{ .Values.port }}"
+                "https://{{ .Values.domain }}{{ with .Values.port }}:{{ . }}{{ end }}"
             ],
             "standardFlowEnabled": true,
             "directAccessGrantsEnabled": true,
