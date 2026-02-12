@@ -45,7 +45,7 @@ jobs:
       - name: Deploy Studio
         env:
           KUBECONFIG: ${{ steps.kubeconfig.outputs.path }}
-          IMAGE_TAG: ${{ steps.meta.outputs.image_tag }}
+          IMAGE_TAG: ${{ github.event.action == 'update-vela-studio-dev' && 'dev' || steps.meta.outputs.image_tag }}
         run: |
           helm upgrade --install vela ./chart \
             --namespace vela \
