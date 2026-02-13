@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import textwrap
 from collections.abc import Mapping
+from datetime import datetime
 from importlib import resources
 from typing import TYPE_CHECKING, Annotated, Any, Literal, cast
 from uuid import UUID
@@ -25,6 +26,8 @@ from .._util import (
     AUTOSCALER_MEMORY_SLOTS_MIN,
     CPU_CONSTRAINTS,
     DATABASE_SIZE_CONSTRAINTS,
+    DEFAULT_DB_NAME,
+    DEFAULT_DB_USER,
     IOPS_CONSTRAINTS,
     MEMORY_CONSTRAINTS,
     STORAGE_SIZE_CONSTRAINTS,
@@ -49,6 +52,7 @@ from .deployment import DeploymentParameters, database_image_tag_to_database_ima
 from .grafana import create_vela_grafana_obj, delete_vela_grafana_obj
 from .kubernetes import KubernetesService, get_neon_vm
 from .kubernetes._util import custom_api_client
+from .monitors.health import vm_monitor
 from .settings import CloudflareSettings, get_settings
 from .simplyblock_api import create_simplyblock_api
 
@@ -1210,6 +1214,27 @@ async def provision_branch_endpoints(
     return BranchEndpointResult(ref=ref, domain=domain)
 
 
+async def set_initial_password(branch_id: Identifier, password: str, timeout: float) -> None:
+    start = datetime.now()
+    while (
+        (status := vm_monitor.status(branch_id)) is None
+        or status.services is None
+        or not status.services.get("postgres", False)
+    ):
+        if (datetime.now() - start).total_seconds() > timeout:
+            raise TimeoutError("Failed to wait for online database")
+
+        await asyncio.sleep(1)
+
+    await update_branch_database_password(
+        branch_id=branch_id,
+        database=DEFAULT_DB_NAME,
+        username=DEFAULT_DB_USER,
+        admin_password=password,
+        new_password=password,
+    )
+
+
 async def deploy_branch_environment(
     *,
     organization_id: Identifier,
@@ -1251,10 +1276,11 @@ async def deploy_branch_environment(
             ref=ref,
         ),
         create_vela_grafana_obj(organization_id, branch_id, credential),
+        set_initial_password(branch_id, credential, timeout=240),
         return_exceptions=True,
     )
 
-    config_result, endpoint_result, grafana_result = results
+    config_result, endpoint_result, grafana_result, set_password_result = results
     if isinstance(grafana_result, Exception):
         logger.error(
             "Grafana object creation failed for organization_id=%s branch_id=%s",
@@ -1262,5 +1288,7 @@ async def deploy_branch_environment(
             branch_id,
             exc_info=grafana_result,
         )
-    if exceptions := [result for result in (config_result, endpoint_result) if isinstance(result, Exception)]:
+    if exceptions := [
+        result for result in (config_result, endpoint_result, set_password_result) if isinstance(result, Exception)
+    ]:
         raise VelaDeployError("Failed operations during vela deployment", exceptions)
