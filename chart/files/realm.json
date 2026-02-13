@@ -46,10 +46,10 @@
             "name": "Frontend Application",
             "enabled": true,
             "redirectUris": [
-                "https://{{ .Values.domain }}{{ with .Values.port }}:{{ . }}{{ end }}/api/auth/callback/keycloak"
+                "https://{{ .Values.domain }}{{ if ne (int .Values.port) 443 }}:{{ .Values.port }}{{ end }}/api/auth/callback/keycloak"
             ],
             "webOrigins": [
-                "https://{{ .Values.domain }}{{ with .Values.port }}:{{ . }}{{ end }}"
+                "https://{{ .Values.domain }}{{ if ne (int .Values.port) 443 }}:{{ .Values.port }}{{ end }}"
             ],
             "standardFlowEnabled": true,
             "directAccessGrantsEnabled": true,
@@ -58,7 +58,7 @@
             "protocol": "openid-connect",
             "attributes": {
                 "access.token.lifespan": "3600",
-                "post.logout.redirect.uris": "https://{{ .Values.domain }}:{{ .Values.port }}/logout"
+                "post.logout.redirect.uris": "https://{{ .Values.domain }}{{ if ne (int .Values.port) 443 }}:{{ .Values.port }}{{ end }}/logout"
             }
         },
         {
