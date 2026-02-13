@@ -24,9 +24,9 @@ jobs:
           PAYLOAD_TAG: ${{ github.event.client_payload.sha }}
         run: |
           SHORT_SHA="${PAYLOAD_TAG::7}"
-          IMAGE_TAG="latest-${SHORT_SHA}"
           echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
-          echo "image_tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+          echo "latest_tag=latest-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "dev_tag=dev-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
 
       - name: Write kubeconfig
         # Instructions for generating the KUBECONFIG secret live in docs/service-account-kubeconfig.md
@@ -45,7 +45,7 @@ jobs:
       - name: Deploy Studio
         env:
           KUBECONFIG: ${{ steps.kubeconfig.outputs.path }}
-          IMAGE_TAG: ${{ github.event.action == 'update-vela-studio-dev' && 'dev' || steps.meta.outputs.image_tag }}
+          IMAGE_TAG: ${{ github.event.action == 'update-vela-studio-dev' && steps.meta.outputs.dev_tag || steps.meta.outputs.latest_tag }}
         run: |
           helm upgrade --install vela ./chart \
             --namespace vela \
