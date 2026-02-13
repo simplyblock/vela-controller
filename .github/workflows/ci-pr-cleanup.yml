@@ -27,9 +27,15 @@ jobs:
           export KUBECONFIG="$(mktemp)"
           echo "$KUBE_CONFIG_DATA" | base64 -d > "$KUBECONFIG"
 
-          echo "Cleaning up DEPLOYMENT_NAME"
+          echo "Cleaning up $DEPLOYMENT_NAME"
 
           helm uninstall "$DEPLOYMENT_NAME" --namespace "$DEPLOYMENT_NAME" --wait || true
 
           kubectl -n "$DEPLOYMENT_NAME" delete sgcluster database --ignore-not-found
           kubectl delete namespace "$DEPLOYMENT_NAME" --ignore-not-found
+
+          echo "Cleaning up PR branches"
+          kubectl get namespaces -o jsonpath='{.items[*].metadata.name}' \
+            | tr ' ' '\n' \
+            | grep "^${DEPLOYMENT_NAME}-" \
+            | xargs -r -I{} kubectl delete namespace {} --ignore-not-found
