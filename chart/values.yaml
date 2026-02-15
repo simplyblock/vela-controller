@@ -59,6 +59,7 @@ issuer: ca-issuer
 prometheus:
   name: kube-prometheus-stack-prometheus
   namespace: monitoring
+  thanosQuery: vela-thanos-query
 
 monitoring:
   VELA_GRAFANA_SECURITY_ADMIN_USER: admin
