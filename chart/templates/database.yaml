@@ -3,8 +3,8 @@ kind: SGInstanceProfile
 metadata:
   name: profile
 spec:
-  cpu: "1"
-  memory: "1Gi"
+  cpu: {{ .Values.database.instanceProfile.cpu | quote }}
+  memory: {{ .Values.database.instanceProfile.memory | quote }}
 
 ---
 apiVersion: stackgres.io/v1

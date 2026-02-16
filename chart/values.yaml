@@ -1,6 +1,9 @@
 database:
   postgresVersion: "17"
   replicas: 3
+  instanceProfile:
+    cpu: "1"
+    memory: "1Gi"
 
 podSecurityContext:
   runAsNonRoot: false
