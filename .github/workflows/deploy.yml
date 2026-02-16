@@ -67,7 +67,10 @@ jobs:
         VELA_BRANCH_REF: ${{ vars.VELA_BRANCH_REF }}
         VELA_BRANCH_DB_REF: ${{ vars.VELA_BRANCH_DB_REF }}
       run: |
-        EXTRA_VALUES=$([ "$DEPLOY_ENV" = "dev" ] && echo "-f chart/values-dev.yaml")
+        EXTRA_VALUES=""
+        if [ "$DEPLOY_ENV" = "dev" ]; then
+          EXTRA_VALUES="-f chart/values-dev.yaml"
+        fi
 
         helm upgrade --install vela ./chart \
           $EXTRA_VALUES \
