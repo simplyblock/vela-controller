@@ -107,6 +107,7 @@ data:
   VELA_SYSTEM_LIMIT_IOPS: {{ .Values.controller.env.VELA_SYSTEM_LIMIT_IOPS | quote }}
   VELA_SYSTEM_LIMIT_DATABASE_SIZE: {{ .Values.controller.env.VELA_SYSTEM_LIMIT_DATABASE_SIZE | quote }}
   VELA_SYSTEM_LIMIT_STORAGE_SIZE: {{ .Values.controller.env.VELA_SYSTEM_LIMIT_STORAGE_SIZE | quote }}
+  SIMPLYBLOCK_CSI_NAMESPACE: {{ .Values.controller.env.SIMPLYBLOCK_CSI_NAMESPACE | quote }}
 ---
 apiVersion: v1
 kind: Service

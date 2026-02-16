@@ -3,6 +3,7 @@ import base64
 import json
 import logging
 import math
+import os
 import subprocess
 import tempfile
 import textwrap
@@ -68,7 +69,7 @@ DATABASE_LOAD_BALANCER_SERVICE_NAME = f"{DEFAULT_DATABASE_VM_NAME}-ext"
 CHECK_ENCRYPTED_HEADER_PLUGIN_NAME = "check-x-connection-encrypted"
 APIKEY_JWT_PLUGIN_NAME = "apikey-jwt"
 CPU_REQUEST_FRACTION = 0.25  # request = 25% of limit
-SIMPLYBLOCK_NAMESPACE = "simplyblock"
+SIMPLYBLOCK_NAMESPACE = os.environ.get("SIMPLYBLOCK_CSI_NAMESPACE", "simplyblock")
 SIMPLYBLOCK_CSI_CONFIGMAP = "simplyblock-csi-cm"
 SIMPLYBLOCK_CSI_SECRET = "simplyblock-csi-secret"
 SIMPLYBLOCK_CSI_STORAGE_CLASS = "simplyblock-csi-sc"
