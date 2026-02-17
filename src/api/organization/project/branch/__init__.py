@@ -1087,6 +1087,16 @@ def _validate_branch_create_request(parameters: BranchCreate) -> None:
         raise HTTPException(400, "Either source, deployment, or restore parameters must be provided")
 
 
+def _restore_snapshot_context_from_backup(backup_entry: BackupEntry | None) -> RestoreSnapshotContext | None:
+    if backup_entry is None:
+        return None
+    return RestoreSnapshotContext(
+        namespace=cast("str", backup_entry.snapshot_namespace),
+        name=cast("str", backup_entry.snapshot_name),
+        content_name=backup_entry.snapshot_content_name,
+    )
+
+
 async def _resolve_source_branch(
     session: SessionDep, parameters: BranchCreate
 ) -> tuple[Branch | None, BackupEntry | None]:
@@ -1195,6 +1205,101 @@ async def _post_commit_branch_setup(
     return snapshot_pgbouncer_config(await entity.awaitable_attrs.pgbouncer_config)
 
 
+async def _resolve_clone_parameters_and_resource_requests(
+    session: SessionDep,
+    parameters: BranchCreate,
+    source: Branch | None,
+) -> tuple[DeploymentParameters | None, ResourceLimitsPublic]:
+    if source is None:
+        if parameters.deployment is None:
+            raise HTTPException(status_code=400, detail="Either source or deployment parameters must be provided")
+        return None, _resource_limits_from_deployment(parameters.deployment)
+
+    source_overrides = None
+    if parameters.source is not None:
+        source_overrides = parameters.source.deployment_parameters
+    elif parameters.restore is not None:
+        source_overrides = parameters.restore.deployment_parameters
+    source_limits = await get_current_branch_allocations(session, source)
+    clone_parameters = _deployment_parameters_from_source(
+        source,
+        source_limits=source_limits,
+        overrides=source_overrides,
+    )
+    return clone_parameters, _resource_limits_from_deployment(clone_parameters)
+
+
+def _resolve_copy_flags(parameters: BranchCreate) -> tuple[bool, bool]:
+    if parameters.restore is not None:
+        copy_config = parameters.restore.config_copy
+    else:
+        copy_config = bool(parameters.source and parameters.source.config_copy)
+    copy_data = bool(parameters.source and parameters.source.data_copy)
+    return copy_config, copy_data
+
+
+async def _create_branch_with_identity(
+    session: SessionDep,
+    *,
+    parameters: BranchCreate,
+    project: ProjectDep,
+    source: Branch | None,
+    source_id: Identifier | None,
+    copy_config: bool,
+    clone_parameters: DeploymentParameters | None,
+) -> tuple[Branch, PgbouncerConfigSnapshot]:
+    entity = await _build_branch_entity(
+        project=project,
+        parameters=parameters,
+        source=source,
+        copy_config=copy_config,
+        clone_parameters=clone_parameters,
+    )
+    jwt_secret = secrets.token_urlsafe(32)
+    anon_key, service_key = generate_keys(str(entity.id), jwt_secret)
+    entity.jwt_secret = jwt_secret
+    entity.anon_key = anon_key
+    entity.service_key = service_key
+    pgbouncer_admin_password = secrets.token_urlsafe(32)
+    entity.pgbouncer_password = pgbouncer_admin_password
+    session.add(entity)
+    try:
+        await realm_admin("master").a_create_realm(
+            {
+                "realm": str(entity.id),
+                "eventsEnabled": True,
+                "adminEventsEnabled": True,
+            }
+        )
+        await realm_admin(str(entity.id)).a_create_client({"clientId": "application-client"})
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        error = str(exc)
+        if "asyncpg.exceptions.UniqueViolationError" in error and "unique_branch_name_per_project" in error:
+            raise HTTPException(409, f"Project already has branch named {parameters.name}") from exc
+        raise
+    except KeycloakError:
+        await session.rollback()
+        logging.exception("Failed to connect to keycloak")
+        raise
+    pgbouncer_config_snapshot = await _post_commit_branch_setup(
+        session,
+        source_id,
+        copy_config=copy_config,
+        entity=entity,
+    )
+    return entity, pgbouncer_config_snapshot
+
+
+def _require_branch_secrets(entity: Branch) -> str:
+    if entity.jwt_secret is None:
+        raise HTTPException(status_code=500, detail="Branch JWT secret is not configured.")
+    if not entity.encrypted_pgbouncer_admin_password:
+        raise HTTPException(status_code=500, detail="Branch PgBouncer admin password is not configured.")
+    return entity.pgbouncer_password
+
+
 def _schedule_branch_environment_tasks(
     *,
     deployment_parameters: DeploymentParameters | None,
@@ -1297,87 +1402,33 @@ async def create(
 ) -> JSONResponse:
     _validate_branch_create_request(parameters)
     source, backup_entry = await _resolve_source_branch(session, parameters)
-    restore_snapshot_context: RestoreSnapshotContext | None = None
-    if backup_entry is not None:
-        restore_snapshot_context = RestoreSnapshotContext(
-            namespace=cast("str", backup_entry.snapshot_namespace),
-            name=cast("str", backup_entry.snapshot_name),
-            content_name=backup_entry.snapshot_content_name,
-        )
+    restore_snapshot_context = _restore_snapshot_context_from_backup(backup_entry)
+
     source_id: Identifier | None = getattr(source, "id", None)
-    clone_parameters: DeploymentParameters | None = None
-    if source is not None:
-        source_overrides = None
-        if parameters.source is not None:
-            source_overrides = parameters.source.deployment_parameters
-        elif parameters.restore is not None:
-            source_overrides = parameters.restore.deployment_parameters
-        source_limits = await get_current_branch_allocations(session, source)
-        clone_parameters = _deployment_parameters_from_source(
-            source,
-            source_limits=source_limits,
-            overrides=source_overrides,
-        )
-        resource_requests = _resource_limits_from_deployment(clone_parameters)
-    else:
-        if parameters.deployment is None:
-            raise HTTPException(status_code=400, detail="Either source or deployment parameters must be provided")
-        resource_requests = _resource_limits_from_deployment(parameters.deployment)
+    clone_parameters, resource_requests = await _resolve_clone_parameters_and_resource_requests(
+        session,
+        parameters,
+        source,
+    )
     exceeded_limits, remaining_limits = await check_available_resources_limits(
         session, project.organization_id, project.id, resource_requests
     )
     _ensure_branch_resource_limits(exceeded_limits, resource_requests, remaining_limits)
 
-    if parameters.restore is not None:
-        copy_config = parameters.restore.config_copy
-    else:
-        copy_config = bool(parameters.source and parameters.source.config_copy)
-    copy_data = bool(parameters.source and parameters.source.data_copy)
-
-    entity = await _build_branch_entity(
-        project=project,
+    copy_config, copy_data = _resolve_copy_flags(parameters)
+    entity, pgbouncer_config_snapshot = await _create_branch_with_identity(
+        session,
         parameters=parameters,
+        project=project,
         source=source,
+        source_id=source_id,
         copy_config=copy_config,
         clone_parameters=clone_parameters,
-    )
-    jwt_secret = secrets.token_urlsafe(32)
-    anon_key, service_key = generate_keys(str(entity.id), jwt_secret)
-    entity.jwt_secret = jwt_secret
-    entity.anon_key = anon_key
-    entity.service_key = service_key
-    pgbouncer_admin_password = secrets.token_urlsafe(32)
-    entity.pgbouncer_password = pgbouncer_admin_password
-    session.add(entity)
-    try:
-        await realm_admin("master").a_create_realm(
-            {
-                "realm": str(entity.id),
-                "eventsEnabled": True,
-                "adminEventsEnabled": True,
-            }
-        )
-        await realm_admin(str(entity.id)).a_create_client({"clientId": "application-client"})
-        await session.commit()
-    except IntegrityError as exc:
-        await session.rollback()
-        error = str(exc)
-        if "asyncpg.exceptions.UniqueViolationError" in error and "unique_branch_name_per_project" in error:
-            raise HTTPException(409, f"Project already has branch named {parameters.name}") from exc
-        raise
-    except KeycloakError:
-        await session.rollback()
-        logging.exception("Failed to connect to keycloak")
-        raise
-    pgbouncer_config_snapshot = await _post_commit_branch_setup(
-        session,
-        source_id,
-        copy_config=copy_config,
-        entity=entity,
     )
 
     # Configure allocations
     await create_or_update_branch_provisioning(session, entity, resource_requests)
+    pgbouncer_admin_password = _require_branch_secrets(entity)
 
     entity_url = url_path_for(
         request,
@@ -1397,7 +1448,7 @@ async def create(
         clone_parameters=clone_parameters,
         source_id=source_id,
         copy_data=copy_data,
-        jwt_secret=entity.jwt_secret,
+        jwt_secret=cast("str", entity.jwt_secret),
         pgbouncer_admin_password=pgbouncer_admin_password,
         pgbouncer_config=pgbouncer_config_snapshot,
         restore_snapshot=restore_snapshot,
