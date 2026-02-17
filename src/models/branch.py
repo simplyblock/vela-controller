@@ -246,6 +246,7 @@ class BranchSourceParameters(BaseModel):
 class BranchRestoreParameters(BaseModel):
     backup_id: Identifier
     config_copy: bool = True
+    in_place: bool = False
     deployment_parameters: BranchSourceDeploymentParameters | None = PydanticField(default=None)
 
 

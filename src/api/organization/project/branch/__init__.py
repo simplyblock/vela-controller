@@ -927,6 +927,93 @@ async def _restore_branch_environment_task(
     await _persist_branch_status(branch_id, BranchServiceStatus.STARTING)
 
 
+async def _restore_branch_environment_in_place_task(
+    *,
+    organization_id: Identifier,
+    project_id: Identifier,
+    credential: str,
+    branch_id: Identifier,
+    branch_slug: str,
+    parameters: DeploymentParameters,
+    jwt_secret: str,
+    pgbouncer_admin_password: str,
+    source_branch_id: Identifier,
+    snapshot_namespace: str,
+    snapshot_name: str,
+    snapshot_content_name: str | None,
+    pgbouncer_config: PgbouncerConfigSnapshot,
+    pitr_enabled: bool,
+) -> None:
+    await _persist_branch_status(branch_id, BranchServiceStatus.RESTARTING)
+    namespace, autoscaler_vm_name = get_autoscaler_vm_identity(branch_id)
+    try:
+        await set_virtualmachine_power_state(namespace, autoscaler_vm_name, "Stopped")
+    except ApiException as exc:
+        if exc.status != 404:
+            await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
+            logging.exception(
+                "Failed to stop autoscaler VM before in-place restore for project_id=%s branch_id=%s branch_slug=%s",
+                project_id,
+                branch_id,
+                branch_slug,
+            )
+            return
+
+    storage_class_name: str | None = None
+    try:
+        storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
+        await restore_branch_database_volume_from_snapshot(
+            source_branch_id=source_branch_id,
+            target_branch_id=branch_id,
+            snapshot_namespace=snapshot_namespace,
+            snapshot_name=snapshot_name,
+            snapshot_content_name=snapshot_content_name,
+            snapshot_class=_VOLUME_SNAPSHOT_CLASS,
+            storage_class_name=storage_class_name,
+            snapshot_timeout_seconds=_SNAPSHOT_TIMEOUT_SECONDS,
+            snapshot_poll_interval_seconds=_SNAPSHOT_POLL_INTERVAL_SECONDS,
+            pvc_timeout_seconds=_PVC_TIMEOUT_SECONDS,
+            pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
+            database_size=parameters.database_size,
+        )
+    except VelaError:
+        await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
+        logging.exception(
+            "In-place branch restore failed for project_id=%s branch_id=%s branch_slug=%s using snapshot %s/%s",
+            project_id,
+            branch_id,
+            branch_slug,
+            snapshot_namespace,
+            snapshot_name,
+        )
+        return
+
+    try:
+        await deploy_branch_environment(
+            organization_id=organization_id,
+            project_id=project_id,
+            branch_id=branch_id,
+            branch_slug=branch_slug,
+            credential=credential,
+            parameters=parameters,
+            jwt_secret=jwt_secret,
+            pgbouncer_admin_password=pgbouncer_admin_password,
+            use_existing_pvc=True,
+            pgbouncer_config=pgbouncer_snapshot_to_mapping(pgbouncer_config),
+            pitr_enabled=pitr_enabled,
+        )
+    except VelaError:
+        await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
+        logging.exception(
+            "In-place branch deployment (restore) failed for project_id=%s branch_id=%s branch_slug=%s",
+            project_id,
+            branch_id,
+            branch_slug,
+        )
+        return
+    await _persist_branch_status(branch_id, BranchServiceStatus.STARTING)
+
+
 def _resolve_db_host(branch: Branch) -> str | None:
     return branch.endpoint_domain or branch_db_domain(branch.id)
 
@@ -1095,6 +1182,33 @@ def _restore_snapshot_context_from_backup(backup_entry: BackupEntry | None) -> R
         name=cast("str", backup_entry.snapshot_name),
         content_name=backup_entry.snapshot_content_name,
     )
+
+
+def _is_in_place_restore(parameters: BranchCreate) -> bool:
+    return bool(parameters.restore and parameters.restore.in_place)
+
+
+def _validate_in_place_restore_request(
+    *,
+    in_place_restore: bool,
+    source: Branch | None,
+    project: ProjectDep,
+    parameters: BranchCreate,
+) -> None:
+    if not in_place_restore:
+        return
+    if source is None or parameters.restore is None:
+        raise HTTPException(status_code=400, detail="in_place restore requires restore.backup_id")
+    if source.project_id != project.id:
+        raise HTTPException(
+            status_code=400,
+            detail="in_place restore is only supported for branches in this project",
+        )
+    if parameters.name != source.name:
+        raise HTTPException(
+            status_code=400,
+            detail="When restore.in_place is true, name must match the source branch name",
+        )
 
 
 async def _resolve_source_branch(
@@ -1292,6 +1406,45 @@ async def _create_branch_with_identity(
     return entity, pgbouncer_config_snapshot
 
 
+async def _prepare_entity_for_create(
+    session: SessionDep,
+    *,
+    parameters: BranchCreate,
+    project: ProjectDep,
+    source: Branch | None,
+    source_id: Identifier | None,
+    copy_config: bool,
+    clone_parameters: DeploymentParameters | None,
+    in_place_restore: bool,
+) -> tuple[Branch, PgbouncerConfigSnapshot]:
+    if in_place_restore:
+        if source is None:
+            raise HTTPException(status_code=400, detail="in_place restore requires source branch")
+        entity = await session.merge(source)
+        if clone_parameters is not None:
+            entity.database_size = clone_parameters.database_size
+            entity.storage_size = clone_parameters.storage_size if clone_parameters.enable_file_storage else None
+            entity.milli_vcpu = clone_parameters.milli_vcpu
+            entity.memory = clone_parameters.memory_bytes
+            entity.iops = clone_parameters.iops
+            entity.database_image_tag = clone_parameters.database_image_tag
+            entity.enable_file_storage = clone_parameters.enable_file_storage
+            entity.database_password = clone_parameters.database_password
+        entity.set_status(BranchServiceStatus.RESTARTING)
+        await session.commit()
+        return entity, snapshot_pgbouncer_config(await entity.awaitable_attrs.pgbouncer_config)
+
+    return await _create_branch_with_identity(
+        session,
+        parameters=parameters,
+        project=project,
+        source=source,
+        source_id=source_id,
+        copy_config=copy_config,
+        clone_parameters=clone_parameters,
+    )
+
+
 def _require_branch_secrets(entity: Branch) -> str:
     if entity.jwt_secret is None:
         raise HTTPException(status_code=500, detail="Branch JWT secret is not configured.")
@@ -1314,6 +1467,7 @@ def _schedule_branch_environment_tasks(
     pgbouncer_admin_password: str,
     pgbouncer_config: PgbouncerConfigSnapshot,
     restore_snapshot: RestoreSnapshotContext | None,
+    restore_in_place: bool,
 ) -> None:
     if deployment_parameters is not None:
         asyncio.create_task(
@@ -1332,8 +1486,11 @@ def _schedule_branch_environment_tasks(
         )
         return
     if restore_snapshot is not None and source_id is not None and clone_parameters is not None:
+        restore_task = (
+            _restore_branch_environment_in_place_task if restore_in_place else _restore_branch_environment_task
+        )
         asyncio.create_task(
-            _restore_branch_environment_task(
+            restore_task(
                 organization_id=organization_id,
                 project_id=project_id,
                 credential=credential,
@@ -1401,8 +1558,15 @@ async def create(
     response: Literal["empty", "full"] = "empty",
 ) -> JSONResponse:
     _validate_branch_create_request(parameters)
+    in_place_restore = _is_in_place_restore(parameters)
     source, backup_entry = await _resolve_source_branch(session, parameters)
     restore_snapshot_context = _restore_snapshot_context_from_backup(backup_entry)
+    _validate_in_place_restore_request(
+        in_place_restore=in_place_restore,
+        source=source,
+        project=project,
+        parameters=parameters,
+    )
 
     source_id: Identifier | None = getattr(source, "id", None)
     clone_parameters, resource_requests = await _resolve_clone_parameters_and_resource_requests(
@@ -1410,13 +1574,18 @@ async def create(
         parameters,
         source,
     )
+    exclude_branch_ids = [source.id] if in_place_restore and source is not None else None
     exceeded_limits, remaining_limits = await check_available_resources_limits(
-        session, project.organization_id, project.id, resource_requests
+        session,
+        project.organization_id,
+        project.id,
+        resource_requests,
+        exclude_branch_ids=exclude_branch_ids,
     )
     _ensure_branch_resource_limits(exceeded_limits, resource_requests, remaining_limits)
 
     copy_config, copy_data = _resolve_copy_flags(parameters)
-    entity, pgbouncer_config_snapshot = await _create_branch_with_identity(
+    entity, pgbouncer_config_snapshot = await _prepare_entity_for_create(
         session,
         parameters=parameters,
         project=project,
@@ -1424,6 +1593,7 @@ async def create(
         source_id=source_id,
         copy_config=copy_config,
         clone_parameters=clone_parameters,
+        in_place_restore=in_place_restore,
     )
 
     # Configure allocations
@@ -1452,6 +1622,7 @@ async def create(
         pgbouncer_admin_password=pgbouncer_admin_password,
         pgbouncer_config=pgbouncer_config_snapshot,
         restore_snapshot=restore_snapshot,
+        restore_in_place=in_place_restore,
     )
 
     payload = (await _public(entity)).model_dump(mode="json") if response == "full" else None
