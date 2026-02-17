@@ -56,7 +56,7 @@ async def create_snapshot_content_from_handle(
         "metadata": {"name": name},
         "spec": {
             "driver": driver,
-            "deletionPolicy": "Retain",
+            "deletionPolicy": "Delete",
             "source": {"snapshotHandle": snapshot_handle},
             "volumeSnapshotClassName": snapshot_class,
             "volumeSnapshotRef": {
