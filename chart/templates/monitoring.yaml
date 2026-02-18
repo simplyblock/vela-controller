@@ -27,7 +27,13 @@ data:
       isDefault: true
       access: proxy
       uid: PBFA97CFB590B2093
-      editable: true 
+      editable: true
+    - name: Loki
+      type: loki
+      url: http://{{ .Values.loki.name }}.{{ .Values.loki.namespace }}.svc.cluster.local:3100
+      access: proxy
+      uid: loki
+      editable: true
 
 ---
 apiVersion: v1
