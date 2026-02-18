@@ -23,4 +23,5 @@ jobs:
       deployment_name: vela-pr${{ github.event.pull_request.number }}
       environment: dev
       domain: pr${{ github.event.pull_request.number }}.dev.kernel-labs.org
+      vector_host_path: false
     secrets: inherit
