@@ -20,6 +20,11 @@ on:
         required: false
         type: string
         default: ""
+      vector_host_path:
+        description: "Enable Vector hostPath volume for pod log collection. Enabling this violates the default pod security policy"
+        required: false
+        type: boolean
+        default: true
 
 jobs:
   deploy:
@@ -62,6 +67,7 @@ jobs:
             --timeout 10m \
             --set-string domain="$DOMAIN" \
             --set database.replicas=$REPLICAS \
+            --set vector.useHostPath=${{ inputs.vector_host_path }} \
             --set-string controller.image.tag="$IMAGE_TAG" \
             --set-string controller.env.VELA_CLOUDFLARE_API_TOKEN="$CLOUDFLARE_API_TOKEN" \
             --set-string controller.env.VELA_CLOUDFLARE_ZONE_ID="$CLOUDFLARE_ZONE_ID" \
