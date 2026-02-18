@@ -16,7 +16,7 @@ on:
         required: true
         type: string
       domain:
-        description: "Domain override (defaults to vars.DOMAIN from the environment)"
+        description: "Domain override"
         required: false
         type: string
         default: ""
