@@ -1,6 +1,7 @@
+import logging
 from contextlib import asynccontextmanager
 
-from aiohttp import ClientTimeout
+from aiohttp import ClientError, ClientTimeout
 from kubernetes_asyncio.client import ApiClient, CoreV1Api, CustomObjectsApi, DiscoveryV1Api, StorageV1Api
 from kubernetes_asyncio.config import load_incluster_config, load_kube_config
 from kubernetes_asyncio.config.config_exception import ConfigException
@@ -8,6 +9,7 @@ from kubernetes_asyncio.config.config_exception import ConfigException
 from ...exceptions import VelaKubernetesError
 
 KUBE_API_SERVER_TIMEOUT = 10
+logger = logging.getLogger(__name__)
 
 
 class ApiClientWithTimeout(ApiClient):
@@ -20,7 +22,14 @@ class ApiClientWithTimeout(ApiClient):
             _request_timeout = self.default_timeout
         if "_request_timeout" not in kwargs:
             kwargs["_request_timeout"] = _request_timeout
-        return await super().call_api(*args, **kwargs)
+        try:
+            return await super().call_api(*args, **kwargs)
+        except TimeoutError as exc:
+            logger.error("Kubernetes API request timed out (timeout=%ss)", _request_timeout, exc_info=exc)
+            raise VelaKubernetesError("Kubernetes API request timed out") from exc
+        except ClientError as exc:
+            logger.error("Kubernetes API request failed with client error", exc_info=exc)
+            raise VelaKubernetesError("Kubernetes API client error") from exc
 
 
 async def _ensure_kubeconfig() -> None:
