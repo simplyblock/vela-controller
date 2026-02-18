@@ -59,33 +59,33 @@ Demo environment uses the images that are manually deployed.
 # deploy scheduler
 kubectl -n kube-system \
   set image deployment/autoscale-scheduler \
-  autoscale-scheduler=docker.io/simplyblock/autoscaling:autoscale-scheduler-main-7e22f4a
+  autoscale-scheduler=docker.io/simplyblock/autoscaling:autoscale-scheduler-main-e6562f7
 kubectl -n kube-system rollout status deployment/autoscale-scheduler 
 
 # deploy autoscaler agent
 kubectl -n kube-system \
   set image daemonset/autoscaler-agent \
-  autoscaler-agent=docker.io/simplyblock/autoscaling:autoscaler-agent-main-7e22f4a
+  autoscaler-agent=docker.io/simplyblock/autoscaling:autoscaler-agent-main-e6562f7
 kubectl -n kube-system rollout status daemonset/autoscaler-agent
 
 # deploy vxlan controller
 kubectl -n neonvm-system \
   set image daemonset/neonvm-vxlan-controller \
-  vxlan-controller=docker.io/simplyblock/autoscaling:neonvm-vxlan-controller-main-7e22f4a
+  vxlan-controller=docker.io/simplyblock/autoscaling:neonvm-vxlan-controller-main-e6562f7
 kubectl -n neonvm-system rollout status daemonset/neonvm-vxlan-controller
 
 kubectl -n neonvm-system \
   set image deployment/neonvm-controller \
-  manager=docker.io/simplyblock/autoscaling:neonvm-controller-main-7e22f4a
+  manager=docker.io/simplyblock/autoscaling:neonvm-controller-main-e6562f7
 kubectl -n neonvm-system rollout status deployment/neonvm-controller
 
 kubectl -n neonvm-system \
   set image daemonset/neonvm-runner-image-loader \
-  neonvm-runner-loader=docker.io/simplyblock/autoscaling:neonvm-runner-main-7e22f4a
+  neonvm-runner-loader=docker.io/simplyblock/autoscaling:neonvm-runner-main-e6562f7
 kubectl -n neonvm-system rollout status daemonset/neonvm-runner-image-loader
 
 kubectl -n neonvm-system set env deployment/neonvm-controller \
-  VM_RUNNER_IMAGE=docker.io/simplyblock/autoscaling:neonvm-runner-main-7e22f4a
+  VM_RUNNER_IMAGE=docker.io/simplyblock/autoscaling:neonvm-runner-main-e6562f7
 kubectl -n neonvm-system rollout status deployment/neonvm-controller
 ```
 
