@@ -203,6 +203,18 @@ def bytes_to_gib(value: int) -> int:
     return value // GIB
 
 
+def bytes_to_gib_rounded_up(value: int) -> int:
+    """Convert bytes to whole GiB, rounding up for non-zero remainders."""
+
+    return (value + GIB - 1) // GIB
+
+
+def bytes_to_gib_quantity(value: int) -> str:
+    """Format bytes as a Kubernetes Gi quantity string rounded up to whole GiB."""
+
+    return f"{bytes_to_gib_rounded_up(value)}Gi"
+
+
 def kb_to_bytes(value: int) -> int:
     """Convert a KB count to bytes."""
 
