@@ -348,6 +348,13 @@ async def update_branch_volume_iops(branch_id: Identifier, iops: int) -> None:
 
 async def ensure_branch_storage_class(branch_id: Identifier, *, iops: int) -> str:
     storage_class_name = branch_storage_class_name(branch_id)
+    try:
+        await kube_service.get_storage_class(storage_class_name)
+        logger.info("StorageClass %s already exists; reusing", storage_class_name)
+        return storage_class_name
+    except VelaKubernetesError:
+        pass
+
     base_storage_class = await kube_service.get_storage_class(SIMPLYBLOCK_CSI_STORAGE_CLASS)
     storage_class_manifest = _build_storage_class_manifest(
         storage_class_name=storage_class_name,

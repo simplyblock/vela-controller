@@ -273,6 +273,10 @@ class BranchPasswordReset(BaseModel):
     new_password: DBPassword
 
 
+class BranchRestore(BaseModel):
+    backup_id: Identifier
+
+
 class BranchPgbouncerConfigUpdate(BaseModel):
     default_pool_size: Annotated[
         int | None,
