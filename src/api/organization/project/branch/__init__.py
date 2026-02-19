@@ -946,13 +946,12 @@ async def _restore_branch_environment_in_place_task(
     *,
     branch_id: Identifier,
     parameters: DeploymentParameters,
-    backup: BackupEntry,
+    source_branch_id: Identifier,
+    snapshot_namespace: str,
+    snapshot_name: str,
+    snapshot_content_name: str | None,
 ) -> None:
     await _persist_branch_status(branch_id, BranchServiceStatus.RESTARTING)
-    snapshot_namespace = cast("str", backup.snapshot_namespace)
-    snapshot_name = cast("str", backup.snapshot_name)
-    snapshot_content_name = backup.snapshot_content_name
-
     namespace, autoscaler_vm_name = get_autoscaler_vm_identity(branch_id)
     try:
         await set_virtualmachine_power_state(namespace, autoscaler_vm_name, "Stopped")
@@ -968,7 +967,7 @@ async def _restore_branch_environment_in_place_task(
     try:
         storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
         await restore_branch_database_volume_from_snapshot(
-            source_branch_id=backup.branch_id,
+            source_branch_id=source_branch_id,
             target_branch_id=branch_id,
             snapshot_namespace=snapshot_namespace,
             snapshot_name=snapshot_name,
@@ -1543,6 +1542,11 @@ async def restore(
     backup: RestoreBackupDep,
 ) -> Response:
     branch_id = branch.id
+    if not backup.snapshot_name or not backup.snapshot_namespace:
+        raise HTTPException(status_code=400, detail="Selected backup does not include complete snapshot metadata")
+    snapshot_namespace = backup.snapshot_namespace
+    snapshot_name = backup.snapshot_name
+    snapshot_content_name = backup.snapshot_content_name
 
     restore_parameters = _build_in_place_restore_parameters(branch)
 
@@ -1550,7 +1554,10 @@ async def restore(
         _restore_branch_environment_in_place_task(
             branch_id=branch_id,
             parameters=restore_parameters,
-            backup=backup,
+            source_branch_id=backup.branch_id,
+            snapshot_namespace=snapshot_namespace,
+            snapshot_name=snapshot_name,
+            snapshot_content_name=snapshot_content_name,
         )
     )
 

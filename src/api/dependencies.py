@@ -101,8 +101,6 @@ async def _restore_backup_lookup(
     backup = (await session.execute(query)).scalars().one_or_none()
     if backup is None:
         raise HTTPException(status_code=404, detail=f"Backup {parameters.backup_id} not found for this branch")
-    if not backup.snapshot_name or not backup.snapshot_namespace:
-        raise HTTPException(status_code=400, detail="Selected backup does not include complete snapshot metadata")
     return backup
 
 
