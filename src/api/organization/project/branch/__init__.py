@@ -66,7 +66,6 @@ from .....models.branch import (
     BranchResizeService,
     BranchResizeStatus,
     BranchResizeStatusEntry,
-    BranchRestore,
     BranchServiceStatus,
     BranchSourceDeploymentParameters,
     BranchStatus,
@@ -96,7 +95,7 @@ from ....backup_snapshots import (
     SNAPSHOT_TIMEOUT_SEC as _SNAPSHOT_TIMEOUT_SECONDS,
 )
 from ....db import AsyncSessionLocal, SessionDep
-from ....dependencies import BranchDep, OrganizationDep, ProjectDep, branch_lookup
+from ....dependencies import BranchDep, OrganizationDep, ProjectDep, RestoreBackupDep, branch_lookup
 from ....keycloak import realm_admin
 from ....settings import get_settings as get_api_settings
 from .auth import api as auth_api
@@ -947,12 +946,22 @@ async def _restore_branch_environment_in_place_task(
     *,
     branch_id: Identifier,
     parameters: DeploymentParameters,
-    source_branch_id: Identifier,
-    snapshot_namespace: str,
-    snapshot_name: str,
-    snapshot_content_name: str | None,
+    backup: BackupEntry,
 ) -> None:
     await _persist_branch_status(branch_id, BranchServiceStatus.RESTARTING)
+    if not backup.snapshot_name or not backup.snapshot_namespace:
+        await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
+        logger.error(
+            "Cannot perform in-place restore for branch_id=%s from backup %s due to incomplete snapshot metadata",
+            branch_id,
+            backup.id,
+        )
+        return
+
+    snapshot_namespace = backup.snapshot_namespace
+    snapshot_name = backup.snapshot_name
+    snapshot_content_name = backup.snapshot_content_name
+
     namespace, autoscaler_vm_name = get_autoscaler_vm_identity(branch_id)
     try:
         await set_virtualmachine_power_state(namespace, autoscaler_vm_name, "Stopped")
@@ -968,7 +977,7 @@ async def _restore_branch_environment_in_place_task(
     try:
         storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
         await restore_branch_database_volume_from_snapshot(
-            source_branch_id=source_branch_id,
+            source_branch_id=backup.branch_id,
             target_branch_id=branch_id,
             snapshot_namespace=snapshot_namespace,
             snapshot_name=snapshot_name,
@@ -995,6 +1004,8 @@ async def _restore_branch_environment_in_place_task(
         await set_virtualmachine_power_state(namespace, autoscaler_vm_name, "Running")
     except ApiException as exc:
         if exc.status == 404:
+            # A 404 here is expected when the NeonVM object has not been recreated yet
+            # after the volume restore path; marking STARTING lets reconciliation continue.
             await _persist_branch_status(branch_id, BranchServiceStatus.STARTING)
             return
         await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
@@ -1539,22 +1550,9 @@ async def restore(
     _organization: OrganizationDep,
     _project: ProjectDep,
     branch: BranchDep,
-    parameters: BranchRestore,
+    backup: RestoreBackupDep,
 ) -> Response:
     branch_id = branch.id
-    backup = await session.scalar(
-        select(BackupEntry).where(
-            BackupEntry.id == parameters.backup_id,
-            BackupEntry.branch_id == branch_id,
-        )
-    )
-    if backup is None:
-        raise HTTPException(status_code=404, detail=f"Backup {parameters.backup_id} not found for this branch")
-    if not backup.snapshot_name or not backup.snapshot_namespace:
-        raise HTTPException(status_code=400, detail="Selected backup does not include complete snapshot metadata")
-    snapshot_namespace = backup.snapshot_namespace
-    snapshot_name = backup.snapshot_name
-    snapshot_content_name = backup.snapshot_content_name
 
     restore_parameters = _build_in_place_restore_parameters(branch)
     branch_in_session = await session.merge(branch)
@@ -1565,10 +1563,7 @@ async def restore(
         _restore_branch_environment_in_place_task(
             branch_id=branch_id,
             parameters=restore_parameters,
-            source_branch_id=branch_id,
-            snapshot_namespace=cast("str", snapshot_namespace),
-            snapshot_name=cast("str", snapshot_name),
-            snapshot_content_name=snapshot_content_name,
+            backup=backup,
         )
     )
 
