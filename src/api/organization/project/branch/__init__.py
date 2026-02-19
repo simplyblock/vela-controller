@@ -581,6 +581,29 @@ def _deployment_parameters_from_source(
     )
 
 
+def _resolve_restore_database_size(
+    *,
+    requested_database_size: int | None,
+    snapshot_restore_size: int | None,
+) -> int:
+    if snapshot_restore_size is None or snapshot_restore_size <= 0:
+        raise HTTPException(
+            status_code=422,
+            detail="Selected backup does not expose a valid snapshot restore size",
+        )
+    if requested_database_size is None:
+        return snapshot_restore_size
+    if requested_database_size <= snapshot_restore_size:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "database_size override must be greater than the backup snapshot restore size "
+                f"({snapshot_restore_size})"
+            ),
+        )
+    return requested_database_size
+
+
 def _resource_limits_from_deployment(parameters: DeploymentParameters) -> ResourceLimitsPublic:
     return ResourceLimitsPublic(
         milli_vcpu=parameters.milli_vcpu,
@@ -881,6 +904,7 @@ async def _restore_branch_environment_task(
     snapshot_namespace: str,
     snapshot_name: str,
     snapshot_content_name: str | None,
+    restore_database_size: int,
     pgbouncer_config: PgbouncerConfigSnapshot,
     pitr_enabled: bool,
 ) -> None:
@@ -900,7 +924,7 @@ async def _restore_branch_environment_task(
             snapshot_poll_interval_seconds=_SNAPSHOT_POLL_INTERVAL_SECONDS,
             pvc_timeout_seconds=_PVC_TIMEOUT_SECONDS,
             pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
-            database_size=parameters.database_size,
+            database_size=restore_database_size,
         )
     except VelaError:
         await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
@@ -1289,6 +1313,7 @@ def _schedule_branch_environment_tasks(
     pgbouncer_admin_password: str,
     pgbouncer_config: PgbouncerConfigSnapshot,
     restore_snapshot: RestoreSnapshotContext | None,
+    restore_database_size: int | None,
 ) -> None:
     if deployment_parameters is not None:
         asyncio.create_task(
@@ -1307,6 +1332,8 @@ def _schedule_branch_environment_tasks(
         )
         return
     if restore_snapshot is not None and source_id is not None and clone_parameters is not None:
+        if restore_database_size is None:
+            raise AssertionError("restore_database_size required for restore scheduling")
         asyncio.create_task(
             _restore_branch_environment_task(
                 organization_id=organization_id,
@@ -1321,6 +1348,7 @@ def _schedule_branch_environment_tasks(
                 snapshot_namespace=restore_snapshot["namespace"],
                 snapshot_name=restore_snapshot["name"],
                 snapshot_content_name=restore_snapshot["content_name"],
+                restore_database_size=restore_database_size,
                 pgbouncer_config=pgbouncer_config,
                 pitr_enabled=branch.pitr_enabled,
             )
@@ -1366,7 +1394,7 @@ def _schedule_branch_environment_tasks(
         409: Conflict,
     },
 )
-async def create(
+async def create(  # noqa: C901
     session: SessionDep,
     request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
@@ -1386,18 +1414,38 @@ async def create(
         )
     source_id: Identifier | None = getattr(source, "id", None)
     clone_parameters: DeploymentParameters | None = None
+    restore_database_size: int | None = None
+    restore_params = parameters.restore
+    is_restore = restore_params is not None
     if source is not None:
-        source_overrides = None
+        source_overrides: BranchSourceDeploymentParameters | None = None
         if parameters.source is not None:
             source_overrides = parameters.source.deployment_parameters
-        elif parameters.restore is not None:
-            source_overrides = parameters.restore.deployment_parameters
+        elif restore_params is not None:
+            source_overrides = restore_params.deployment_parameters
+
+        requested_restore_database_size: int | None = None
+        overrides_for_clone = source_overrides
+        if is_restore:
+            requested_restore_database_size = source_overrides.database_size if source_overrides is not None else None
+            if source_overrides is not None:
+                # Restore sizing is validated against the backup snapshot size, not source branch allocation.
+                overrides_for_clone = source_overrides.model_copy(update={"database_size": None})
+
         source_limits = await get_current_branch_allocations(session, source)
         clone_parameters = _deployment_parameters_from_source(
             source,
             source_limits=source_limits,
-            overrides=source_overrides,
+            overrides=overrides_for_clone,
         )
+        if is_restore:
+            if backup_entry is None:
+                raise AssertionError("backup_entry required for restore branch creation")
+            restore_database_size = _resolve_restore_database_size(
+                requested_database_size=requested_restore_database_size,
+                snapshot_restore_size=backup_entry.size_bytes,
+            )
+            clone_parameters = clone_parameters.model_copy(update={"database_size": restore_database_size})
         resource_requests = _resource_limits_from_deployment(clone_parameters)
     else:
         if parameters.deployment is None:
@@ -1481,6 +1529,7 @@ async def create(
         pgbouncer_admin_password=pgbouncer_admin_password,
         pgbouncer_config=pgbouncer_config_snapshot,
         restore_snapshot=restore_snapshot,
+        restore_database_size=restore_database_size,
     )
 
     payload = (await _public(entity)).model_dump(mode="json") if response == "full" else None
