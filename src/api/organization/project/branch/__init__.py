@@ -95,7 +95,7 @@ from ....backup_snapshots import (
     SNAPSHOT_TIMEOUT_SEC as _SNAPSHOT_TIMEOUT_SECONDS,
 )
 from ....db import AsyncSessionLocal, SessionDep
-from ....dependencies import BranchDep, OrganizationDep, ProjectDep, branch_lookup
+from ....dependencies import BranchDep, OrganizationDep, ProjectDep, RestoreBackupDep, branch_lookup
 from ....keycloak import realm_admin
 from ....settings import get_settings as get_api_settings
 from .auth import api as auth_api
@@ -591,6 +591,21 @@ def _resource_limits_from_deployment(parameters: DeploymentParameters) -> Resour
     )
 
 
+def _build_in_place_restore_parameters(branch: Branch) -> DeploymentParameters:
+    storage_size = branch.storage_size if branch.enable_file_storage else None
+
+    return DeploymentParameters(
+        database_password=branch.database_password,
+        database_size=branch.database_size,
+        storage_size=storage_size,
+        milli_vcpu=branch.milli_vcpu,
+        memory_bytes=branch.memory,
+        iops=branch.iops,
+        database_image_tag=cast("Literal['15.1.0.147', '18.1-velaos']", branch.database_image_tag),
+        enable_file_storage=branch.enable_file_storage,
+    )
+
+
 async def _build_branch_entity(
     *,
     project: ProjectDep,
@@ -922,6 +937,71 @@ async def _restore_branch_environment_task(
             project_id,
             branch_id,
             branch_slug,
+        )
+        return
+    await _persist_branch_status(branch_id, BranchServiceStatus.STARTING)
+
+
+async def _restore_branch_environment_in_place_task(
+    *,
+    branch_id: Identifier,
+    parameters: DeploymentParameters,
+    source_branch_id: Identifier,
+    snapshot_namespace: str,
+    snapshot_name: str,
+    snapshot_content_name: str | None,
+) -> None:
+    await _persist_branch_status(branch_id, BranchServiceStatus.RESTARTING)
+    namespace, autoscaler_vm_name = get_autoscaler_vm_identity(branch_id)
+    try:
+        await set_virtualmachine_power_state(namespace, autoscaler_vm_name, "Stopped")
+    except ApiException as exc:
+        if exc.status != 404:
+            await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
+            logging.exception(
+                "Failed to stop autoscaler VM before in-place restore for branch_id=%s",
+                branch_id,
+            )
+            return
+
+    try:
+        storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
+        await restore_branch_database_volume_from_snapshot(
+            source_branch_id=source_branch_id,
+            target_branch_id=branch_id,
+            snapshot_namespace=snapshot_namespace,
+            snapshot_name=snapshot_name,
+            snapshot_content_name=snapshot_content_name,
+            snapshot_class=_VOLUME_SNAPSHOT_CLASS,
+            storage_class_name=storage_class_name,
+            snapshot_timeout_seconds=_SNAPSHOT_TIMEOUT_SECONDS,
+            snapshot_poll_interval_seconds=_SNAPSHOT_POLL_INTERVAL_SECONDS,
+            pvc_timeout_seconds=_PVC_TIMEOUT_SECONDS,
+            pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
+            database_size=parameters.database_size,
+        )
+    except VelaError:
+        await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
+        logging.exception(
+            "In-place branch restore failed for branch_id=%s using snapshot %s/%s",
+            branch_id,
+            snapshot_namespace,
+            snapshot_name,
+        )
+        return
+
+    try:
+        await set_virtualmachine_power_state(namespace, autoscaler_vm_name, "Running")
+    except ApiException as exc:
+        if exc.status == 404:
+            # A 404 here is expected when the NeonVM object has not been recreated yet
+            # after the volume restore path; marking STARTING lets reconciliation continue.
+            await _persist_branch_status(branch_id, BranchServiceStatus.STARTING)
+            return
+        await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
+        logging.exception(
+            "Failed to start autoscaler VM after in-place restore for branch_id=%s",
+            branch_id,
         )
         return
     await _persist_branch_status(branch_id, BranchServiceStatus.STARTING)
@@ -1447,6 +1527,41 @@ async def status(
         resize_statuses=normalized_resize_statuses,
         service_status=service_status,
     )
+
+
+@instance_api.post(
+    "/restore",
+    name="organizations:projects:branch:restore",
+    status_code=202,
+    responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
+)
+async def restore(
+    _organization: OrganizationDep,
+    _project: ProjectDep,
+    branch: BranchDep,
+    backup: RestoreBackupDep,
+) -> Response:
+    branch_id = branch.id
+    if not backup.snapshot_name or not backup.snapshot_namespace:
+        raise HTTPException(status_code=400, detail="Selected backup does not include complete snapshot metadata")
+    snapshot_namespace = backup.snapshot_namespace
+    snapshot_name = backup.snapshot_name
+    snapshot_content_name = backup.snapshot_content_name
+
+    restore_parameters = _build_in_place_restore_parameters(branch)
+
+    asyncio.create_task(
+        _restore_branch_environment_in_place_task(
+            branch_id=branch_id,
+            parameters=restore_parameters,
+            source_branch_id=backup.branch_id,
+            snapshot_namespace=snapshot_namespace,
+            snapshot_name=snapshot_name,
+            snapshot_content_name=snapshot_content_name,
+        )
+    )
+
+    return Response(status_code=202)
 
 
 @instance_api.put(

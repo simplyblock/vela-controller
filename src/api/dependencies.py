@@ -6,7 +6,8 @@ from sqlalchemy.exc import NoResultFound
 from sqlmodel import select
 
 from .._util import Identifier
-from ..models.branch import Branch, BranchServiceStatus
+from ..models.backups import BackupEntry
+from ..models.branch import Branch, BranchRestore, BranchServiceStatus
 from ..models.organization import Organization
 from ..models.project import Project
 from ..models.role import Role
@@ -86,3 +87,21 @@ async def _member_lookup(organization: OrganizationDep, user: UserDep) -> User:
 
 
 MemberDep = Annotated[User, Depends(_member_lookup)]
+
+
+async def _restore_backup_lookup(
+    session: SessionDep,
+    branch: BranchDep,
+    parameters: BranchRestore,
+) -> BackupEntry:
+    query = select(BackupEntry).where(
+        BackupEntry.id == parameters.backup_id,
+        BackupEntry.branch_id == branch.id,
+    )
+    backup = (await session.execute(query)).scalars().one_or_none()
+    if backup is None:
+        raise HTTPException(status_code=404, detail=f"Backup {parameters.backup_id} not found for this branch")
+    return backup
+
+
+RestoreBackupDep = Annotated[BackupEntry, Depends(_restore_backup_lookup)]
