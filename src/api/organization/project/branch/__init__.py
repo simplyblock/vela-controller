@@ -949,17 +949,8 @@ async def _restore_branch_environment_in_place_task(
     backup: BackupEntry,
 ) -> None:
     await _persist_branch_status(branch_id, BranchServiceStatus.RESTARTING)
-    if not backup.snapshot_name or not backup.snapshot_namespace:
-        await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
-        logger.error(
-            "Cannot perform in-place restore for branch_id=%s from backup %s due to incomplete snapshot metadata",
-            branch_id,
-            backup.id,
-        )
-        return
-
-    snapshot_namespace = backup.snapshot_namespace
-    snapshot_name = backup.snapshot_name
+    snapshot_namespace = cast("str", backup.snapshot_namespace)
+    snapshot_name = cast("str", backup.snapshot_name)
     snapshot_content_name = backup.snapshot_content_name
 
     namespace, autoscaler_vm_name = get_autoscaler_vm_identity(branch_id)
