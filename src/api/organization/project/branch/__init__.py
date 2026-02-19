@@ -1546,7 +1546,6 @@ async def status(
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def restore(
-    session: SessionDep,
     _organization: OrganizationDep,
     _project: ProjectDep,
     branch: BranchDep,
@@ -1555,9 +1554,6 @@ async def restore(
     branch_id = branch.id
 
     restore_parameters = _build_in_place_restore_parameters(branch)
-    branch_in_session = await session.merge(branch)
-    branch_in_session.set_status(BranchServiceStatus.RESTARTING)
-    await session.commit()
 
     asyncio.create_task(
         _restore_branch_environment_in_place_task(
