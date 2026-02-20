@@ -18,7 +18,7 @@ from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
-from ....._util import DEFAULT_DB_NAME, DEFAULT_DB_USER, Identifier, bytes_to_gb
+from ....._util import DEFAULT_DB_NAME, DEFAULT_DB_USER, Identifier
 from ....._util.crypto import encrypt_with_passphrase, generate_keys
 from .....deployment import (
     AUTOSCALER_PVC_SUFFIX,
@@ -728,13 +728,13 @@ async def _apply_resize_operations(
     if "database_size" in effective_parameters:
         new_database_size = effective_parameters["database_size"]
         pvc_name = f"{autoscaler_vm_name}{AUTOSCALER_PVC_SUFFIX}"
-        storage_size_gb = f"{bytes_to_gb(new_database_size)}G"
+        storage_size_gb = str(new_database_size)
         await kube_service.resize_pvc_storage(namespace, pvc_name, storage_size_gb)
 
     if "storage_size" in effective_parameters:
         new_storage_size = effective_parameters["storage_size"]
         pvc_name = f"{autoscaler_vm_name}{STORAGE_PVC_SUFFIX}"
-        storage_size_gb = f"{bytes_to_gb(new_storage_size)}G"
+        storage_size_gb = str(new_storage_size)
         await kube_service.resize_pvc_storage(namespace, pvc_name, storage_size_gb)
 
     if "iops" in effective_parameters:

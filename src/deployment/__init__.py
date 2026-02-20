@@ -33,7 +33,6 @@ from .._util import (
     VCPU_MILLIS_MIN,
     Identifier,
     Name,
-    bytes_to_gb,
     bytes_to_mib,
     check_output,
 )
@@ -435,7 +434,7 @@ def _configure_vela_values(
     storage_spec = values_content.setdefault("storage", {})
     storage_persistence = storage_spec.setdefault("persistence", {})
     if parameters.storage_size is not None:
-        storage_persistence["size"] = f"{bytes_to_gb(parameters.storage_size)}G"
+        storage_persistence["size"] = str(parameters.storage_size)
     else:
         storage_persistence.pop("size", None)
     storage_persistence["storageClassName"] = storage_class_name
@@ -446,7 +445,7 @@ def _configure_vela_values(
     pg_wal_spec["enabled"] = pitr_enabled
     wal_persistence = pg_wal_spec.setdefault("persistence", {})
     wal_persistence["create"] = not use_existing_db_pvc
-    wal_persistence["size"] = f"{bytes_to_gb(parameters.database_size)}G"
+    wal_persistence["size"] = str(parameters.database_size)
     wal_persistence["storageClassName"] = storage_class_name
     wal_persistence["claimName"] = wal_persistence.get("claimName") or (
         f"{_autoscaler_vm_name()}{AUTOSCALER_WAL_PVC_SUFFIX}"
@@ -454,7 +453,7 @@ def _configure_vela_values(
     wal_persistence.setdefault("accessModes", ["ReadWriteMany"])
 
     db_persistence = db_spec.setdefault("persistence", {})
-    db_persistence["size"] = f"{bytes_to_gb(parameters.database_size)}G"
+    db_persistence["size"] = str(parameters.database_size)
     if use_existing_db_pvc:
         db_persistence["create"] = False
     db_persistence["storageClassName"] = storage_class_name
@@ -475,7 +474,7 @@ def _configure_vela_values(
     autoscaler_persistence = autoscaler_spec.setdefault("persistence", {})
     autoscaler_persistence["create"] = not use_existing_db_pvc
     autoscaler_persistence["claimName"] = f"{_autoscaler_vm_name()}{AUTOSCALER_PVC_SUFFIX}"
-    autoscaler_persistence["size"] = f"{bytes_to_gb(parameters.database_size)}G"
+    autoscaler_persistence["size"] = str(parameters.database_size)
     autoscaler_persistence["storageClassName"] = storage_class_name
     autoscaler_persistence.setdefault("accessModes", ["ReadWriteMany"])
 
