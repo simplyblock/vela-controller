@@ -34,6 +34,7 @@ from .....deployment import (
     ensure_branch_storage_class,
     get_autoscaler_vm_identity,
     kube_service,
+    resolve_branch_database_volume_size,
     update_branch_database_password,
     update_branch_volume_iops,
 )
@@ -581,25 +582,22 @@ def _deployment_parameters_from_source(
     )
 
 
-def _resolve_restore_database_size(
+def _resolve_database_size_against_source(
     *,
     requested_database_size: int | None,
-    snapshot_restore_size: int | None,
+    source_database_size: int | None,
 ) -> int:
-    if snapshot_restore_size is None or snapshot_restore_size <= 0:
+    if source_database_size is None or source_database_size <= 0:
         raise HTTPException(
             status_code=422,
-            detail="Selected backup does not expose a valid snapshot restore size",
+            detail="Selected source does not expose a valid database size",
         )
     if requested_database_size is None:
-        return snapshot_restore_size
-    if requested_database_size <= snapshot_restore_size:
+        return source_database_size
+    if requested_database_size <= source_database_size:
         raise HTTPException(
             status_code=422,
-            detail=(
-                "database_size override must be greater than the backup snapshot restore size "
-                f"({snapshot_restore_size})"
-            ),
+            detail=(f"database_size override must be greater than source database size ({source_database_size})"),
         )
     return requested_database_size
 
@@ -1417,6 +1415,7 @@ async def create(  # noqa: C901
     restore_database_size: int | None = None
     restore_params = parameters.restore
     is_restore = restore_params is not None
+    is_data_clone = bool(parameters.source and parameters.source.data_copy)
     if source is not None:
         source_overrides: BranchSourceDeploymentParameters | None = None
         if parameters.source is not None:
@@ -1425,11 +1424,17 @@ async def create(  # noqa: C901
             source_overrides = restore_params.deployment_parameters
 
         requested_restore_database_size: int | None = None
+        requested_clone_database_size: int | None = None
         overrides_for_clone = source_overrides
         if is_restore:
             requested_restore_database_size = source_overrides.database_size if source_overrides is not None else None
             if source_overrides is not None:
                 # Restore sizing is validated against the backup snapshot size, not source branch allocation.
+                overrides_for_clone = source_overrides.model_copy(update={"database_size": None})
+        elif is_data_clone:
+            requested_clone_database_size = source_overrides.database_size if source_overrides is not None else None
+            if source_overrides is not None:
+                # Clone sizing is validated against the source volume size, not source branch allocation.
                 overrides_for_clone = source_overrides.model_copy(update={"database_size": None})
 
         source_limits = await get_current_branch_allocations(session, source)
@@ -1441,11 +1446,24 @@ async def create(  # noqa: C901
         if is_restore:
             if backup_entry is None:
                 raise AssertionError("backup_entry required for restore branch creation")
-            restore_database_size = _resolve_restore_database_size(
+            restore_database_size = _resolve_database_size_against_source(
                 requested_database_size=requested_restore_database_size,
-                snapshot_restore_size=backup_entry.size_bytes,
+                source_database_size=backup_entry.size_bytes,
             )
             clone_parameters = clone_parameters.model_copy(update={"database_size": restore_database_size})
+        elif is_data_clone:
+            try:
+                source_database_size = await resolve_branch_database_volume_size(source.id)
+            except VelaError as exc:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Failed to resolve database volume size for source branch {source.id}",
+                ) from exc
+            clone_database_size = _resolve_database_size_against_source(
+                requested_database_size=requested_clone_database_size,
+                source_database_size=source_database_size,
+            )
+            clone_parameters = clone_parameters.model_copy(update={"database_size": clone_database_size})
         resource_requests = _resource_limits_from_deployment(clone_parameters)
     else:
         if parameters.deployment is None:
