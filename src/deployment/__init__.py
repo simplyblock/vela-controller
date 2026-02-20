@@ -17,7 +17,7 @@ import yaml
 from cloudflare import AsyncCloudflare, CloudflareError
 from kubernetes_asyncio import client as kubernetes_client
 from kubernetes_asyncio.client.exceptions import ApiException
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, ValidationError, model_validator
 from ulid import ULID
 
 from .._util import (
@@ -50,7 +50,7 @@ from .grafana import create_vela_grafana_obj, delete_vela_grafana_obj
 from .kubernetes import KubernetesService, get_neon_vm
 from .kubernetes._util import custom_api_client
 from .settings import CloudflareSettings, get_settings
-from .simplyblock_api import create_simplyblock_api
+from .simplyblock_api import SimplyblockVolume, create_simplyblock_api
 
 if TYPE_CHECKING:
     from cloudflare.types.dns.record_list_params import Name as CloudflareRecordName
@@ -330,6 +330,17 @@ async def resolve_storage_volume_identifiers(namespace: str) -> tuple[UUID, UUID
 async def resolve_autoscaler_volume_identifiers(namespace: str) -> tuple[UUID, UUID | None]:
     pvc_name = f"{_autoscaler_vm_name()}{AUTOSCALER_PVC_SUFFIX}"
     return await _resolve_volume_identifiers(namespace, pvc_name)
+
+
+async def resolve_branch_database_volume_size(branch_id: Identifier) -> int:
+    namespace = deployment_namespace(branch_id)
+    volume, _ = await resolve_autoscaler_volume_identifiers(namespace)
+    try:
+        async with create_simplyblock_api() as sb_api:
+            volume_payload = await sb_api.get_volume(volume=volume)
+        return SimplyblockVolume.model_validate(volume_payload).size
+    except (VelaSimplyblockAPIError, ValidationError) as exc:
+        raise VelaDeploymentError(f"Failed to resolve database volume size for branch {branch_id}") from exc
 
 
 async def update_branch_volume_iops(branch_id: Identifier, iops: int) -> None:
