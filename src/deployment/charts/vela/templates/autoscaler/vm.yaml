@@ -110,6 +110,10 @@ spec:
       mountPath: "/vela/migrations"
       configMap:
         name: "migrations"
+    - name: vela-certs-secret
+      mountPath: "/vela/certs"
+      secret:
+        secretName: {{ .Values.secret.tls_secret_name | quote }}
     - name: vela-db-secret
       mountPath: "/vela/secrets/db"
       secret:

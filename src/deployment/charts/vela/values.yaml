@@ -10,6 +10,7 @@ vectorYaml: ""
 pgHbaConf: ""
 
 secret:
+  tls_secret_name: "wildcard-dev-tls-secret"
   # jwt will be used to reference secret in multiple services:
   # JWT Secret: Analytics, Auth, Rest, Storage
   pgmeta_crypto_key: ''

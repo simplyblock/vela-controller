@@ -2,16 +2,33 @@ import logging
 import math
 from collections.abc import Mapping
 from copy import deepcopy
-from typing import Any
+from typing import Any, Literal
 
 from aiohttp import ClientError
 from kubernetes_asyncio import client
+from pydantic import BaseModel, ConfigDict, Field
 
 from ...exceptions import VelaKubernetesError
 from ._util import core_v1_client, custom_api_client, discovery_v1_client, storage_v1_client
 from .neonvm import NeonVM, get_neon_vm
 
 logger = logging.getLogger(__name__)
+
+
+class SecretMetadata(BaseModel):
+    name: str
+    namespace: str
+
+
+class SecretManifest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    api_version: str = Field(default="v1", alias="apiVersion")
+    kind: Literal["Secret"] = "Secret"
+    metadata: SecretMetadata
+    type: str | None = None
+    data: dict[str, str] | None = None
+    string_data: dict[str, str] | None = Field(default=None, alias="stringData")
 
 
 class KubernetesService:
@@ -222,6 +239,32 @@ class KubernetesService:
                     )
                 else:
                     raise
+
+    async def copy_secret(
+        self,
+        name: str,
+        source_namespace: str,
+        target_namespace: str,
+        target_name: str | None = None,
+    ) -> None:
+        """Copy a secret from one namespace to another."""
+        target_secret_name = target_name or name
+        try:
+            source_secret = await self.get_secret(source_namespace, name)
+        except VelaKubernetesError:
+            logger.warning("Secret %s/%s not found to copy to %s", source_namespace, name, target_namespace)
+            return
+
+        secret_manifest = SecretManifest(
+            metadata=SecretMetadata(name=target_secret_name, namespace=target_namespace),
+            type=source_secret.type,
+            data=source_secret.data,
+            stringData=source_secret.string_data,
+        )
+        await self.apply_secret(
+            target_namespace,
+            secret_manifest.model_dump(by_alias=True, exclude_none=True),
+        )
 
     async def apply_storage_class(self, manifest: dict[str, Any]) -> None:
         name = manifest["metadata"]["name"]
