@@ -2,6 +2,7 @@ import logging
 
 from .._util import Identifier
 from ..models.branch import BranchServiceStatus, BranchStatus
+from .kubernetes.neonvm import Phase
 from .monitors.health import vm_monitor
 
 logger = logging.getLogger(__name__)
@@ -61,3 +62,28 @@ async def collect_branch_service_health(id_: Identifier) -> BranchStatus:
         meta=BranchServiceStatus.ACTIVE_HEALTHY if services.get("meta", False) else BranchServiceStatus.STOPPED,
         rest=BranchServiceStatus.ACTIVE_HEALTHY if services.get("rest", False) else BranchServiceStatus.STOPPED,
     )
+
+
+def deployment_status(id_: Identifier) -> BranchServiceStatus:
+    status = vm_monitor.status(id_)
+    if status is None:
+        return BranchServiceStatus.UNKNOWN
+
+    if status.phase == Phase.failed:
+        return BranchServiceStatus.ERROR
+
+    if status.phase in {Phase.succeeded, Phase.pending}:
+        return BranchServiceStatus.STOPPED
+
+    if status.services is None or not status.services.get("postgres", False):
+        return BranchServiceStatus.STOPPED
+
+    healthy = any(
+        status.services.get(service, not required)
+        for service, required in [
+            ("meta", True),
+            ("rest", True),
+            ("storageapi", False),
+        ]
+    )
+    return BranchServiceStatus.ACTIVE_HEALTHY if healthy else BranchServiceStatus.ACTIVE_UNHEALTHY
