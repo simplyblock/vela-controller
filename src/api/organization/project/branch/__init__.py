@@ -18,7 +18,7 @@ from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
-from ....._util import DEFAULT_DB_NAME, DEFAULT_DB_USER, Identifier
+from ....._util import DEFAULT_DB_NAME, DEFAULT_DB_USER, GB, GIB, Identifier
 from ....._util.crypto import encrypt_with_passphrase, generate_keys
 from .....deployment import (
     AUTOSCALER_PVC_SUFFIX,
@@ -640,13 +640,15 @@ async def _build_branch_entity(
         if clone_parameters is None:
             raise AssertionError("clone_parameters required when cloning from a source branch")
 
+        # storage backend uses GiB as units. So convert the values to GB before presisting to DB
+        database_size_for_persistence = ((clone_parameters.database_size + GIB - 1) // GIB) * GB
         entity = Branch(
             name=parameters.name,
             project_id=project.id,
             parent_id=source.id,
             database=DEFAULT_DB_NAME,
             database_user=DEFAULT_DB_USER,
-            database_size=clone_parameters.database_size,
+            database_size=database_size_for_persistence,
             storage_size=clone_parameters.storage_size if clone_parameters.enable_file_storage else None,
             milli_vcpu=clone_parameters.milli_vcpu,
             memory=clone_parameters.memory_bytes,
