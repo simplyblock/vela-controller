@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Self
 from uuid import UUID
 
 import httpx
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from ..exceptions import VelaSimplyblockAPIError
 
@@ -14,6 +15,12 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+
+class SimplyblockVolume(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    size: int = Field(gt=0)
 
 
 class SimplyblockPoolApi:
@@ -106,6 +113,18 @@ class SimplyblockPoolApi:
         payload: dict[str, Any],
     ) -> None:
         await self._put(f"volumes/{volume}/", data=payload)
+
+    async def get_volume(
+        self,
+        volume: UUID,
+    ) -> SimplyblockVolume:
+        volume_payload = await self._get(f"volumes/{volume}/")
+        if not isinstance(volume_payload, dict):
+            raise VelaSimplyblockAPIError(f"Unexpected volume payload for volume {volume}")
+        try:
+            return SimplyblockVolume.model_validate(volume_payload)
+        except ValidationError as exc:
+            raise VelaSimplyblockAPIError(f"Invalid volume payload for volume {volume}") from exc
 
 
 @asynccontextmanager
