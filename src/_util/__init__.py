@@ -191,12 +191,6 @@ def bytes_to_mib(value: int) -> int:
     return value // MIB
 
 
-def bytes_to_gb(value: int) -> int:
-    """Convert a byte count to the nearest whole GB using floor division."""
-
-    return value // GB
-
-
 def bytes_to_gib(value: int) -> int:
     """Convert a byte count to the nearest whole GiB using floor division."""
 
