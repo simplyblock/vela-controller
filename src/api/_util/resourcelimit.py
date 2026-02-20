@@ -1,4 +1,4 @@
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, datetime
 
 from sqlalchemy import delete, func
@@ -180,7 +180,7 @@ async def initialize_organization_resource_limits(session: SessionDep, organizat
     await session.refresh(organization)
 
 
-def dict_to_resource_limits(value: dict[ResourceType, int]) -> ResourceLimitsPublic:
+def dict_to_resource_limits(value: Mapping[ResourceType, int | None]) -> ResourceLimitsPublic:
     return ResourceLimitsPublic(
         milli_vcpu=value.get(ResourceType.milli_vcpu),
         ram=value.get(ResourceType.ram),
@@ -329,16 +329,13 @@ async def get_remaining_organization_resources(
         organization_id,
         exclude_branch_ids=exclude_branch_ids,
     )
-    effective_limits: dict[ResourceType, int] = {}
+    effective_limits: dict[ResourceType, int | None] = {}
     for resource_type in ResourceType:
         organization_limit = organization_limits.get(resource_type)
-        current_organization_allocation = organization_allocations.get(resource_type) or 0
-        remaining_organization = (
-            (organization_limit.max_total - current_organization_allocation)
-            if organization_limit and current_organization_allocation
-            else 0
+        current_organization_allocation = organization_allocations.get(resource_type, 0)
+        effective_limits[resource_type] = (
+            max(organization_limit.max_total - current_organization_allocation, 0) if organization_limit else None
         )
-        effective_limits[resource_type] = int(max(remaining_organization, 0))
     return dict_to_resource_limits(effective_limits)
 
 
