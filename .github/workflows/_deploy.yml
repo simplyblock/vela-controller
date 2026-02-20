@@ -49,6 +49,7 @@ jobs:
           VELA_GRAFANA_SECURITY_ADMIN_PASSWORD: ${{ secrets.VELA_GRAFANA_SECURITY_ADMIN_PASSWORD }}
           VELA_BRANCH_REF: ${{ vars.VELA_BRANCH_REF }}
           VELA_BRANCH_DB_REF: ${{ vars.VELA_BRANCH_DB_REF }}
+          ENABLE_DB_EXTERNAL_IPV6_LOADBALANCER: ${{ vars.ENABLE_DB_EXTERNAL_IPV6_LOADBALANCER }}
           REPLICAS: ${{ inputs.environment == 'prod' && 3 || 1 }}
         run: |
           KUBECONFIG="$(mktemp)"
@@ -69,4 +70,5 @@ jobs:
             --set-string controller.env.VELA_KEYCLOAK_ADMIN_SECRET="$VELA_KEYCLOAK_ADMIN_SECRET" \
             --set-string controller.env.VELA_BRANCH_REF="$VELA_BRANCH_REF" \
             --set-string controller.env.VELA_BRANCH_DB_REF="$VELA_BRANCH_DB_REF" \
+            --set-string controller.env.VELA_ENABLE_DB_EXTERNAL_IPV6_LOADBALANCER="$ENABLE_DB_EXTERNAL_IPV6_LOADBALANCER" \
             --set-string monitoring.VELA_GRAFANA_SECURITY_ADMIN_PASSWORD="$VELA_GRAFANA_SECURITY_ADMIN_PASSWORD"
