@@ -50,7 +50,7 @@ from .grafana import create_vela_grafana_obj, delete_vela_grafana_obj
 from .kubernetes import KubernetesService, get_neon_vm
 from .kubernetes._util import custom_api_client
 from .settings import CloudflareSettings, get_settings
-from .simplyblock_api import SimplyblockVolume, create_simplyblock_api
+from .simplyblock_api import create_simplyblock_api
 
 if TYPE_CHECKING:
     from cloudflare.types.dns.record_list_params import Name as CloudflareRecordName
@@ -338,7 +338,7 @@ async def resolve_branch_database_volume_size(branch_id: Identifier) -> int:
     try:
         async with create_simplyblock_api() as sb_api:
             volume_payload = await sb_api.get_volume(volume=volume)
-        return SimplyblockVolume.model_validate(volume_payload).size
+        return volume_payload.size
     except (VelaSimplyblockAPIError, ValidationError) as exc:
         raise VelaDeploymentError(f"Failed to resolve database volume size for branch {branch_id}") from exc
 

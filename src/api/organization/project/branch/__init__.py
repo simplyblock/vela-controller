@@ -586,19 +586,18 @@ def _resolve_database_size_against_source(
     *,
     requested_database_size: int | None,
     source_database_size: int | None,
-    source_label: str,
 ) -> int:
     if source_database_size is None or source_database_size <= 0:
         raise HTTPException(
             status_code=422,
-            detail=f"Selected source does not expose a valid {source_label}",
+            detail="Selected source does not expose a valid database size",
         )
     if requested_database_size is None:
         return source_database_size
     if requested_database_size <= source_database_size:
         raise HTTPException(
             status_code=422,
-            detail=(f"database_size override must be greater than the {source_label} ({source_database_size})"),
+            detail=(f"database_size override must be greater than source database size ({source_database_size})"),
         )
     return requested_database_size
 
@@ -1450,7 +1449,6 @@ async def create(  # noqa: C901
             restore_database_size = _resolve_database_size_against_source(
                 requested_database_size=requested_restore_database_size,
                 source_database_size=backup_entry.size_bytes,
-                source_label="backup snapshot restore size",
             )
             clone_parameters = clone_parameters.model_copy(update={"database_size": restore_database_size})
         elif is_data_clone:
@@ -1464,7 +1462,6 @@ async def create(  # noqa: C901
             clone_database_size = _resolve_database_size_against_source(
                 requested_database_size=requested_clone_database_size,
                 source_database_size=source_database_size,
-                source_label="source branch volume size",
             )
             clone_parameters = clone_parameters.model_copy(update={"database_size": clone_database_size})
         resource_requests = _resource_limits_from_deployment(clone_parameters)

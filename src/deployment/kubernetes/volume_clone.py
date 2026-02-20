@@ -38,11 +38,6 @@ from .snapshot import (
 logger = logging.getLogger(__name__)
 
 
-def _storage_request_from_bytes(size_bytes: int) -> str:
-    # Use exact bytes to avoid unit conversion rounding below snapshot capacity.
-    return str(size_bytes)
-
-
 @dataclass(frozen=True)
 class CloneTimeouts:
     snapshot_ready: float
