@@ -442,6 +442,16 @@ class _DeploymentResourceValues(TypedDict):
     iops: int | None
 
 
+def _round_up_size_to_gb(value: int) -> int:
+    return ((value + GB - 1) // GB) * GB
+
+
+def _normalize_size_from_source(value: int | None) -> int | None:
+    if value is None:
+        return None
+    return _round_up_size_to_gb(value)
+
+
 def _base_deployment_resources(
     source: Branch,
     source_limits: BranchAllocationPublic | None,
@@ -453,8 +463,8 @@ def _base_deployment_resources(
         return fallback if limit_value is None else limit_value
 
     return {
-        "database_size": _value_from_limits("database_size", source.database_size),
-        "storage_size": _value_from_limits("storage_size", source.storage_size),
+        "database_size": _normalize_size_from_source(_value_from_limits("database_size", source.database_size)),
+        "storage_size": _normalize_size_from_source(_value_from_limits("storage_size", source.storage_size)),
         "milli_vcpu": _value_from_limits("milli_vcpu", source.milli_vcpu),
         "memory_bytes": _value_from_limits("ram", source.memory),
         "iops": _value_from_limits("iops", source.iops),
@@ -592,8 +602,9 @@ def _resolve_database_size_against_source(
             status_code=422,
             detail="Selected source does not expose a valid database size",
         )
+    normalized_source_size = _round_up_size_to_gb(source_database_size)
     if requested_database_size is None:
-        return source_database_size
+        return normalized_source_size
     if requested_database_size <= source_database_size:
         raise HTTPException(
             status_code=422,
