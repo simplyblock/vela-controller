@@ -41,7 +41,7 @@ from .....deployment import (
 from .....deployment._util import deployment_namespace
 from .....deployment.health import (
     collect_branch_service_health,
-    derive_branch_status_from_services,
+    deployment_status,
 )
 from .....deployment.kubernetes._util import core_v1_client
 from .....deployment.kubernetes.neonvm import PowerState as NeonVMPowerState
@@ -257,25 +257,21 @@ async def refresh_branch_status(branch_id: Identifier) -> BranchServiceStatus:
 
 async def _refresh_branch_status(branch: Branch) -> BranchServiceStatus:
     current_status = _parse_branch_status(branch.status)
-    service_status = await collect_branch_service_health(branch.id)
-    derived_status = derive_branch_status_from_services(
-        service_status,
-        storage_enabled=branch.enable_file_storage,
-    )
+    status = deployment_status(branch.id)
 
-    derived_status = _adjust_derived_status_for_stuck_creation(
+    status = _adjust_derived_status_for_stuck_creation(
         branch,
         current_status,
-        derived_status,
+        status,
     )
 
     if _should_update_branch_status(
         current_status,
-        derived_status,
+        status,
         resize_status=branch.resize_status,
     ):
-        branch.set_status(derived_status)
-        return derived_status
+        branch.set_status(status)
+        return status
 
     return current_status
 
