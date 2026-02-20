@@ -50,6 +50,7 @@ controller:
     VELA_SYSTEM_LIMIT_STORAGE_SIZE: '1000000000000'
     VELA_RESOURCE_MONITOR_INTERVAL: '30'
     SIMPLYBLOCK_CSI_NAMESPACE: 'simplyblock'
+    VELA_TLS_SECRET_NAME: 'vela-run-wildcard-tls'
 
 secret:
   pgmeta_crypto_key: "secret"

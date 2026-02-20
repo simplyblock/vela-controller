@@ -69,6 +69,7 @@ CHECK_ENCRYPTED_HEADER_PLUGIN_NAME = "check-x-connection-encrypted"
 APIKEY_JWT_PLUGIN_NAME = "apikey-jwt"
 CPU_REQUEST_FRACTION = 0.25  # request = 25% of limit
 SIMPLYBLOCK_NAMESPACE = os.environ.get("SIMPLYBLOCK_CSI_NAMESPACE", "simplyblock")
+TLS_SECRET_NAME = os.environ.get("VELA_TLS_SECRET_NAME", "wildcard-dev-tls-secret")
 SIMPLYBLOCK_CSI_CONFIGMAP = "simplyblock-csi-cm"
 SIMPLYBLOCK_CSI_SECRET = "simplyblock-csi-secret"
 SIMPLYBLOCK_CSI_STORAGE_CLASS = "simplyblock-csi-sc"
@@ -435,6 +436,7 @@ def _configure_vela_values(
         secret=jwt_secret,
     )
     secrets.update(pgmeta_crypto_key=get_settings().pgmeta_crypto_key)
+    secrets["tls_secret_name"] = TLS_SECRET_NAME
     secrets.setdefault("db", {})["password"] = parameters.database_password
     secrets.setdefault("pgbouncer", {})["admin_password"] = pgbouncer_admin_password
 
@@ -1243,7 +1245,9 @@ async def deploy_branch_environment(
     pitr_enabled: bool = False,
 ) -> None:
     """Background task: provision infra for a branch and persist the resulting endpoint."""
-    await kube_service.ensure_namespace(deployment_namespace(branch_id), labels=_POD_SECURITY_LABELS)
+    namespace = deployment_namespace(branch_id)
+    await kube_service.ensure_namespace(namespace, labels=_POD_SECURITY_LABELS)
+    await kube_service.copy_secret(TLS_SECRET_NAME, source_namespace="kong-system", target_namespace=namespace)
     ref = branch_dns_label(branch_id)
 
     results = await asyncio.gather(

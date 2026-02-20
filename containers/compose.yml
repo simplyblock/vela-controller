@@ -46,6 +46,7 @@ services:
       VELA_SYSTEM_LIMIT_DATABASE_SIZE: '100000000000000'
       VELA_SYSTEM_LIMIT_STORAGE_SIZE: '1000000000000'
       SIMPLYBLOCK_CSI_NAMESPACE: 'simplyblock-csi'
+      VELA_TLS_SECRET_NAME: 'wildcard-tls-secret'
 
     depends_on:
       database:
