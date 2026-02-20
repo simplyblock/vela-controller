@@ -38,11 +38,6 @@ from .snapshot import (
 logger = logging.getLogger(__name__)
 
 
-def _storage_request_from_bytes(size_bytes: int) -> str:
-    # Use exact bytes to avoid unit conversion rounding below snapshot capacity.
-    return str(size_bytes)
-
-
 @dataclass(frozen=True)
 class CloneTimeouts:
     snapshot_ready: float
@@ -276,7 +271,7 @@ class _VolumeCloneOperation:
             branch_id=self.target_branch_id,
             volume_snapshot_name=snapshot_name,
         )
-        new_manifest.spec.resources.requests["storage"] = _storage_request_from_bytes(self.target_database_size)
+        new_manifest.spec.resources.requests["storage"] = str(self.target_database_size)
         new_manifest.spec.storage_class_name = self.storage_class_name
         if hasattr(new_manifest.spec, "storageClassName"):
             new_manifest.spec.storageClassName = self.storage_class_name
@@ -445,7 +440,7 @@ class _SnapshotRestoreOperation:
             branch_id=self.target_branch_id,
             volume_snapshot_name=self.ids.target_snapshot,
         )
-        new_manifest.spec.resources.requests["storage"] = _storage_request_from_bytes(self.target_database_size)
+        new_manifest.spec.resources.requests["storage"] = str(self.target_database_size)
         new_manifest.spec.storage_class_name = self.storage_class_name
         if hasattr(new_manifest.spec, "storageClassName"):
             new_manifest.spec.storageClassName = self.storage_class_name
