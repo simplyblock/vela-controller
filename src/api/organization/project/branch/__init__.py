@@ -18,7 +18,7 @@ from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
-from ....._util import DEFAULT_DB_NAME, DEFAULT_DB_USER, Identifier
+from ....._util import DEFAULT_DB_NAME, DEFAULT_DB_USER, GB, GIB, Identifier
 from ....._util.crypto import encrypt_with_passphrase, generate_keys
 from .....deployment import (
     AUTOSCALER_PVC_SUFFIX,
@@ -442,6 +442,16 @@ class _DeploymentResourceValues(TypedDict):
     iops: int | None
 
 
+def _round_up_size_to_gb(value: int) -> int:
+    return ((value + GB - 1) // GB) * GB
+
+
+def _normalize_size_from_source(value: int | None) -> int | None:
+    if value is None:
+        return None
+    return _round_up_size_to_gb(value)
+
+
 def _base_deployment_resources(
     source: Branch,
     source_limits: BranchAllocationPublic | None,
@@ -453,8 +463,8 @@ def _base_deployment_resources(
         return fallback if limit_value is None else limit_value
 
     return {
-        "database_size": _value_from_limits("database_size", source.database_size),
-        "storage_size": _value_from_limits("storage_size", source.storage_size),
+        "database_size": _normalize_size_from_source(_value_from_limits("database_size", source.database_size)),
+        "storage_size": _normalize_size_from_source(_value_from_limits("storage_size", source.storage_size)),
         "milli_vcpu": _value_from_limits("milli_vcpu", source.milli_vcpu),
         "memory_bytes": _value_from_limits("ram", source.memory),
         "iops": _value_from_limits("iops", source.iops),
@@ -592,8 +602,9 @@ def _resolve_database_size_against_source(
             status_code=422,
             detail="Selected source does not expose a valid database size",
         )
+    normalized_source_size = _round_up_size_to_gb(source_database_size)
     if requested_database_size is None:
-        return source_database_size
+        return normalized_source_size
     if requested_database_size <= source_database_size:
         raise HTTPException(
             status_code=422,
@@ -640,13 +651,15 @@ async def _build_branch_entity(
         if clone_parameters is None:
             raise AssertionError("clone_parameters required when cloning from a source branch")
 
+        # storage backend uses GiB as units. So convert the values to GB before presisting to DB
+        database_size_for_persistence = ((clone_parameters.database_size + GIB - 1) // GIB) * GB
         entity = Branch(
             name=parameters.name,
             project_id=project.id,
             parent_id=source.id,
             database=DEFAULT_DB_NAME,
             database_user=DEFAULT_DB_USER,
-            database_size=clone_parameters.database_size,
+            database_size=database_size_for_persistence,
             storage_size=clone_parameters.storage_size if clone_parameters.enable_file_storage else None,
             milli_vcpu=clone_parameters.milli_vcpu,
             memory=clone_parameters.memory_bytes,
