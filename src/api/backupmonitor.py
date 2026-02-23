@@ -325,7 +325,7 @@ class BackupMonitor:
             row_index=row.row_index,
             created_at=created_at,
             size_bytes=snapshot.size_bytes or 0,
-            snapshot_uuid=str(snapshot.snapshot_uuid) if snapshot.snapshot_uuid else None,
+            snapshot_uuid=str(snapshot.snapshot_uuid),
             snapshot_name=snapshot.name,
             snapshot_namespace=snapshot.namespace,
             snapshot_content_name=snapshot.content_name,

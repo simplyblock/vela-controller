@@ -1101,7 +1101,7 @@ def _service_endpoint_url(rest_endpoint: str | None, api_domain: str | None, db_
     return _ensure_service_port(candidate, get_deployment_settings().deployment_service_port)
 
 
-async def _public(branch: Branch, session: SessionDep) -> BranchPublic:
+async def _public(branch: Branch) -> BranchPublic:
     project = await branch.awaitable_attrs.project
 
     db_host = _resolve_db_host(branch) or ""
@@ -1131,7 +1131,7 @@ async def _public(branch: Branch, session: SessionDep) -> BranchPublic:
 
     snapshot_used_size = 0
     try:
-        snapshot_used_size = await branch_snapshots_used_size(branch.id, session)
+        snapshot_used_size = await branch_snapshots_used_size(await branch.awaitable_attrs.backup_entries)
     except (VelaSimplyblockAPIError, VelaDeploymentError) as err:
         logger.error("Failed to get snapshot used size for branch %s: %s", branch.id, err)
     used_resources = branch.get_resource_usage()
@@ -1172,7 +1172,7 @@ async def list_branches(
 ) -> Sequence[BranchPublic]:
     await session.refresh(project, ["branches"])
     branches = await project.awaitable_attrs.branches
-    return [await _public(branch, session) for branch in branches]
+    return [await _public(branch) for branch in branches]
 
 
 _links = {
@@ -1566,7 +1566,7 @@ async def create(  # noqa: C901
         restore_database_size=restore_database_size,
     )
 
-    payload = (await _public(entity, session)).model_dump(mode="json") if response == "full" else None
+    payload = (await _public(entity)).model_dump(mode="json") if response == "full" else None
 
     return JSONResponse(
         content=payload,
@@ -1585,12 +1585,11 @@ instance_api = APIRouter(prefix="/{branch_id}", tags=["branch"])
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def detail(
-    session: SessionDep,
     _organization: OrganizationDep,
     _project: ProjectDep,
     branch: BranchDep,
 ) -> BranchPublic:
-    return await _public(branch, session)
+    return await _public(branch)
 
 
 @instance_api.get(
