@@ -129,7 +129,7 @@ async def set_organization_provisioning_limit(
         limit = ResourceLimit(
             entity_type=EntityType.project,
             resource=payload.resource,
-            org_id=organization.id,
+            organization_id=organization.id,
             max_total=payload.max_total,
             max_per_branch=payload.max_per_branch,
         )
@@ -171,7 +171,7 @@ async def set_project_provisioning_limit(
         limit = ResourceLimit(
             entity_type=EntityType.project,
             resource=payload.resource,
-            org_id=project.organization_id,
+            organization_id=project.organization_id,
             project_id=project.id,
             max_total=payload.max_total,
             max_per_branch=payload.max_per_branch,
@@ -222,20 +222,20 @@ async def set_consumption_limit(
     session: SessionDep, entity_type: EntityType, entity_id: Identifier, payload: ConsumptionPayload
 ) -> LimitResultPublic:
     if entity_type == EntityType.org:
-        org_id, project_id = entity_id, None
+        organization_id, project_id = entity_id, None
     elif entity_type == EntityType.project:
         result = await session.execute(select(Project).where(Project.id == entity_id))
         project = result.scalars().first()
         if not project:
             raise HTTPException(404, "Project not found")
-        org_id, project_id = project.organization_id, project.id
+        organization_id, project_id = project.organization_id, project.id
     else:
         raise HTTPException(400, "Unsupported entity type")
 
     result = await session.execute(
         select(ResourceConsumptionLimit).where(
             ResourceConsumptionLimit.entity_type == entity_type,
-            ResourceConsumptionLimit.org_id == org_id,
+            ResourceConsumptionLimit.organization_id == organization_id,
             ResourceConsumptionLimit.project_id == project_id,
             ResourceConsumptionLimit.resource == payload.resource,
         )
@@ -247,7 +247,7 @@ async def set_consumption_limit(
     else:
         limit = ResourceConsumptionLimit(
             entity_type=entity_type,
-            org_id=org_id,
+            organization_id=organization_id,
             project_id=project_id,
             resource=payload.resource,
             max_total_minutes=payload.max_total_minutes,
@@ -264,7 +264,7 @@ async def get_consumption_limits(
 ) -> list[ConsumptionLimitPublic]:
     q = select(ResourceConsumptionLimit).where(ResourceConsumptionLimit.entity_type == entity_type)
     if entity_type == EntityType.org:
-        q = q.where(ResourceConsumptionLimit.org_id == entity_id)
+        q = q.where(ResourceConsumptionLimit.organization_id == entity_id)
     elif entity_type == EntityType.project:
         q = q.where(ResourceConsumptionLimit.project_id == entity_id)
 
@@ -433,7 +433,7 @@ async def monitor_resources():
                             project = await branch.awaitable_attrs.project
                             minute_usage = ResourceUsageMinute(
                                 ts_minute=ts_minute,
-                                org_id=project.organization_id,
+                                organization_id=project.organization_id,
                                 project_id=branch.project_id,
                                 original_project_id=branch.project_id,
                                 branch_id=branch.id,

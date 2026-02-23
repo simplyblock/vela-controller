@@ -298,7 +298,7 @@ def _resource_limits_from_limits(
         project_resource_limits.append(
             ResourceLimit(
                 entity_type=EntityType.project,
-                org_id=organization_id,
+                orgnization_id=organization_id,
                 project_id=project_id,
                 resource=resource_type,
                 max_total=project_limit,

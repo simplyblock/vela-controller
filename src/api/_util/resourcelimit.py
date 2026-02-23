@@ -137,7 +137,7 @@ async def initialize_organization_resource_limits(session: SessionDep, organizat
             await session.merge(
                 ResourceLimit(
                     entity_type=EntityType.org,
-                    org_id=organization.id,
+                    organization_id=organization.id,
                     project_id=None,
                     resource=system_limit.resource,
                     max_total=system_limit.max_total,
@@ -197,7 +197,7 @@ async def _get_usage(session: SessionDep, filter_, usage_cycle) -> ResourceLimit
 async def get_organization_resource_usage(
     session: SessionDep, organization_id: Identifier, usage_cycle: UsageCycle
 ) -> ResourceLimitsPublic:
-    return await _get_usage(session, ResourceUsageMinute.org_id == organization_id, usage_cycle)
+    return await _get_usage(session, ResourceUsageMinute.organization_id == organization_id, usage_cycle)
 
 
 async def get_project_resource_usage(
@@ -370,7 +370,7 @@ async def get_system_resource_limits(session: SessionDep) -> dict[ResourceType, 
     result = await session.execute(
         select(ResourceLimit).where(
             ResourceLimit.entity_type == EntityType.system,
-            ResourceLimit.org_id.is_(None),  # type: ignore[union-attr]
+            ResourceLimit.organization_id.is_(None),  # type: ignore[union-attr]
             ResourceLimit.project_id.is_(None),  # type: ignore[union-attr]
         )
     )
@@ -383,7 +383,7 @@ async def get_organization_resource_limits(
     result = await session.execute(
         select(ResourceLimit).where(
             ResourceLimit.entity_type == EntityType.org,
-            ResourceLimit.org_id == organization_id,
+            ResourceLimit.organization_id == organization_id,
             ResourceLimit.project_id.is_(None),  # type: ignore[union-attr]
         )
     )
@@ -396,7 +396,7 @@ async def get_project_resource_limits(
     result = await session.execute(
         select(ResourceLimit).where(
             ResourceLimit.entity_type == EntityType.project,
-            ResourceLimit.org_id == organization_id,
+            ResourceLimit.organization_id == organization_id,
             ResourceLimit.project_id == project_id,
         )
     )
@@ -428,7 +428,7 @@ async def get_project_limit_totals(
         )
         .where(
             ResourceLimit.entity_type == EntityType.project,
-            ResourceLimit.org_id == organization_id,
+            ResourceLimit.organization_id == organization_id,
         )
         .group_by(resource_column)
     )

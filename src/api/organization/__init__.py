@@ -237,7 +237,7 @@ async def metering(
     usage_cte = select(  # type: ignore[call-overload]
         ResourceUsageMinute.id,
         ResourceUsageMinute.ts_minute,
-        ResourceUsageMinute.org_id,
+        ResourceUsageMinute.organization_id,
         ResourceUsageMinute.original_project_id,
         ResourceUsageMinute.original_branch_id,
         ResourceUsageMinute.resource,
@@ -259,22 +259,25 @@ async def metering(
 
     statement = (
         select(  # type: ignore[call-overload]
-            usage_cte.c.org_id,
+            usage_cte.c.organization_id,
             usage_cte.c.original_project_id,
             usage_cte.c.original_branch_id,
             usage_cte.c.resource,
             func.sum(usage_cte.c.amount).label("amount"),
         )
-        .where(usage_cte.c.org_id == organization.id)
+        .where(usage_cte.c.organization_id == organization.id)
         .group_by(
-            usage_cte.c.org_id, usage_cte.c.original_project_id, usage_cte.c.original_branch_id, usage_cte.c.resource
+            usage_cte.c.organization_id,
+            usage_cte.c.original_project_id,
+            usage_cte.c.original_branch_id,
+            usage_cte.c.resource,
         )
     )
     return (await session.exec(statement)).all()
 
 
 @instance_api.get("/resource-usage/")
-async def get_org_usage(
+async def get_organization_usage(
     session: SessionDep,
     organization: OrganizationDep,
     cycle_start: datetime | None = None,

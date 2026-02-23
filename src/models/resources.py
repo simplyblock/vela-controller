@@ -45,13 +45,13 @@ class ResourceLimit(AsyncAttrs, Model, table=True):
             "entity_type",
             "resource",
             unique=True,
-            postgresql_where=text("org_id IS NULL AND project_id IS NULL"),
+            postgresql_where=text("organization_id IS NULL AND project_id IS NULL"),
         ),
         Index(
             "uq_limit_org",
             "entity_type",
             "resource",
-            "org_id",
+            "organization_id",
             unique=True,
             postgresql_where=text("project_id IS NULL"),
         ),
@@ -59,26 +59,26 @@ class ResourceLimit(AsyncAttrs, Model, table=True):
             "uq_limit_env",
             "entity_type",
             "resource",
-            "org_id",
+            "organization_id",
             "env_type",
             unique=True,
-            postgresql_where=text("org_id IS NOT NULL AND env_type IS NOT NULL"),
+            postgresql_where=text("organization_id IS NOT NULL AND env_type IS NOT NULL"),
         ),
         Index(
             "uq_limit_project",
             "entity_type",
             "resource",
-            "org_id",
+            "organization_id",
             "project_id",
             unique=True,
-            postgresql_where=text("org_id IS NOT NULL AND project_id IS NOT NULL"),
+            postgresql_where=text("organization_id IS NOT NULL AND project_id IS NOT NULL"),
         ),
     )
 
     entity_type: EntityType
     resource: ResourceType
-    org_id: Identifier | None = Model.foreign_key_field("organization", ondelete="CASCADE")
-    org: Optional["Organization"] = Relationship(back_populates="limits")
+    organization_id: Identifier | None = Model.foreign_key_field("organization", ondelete="CASCADE")
+    organization: Optional["Organization"] = Relationship(back_populates="limits")
     env_type: str | None = None
     project_id: Identifier | None = Model.foreign_key_field("project", ondelete="CASCADE")
     project: Optional["Project"] = Relationship(back_populates="limits")
@@ -104,7 +104,7 @@ class ProvisioningLog(AsyncAttrs, Model, table=True):
 
 class ResourceUsageMinute(AsyncAttrs, Model, table=True):
     ts_minute: DateTime
-    org_id: Identifier | None = Model.foreign_key_field("organization", ondelete="CASCADE")
+    organization_id: Identifier | None = Model.foreign_key_field("organization", ondelete="CASCADE")
     project_id: Identifier | None = Model.foreign_key_field("project", ondelete="SET NULL")
     original_project_id: Identifier = Field(
         sa_type=DatabaseIdentifier
@@ -119,7 +119,7 @@ class ResourceUsageMinute(AsyncAttrs, Model, table=True):
 
 class ResourceConsumptionLimit(AsyncAttrs, Model, table=True):
     entity_type: EntityType
-    org_id: Identifier | None = Model.foreign_key_field("organization", ondelete="CASCADE")
+    organization_id: Identifier | None = Model.foreign_key_field("organization", ondelete="CASCADE")
     project_id: Identifier | None = Model.foreign_key_field("project", ondelete="CASCADE")
     resource: ResourceType
     max_total_minutes: int
