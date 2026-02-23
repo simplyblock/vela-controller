@@ -2,8 +2,6 @@ from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, datetime
 
 from sqlalchemy import delete, func
-from sqlalchemy.dialects.mysql import insert
-from sqlalchemy.ext.asyncio import AsyncConnection
 from sqlmodel import col, select
 
 from ..._util import Identifier
@@ -23,7 +21,6 @@ from ...models.resources import (
     UsageCycle,
 )
 from ..db import SessionDep
-from ..settings import get_settings
 
 
 async def delete_branch_provisioning(session: SessionDep, branch_id: Identifier, *, commit: bool = True):
@@ -128,36 +125,6 @@ async def clone_branch_provisioning(session: SessionDep, source: Branch, target:
             )
     await session.commit()
     await session.refresh(target)
-
-
-async def create_system_resource_limits(conn: AsyncConnection):
-    result = await conn.execute(select(ResourceLimit).where(ResourceLimit.entity_type == EntityType.system))
-
-    # If already initialized, do nothing
-    if len(list(result.scalars().all())) > 0:
-        return
-
-    # Set up initial system resource limits if not yet existing
-    resource_limits = ResourceLimitsPublic(
-        milli_vcpu=get_settings().system_limit_millis_vcpu,
-        ram=get_settings().system_limit_ram,
-        iops=get_settings().system_limit_iops,
-        database_size=get_settings().system_limit_database_size,
-        storage_size=get_settings().system_limit_storage_size,
-    )
-    for resource_type, limit in resource_limits.model_dump(exclude_unset=True).items():
-        if limit is not None:
-            await conn.execute(
-                insert(ResourceLimit).values(
-                    entity_type=EntityType.system,
-                    org_id=None,
-                    project_id=None,
-                    resource=ResourceType(resource_type),
-                    max_total=limit,
-                    max_per_branch=limit,
-                )
-            )
-    await conn.commit()
 
 
 async def initialize_organization_resource_limits(session: SessionDep, organization: Organization):

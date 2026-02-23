@@ -15,7 +15,6 @@ from pydantic import BaseModel
 
 from ..deployment.monitors.health import vm_monitor
 from ..deployment.monitors.resize import ResizeMonitor
-from ._util.resourcelimit import create_system_resource_limits
 from ._util.role import create_access_rights_if_emtpy
 from .backup import router as backup_router
 from .backupmonitor import run_backup_monitor
@@ -185,7 +184,6 @@ async def _populate_db():
 
     async with engine.begin() as conn:
         await create_access_rights_if_emtpy(conn)
-        await create_system_resource_limits(conn)
 
 
 def _use_route_names_as_operation_ids(app: FastAPI) -> None:
