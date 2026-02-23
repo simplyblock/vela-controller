@@ -51,7 +51,7 @@ from .....deployment.kubernetes.volume_clone import (
     restore_branch_database_volume_from_snapshot,
 )
 from .....deployment.settings import get_settings as get_deployment_settings
-from .....exceptions import VelaError, VelaKubernetesError
+from .....exceptions import VelaDeploymentError, VelaError, VelaKubernetesError, VelaSimplyblockAPIError
 from .....models.backups import BackupEntry
 from .....models.branch import (
     ApiKeyCreate,
@@ -95,6 +95,7 @@ from ....backup_snapshots import (
 from ....backup_snapshots import (
     SNAPSHOT_TIMEOUT_SEC as _SNAPSHOT_TIMEOUT_SECONDS,
 )
+from ....backup_snapshots import branch_snapshots_used_size
 from ....db import AsyncSessionLocal, SessionDep
 from ....dependencies import BranchDep, OrganizationDep, ProjectDep, RestoreBackupDep, branch_lookup
 from ....keycloak import realm_admin
@@ -1128,7 +1129,13 @@ async def _public(branch: Branch) -> BranchPublic:
         has_replicas=False,
     )
 
-    used_resources = branch.resource_usage_snapshot()
+    snapshot_used_size = 0
+    try:
+        snapshot_used_size = await branch_snapshots_used_size(await branch.awaitable_attrs.backup_entries)
+    except (VelaSimplyblockAPIError, VelaDeploymentError) as err:
+        logger.error("Failed to get snapshot used size for branch %s: %s", branch.id, err)
+    used_resources = branch.get_resource_usage()
+    used_resources.snapshot_used_size = snapshot_used_size
     branch_status = await _refresh_branch_status(branch)
 
     api_keys = BranchApiKeys(anon=branch.anon_key, service_role=branch.service_key)
@@ -1272,7 +1279,7 @@ def _ensure_clone_storage_capacity(
     storage_size: int | None,
     enable_file_storage: bool,
 ) -> None:
-    usage = source.resource_usage_snapshot()
+    usage = source.get_resource_usage()
     errors: list[str] = []
     if database_size <= usage.nvme_bytes:
         errors.append(

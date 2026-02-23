@@ -55,6 +55,7 @@ class BackupEntry(AsyncAttrs, Model, table=True):
     row_index: int
     created_at: DateTime
     size_bytes: Annotated[int, Field(sa_column=Column(BigInteger, nullable=True))]
+    snapshot_uuid: Annotated[str, Field(sa_column=Column(String(length=64), nullable=False))]
     snapshot_name: str | None = Field(
         default=None,
         sa_column=Column(String(length=255), nullable=True),
