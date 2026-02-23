@@ -102,11 +102,6 @@ data:
   VELA_SERVER_ROOT_URL: "https://{{ .Values.domain }}:{{ .Values.port }}"
   VELA_ENABLE_DB_EXTERNAL_IPV6_LOADBALANCER: {{ .Values.controller.env.VELA_ENABLE_DB_EXTERNAL_IPV6_LOADBALANCER | quote }}
   VELA_GRAFANA_URL: {{ .Values.controller.env.VELA_GRAFANA_URL | quote }}
-  VELA_SYSTEM_LIMIT_MILLIS_VCPU: {{ .Values.controller.env.VELA_SYSTEM_LIMIT_MILLIS_VCPU | quote }}
-  VELA_SYSTEM_LIMIT_RAM: {{ .Values.controller.env.VELA_SYSTEM_LIMIT_RAM | quote }}
-  VELA_SYSTEM_LIMIT_IOPS: {{ .Values.controller.env.VELA_SYSTEM_LIMIT_IOPS | quote }}
-  VELA_SYSTEM_LIMIT_DATABASE_SIZE: {{ .Values.controller.env.VELA_SYSTEM_LIMIT_DATABASE_SIZE | quote }}
-  VELA_SYSTEM_LIMIT_STORAGE_SIZE: {{ .Values.controller.env.VELA_SYSTEM_LIMIT_STORAGE_SIZE | quote }}
   SIMPLYBLOCK_CSI_NAMESPACE: {{ .Values.controller.env.SIMPLYBLOCK_CSI_NAMESPACE | quote }}
 ---
 apiVersion: v1
