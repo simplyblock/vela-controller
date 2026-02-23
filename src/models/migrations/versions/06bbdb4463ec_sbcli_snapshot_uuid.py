@@ -5,15 +5,17 @@ Revises: d4d5cfef8982
 Create Date: 2026-02-16 08:02:15.105663
 
 """
-import asyncio
+import re
 from typing import Sequence, Union
+from uuid import UUID
 
+from kubernetes import client as kubernetes_client
+from kubernetes import config as kubernetes_config
+from kubernetes.config.config_exception import ConfigException
 from alembic import op
 import sqlalchemy as sa
 import sqlmodel
 import sqlmodel.sql
-from simplyblock.vela.deployment import load_simplyblock_credentials
-from simplyblock.vela.deployment.simplyblock_api import SimplyblockPoolApi
 
 
 # revision identifiers, used by Alembic.
@@ -23,24 +25,39 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
-async def _list_snapshot_ids_by_name() -> dict[str, str]:
-    endpoint, cluster_id, cluster_secret, pool_name = await load_simplyblock_credentials()
-    async with SimplyblockPoolApi(endpoint, cluster_id, cluster_secret, pool_name) as sb_api:
-        snapshots = await sb_api.list_snapshots()
+def _ensure_kube_client_config() -> None:
+    try:
+        kubernetes_config.load_incluster_config()
+    except ConfigException:
+        try:
+            kubernetes_config.load_kube_config()
+        except ConfigException as exc:
+            raise RuntimeError("Kubernetes client not configured. Mount kubeconfig or run in-cluster.") from exc
 
-    snapshot_ids_by_name: dict[str, str] = {}
-    duplicate_names: set[str] = set()
-    for snapshot in snapshots:
-        if snapshot.name in snapshot_ids_by_name:
-            duplicate_names.add(snapshot.name)
-            continue
-        snapshot_ids_by_name[snapshot.name] = str(snapshot.id)
 
-    if duplicate_names:
-        duplicate_names_list = ", ".join(sorted(duplicate_names))
-        raise RuntimeError(f"Duplicate Simplyblock snapshot names found: {duplicate_names_list}")
+_SNAPSHOT_HANDLE_RE = re.compile(
+    r"(?P<prefix>[^:]+):(?P<id>[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"
+)
 
-    return snapshot_ids_by_name
+
+def _snapshot_id_from_content_name(snapshot_content_name: str) -> str:
+    custom = kubernetes_client.CustomObjectsApi()
+    content = custom.get_cluster_custom_object(
+        group="snapshot.storage.k8s.io",
+        version="v1",
+        plural="volumesnapshotcontents",
+        name=snapshot_content_name,
+    )
+    snapshot_handle = content.get("status", {}).get("snapshotHandle")
+    if not isinstance(snapshot_handle, str):
+        raise RuntimeError(f"VolumeSnapshotContent {snapshot_content_name} missing status.snapshotHandle")
+
+    match = _SNAPSHOT_HANDLE_RE.fullmatch(snapshot_handle)
+    if match is None:
+        raise RuntimeError(
+            f"VolumeSnapshotContent {snapshot_content_name} has invalid snapshotHandle: {snapshot_handle}"
+        )
+    return str(UUID(match.group("id")))
 
 
 def upgrade() -> None:
@@ -51,7 +68,7 @@ def upgrade() -> None:
     backup_rows = bind.execute(
         sa.text(
             """
-            SELECT id::text AS id, snapshot_name
+            SELECT id::text AS id, snapshot_content_name
             FROM backupentry
             WHERE snapshot_uuid IS NULL
             """
@@ -62,19 +79,19 @@ def upgrade() -> None:
         op.alter_column('backupentry', 'snapshot_uuid', existing_type=sa.String(length=64), nullable=False)
         return
 
-    rows_missing_snapshot_name = [row["id"] for row in backup_rows if row["snapshot_name"] is None]
-    if rows_missing_snapshot_name:
-        missing_name_ids = ", ".join(sorted(rows_missing_snapshot_name))
-        raise RuntimeError(f"Cannot backfill snapshot_uuid: missing snapshot_name for backupentry IDs {missing_name_ids}")
+    rows_missing_snapshot_content_name = [row["id"] for row in backup_rows if row["snapshot_content_name"] is None]
+    if rows_missing_snapshot_content_name:
+        missing_content_name_ids = ", ".join(sorted(rows_missing_snapshot_content_name))
+        raise RuntimeError(
+            "Cannot backfill snapshot_uuid: missing snapshot_content_name for backupentry IDs "
+            f"{missing_content_name_ids}"
+        )
 
-    snapshot_ids_by_name = asyncio.run(_list_snapshot_ids_by_name())
-
-    missing_snapshot_names = sorted(
-        {row["snapshot_name"] for row in backup_rows if row["snapshot_name"] not in snapshot_ids_by_name}
-    )
-    if missing_snapshot_names:
-        missing_names = ", ".join(missing_snapshot_names)
-        raise RuntimeError(f"Cannot backfill snapshot_uuid: snapshots not found in Simplyblock API: {missing_names}")
+    _ensure_kube_client_config()
+    updates = [
+        {"id": row["id"], "snapshot_uuid": _snapshot_id_from_content_name(row["snapshot_content_name"])}
+        for row in backup_rows
+    ]
 
     bind.execute(
         sa.text(
@@ -84,7 +101,7 @@ def upgrade() -> None:
             WHERE id = CAST(:id AS uuid)
             """
         ),
-        [{"id": row["id"], "snapshot_uuid": snapshot_ids_by_name[row["snapshot_name"]]} for row in backup_rows],
+        updates,
     )
 
     remaining_null_count = bind.execute(
@@ -104,5 +121,4 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.alter_column('backupentry', 'snapshot_uuid', existing_type=sa.String(length=64), nullable=True)
     op.drop_column('backupentry', 'snapshot_uuid')
