@@ -286,7 +286,6 @@ def _resolve_per_branch_limit(
 
 
 def _resource_limits_from_limits(
-    organization_id: Identifier,
     project_id: Identifier,
     calculated_limits: dict[ResourceType, tuple[int, int]],
 ) -> list[ResourceLimit]:
@@ -295,7 +294,6 @@ def _resource_limits_from_limits(
         project_resource_limits.append(
             ResourceLimit(
                 entity_type=EntityType.project,
-                org_id=organization_id,
                 project_id=project_id,
                 resource=resource_type,
                 max_total=project_limit,
@@ -318,7 +316,7 @@ async def _persist_project_with_limits(
     )
     session.add(entity)
     await session.flush()
-    project_resource_limits = _resource_limits_from_limits(organization.id, entity.id, calculated_limits)
+    project_resource_limits = _resource_limits_from_limits(entity.id, calculated_limits)
     if project_resource_limits:
         session.add_all(project_resource_limits)
     await _commit_project(session)

@@ -348,7 +348,7 @@ async def get_remaining_project_resources(
 ) -> ResourceLimitsPublic:
     system_limits = await get_system_resource_limits(session)
     organization_limits = await get_organization_resource_limits(session, organization_id)
-    project_limits = await get_project_resource_limits(session, organization_id, project_id)
+    project_limits = await get_project_resource_limits(session, project_id)
 
     organization_allocations = await get_current_organization_allocations(
         session,
@@ -424,13 +424,10 @@ async def get_organization_resource_limits(
     return _map_resource_limits(list(result.scalars().all()))
 
 
-async def get_project_resource_limits(
-    session: SessionDep, organization_id: Identifier, project_id: Identifier
-) -> dict[ResourceType, ResourceLimit]:
+async def get_project_resource_limits(session: SessionDep, project_id: Identifier) -> dict[ResourceType, ResourceLimit]:
     result = await session.execute(
         select(ResourceLimit).where(
             ResourceLimit.entity_type == EntityType.project,
-            ResourceLimit.org_id == organization_id,
             ResourceLimit.project_id == project_id,
         )
     )
@@ -460,9 +457,10 @@ async def get_project_limit_totals(
             resource_column,
             func.sum(max_total_column).label("reserved_total"),
         )
+        .join(Project, ResourceLimit.project_id == Project.id)  # type: ignore[arg-type]
         .where(
             ResourceLimit.entity_type == EntityType.project,
-            ResourceLimit.org_id == organization_id,
+            Project.organization_id == organization_id,
         )
         .group_by(resource_column)
     )
