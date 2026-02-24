@@ -37,6 +37,7 @@ class DeploymentParameters(BaseModel):
     iops: Annotated[int, Field(**IOPS_CONSTRAINTS)]
     database_image_tag: Literal["15.1.0.147", "18.1-velaos"]
     enable_file_storage: bool = True
+    recovery_target_time: datetime | None = None
 
     @model_validator(mode="after")
     def ensure_storage_requirements(self) -> "DeploymentParameters":

@@ -244,9 +244,16 @@ class BranchSourceParameters(BaseModel):
 
 
 class BranchRestoreParameters(BaseModel):
-    backup_id: Identifier
+    backup_id: Identifier | None = None
     config_copy: bool = True
     deployment_parameters: BranchSourceDeploymentParameters | None = PydanticField(default=None)
+    recovery_target_time: datetime | None = None
+
+    @model_validator(mode="after")
+    def ensure_restore_target(self) -> "BranchRestoreParameters":
+        if self.backup_id is None and self.recovery_target_time is None:
+            raise ValueError("Either backup_id or recovery_target_time must be provided for a restore")
+        return self
 
 
 class BranchCreate(BaseModel):
@@ -274,7 +281,14 @@ class BranchPasswordReset(BaseModel):
 
 
 class BranchRestore(BaseModel):
-    backup_id: Identifier
+    backup_id: Identifier | None = None
+    recovery_target_time: datetime | None = None
+
+    @model_validator(mode="after")
+    def ensure_restore_target(self) -> "BranchRestore":
+        if self.backup_id is None and self.recovery_target_time is None:
+            raise ValueError("Either backup_id or recovery_target_time must be provided for a restore")
+        return self
 
 
 class BranchPgbouncerConfigUpdate(BaseModel):

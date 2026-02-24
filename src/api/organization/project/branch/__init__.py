@@ -2,7 +2,7 @@ import asyncio
 import contextlib
 import logging
 import secrets
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal, TypedDict, cast
 from urllib.parse import urlsplit, urlunsplit
@@ -620,7 +620,10 @@ def _resource_limits_from_deployment(parameters: DeploymentParameters) -> Resour
     )
 
 
-def _build_in_place_restore_parameters(branch: Branch) -> DeploymentParameters:
+def _build_in_place_restore_parameters(
+    branch: Branch,
+    recovery_target_time: datetime | None = None
+) -> DeploymentParameters:
     storage_size = branch.storage_size if branch.enable_file_storage else None
 
     return DeploymentParameters(
@@ -632,6 +635,7 @@ def _build_in_place_restore_parameters(branch: Branch) -> DeploymentParameters:
         iops=branch.iops,
         database_image_tag=cast("Literal['15.1.0.147', '18.1-velaos']", branch.database_image_tag),
         enable_file_storage=branch.enable_file_storage,
+        recovery_target_time=recovery_target_time,
     )
 
 
@@ -933,6 +937,7 @@ async def _restore_branch_environment_task(
             pvc_timeout_seconds=_PVC_TIMEOUT_SECONDS,
             pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
             database_size=restore_database_size,
+            pitr_enabled=pitr_enabled,
         )
     except VelaError:
         await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
@@ -982,6 +987,7 @@ async def _restore_branch_environment_in_place_task(
     snapshot_namespace: str,
     snapshot_name: str,
     snapshot_content_name: str | None,
+    pitr_enabled: bool = False,
 ) -> None:
     await _persist_branch_status(branch_id, BranchServiceStatus.RESTARTING)
     namespace, autoscaler_vm_name = get_autoscaler_vm_identity(branch_id)
@@ -1011,6 +1017,7 @@ async def _restore_branch_environment_in_place_task(
             pvc_timeout_seconds=_PVC_TIMEOUT_SECONDS,
             pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
             database_size=parameters.database_size,
+            pitr_enabled=pitr_enabled,
         )
     except VelaError:
         await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
@@ -1214,10 +1221,42 @@ async def _resolve_source_branch(
 
     if parameters.restore is not None:
         backup_id = parameters.restore.backup_id
-        result = await session.execute(select(BackupEntry).where(BackupEntry.id == backup_id))
-        backup = result.scalar_one_or_none()
-        if backup is None:
-            raise HTTPException(404, f"Backup {backup_id} not found")
+        recovery_target_time = parameters.restore.recovery_target_time
+        
+        if backup_id is not None:
+            result = await session.execute(select(BackupEntry).where(BackupEntry.id == backup_id))
+            backup = result.scalar_one_or_none()
+            if backup is None:
+                raise HTTPException(404, f"Backup {backup_id} not found")
+        elif recovery_target_time is not None:
+            # For branch creation, we don't have a source branch ID enforced before looking it up if only time is provided.
+            # However, `BranchCreate.source` provides the branch ID to clone from. If it's a restore, does it use source?
+            # BranchRestoreParameters is inside BranchCreate.restore. BranchCreate.source might be provided.
+            # If BranchCreate.source is missing, and we only have recovery_target_time, we can't look up the BackupEntry.
+            # Let's enforce backup_id inside BranchCreate if we need to know the origin branch, or fetch the latest backup across all branches if that's what's intended.
+            # Actually, `BranchRestoreParameters` requires `backup_id` historically. Wait, I made `backup_id` optional in `BranchRestoreParameters`.
+            if parameters.source is None:
+                raise HTTPException(status_code=400, detail="source branch must be provided when restoring by recovery_target_time without backup_id")
+            
+            source_branch_id = parameters.source.branch_id
+            query = (
+                select(BackupEntry)
+                .where(BackupEntry.branch_id == source_branch_id)
+                .where(BackupEntry.created_at <= recovery_target_time)
+                .order_by(BackupEntry.created_at.desc())
+                .limit(1)
+            )
+            backup = (await session.execute(query)).scalars().one_or_none()
+            if backup is None:
+                raise HTTPException(status_code=404, detail="No valid backup snapshot found before the requested recovery time")
+
+            max_retention = timedelta(days=get_settings().pitr_wal_retention_days)
+            if recovery_target_time - backup.created_at > max_retention:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Requested recovery time exceeds the WAL archive retention policy for the nearest snapshot."
+                )
+
         try:
             branch = await branch_lookup(session, backup.branch_id)
         except HTTPException as exc:
@@ -1623,6 +1662,7 @@ async def restore(
     _project: ProjectDep,
     branch: BranchDep,
     backup: RestoreBackupDep,
+    parameters: BranchRestore,
 ) -> Response:
     branch_id = branch.id
     if not backup.snapshot_name or not backup.snapshot_namespace:
@@ -1631,7 +1671,7 @@ async def restore(
     snapshot_name = backup.snapshot_name
     snapshot_content_name = backup.snapshot_content_name
 
-    restore_parameters = _build_in_place_restore_parameters(branch)
+    restore_parameters = _build_in_place_restore_parameters(branch, parameters.recovery_target_time)
 
     asyncio.create_task(
         _restore_branch_environment_in_place_task(
@@ -1641,6 +1681,7 @@ async def restore(
             snapshot_namespace=snapshot_namespace,
             snapshot_name=snapshot_name,
             snapshot_content_name=snapshot_content_name,
+            pitr_enabled=branch.pitr_enabled,
         )
     )
 

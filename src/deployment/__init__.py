@@ -471,6 +471,8 @@ def _configure_vela_values(
 
     autoscaler_spec = values_content.setdefault("autoscalerVm", {})
     autoscaler_spec["enabled"] = True
+    if getattr(parameters, "recovery_target_time", None):
+        autoscaler_spec["recoveryTargetTime"] = parameters.recovery_target_time.isoformat()
 
     image = database_image_tag_to_database_images(parameters.database_image_tag)
     autoscaler_image = autoscaler_spec.setdefault("image", {})

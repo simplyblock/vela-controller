@@ -47,6 +47,10 @@ spec:
     env:
       - name: ENABLE_STORAGE
         value: "1"
+      {{- if .Values.autoscalerVm.recoveryTargetTime }}
+      - name: RECOVERY_TARGET_TIME
+        value: {{ .Values.autoscalerVm.recoveryTargetTime | quote }}
+      {{- end }}
     {{- end }}
     ports:
     - name: rest

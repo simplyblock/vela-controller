@@ -545,11 +545,23 @@ async def restore_branch_database_volume_from_snapshot(
     snapshot_poll_interval_seconds: float,
     pvc_timeout_seconds: float,
     pvc_poll_interval_seconds: float,
+    pitr_enabled: bool = False,
 ) -> None:
     """
     Restore the database volume for a branch from an existing VolumeSnapshot.
+    If pitr_enabled is true, clones the source branch's WAL PVC concurrently.
     """
-    operation = _SnapshotRestoreOperation(
+    timeouts = CloneTimeouts(
+        snapshot_ready=snapshot_timeout_seconds,
+        snapshot_poll=snapshot_poll_interval_seconds,
+        pvc_ready=pvc_timeout_seconds,
+        pvc_poll=pvc_poll_interval_seconds,
+    )
+
+    operations = []
+    
+    # Restoring the main pgdata volume from the snapshot
+    data_operation = _SnapshotRestoreOperation(
         source_branch_id=source_branch_id,
         target_branch_id=target_branch_id,
         snapshot_namespace=snapshot_namespace,
@@ -558,11 +570,23 @@ async def restore_branch_database_volume_from_snapshot(
         snapshot_class=snapshot_class,
         storage_class_name=storage_class_name,
         target_database_size=database_size,
-        timeouts=CloneTimeouts(
-            snapshot_ready=snapshot_timeout_seconds,
-            snapshot_poll=snapshot_poll_interval_seconds,
-            pvc_ready=pvc_timeout_seconds,
-            pvc_poll=pvc_poll_interval_seconds,
-        ),
+        timeouts=timeouts,
     )
-    await operation.run()
+    operations.append(data_operation.run())
+
+    # If PITR is enabled, clone the WAL volume directly from the current state of the source branch
+    # so we have all WALs up to the point-in-time needed.
+    if pitr_enabled and source_branch_id != target_branch_id:
+        wal_operation = _VolumeCloneOperation(
+            source_branch_id=source_branch_id,
+            target_branch_id=target_branch_id,
+            snapshot_class=snapshot_class,
+            storage_class_name=storage_class_name,
+            target_database_size=database_size,
+            timeouts=timeouts,
+            volume_label="wal",
+            pvc_suffix=AUTOSCALER_WAL_PVC_SUFFIX,
+        )
+        operations.append(wal_operation.run())
+
+    await asyncio.gather(*operations)

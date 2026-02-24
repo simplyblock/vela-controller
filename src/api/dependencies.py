@@ -4,6 +4,9 @@ from uuid import UUID
 from fastapi import Depends, HTTPException
 from sqlalchemy.exc import NoResultFound
 from sqlmodel import select
+from datetime import timedelta
+
+from .settings import get_settings
 
 from .._util import Identifier
 from ..models.backups import BackupEntry
@@ -94,13 +97,35 @@ async def _restore_backup_lookup(
     branch: BranchDep,
     parameters: BranchRestore,
 ) -> BackupEntry:
-    query = select(BackupEntry).where(
-        BackupEntry.id == parameters.backup_id,
-        BackupEntry.branch_id == branch.id,
-    )
-    backup = (await session.execute(query)).scalars().one_or_none()
-    if backup is None:
-        raise HTTPException(status_code=404, detail=f"Backup {parameters.backup_id} not found for this branch")
+    if parameters.backup_id is not None:
+        query = select(BackupEntry).where(
+            BackupEntry.id == parameters.backup_id,
+            BackupEntry.branch_id == branch.id,
+        )
+        backup = (await session.execute(query)).scalars().one_or_none()
+        if backup is None:
+            raise HTTPException(status_code=404, detail=f"Backup {parameters.backup_id} not found for this branch")
+    elif parameters.recovery_target_time is not None:
+        query = (
+            select(BackupEntry)
+            .where(BackupEntry.branch_id == branch.id)
+            .where(BackupEntry.created_at <= parameters.recovery_target_time)
+            .order_by(BackupEntry.created_at.desc())
+            .limit(1)
+        )
+        backup = (await session.execute(query)).scalars().one_or_none()
+        if backup is None:
+            raise HTTPException(status_code=404, detail="No valid backup snapshot found before the requested recovery time")
+        
+        max_retention = timedelta(days=get_settings().pitr_wal_retention_days)
+        if parameters.recovery_target_time - backup.created_at > max_retention:
+            raise HTTPException(
+                status_code=422,
+                detail="Requested recovery time exceeds the WAL archive retention policy for the nearest snapshot."
+            )
+    else:
+        raise HTTPException(status_code=400, detail="Either backup_id or recovery_target_time must be provided")
+    
     return backup
 
 

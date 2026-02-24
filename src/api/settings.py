@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     resource_monitor_interval: Annotated[timedelta, BeforeValidator(permissive_numeric_timedelta)] = timedelta(
         seconds=60
     )
+    pitr_wal_retention_days: int = 7
 
 
 @lru_cache
