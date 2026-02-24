@@ -154,7 +154,7 @@ async def set_organization_provisioning_limit(
         limit.max_per_branch = payload.max_per_branch
     else:
         limit = ResourceLimit(
-            entity_type=EntityType.project,
+            entity_type=EntityType.org,
             resource=payload.resource,
             org_id=organization.id,
             max_total=payload.max_total,
