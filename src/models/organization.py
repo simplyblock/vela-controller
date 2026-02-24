@@ -24,7 +24,7 @@ class Organization(AsyncAttrs, Model, table=True):
     require_mfa: bool = False
     max_backups: int
     environments: str
-    limits: list[ResourceLimit] = Relationship(back_populates="org")  # No cascade-delete due to redundant foreign key
+    limits: list[ResourceLimit] = Relationship(back_populates="org", cascade_delete=True)
 
 
 class OrganizationCreate(BaseModel):

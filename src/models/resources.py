@@ -68,10 +68,9 @@ class ResourceLimit(AsyncAttrs, Model, table=True):
             "uq_limit_project",
             "entity_type",
             "resource",
-            "org_id",
             "project_id",
             unique=True,
-            postgresql_where=text("org_id IS NOT NULL AND project_id IS NOT NULL"),
+            postgresql_where=text("project_id IS NOT NULL"),
         ),
     )
 
