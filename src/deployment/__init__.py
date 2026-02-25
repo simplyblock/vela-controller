@@ -3,7 +3,6 @@ import base64
 import json
 import logging
 import math
-import os
 import subprocess
 import tempfile
 import textwrap
@@ -68,7 +67,6 @@ DATABASE_LOAD_BALANCER_SERVICE_NAME = f"{DEFAULT_DATABASE_VM_NAME}-ext"
 CHECK_ENCRYPTED_HEADER_PLUGIN_NAME = "check-x-connection-encrypted"
 APIKEY_JWT_PLUGIN_NAME = "apikey-jwt"
 CPU_REQUEST_FRACTION = 0.25  # request = 25% of limit
-SIMPLYBLOCK_NAMESPACE = os.environ.get("SIMPLYBLOCK_CSI_NAMESPACE", "simplyblock")
 SIMPLYBLOCK_CSI_CONFIGMAP = "simplyblock-csi-cm"
 SIMPLYBLOCK_CSI_SECRET = "simplyblock-csi-secret"
 SIMPLYBLOCK_CSI_STORAGE_CLASS = "simplyblock-csi-sc"
@@ -282,13 +280,14 @@ def _build_storage_class_manifest(*, storage_class_name: str, iops: int, base_st
 
 
 async def load_simplyblock_credentials() -> tuple[str, UUID, str, str]:
+    simplyblock_namespace = get_settings().simplyblock_csi_namespace
     try:
-        config_map = await kube_service.get_config_map(SIMPLYBLOCK_NAMESPACE, SIMPLYBLOCK_CSI_CONFIGMAP)
+        config_map = await kube_service.get_config_map(simplyblock_namespace, SIMPLYBLOCK_CSI_CONFIGMAP)
         config = json.loads(config_map.data["config.json"])
         cluster_endpoint = config["simplybk"]["ip"].rstrip("/")
         cluster_id = UUID(config["simplybk"]["uuid"])
 
-        encoded_secret = await kube_service.get_secret(SIMPLYBLOCK_NAMESPACE, SIMPLYBLOCK_CSI_SECRET)
+        encoded_secret = await kube_service.get_secret(simplyblock_namespace, SIMPLYBLOCK_CSI_SECRET)
         secret = json.loads(base64.b64decode(encoded_secret.data["secret.json"]).decode())
         cluster_secret = secret["simplybk"]["secret"]
 
