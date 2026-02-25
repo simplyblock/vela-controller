@@ -1,12 +1,10 @@
 from fastapi import APIRouter, HTTPException, Response
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import select
 
-from ....._util import Identifier
 from ....._util.crypto import generate_keys
 from .....models.branch import ApiKeyCreate, ApiKeyDetails, BranchApiKey
 from ...._util import Conflict, Forbidden, NotFound, Unauthenticated
-from ....dependencies import BranchDep, OrganizationDep, ProjectDep, SessionDep
+from ....dependencies import ApiKeyDep, BranchDep, OrganizationDep, ProjectDep, SessionDep
 
 api = APIRouter()
 
@@ -78,18 +76,9 @@ async def delete(
     session: SessionDep,
     _organization: OrganizationDep,
     _project: ProjectDep,
-    branch: BranchDep,
-    api_key_id: Identifier,
+    _branch: BranchDep,
+    api_key: ApiKeyDep,
 ) -> Response:
-    entry = await session.scalar(
-        select(BranchApiKey).where(
-            BranchApiKey.branch_id == branch.id,
-            BranchApiKey.id == api_key_id,
-        )
-    )
-    if entry is None:
-        raise HTTPException(status_code=404, detail="API key not found for this branch")
-
-    await session.delete(entry)
+    await session.delete(api_key)
     await session.commit()
     return Response(status_code=204)
