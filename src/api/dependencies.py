@@ -7,7 +7,7 @@ from sqlmodel import select
 
 from .._util import Identifier
 from ..models.backups import BackupEntry
-from ..models.branch import Branch, BranchRestore, BranchServiceStatus
+from ..models.branch import Branch, BranchApiKey, BranchRestore, BranchServiceStatus
 from ..models.organization import Organization
 from ..models.project import Project
 from ..models.role import Role
@@ -105,3 +105,14 @@ async def _restore_backup_lookup(
 
 
 RestoreBackupDep = Annotated[BackupEntry, Depends(_restore_backup_lookup)]
+
+
+async def _api_key_lookup(session: SessionDep, api_key_id: Identifier) -> BranchApiKey:
+    statement = select(BranchApiKey).where(BranchApiKey.id == api_key_id)
+    try:
+        return (await session.exec(statement)).one()
+    except NoResultFound as e:
+        raise HTTPException(404, f"API Key {api_key_id} not found") from e
+
+
+ApiKeyDep = Annotated[BranchApiKey, Depends(_api_key_lookup)]
