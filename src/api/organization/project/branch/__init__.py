@@ -54,10 +54,7 @@ from .....deployment.settings import get_settings as get_deployment_settings
 from .....exceptions import VelaDeploymentError, VelaError, VelaKubernetesError, VelaSimplyblockAPIError
 from .....models.backups import BackupEntry
 from .....models.branch import (
-    ApiKeyCreate,
-    ApiKeyDetails,
     Branch,
-    BranchApiKey,
     BranchApiKeys,
     BranchCreate,
     BranchPasswordReset,
@@ -100,6 +97,7 @@ from ....db import AsyncSessionLocal, SessionDep
 from ....dependencies import BranchDep, OrganizationDep, ProjectDep, RestoreBackupDep, branch_lookup
 from ....keycloak import realm_admin
 from ....settings import get_settings as get_api_settings
+from .api_keys import api as api_key_api
 from .auth import api as auth_api
 
 api = APIRouter(tags=["branch"])
@@ -2055,90 +2053,7 @@ async def control_branch(
 
 
 instance_api.include_router(auth_api, prefix="/auth")
-
-
-@instance_api.get(
-    "/apikeys",
-    name="organizations:projects:branch:apikeys",
-    response_model=list[ApiKeyDetails],
-    responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
-)
-async def get_apikeys(
-    _organization: OrganizationDep,
-    _project: ProjectDep,
-    branch: BranchDep,
-) -> list[ApiKeyDetails]:
-    key_entries = await branch.awaitable_attrs.api_keys
-    key_entries = sorted(key_entries, key=lambda entry: str(entry.id))
-
-    return [ApiKeyDetails.from_entry(entry) for entry in key_entries]
-
-
-@instance_api.post(
-    "/apikeys",
-    name="organizations:projects:branch:apikeys:create",
-    response_model=ApiKeyDetails,
-    status_code=201,
-    responses={401: Unauthenticated, 403: Forbidden, 404: NotFound, 409: Conflict},
-)
-async def create_apikey(
-    session: SessionDep,
-    _organization: OrganizationDep,
-    _project: ProjectDep,
-    branch: BranchDep,
-    parameters: ApiKeyCreate,
-) -> ApiKeyDetails:
-    if not branch.jwt_secret:
-        raise HTTPException(status_code=400, detail="Branch JWT secret is not configured.")
-
-    anon_key, service_key = generate_keys(str(branch.id), branch.jwt_secret)
-    api_key = anon_key if parameters.role == "anon" else service_key
-    entry = BranchApiKey(
-        branch_id=branch.id,
-        name=parameters.name,
-        role=parameters.role,
-        api_key=api_key,
-        description=parameters.description,
-    )
-    session.add(entry)
-    try:
-        await session.commit()
-    except IntegrityError as exc:
-        await session.rollback()
-        error = str(exc)
-        if "unique_branch_apikey_name" in error:
-            raise HTTPException(status_code=409, detail=f"API key name {parameters.name} already exists.") from exc
-        raise
-    await session.refresh(entry)
-
-    return ApiKeyDetails.from_entry(entry)
-
-
-@instance_api.delete(
-    "/apikeys/{api_key_id}",
-    name="organizations:projects:branch:apikeys:delete",
-    status_code=204,
-    responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
-)
-async def delete_apikey(
-    session: SessionDep,
-    _organization: OrganizationDep,
-    _project: ProjectDep,
-    branch: BranchDep,
-    api_key_id: Identifier,
-) -> Response:
-    entry = await session.scalar(
-        select(BranchApiKey).where(
-            BranchApiKey.branch_id == branch.id,
-            BranchApiKey.id == api_key_id,
-        )
-    )
-    if entry is None:
-        raise HTTPException(status_code=404, detail="API key not found for this branch")
-
-    await session.delete(entry)
-    await session.commit()
-    return Response(status_code=204)
+instance_api.include_router(api_key_api, prefix="/apikeys")
 
 
 api.include_router(instance_api)
