@@ -40,7 +40,7 @@ services:
       VELA_ENABLE_DB_EXTERNAL_IPV6_LOADBALANCER: 'false'
       VELA_GRAFANA_SECURITY_ADMIN_USER: "admin"
       VELA_GRAFANA_SECURITY_ADMIN_PASSWORD: "password"
-      SIMPLYBLOCK_CSI_NAMESPACE: 'simplyblock-csi'
+      VELA_SIMPLYBLOCK_CSI_NAMESPACE: 'simplyblock-csi'
 
     depends_on:
       database:

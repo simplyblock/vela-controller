@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     grafana_url: str = "http://localhost:3000"
     grafana_security_admin_user: str = "admin"
     grafana_security_admin_password: str = "password"
+    simplyblock_csi_namespace: str = "simplyblock"
 
 
 @lru_cache

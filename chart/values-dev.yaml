@@ -5,7 +5,7 @@ database:
 
 controller:
   env:
-    SIMPLYBLOCK_CSI_NAMESPACE: 'simplyblock-csi'
+    VELA_SIMPLYBLOCK_CSI_NAMESPACE: 'simplyblock-csi'
     VELA_ENABLE_DB_EXTERNAL_IPV6_LOADBALANCER: 'false'
 
 studio:

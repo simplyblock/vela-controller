@@ -44,7 +44,7 @@ controller:
     VELA_GRAFANA_URL: 'http://vela-grafana:3000'
     VELA_ENABLE_DB_EXTERNAL_IPV6_LOADBALANCER: 'true'
     VELA_RESOURCE_MONITOR_INTERVAL: '30'
-    SIMPLYBLOCK_CSI_NAMESPACE: 'simplyblock'
+    VELA_SIMPLYBLOCK_CSI_NAMESPACE: 'simplyblock'
 
 secret:
   pgmeta_crypto_key: "secret"
