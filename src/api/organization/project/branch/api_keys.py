@@ -1,12 +1,43 @@
+import hashlib
+from typing import Literal, cast
+
 from fastapi import APIRouter, HTTPException, Response
+from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 
+from ....._util import Name
 from ....._util.crypto import generate_keys
-from .....models.branch import ApiKeyCreate, ApiKeyDetails, BranchApiKey
+from .....models.branch import BranchApiKey
 from ...._util import Conflict, Forbidden, NotFound, Unauthenticated
 from ....dependencies import ApiKeyDep, BranchDep, OrganizationDep, ProjectDep, SessionDep
 
 api = APIRouter()
+
+ApiKeyRole = Literal["anon", "service_role"]
+
+
+class ApiKeyDetails(BaseModel):
+    name: str
+    role: ApiKeyRole
+    api_key: str
+    id: str
+    hash: str
+    prefix: str
+    description: str
+
+    @classmethod
+    def from_entry(cls, entry: "BranchApiKey") -> "ApiKeyDetails":
+        key = entry.api_key
+        description = entry.description or f"{entry.role} API key"
+        return cls(
+            name=entry.name,
+            role=cast("ApiKeyRole", entry.role),
+            api_key=key,
+            id=str(entry.id),
+            hash=hashlib.sha256(key.encode()).hexdigest(),
+            prefix=key[:5],
+            description=description,
+        )
 
 
 @api.get(
@@ -24,6 +55,12 @@ async def list_(
     key_entries = sorted(key_entries, key=lambda entry: str(entry.id))
 
     return [ApiKeyDetails.from_entry(entry) for entry in key_entries]
+
+
+class ApiKeyCreate(BaseModel):
+    name: Name
+    role: ApiKeyRole
+    description: str | None = None
 
 
 @api.post(

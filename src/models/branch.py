@@ -1,8 +1,7 @@
-import hashlib
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Literal, Optional, cast
+from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 from pydantic import Field as PydanticField
@@ -457,39 +456,6 @@ class ResourceUsageDefinition(BaseModel):
 class BranchApiKeys(BaseModel):
     anon: str | None
     service_role: str | None
-
-
-ApiKeyRole = Literal["anon", "service_role"]
-
-
-class ApiKeyCreate(BaseModel):
-    name: Name
-    role: ApiKeyRole
-    description: str | None = None
-
-
-class ApiKeyDetails(BaseModel):
-    name: str
-    role: ApiKeyRole
-    api_key: str
-    id: str
-    hash: str
-    prefix: str
-    description: str
-
-    @classmethod
-    def from_entry(cls, entry: "BranchApiKey") -> "ApiKeyDetails":
-        key = entry.api_key
-        description = entry.description or f"{entry.role} API key"
-        return cls(
-            name=entry.name,
-            role=cast("ApiKeyRole", entry.role),
-            api_key=key,
-            id=str(entry.id),
-            hash=hashlib.sha256(key.encode()).hexdigest(),
-            prefix=key[:5],
-            description=description,
-        )
 
 
 class BranchStatus(BaseModel):
