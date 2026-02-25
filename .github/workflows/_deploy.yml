@@ -77,6 +77,7 @@ jobs:
             --set-string controller.env.VELA_BRANCH_REF="${{ vars.VELA_BRANCH_REF }}" \
             --set-string controller.env.VELA_BRANCH_DB_REF="${{ vars.VELA_BRANCH_DB_REF }}" \
             --set-string controller.env.VELA_ENABLE_DB_EXTERNAL_IPV6_LOADBALANCER="${{ vars.ENABLE_DB_EXTERNAL_IPV6_LOADBALANCER }}" \
+            --set-string controller.env.VELA_SIMPLYBLOCK_CSI_NAMESPACE="${{ vars.SIMPLYBLOCK_CSI_NAMESPACE }}" \
             --set-string studio.image.tag="${{ inputs.studio_tag }}" \
             --set-string monitoring.VELA_GRAFANA_SECURITY_ADMIN_PASSWORD="${{ secrets.VELA_GRAFANA_SECURITY_ADMIN_PASSWORD }}" \
             "${HELM_EXTRA_ARGS[@]}"
