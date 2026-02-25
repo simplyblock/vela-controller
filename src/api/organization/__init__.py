@@ -255,10 +255,10 @@ async def metering(
 
     statement = (
         select(  # type: ignore[call-overload]
-            usage_cte.c.org_id,
-            usage_cte.c.original_project_id,
-            usage_cte.c.original_branch_id,
-            usage_cte.c.resource,
+            usage_cte.c.org_id.label("organization_id"),
+            usage_cte.c.original_project_id.label("project_id"),
+            usage_cte.c.original_branch_id.label("branch_id"),
+            usage_cte.c.resource.label("type"),
             func.sum(usage_cte.c.amount).label("amount"),
         )
         .where(usage_cte.c.org_id == organization.id)
