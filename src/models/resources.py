@@ -1,8 +1,8 @@
 from datetime import datetime
 from enum import Enum as PyEnum
-from typing import TYPE_CHECKING, Annotated, Literal, Optional
+from typing import TYPE_CHECKING, Annotated, Any, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, BeforeValidator, ConfigDict
 from pydantic import Field as PydanticField
 from sqlalchemy import BigInteger, Index, text
 from sqlalchemy.ext.asyncio import AsyncAttrs
@@ -124,7 +124,17 @@ class ResourceConsumptionLimit(AsyncAttrs, Model, table=True):
     max_total_minutes: int
 
 
-ResourceTypePublic = Literal["milli_vcpu", "ram", "iops", "storage_size", "database_size"]
+def _validate_resource_type(value: Any) -> Any:
+    if isinstance(value, ResourceType):
+        return value.value
+
+    return value
+
+
+ResourceTypePublic = Annotated[
+    Literal["milli_vcpu", "ram", "iops", "storage_size", "database_size"],
+    BeforeValidator(_validate_resource_type),
+]
 
 
 class ResourceLimitsPublic(BaseModel):
