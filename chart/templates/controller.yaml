@@ -102,7 +102,7 @@ data:
   VELA_SERVER_ROOT_URL: "https://{{ .Values.domain }}:{{ .Values.port }}"
   VELA_ENABLE_DB_EXTERNAL_IPV6_LOADBALANCER: {{ .Values.controller.env.VELA_ENABLE_DB_EXTERNAL_IPV6_LOADBALANCER | quote }}
   VELA_GRAFANA_URL: {{ .Values.controller.env.VELA_GRAFANA_URL | quote }}
-  SIMPLYBLOCK_CSI_NAMESPACE: {{ .Values.controller.env.SIMPLYBLOCK_CSI_NAMESPACE | quote }}
+  VELA_SIMPLYBLOCK_CSI_NAMESPACE: {{ .Values.controller.env.VELA_SIMPLYBLOCK_CSI_NAMESPACE | quote }}
 ---
 apiVersion: v1
 kind: Service
