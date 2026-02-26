@@ -1,10 +1,17 @@
+import itertools
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import asdict, fields
 from datetime import UTC, datetime
+from typing import Self
 
+from pydantic import model_validator
+from pydantic.dataclasses import dataclass
+from sqlalchemy import case as sa_case
 from sqlalchemy import delete, func
 from sqlmodel import col, select
+from sqlmodel.ext.asyncio.session import AsyncSession
 
-from ..._util import Identifier
+from ..._util import Identifier, single_or_none
 from ...exceptions import VelaResourceLimitError
 from ...models.branch import Branch, BranchServiceStatus
 from ...models.organization import Organization
@@ -554,3 +561,155 @@ def _select_allocation(resource_type: ResourceType, allocations: list[BranchProv
         if allocation.resource == resource_type:
             return allocation.amount
     return None
+
+
+def _optional_min(a: int | None, b: int | None) -> int | None:
+    values = [x for x in (a, b) if x is not None]
+    return min(values) if values else None
+
+
+@dataclass(frozen=True)
+class Resources:
+    milli_vcpu: int | None
+    ram: int | None
+    iops: int | None
+    database_size: int | None
+    storage_size: int | None
+
+    @classmethod
+    def min(cls, a: Self, b: Self) -> Self:
+        return cls(
+            **{field.name: _optional_min(getattr(a, field.name), getattr(b, field.name)) for field in fields(cls)}
+        )
+
+    @classmethod
+    def from_database(cls, provisionings: Sequence, attribute: str) -> Self:
+        def keyfunc(entity) -> str:
+            return entity.resource.value
+
+        limits_dict = {
+            resource: single_or_none(items)
+            for resource, items in itertools.groupby(sorted(provisionings, key=keyfunc), key=keyfunc)
+        }
+
+        return cls(
+            **{
+                resource.value: getattr(limit, attribute)
+                if (limit := limits_dict.get(resource.value)) is not None
+                else None
+                for resource in ResourceType
+            }
+        )
+
+    def __sub__(self: Self, other: Self) -> Self:
+        assert self.complete() and other.complete()
+        return self.__class__(
+            **{field.name: getattr(self, field.name) - getattr(other, field.name) for field in fields(self)}
+        )
+
+    def to_public(self) -> ResourceLimitsPublic:
+        return ResourceLimitsPublic(**asdict(self))
+
+    def complete(self) -> bool:
+        return all(getattr(self, field.name) is not None for field in fields(self))
+
+
+@dataclass(frozen=True)
+class Limits:
+    total: Resources
+    per_branch: Resources
+
+    @model_validator(mode="after")
+    def coherent_limits(self) -> Self:
+        if not all(
+            (getattr(self.total, field.name) is None) == (getattr(self.per_branch, field.name) is None)
+            for field in fields(Resources)
+        ):
+            raise ValueError("Resource types must be set on both `total` and `per_branch` or on neither")
+        return self
+
+    @classmethod
+    def from_database(cls, limits: Sequence[ResourceLimit]) -> Self:
+        return cls(
+            total=Resources.from_database(limits, "max_total"),
+            per_branch=Resources.from_database(limits, "max_per_branch"),
+        )
+
+    def to_database(self, entity_type: EntityType) -> list[ResourceLimit]:
+        return [
+            ResourceLimit(
+                resource=ResourceType(field.name),
+                entity_type=entity_type,
+                max_total=getattr(self.total, field.name),
+                max_per_branch=getattr(self.per_branch, field.name),
+            )
+            for field in fields(Resources)
+            if (getattr(self.total, field.name) is not None) or (getattr(self.per_branch, field.name) is not None)
+        ]
+
+
+async def system_limits(session: AsyncSession) -> Limits:
+    statement = select(ResourceLimit).where(
+        col(ResourceLimit.org_id).is_(None), col(ResourceLimit.project_id).is_(None)
+    )
+    entries = (await session.exec(statement)).all()
+    return Limits.from_database(entries)
+
+
+async def organization_limits(organization: Organization) -> Limits:
+    return Limits.from_database(await organization.awaitable_attrs.limits)
+
+
+async def project_limits(project: Project) -> Limits:
+    return Limits.from_database(await project.awaitable_attrs.limits)
+
+
+def _allocations():
+    return select(  # type: ignore[call-overload]
+        func.coalesce(
+            func.sum(sa_case((col(Branch.status) == BranchServiceStatus.ACTIVE_HEALTHY, Branch.milli_vcpu), else_=0)), 0
+        ).label("milli_vcpu"),
+        func.coalesce(
+            func.sum(sa_case((col(Branch.status) == BranchServiceStatus.ACTIVE_HEALTHY, Branch.memory), else_=0)), 0
+        ).label("ram"),
+        func.coalesce(
+            func.sum(sa_case((col(Branch.status) == BranchServiceStatus.ACTIVE_HEALTHY, Branch.iops), else_=0)), 0
+        ).label("iops"),
+        func.coalesce(func.sum(Branch.database_size), 0).label("database_size"),
+        func.coalesce(func.sum(Branch.storage_size), 0).label("storage_size"),
+    )
+
+
+async def system_allocations(session: AsyncSession) -> Resources:
+    allocations = (await session.exec(_allocations())).one()
+    return Resources(**(allocations._asdict()))
+
+
+async def organization_allocations(session: AsyncSession, organization: Organization) -> Resources:
+    statement = _allocations().join(Project).where(Project.organization_id == organization.id)
+    allocations = (await session.exec(statement)).one()
+    return Resources(**(allocations._asdict()))
+
+
+async def project_allocations(session: AsyncSession, project: Project) -> Resources:
+    statement = _allocations().where(Branch.project_id == project.id)
+    allocations = (await session.exec(statement)).one()
+    return Resources(**(allocations._asdict()))
+
+
+async def system_available(session: AsyncSession) -> Resources:
+    return (await system_limits(session)).total - await system_allocations(session)
+
+
+async def organization_available(session: AsyncSession, organization: Organization) -> Resources:
+    return Resources.min(
+        (await organization_limits(organization)).total - await organization_allocations(session, organization),
+        await system_available(session),
+    )
+
+
+async def project_available(session: AsyncSession, project: Project) -> Resources:
+    return Resources.min(
+        (await project_limits(project)).total - await project_allocations(session, project),
+        await organization_available(session, await project.awaitable_attrs.organization),
+    )

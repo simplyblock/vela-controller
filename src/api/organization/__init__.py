@@ -21,6 +21,7 @@ from ..auth import authenticated_user
 from ..dependencies import AuthUserDep, OrganizationDep, SessionDep
 from .member import api as member_api
 from .project import api as project_api
+from .resources import api as resources_api
 from .role import RoleUserLink
 from .role import api as role_api
 
@@ -272,4 +273,5 @@ async def metering(
 instance_api.include_router(project_api, prefix="/projects")
 instance_api.include_router(member_api, prefix="/members")
 instance_api.include_router(role_api, prefix="/roles")
+instance_api.include_router(resources_api, prefix="/resources")
 api.include_router(instance_api)
