@@ -539,29 +539,40 @@ async def manual_backup(session: SessionDep, branch_id: Identifier) -> BackupCre
     recorded_at = datetime.now(UTC)
 
     try:
-        snapshot = await create_branch_snapshot(
+        snapshot_details = await create_branch_snapshot(
             branch.id,
             backup_id=backup_id,
             snapshot_class=VOLUME_SNAPSHOT_CLASS,
             poll_interval=SNAPSHOT_POLL_INTERVAL_SEC,
             label="manual",
             time_limit=MANUAL_BACKUP_TIMEOUT_SEC,
+            pitr_enabled=branch.pitr_enabled,
         )
     except Exception as exc:
         logger.exception("Manual backup failed for branch %s within timeout", branch.id)
         raise HTTPException(status_code=500, detail="Manual backup failed") from exc
 
-    backup = BackupEntry(
-        id=backup_id,
-        branch_id=branch.id,
-        row_index=-1,  # -1 for manual backup
-        created_at=recorded_at,
-        size_bytes=snapshot.size_bytes or 0,
-        snapshot_uuid=str(snapshot.snapshot_uuid),
-        snapshot_name=snapshot.name,
-        snapshot_namespace=snapshot.namespace,
-        snapshot_content_name=snapshot.content_name,
-    )
+    snapshot = snapshot_details.snapshot
+    wal_snapshot = snapshot_details.wal_snapshot
+    backup_data = {
+        "id": backup_id,
+        "branch_id": branch.id,
+        "row_index": -1,  # -1 for manual backup
+        "created_at": recorded_at,
+        "size_bytes": snapshot.size_bytes or 0,
+        "snapshot_uuid": str(snapshot.snapshot_uuid),
+        "snapshot_name": snapshot.name,
+        "snapshot_namespace": snapshot.namespace,
+        "snapshot_content_name": snapshot.content_name,
+    }
+    if wal_snapshot:
+        backup_data.update(
+            wal_snapshot_uuid=str(wal_snapshot.snapshot_uuid),
+            wal_snapshot_name=wal_snapshot.name,
+            wal_snapshot_namespace=wal_snapshot.namespace,
+            wal_snapshot_content_name=wal_snapshot.content_name,
+        )
+    backup = BackupEntry(**backup_data)
     session.add(backup)
     await session.flush()
     backup_uuid = str(backup_id)
@@ -593,6 +604,12 @@ async def delete_backup(session: SessionDep, backup_id: Identifier) -> BackupDel
             namespace=backup.snapshot_namespace,
             content_name=backup.snapshot_content_name,
         )
+        if backup.wal_snapshot_name:
+            await delete_branch_snapshot(
+                name=backup.wal_snapshot_name,
+                namespace=backup.wal_snapshot_namespace,
+                content_name=backup.wal_snapshot_content_name,
+            )
     except Exception as exc:
         logger.exception("Failed to delete snapshot for backup %s", backup_id)
         raise HTTPException(status_code=500, detail="Failed to delete backup snapshot") from exc
