@@ -7,6 +7,10 @@ on:
         description: "Image tag to deploy"
         required: true
         type: string
+      studio_tag:
+        description: "Studio tag to deploy"
+        required: true
+        type: string
       deployment_name:
         description: "Deployment name. Used as Kubernetes namespace and release name"
         required: true
@@ -73,5 +77,6 @@ jobs:
             --set-string controller.env.VELA_BRANCH_REF="${{ vars.VELA_BRANCH_REF }}" \
             --set-string controller.env.VELA_BRANCH_DB_REF="${{ vars.VELA_BRANCH_DB_REF }}" \
             --set-string controller.env.VELA_ENABLE_DB_EXTERNAL_IPV6_LOADBALANCER="${{ vars.ENABLE_DB_EXTERNAL_IPV6_LOADBALANCER }}" \
+            --set-string studio.image.tag="${{ inputs.studio_tag }}" \
             --set-string monitoring.VELA_GRAFANA_SECURITY_ADMIN_PASSWORD="${{ secrets.VELA_GRAFANA_SECURITY_ADMIN_PASSWORD }}" \
             "${HELM_EXTRA_ARGS[@]}"
