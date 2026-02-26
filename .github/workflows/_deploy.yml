@@ -25,6 +25,10 @@ on:
         required: false
         type: boolean
         default: true
+      database_size:
+        description: "Database volume size override (e.g. 10Gi). Uses chart default if not set."
+        required: false
+        type: string
 
 jobs:
   deploy:
@@ -49,6 +53,9 @@ jobs:
           (echo "$KUBE_CONFIG_DATA" | base64 -d 2>/dev/null || echo "$KUBE_CONFIG_DATA") > "$KUBECONFIG"
           export KUBECONFIG
 
+          HELM_EXTRA_ARGS=()
+          [ -n "${{ inputs.database_size }}" ] && HELM_EXTRA_ARGS+=(--set-string "database.size=${{ inputs.database_size }}")
+
           helm upgrade --install "${{ inputs.deployment_name }}" ./chart \
             --namespace "${{ inputs.deployment_name }}" \
             --create-namespace \
@@ -66,4 +73,5 @@ jobs:
             --set-string controller.env.VELA_BRANCH_REF="${{ vars.VELA_BRANCH_REF }}" \
             --set-string controller.env.VELA_BRANCH_DB_REF="${{ vars.VELA_BRANCH_DB_REF }}" \
             --set-string controller.env.VELA_ENABLE_DB_EXTERNAL_IPV6_LOADBALANCER="${{ vars.ENABLE_DB_EXTERNAL_IPV6_LOADBALANCER }}" \
-            --set-string monitoring.VELA_GRAFANA_SECURITY_ADMIN_PASSWORD="${{ secrets.VELA_GRAFANA_SECURITY_ADMIN_PASSWORD }}"
+            --set-string monitoring.VELA_GRAFANA_SECURITY_ADMIN_PASSWORD="${{ secrets.VELA_GRAFANA_SECURITY_ADMIN_PASSWORD }}" \
+            "${HELM_EXTRA_ARGS[@]}"
