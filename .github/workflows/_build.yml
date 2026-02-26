@@ -6,6 +6,9 @@ on:
       image_tag:
         description: "The primary image tag that was pushed"
         value: ${{ jobs.build-and-push.outputs.image_tag }}
+      image_digest:
+        description: "The digest of the image that was pushed"
+        value: ${{ jobs.build-and-push.outputs.image_digest }}
 
 jobs:
   build-and-push:
@@ -14,6 +17,7 @@ jobs:
 
     outputs:
       image_tag: ${{ steps.meta.outputs.version }}
+      image_digest: ${{ steps.build-push.outputs.digest }}
 
     permissions:
       contents: read
@@ -45,6 +49,7 @@ jobs:
           type=ref,event=pr
 
     - name: Build and push Docker image
+      id: build-push
       uses: docker/build-push-action@v6
       with:
         context: .
