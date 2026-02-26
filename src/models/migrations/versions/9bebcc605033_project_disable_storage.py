@@ -12,6 +12,8 @@ import sqlalchemy as sa
 import sqlmodel
 import sqlmodel.sql
 
+from ulid import ULID
+
 
 # revision identifiers, used by Alembic.
 revision: str = '9bebcc605033'
@@ -22,16 +24,36 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.execute("""
-        INSERT INTO resourcelimit
-            (id, entity_type, resource, org_id, env_type, project_id, max_total, max_per_branch)
-        SELECT gen_random_uuid(), 'project', 'storage_size', NULL, NULL, p.id, 0, 0
-        FROM project p
-        WHERE NOT EXISTS (
-            SELECT 1 FROM resourcelimit rl
-            WHERE rl.project_id = p.id AND rl.resource = 'storage_size'
+    bind = op.get_bind()
+    # Find all projects that do not yet have a 'storage_size' resource limit
+    result = bind.execute(
+        sa.text(
+            """
+            SELECT p.id
+            FROM project p
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM resourcelimit rl
+                WHERE rl.project_id = p.id
+                  AND rl.resource = 'storage_size'
+            )
+            """
         )
-    """)
+    )
+    project_ids = [row[0] for row in result]
+    for project_id in project_ids:
+        new_id = ULID().to_uuid()
+        bind.execute(
+            sa.text(
+                """
+                INSERT INTO resourcelimit
+                    (id, entity_type, resource, org_id, env_type, project_id, max_total, max_per_branch)
+                VALUES
+                    (:id, 'project', 'storage_size', NULL, NULL, :project_id, 0, 0)
+                """
+            ),
+            {"id": new_id, "project_id": project_id},
+        )
 
 
 def downgrade() -> None:
