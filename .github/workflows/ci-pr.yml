@@ -24,4 +24,5 @@ jobs:
       environment: dev
       domain: pr${{ github.event.pull_request.number }}.dev.kernel-labs.org
       vector_host_path: false
+      database_size: '5Gi'
     secrets: inherit
