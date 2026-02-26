@@ -2,7 +2,6 @@ database:
   replicas: 1
   cpu: "500m"
   memory: "0.5Gi"
-  size: "5Gi"
 
 controller:
   env:
