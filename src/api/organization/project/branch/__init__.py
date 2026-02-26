@@ -355,6 +355,9 @@ class RestoreSnapshotContext(TypedDict):
     namespace: str
     name: str
     content_name: str | None
+    wal_namespace: str | None
+    wal_name: str | None
+    wal_content_name: str | None
 
 
 def snapshot_pgbouncer_config(config: PgbouncerConfig | None) -> PgbouncerConfigSnapshot:
@@ -913,6 +916,9 @@ async def _restore_branch_environment_task(
     restore_database_size: int,
     pgbouncer_config: PgbouncerConfigSnapshot,
     pitr_enabled: bool,
+    wal_snapshot_namespace: str | None = None,
+    wal_snapshot_name: str | None = None,
+    wal_snapshot_content_name: str | None = None,
 ) -> None:
     await _persist_branch_status(branch_id, BranchServiceStatus.CREATING)
     storage_class_name: str | None = None
@@ -931,6 +937,10 @@ async def _restore_branch_environment_task(
             pvc_timeout_seconds=_PVC_TIMEOUT_SECONDS,
             pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
             database_size=restore_database_size,
+            pitr_enabled=pitr_enabled,
+            wal_snapshot_namespace=wal_snapshot_namespace,
+            wal_snapshot_name=wal_snapshot_name,
+            wal_snapshot_content_name=wal_snapshot_content_name,
         )
     except VelaError:
         await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
@@ -980,6 +990,10 @@ async def _restore_branch_environment_in_place_task(
     snapshot_namespace: str,
     snapshot_name: str,
     snapshot_content_name: str | None,
+    pitr_enabled: bool,
+    wal_snapshot_namespace: str | None = None,
+    wal_snapshot_name: str | None = None,
+    wal_snapshot_content_name: str | None = None,
 ) -> None:
     await _persist_branch_status(branch_id, BranchServiceStatus.RESTARTING)
     namespace, autoscaler_vm_name = get_autoscaler_vm_identity(branch_id)
@@ -1009,6 +1023,10 @@ async def _restore_branch_environment_in_place_task(
             pvc_timeout_seconds=_PVC_TIMEOUT_SECONDS,
             pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
             database_size=parameters.database_size,
+            pitr_enabled=pitr_enabled,
+            wal_snapshot_namespace=wal_snapshot_namespace,
+            wal_snapshot_name=wal_snapshot_name,
+            wal_snapshot_content_name=wal_snapshot_content_name,
         )
     except VelaError:
         await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
@@ -1363,6 +1381,9 @@ def _schedule_branch_environment_tasks(
                 restore_database_size=restore_database_size,
                 pgbouncer_config=pgbouncer_config,
                 pitr_enabled=branch.pitr_enabled,
+                wal_snapshot_namespace=restore_snapshot.get("wal_namespace"),
+                wal_snapshot_name=restore_snapshot.get("wal_name"),
+                wal_snapshot_content_name=restore_snapshot.get("wal_content_name"),
             )
         )
         return
@@ -1423,6 +1444,9 @@ async def create(  # noqa: C901
             namespace=cast("str", backup_entry.snapshot_namespace),
             name=cast("str", backup_entry.snapshot_name),
             content_name=backup_entry.snapshot_content_name,
+            wal_namespace=backup_entry.wal_snapshot_namespace,
+            wal_name=backup_entry.wal_snapshot_name,
+            wal_content_name=backup_entry.wal_snapshot_content_name,
         )
     source_id: Identifier | None = getattr(source, "id", None)
     clone_parameters: DeploymentParameters | None = None
@@ -1639,6 +1663,10 @@ async def restore(
             snapshot_namespace=snapshot_namespace,
             snapshot_name=snapshot_name,
             snapshot_content_name=snapshot_content_name,
+            pitr_enabled=branch.pitr_enabled,
+            wal_snapshot_namespace=backup.wal_snapshot_namespace,
+            wal_snapshot_name=backup.wal_snapshot_name,
+            wal_snapshot_content_name=backup.wal_snapshot_content_name,
         )
     )
 

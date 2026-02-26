@@ -210,6 +210,12 @@ class BackupMonitor:
                     namespace=backup.snapshot_namespace,
                     content_name=backup.snapshot_content_name,
                 )
+                if backup.wal_snapshot_name:
+                    await delete_branch_snapshot(
+                        name=backup.wal_snapshot_name,
+                        namespace=backup.wal_snapshot_namespace,
+                        content_name=backup.wal_snapshot_content_name,
+                    )
             except Exception:
                 context = {
                     "backup_id": backup.id,
@@ -303,13 +309,14 @@ class BackupMonitor:
         backup_id = ULID()
 
         try:
-            snapshot = await create_branch_snapshot(
+            snapshot_details = await create_branch_snapshot(
                 branch.id,
                 backup_id=backup_id,
                 snapshot_class=VOLUME_SNAPSHOT_CLASS,
                 poll_interval=SNAPSHOT_POLL_INTERVAL_SEC,
                 label=f"row-{row.row_index}",
                 time_limit=SNAPSHOT_TIMEOUT_SEC,
+                pitr_enabled=branch.pitr_enabled,
             )
         except Exception:
             nb.next_at = next_due
@@ -318,18 +325,28 @@ class BackupMonitor:
             logger.exception("Failed to create backup snapshot for branch %s row %d", branch.id, row.row_index)
             return
 
+        snapshot = snapshot_details.snapshot
+        wal_snapshot = snapshot_details.wal_snapshot
         created_at = datetime.now(UTC)
-        be = BackupEntry(
-            id=backup_id,
-            branch_id=branch.id,
-            row_index=row.row_index,
-            created_at=created_at,
-            size_bytes=snapshot.size_bytes or 0,
-            snapshot_uuid=str(snapshot.snapshot_uuid),
-            snapshot_name=snapshot.name,
-            snapshot_namespace=snapshot.namespace,
-            snapshot_content_name=snapshot.content_name,
-        )
+        backup_data = {
+            "id": backup_id,
+            "branch_id": branch.id,
+            "row_index": row.row_index,
+            "created_at": created_at,
+            "size_bytes": snapshot.size_bytes or 0,
+            "snapshot_uuid": str(snapshot.snapshot_uuid),
+            "snapshot_name": snapshot.name,
+            "snapshot_namespace": snapshot.namespace,
+            "snapshot_content_name": snapshot.content_name,
+        }
+        if wal_snapshot:
+            backup_data.update(
+                wal_snapshot_uuid=str(wal_snapshot.snapshot_uuid),
+                wal_snapshot_name=wal_snapshot.name,
+                wal_snapshot_namespace=wal_snapshot.namespace,
+                wal_snapshot_content_name=wal_snapshot.content_name,
+            )
+        be = BackupEntry(**backup_data)
         db.add(be)
         await db.flush()
 
