@@ -20,6 +20,7 @@ jobs:
     uses: ./.github/workflows/_deploy.yml
     with:
       image_tag: '${{ needs.build.outputs.image_tag }}@${{ needs.build.outputs.image_digest }}'
+      studio_tag: dev
       deployment_name: vela-pr${{ github.event.pull_request.number }}
       environment: dev
       domain: pr${{ github.event.pull_request.number }}.dev.kernel-labs.org
