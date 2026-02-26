@@ -117,6 +117,26 @@ def single(xs):
         return x
 
 
+def single_or_none(xs):
+    """Returns the single value in the passed collection or none if empty
+
+    If `xs` contains multiple values, a ValueError error is raised.
+    """
+
+    it = iter(xs)
+
+    try:
+        x = next(it)
+    except StopIteration:
+        return None
+
+    try:
+        next(it)
+        raise ValueError("Multiple values present")
+    except StopIteration:
+        return x
+
+
 dbstr = Annotated[str, Field(pattern=r"^[^\x00]*$")]
 
 Name = Annotated[

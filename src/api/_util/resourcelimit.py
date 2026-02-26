@@ -1,10 +1,15 @@
+import itertools
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import asdict, fields
 from datetime import UTC, datetime
+from typing import Self
 
+from pydantic.dataclasses import dataclass
 from sqlalchemy import delete, func
 from sqlmodel import col, select
+from sqlmodel.ext.asyncio.session import AsyncSession
 
-from ..._util import Identifier
+from ..._util import Identifier, single_or_none
 from ...exceptions import VelaResourceLimitError
 from ...models.branch import Branch, BranchServiceStatus
 from ...models.organization import Organization
@@ -554,3 +559,108 @@ def _select_allocation(resource_type: ResourceType, allocations: list[BranchProv
         if allocation.resource == resource_type:
             return allocation.amount
     return None
+
+
+@dataclass(frozen=True)
+class Resources:
+    milli_vcpu: int | None
+    ram: int | None
+    iops: int | None
+    database_size: int | None
+    storage_size: int | None
+
+    @classmethod
+    def coalesce(cls, a: Self, b: Self) -> Self:
+        return cls(
+            **{
+                field.name: first if (first := getattr(a, field.name)) is not None else getattr(b, field.name)
+                for field in fields(cls)
+            }
+        )
+
+    @classmethod
+    def from_database(cls, provisionings: Sequence, attribute: str) -> Self:
+        def keyfunc(entity) -> str:
+            return entity.resource.value
+
+        limits_dict = {
+            resource: single_or_none(items)
+            for resource, items in itertools.groupby(sorted(provisionings, key=keyfunc), key=keyfunc)
+        }
+
+        return cls(
+            **{
+                resource.value: getattr(limit, attribute)
+                if (limit := limits_dict.get(resource.value)) is not None
+                else None
+                for resource in ResourceType
+            }
+        )
+
+    def __sub__(self: Self, other: Self) -> Self:
+        assert self.complete() and other.complete()
+        return self.__class__(
+            **{field.name: getattr(self, field.name) - getattr(other, field.name) for field in fields(self)}
+        )
+
+    def to_public(self) -> ResourceLimitsPublic:
+        return ResourceLimitsPublic(**asdict(self))
+
+    def complete(self) -> bool:
+        return all(getattr(self, field.name) is not None for field in fields(self))
+
+
+@dataclass(frozen=True)
+class Limits:
+    total: Resources
+    per_branch: Resources
+
+    @classmethod
+    def from_database(cls, limits: Sequence[ResourceLimit]) -> Self:
+        return cls(
+            total=Resources.from_database(limits, "max_total"),
+            per_branch=Resources.from_database(limits, "max_per_branch"),
+        )
+
+    @classmethod
+    def coalesce(cls, a: Self, b: Self) -> Self:
+        return cls(
+            total=Resources.coalesce(a.total, b.total),
+            per_branch=Resources.coalesce(a.per_branch, b.per_branch),
+        )
+
+
+async def system_limits(session: AsyncSession) -> Limits:
+    statement = select(ResourceLimit).where(
+        col(ResourceLimit.org_id).is_(None), col(ResourceLimit.project_id).is_(None)
+    )
+    entries = (await session.exec(statement)).all()
+    return Limits.from_database(entries)
+
+
+async def organization_limits(session: AsyncSession, organization: Organization) -> Limits:
+    raw_organization_limits = Limits.from_database(await organization.awaitable_attrs.limits)
+    return Limits.coalesce(raw_organization_limits, await system_limits(session))
+
+
+async def project_limits(session: AsyncSession, project: Project) -> Limits:
+    raw_project_limits = Limits.from_database(await project.awaitable_attrs.limits)
+    return Limits.coalesce(
+        raw_project_limits, await organization_limits(session, await project.awaitable_attrs.organization)
+    )
+
+
+async def project_allocations(session: AsyncSession, project: Project) -> Resources:
+    statement = select(  # type: ignore[call-overload]
+        func.coalesce(func.sum(Branch.milli_vcpu), 0).label("milli_vcpu"),
+        func.coalesce(func.sum(Branch.memory), 0).label("ram"),
+        func.coalesce(func.sum(Branch.iops), 0).label("iops"),
+        func.coalesce(func.sum(Branch.database_size), 0).label("database_size"),
+        func.coalesce(func.sum(Branch.storage_size), 0).label("storage_size"),
+    ).where(Branch.project_id == project.id)
+    allocations = (await session.exec(statement)).one()
+    return Resources(**(allocations._asdict()))
+
+
+async def project_available(session: AsyncSession, project: Project) -> Resources:
+    return (await project_limits(session, project)).total - (await project_allocations(session, project))
