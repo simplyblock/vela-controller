@@ -8,7 +8,7 @@ jobs:
   cleanup:
     if: >-
       (github.event.action == 'unlabeled' && github.event.label.name == 'deploy') ||
-      (github.event.action == 'closed' && contains(github.event.pull_request.labels.*.name, 'deploy'))
+      (github.event.action == 'closed')
     runs-on: ubuntu-latest
     environment: dev
 
