@@ -3,6 +3,7 @@ database:
   replicas: 3
   cpu: "1"
   memory: "1Gi"
+  size: "100Gi"
 
 podSecurityContext:
   runAsNonRoot: false

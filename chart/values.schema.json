@@ -5,12 +5,13 @@
   "properties": {
     "database": {
       "type": "object",
-      "required": ["cpu", "memory", "postgresVersion", "replicas"],
+      "required": ["cpu", "memory", "postgresVersion", "replicas", "size"],
       "properties": {
         "cpu": { "type": "string" },
         "memory": { "type": "string" },
         "postgresVersion": { "type": "string" },
         "replicas": { "type": "integer" },
+        "size": { "type": "string" }
       }
     },
     "gateway": {
