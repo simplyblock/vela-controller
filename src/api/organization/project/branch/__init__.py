@@ -639,6 +639,7 @@ async def _build_branch_entity(
     source: Branch | None,
     copy_config: bool,
     clone_parameters: DeploymentParameters | None,
+    pitr_enabled: bool,
 ) -> Branch:
     env_type = parameters.env_type if parameters.env_type is not None else ""
     if source is not None:
@@ -663,7 +664,7 @@ async def _build_branch_entity(
             enable_file_storage=clone_parameters.enable_file_storage,
             status=BranchServiceStatus.CREATING,
             status_updated_at=datetime.now(UTC),
-            pitr_enabled=source.pitr_enabled,
+            pitr_enabled=pitr_enabled,
         )
         entity.database_password = clone_parameters.database_password
         entity.pgbouncer_config = (
@@ -688,7 +689,7 @@ async def _build_branch_entity(
         enable_file_storage=deployment_params.enable_file_storage,
         status=BranchServiceStatus.CREATING,
         status_updated_at=datetime.now(UTC),
-        pitr_enabled=parameters.pitr_enabled,
+        pitr_enabled=pitr_enabled,
     )
     entity.database_password = deployment_params.database_password
     entity.pgbouncer_config = _default_pgbouncer_config()
@@ -839,6 +840,7 @@ async def _clone_branch_environment_task(
     copy_data: bool,
     pgbouncer_config: PgbouncerConfigSnapshot,
     pitr_enabled: bool,
+    source_pitr_enabled: bool,
 ) -> None:
     await _persist_branch_status(branch_id, BranchServiceStatus.CREATING)
     storage_class_name: str | None = None
@@ -855,7 +857,7 @@ async def _clone_branch_environment_task(
                 pvc_timeout_seconds=_PVC_CLONE_TIMEOUT_SECONDS,
                 pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
                 database_size=parameters.database_size,
-                pitr_enabled=pitr_enabled,
+                pitr_enabled=source_pitr_enabled,
             )
         except VelaError:
             await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
@@ -912,6 +914,7 @@ async def _restore_branch_environment_task(
     restore_database_size: int,
     pgbouncer_config: PgbouncerConfigSnapshot,
     pitr_enabled: bool,
+    source_pitr_enabled: bool,
     wal_snapshot_namespace: str | None = None,
     wal_snapshot_name: str | None = None,
     wal_snapshot_content_name: str | None = None,
@@ -933,7 +936,7 @@ async def _restore_branch_environment_task(
             pvc_timeout_seconds=_PVC_TIMEOUT_SECONDS,
             pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
             database_size=restore_database_size,
-            pitr_enabled=pitr_enabled,
+            pitr_enabled=source_pitr_enabled,
             wal_snapshot_namespace=wal_snapshot_namespace,
             wal_snapshot_name=wal_snapshot_name,
             wal_snapshot_content_name=wal_snapshot_content_name,
@@ -1340,6 +1343,7 @@ def _schedule_branch_environment_tasks(
     pgbouncer_config: PgbouncerConfigSnapshot,
     restore_snapshot: RestoreSnapshotContext | None,
     restore_database_size: int | None,
+    source_pitr_enabled: bool,
 ) -> None:
     if deployment_parameters is not None:
         asyncio.create_task(
@@ -1377,6 +1381,7 @@ def _schedule_branch_environment_tasks(
                 restore_database_size=restore_database_size,
                 pgbouncer_config=pgbouncer_config,
                 pitr_enabled=branch.pitr_enabled,
+                source_pitr_enabled=source_pitr_enabled,
                 wal_snapshot_namespace=restore_snapshot.get("wal_namespace"),
                 wal_snapshot_name=restore_snapshot.get("wal_name"),
                 wal_snapshot_content_name=restore_snapshot.get("wal_content_name"),
@@ -1398,6 +1403,7 @@ def _schedule_branch_environment_tasks(
                 copy_data=copy_data,
                 pgbouncer_config=pgbouncer_config,
                 pitr_enabled=branch.pitr_enabled,
+                source_pitr_enabled=source_pitr_enabled,
             )
         )
 
@@ -1434,6 +1440,7 @@ async def create(  # noqa: C901
 ) -> JSONResponse:
     _validate_branch_create_request(parameters)
     source, backup_entry = await _resolve_source_branch(session, parameters)
+    source_pitr_enabled = bool(source is not None and source.pitr_enabled)
     restore_snapshot_context: RestoreSnapshotContext | None = None
     if backup_entry is not None:
         restore_snapshot_context = RestoreSnapshotContext(
@@ -1513,6 +1520,13 @@ async def create(  # noqa: C901
     else:
         copy_config = bool(parameters.source and parameters.source.config_copy)
     copy_data = bool(parameters.source and parameters.source.data_copy)
+    if source is not None and parameters.source is not None:
+        # For branch cloning, keep PITR enabled when source branch already has it.
+        target_pitr_enabled = source.pitr_enabled or parameters.pitr_enabled
+    elif source is not None:
+        target_pitr_enabled = source.pitr_enabled
+    else:
+        target_pitr_enabled = parameters.pitr_enabled
 
     entity = await _build_branch_entity(
         project=project,
@@ -1520,6 +1534,7 @@ async def create(  # noqa: C901
         source=source,
         copy_config=copy_config,
         clone_parameters=clone_parameters,
+        pitr_enabled=target_pitr_enabled,
     )
     jwt_secret = secrets.token_urlsafe(32)
     anon_key, service_key = generate_keys(str(entity.id), jwt_secret)
@@ -1583,6 +1598,7 @@ async def create(  # noqa: C901
         pgbouncer_config=pgbouncer_config_snapshot,
         restore_snapshot=restore_snapshot,
         restore_database_size=restore_database_size,
+        source_pitr_enabled=source_pitr_enabled,
     )
 
     payload = (await _public(entity)).model_dump(mode="json") if response == "full" else None
