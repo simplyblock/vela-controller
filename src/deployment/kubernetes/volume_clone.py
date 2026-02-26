@@ -320,6 +320,8 @@ class _SnapshotRestoreOperation:
     storage_class_name: str
     target_database_size: int
     timeouts: CloneTimeouts
+    volume_label: str = "pgdata"
+    pvc_suffix: str = AUTOSCALER_PVC_SUFFIX
     ids: CloneIdentifiers = field(init=False)
     created_target_snapshot: bool = field(default=False, init=False)
     created_content: bool = field(default=False, init=False)
@@ -328,15 +330,17 @@ class _SnapshotRestoreOperation:
         source_ns = self.snapshot_namespace
         _, source_vm_name = get_autoscaler_vm_identity(self.source_branch_id)
         target_ns, target_vm_name = get_autoscaler_vm_identity(self.target_branch_id)
-        pvc_name = f"{source_vm_name}{AUTOSCALER_PVC_SUFFIX}"
-        target_pvc_name = f"{target_vm_name}{AUTOSCALER_PVC_SUFFIX}"
+        pvc_name = f"{source_vm_name}{self.pvc_suffix}"
+        target_pvc_name = f"{target_vm_name}{self.pvc_suffix}"
         if target_pvc_name != pvc_name:
             raise VelaKubernetesError(
                 f"Autoscaler PVC name mismatch between source ({pvc_name}) and target ({target_pvc_name})"
             )
         timestamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
-        target_snapshot = f"{str(self.target_branch_id).lower()}-restore-{timestamp}"[:63]
-        snapshot_content = f"snapcontent-restore-{str(self.target_branch_id).lower()}-{timestamp}"[:63]
+        target_snapshot = f"{str(self.target_branch_id).lower()}-res-{self.volume_label[:10]}-{timestamp}"[:63]
+        snapshot_content = f"snapcontent-res-{str(self.target_branch_id).lower()}-{self.volume_label[:10]}-{timestamp}"[
+            :63
+        ]
 
         object.__setattr__(
             self,
@@ -545,11 +549,43 @@ async def restore_branch_database_volume_from_snapshot(
     snapshot_poll_interval_seconds: float,
     pvc_timeout_seconds: float,
     pvc_poll_interval_seconds: float,
+    pitr_enabled: bool = False,
+    wal_snapshot_namespace: str | None = None,
+    wal_snapshot_name: str | None = None,
+    wal_snapshot_content_name: str | None = None,
 ) -> None:
     """
     Restore the database volume for a branch from an existing VolumeSnapshot.
     """
-    operation = _SnapshotRestoreOperation(
+    timeouts = CloneTimeouts(
+        snapshot_ready=snapshot_timeout_seconds,
+        snapshot_poll=snapshot_poll_interval_seconds,
+        pvc_ready=pvc_timeout_seconds,
+        pvc_poll=pvc_poll_interval_seconds,
+    )
+
+    operations = []
+
+    if pitr_enabled:
+        if not wal_snapshot_name or not wal_snapshot_namespace:
+            raise VelaKubernetesError("WAL snapshot namespace and name must be provided for PITR restore")
+
+        wal_operation = _SnapshotRestoreOperation(
+            source_branch_id=source_branch_id,
+            target_branch_id=target_branch_id,
+            snapshot_namespace=wal_snapshot_namespace,
+            snapshot_name=wal_snapshot_name,
+            snapshot_content_name=wal_snapshot_content_name,
+            snapshot_class=snapshot_class,
+            storage_class_name=storage_class_name,
+            target_database_size=database_size,
+            timeouts=timeouts,
+            volume_label="wal",
+            pvc_suffix=AUTOSCALER_WAL_PVC_SUFFIX,
+        )
+        operations.append(wal_operation.run())
+
+    data_operation = _SnapshotRestoreOperation(
         source_branch_id=source_branch_id,
         target_branch_id=target_branch_id,
         snapshot_namespace=snapshot_namespace,
@@ -558,11 +594,10 @@ async def restore_branch_database_volume_from_snapshot(
         snapshot_class=snapshot_class,
         storage_class_name=storage_class_name,
         target_database_size=database_size,
-        timeouts=CloneTimeouts(
-            snapshot_ready=snapshot_timeout_seconds,
-            snapshot_poll=snapshot_poll_interval_seconds,
-            pvc_ready=pvc_timeout_seconds,
-            pvc_poll=pvc_poll_interval_seconds,
-        ),
+        timeouts=timeouts,
+        volume_label="pgdata",
+        pvc_suffix=AUTOSCALER_PVC_SUFFIX,
     )
-    await operation.run()
+    operations.append(data_operation.run())
+
+    await asyncio.gather(*operations)

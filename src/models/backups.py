@@ -68,6 +68,22 @@ class BackupEntry(AsyncAttrs, Model, table=True):
         default=None,
         sa_column=Column(String(length=255), nullable=True),
     )
+    wal_snapshot_uuid: str | None = Field(
+        default=None,
+        sa_column=Column(String(length=64), nullable=True),
+    )
+    wal_snapshot_name: str | None = Field(
+        default=None,
+        sa_column=Column(String(length=255), nullable=True),
+    )
+    wal_snapshot_namespace: str | None = Field(
+        default=None,
+        sa_column=Column(String(length=255), nullable=True),
+    )
+    wal_snapshot_content_name: str | None = Field(
+        default=None,
+        sa_column=Column(String(length=255), nullable=True),
+    )
 
 
 class BackupLog(AsyncAttrs, Model, table=True):

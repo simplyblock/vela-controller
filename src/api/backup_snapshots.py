@@ -4,14 +4,14 @@ import asyncio
 import logging
 import os
 import re
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from uuid import UUID
 
 import httpx
+from pydantic import BaseModel
 
 from .._util import Identifier, quantity_to_bytes
-from ..deployment import AUTOSCALER_PVC_SUFFIX, get_autoscaler_vm_identity
+from ..deployment import AUTOSCALER_PVC_SUFFIX, AUTOSCALER_WAL_PVC_SUFFIX, get_autoscaler_vm_identity
 from ..deployment.kubernetes.snapshot import (
     create_snapshot_from_pvc,
     ensure_snapshot_absent,
@@ -45,13 +45,17 @@ def parse_snapshot_id(handle: str) -> UUID:
     return UUID(match.group("id"))
 
 
-@dataclass(frozen=True)
-class SnapshotDetails:
+class SnapshotDetails(BaseModel):
     name: str
     namespace: str
     content_name: str | None
     snapshot_uuid: UUID
     size_bytes: int | None
+
+
+class BranchSnapshotDetails(BaseModel):
+    snapshot: SnapshotDetails
+    wal_snapshot: SnapshotDetails | None = None
 
 
 def _sanitize_label(label: str) -> str:
@@ -84,74 +88,90 @@ async def create_branch_snapshot(
     poll_interval: float,
     label: str,
     time_limit: float,
-) -> SnapshotDetails:
+    pitr_enabled: bool = False,
+) -> BranchSnapshotDetails:
     namespace, autoscaler_vm_name = get_autoscaler_vm_identity(branch_id)
     pvc_name = f"{autoscaler_vm_name}{AUTOSCALER_PVC_SUFFIX}"
     snapshot_name = _build_snapshot_name(label=label, backup_id=backup_id)
 
-    logger.info("Creating VolumeSnapshot %s/%s for branch %s", namespace, snapshot_name, branch_id)
-    try:
-        async with asyncio.timeout(time_limit):
-            await create_snapshot_from_pvc(
-                namespace=namespace,
-                name=snapshot_name,
-                snapshot_class=snapshot_class,
-                pvc_name=pvc_name,
-            )
-            snapshot = await wait_snapshot_ready(
+    wal_pvc_name = f"{autoscaler_vm_name}{AUTOSCALER_WAL_PVC_SUFFIX}"
+    wal_snapshot_name = _build_snapshot_name(label=f"{label}-wal", backup_id=backup_id)
+
+    async def _snapshot_pvc(pvc: str, snap: str) -> SnapshotDetails:
+        logger.info("Creating VolumeSnapshot %s/%s for branch %s", namespace, snap, branch_id)
+        try:
+            async with asyncio.timeout(time_limit):
+                await create_snapshot_from_pvc(
+                    namespace=namespace,
+                    name=snap,
+                    snapshot_class=snapshot_class,
+                    pvc_name=pvc,
+                )
+                snapshot = await wait_snapshot_ready(
+                    namespace,
+                    snap,
+                    timeout=time_limit,
+                    poll_interval=poll_interval,
+                )
+        except TimeoutError as exc:
+            logger.exception(
+                "Timed out creating VolumeSnapshot %s/%s for branch %s within %s seconds",
                 namespace,
-                snapshot_name,
-                timeout=time_limit,
+                snap,
+                branch_id,
+                time_limit,
+            )
+            raise VelaSnapshotTimeoutError(
+                f"Timed out creating VolumeSnapshot {namespace}/{snap} for branch {branch_id}"
+            ) from exc
+
+        status = snapshot.get("status") or {}
+        content_name_payload = status.get("boundVolumeSnapshotContentName")
+        content_name = content_name_payload if isinstance(content_name_payload, str) else None
+        size_bytes = quantity_to_bytes(status.get("restoreSize"))
+
+        try:
+            if content_name is None:
+                raise ValueError("missing boundVolumeSnapshotContentName")
+            handle = (await read_snapshot_content(content_name) or {}).get("status", {}).get("snapshotHandle")
+            snapshot_uuid = parse_snapshot_id(handle)
+        except (TypeError, ValueError, VelaKubernetesError, httpx.HTTPError) as exc:
+            await _cleanup_failed_snapshot_creation(
+                namespace=namespace,
+                snapshot_name=snap,
+                content_name=content_name,
+                time_limit=time_limit,
                 poll_interval=poll_interval,
             )
-    except TimeoutError as exc:
-        logger.exception(
-            "Timed out creating VolumeSnapshot %s/%s for branch %s within %s seconds",
+            raise VelaKubernetesError(f"Failed to derive snapshot UUID for snapshot {namespace}/{snap}") from exc
+
+        logger.info(
+            "VolumeSnapshot %s/%s ready (content=%s size_bytes=%s snapshot_uuid=%s)",
             namespace,
-            snapshot_name,
-            branch_id,
-            time_limit,
+            snap,
+            content_name,
+            size_bytes,
+            snapshot_uuid,
         )
-        raise VelaSnapshotTimeoutError(
-            f"Timed out creating VolumeSnapshot {namespace}/{snapshot_name} for branch {branch_id}"
-        ) from exc
 
-    status = snapshot.get("status") or {}
-    content_name_payload = status.get("boundVolumeSnapshotContentName")
-    content_name = content_name_payload if isinstance(content_name_payload, str) else None
-    size_bytes = quantity_to_bytes(status.get("restoreSize"))
-
-    try:
-        if content_name is None:
-            raise ValueError("missing boundVolumeSnapshotContentName")
-        handle = (await read_snapshot_content(content_name) or {}).get("status", {}).get("snapshotHandle")
-        snapshot_uuid = parse_snapshot_id(handle)
-    except (TypeError, ValueError, VelaKubernetesError, httpx.HTTPError) as exc:
-        await _cleanup_failed_snapshot_creation(
+        return SnapshotDetails(
+            name=snap,
             namespace=namespace,
-            snapshot_name=snapshot_name,
             content_name=content_name,
-            time_limit=time_limit,
-            poll_interval=poll_interval,
+            snapshot_uuid=snapshot_uuid,
+            size_bytes=size_bytes,
         )
-        raise VelaKubernetesError(f"Failed to derive snapshot UUID for snapshot {namespace}/{snapshot_name}") from exc
 
-    logger.info(
-        "VolumeSnapshot %s/%s ready (content=%s size_bytes=%s snapshot_uuid=%s)",
-        namespace,
-        snapshot_name,
-        content_name,
-        size_bytes,
-        snapshot_uuid,
-    )
+    tasks = [_snapshot_pvc(pvc_name, snapshot_name)]
+    if pitr_enabled:
+        tasks.append(_snapshot_pvc(wal_pvc_name, wal_snapshot_name))
 
-    return SnapshotDetails(
-        name=snapshot_name,
-        namespace=namespace,
-        content_name=content_name,
-        snapshot_uuid=snapshot_uuid,
-        size_bytes=size_bytes,
-    )
+    results = await asyncio.gather(*tasks)
+
+    data_snapshot = results[0]
+    wal_snapshot = results[1] if pitr_enabled else None
+
+    return BranchSnapshotDetails(snapshot=data_snapshot, wal_snapshot=wal_snapshot)
 
 
 async def delete_branch_snapshot(
