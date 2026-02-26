@@ -1,9 +1,8 @@
 database:
   postgresVersion: "17"
   replicas: 3
-  instanceProfile:
-    cpu: "1"
-    memory: "1Gi"
+  cpu: "1"
+  memory: "1Gi"
 
 podSecurityContext:
   runAsNonRoot: false
@@ -62,7 +61,7 @@ prometheus:
 monitoring:
   VELA_GRAFANA_SECURITY_ADMIN_USER: admin
   VELA_GRAFANA_SECURITY_ADMIN_PASSWORD: password
-  
+
 studio:
   enabled: true
   image:

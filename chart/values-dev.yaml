@@ -1,8 +1,7 @@
 database:
   replicas: 1
-  instanceProfile:
-    cpu: "500m"
-    memory: "0.5Gi"
+  cpu: "500m"
+  memory: "0.5Gi"
 
 controller:
   env:
