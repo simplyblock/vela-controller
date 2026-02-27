@@ -18,7 +18,7 @@ from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
-from ....._util import DEFAULT_DB_NAME, DEFAULT_DB_USER, GB, GIB, Identifier
+from ....._util import DEFAULT_DB_NAME, DEFAULT_DB_USER, Identifier, storage_backend_bytes_to_db_bytes
 from ....._util.crypto import encrypt_with_passphrase, generate_keys
 from .....deployment import (
     AUTOSCALER_PVC_SUFFIX,
@@ -437,14 +437,10 @@ class _DeploymentResourceValues(TypedDict):
     iops: int | None
 
 
-def _round_up_size_to_gb(value: int) -> int:
-    return ((value + GB - 1) // GB) * GB
-
-
 def _normalize_size_from_source(value: int | None) -> int | None:
     if value is None:
         return None
-    return _round_up_size_to_gb(value)
+    return storage_backend_bytes_to_db_bytes(value)
 
 
 def _base_deployment_resources(
@@ -597,7 +593,7 @@ def _resolve_database_size_against_source(
             status_code=422,
             detail="Selected source does not expose a valid database size",
         )
-    normalized_source_size = _round_up_size_to_gb(source_database_size)
+    normalized_source_size = storage_backend_bytes_to_db_bytes(source_database_size)
     if requested_database_size is None:
         return normalized_source_size
     if requested_database_size <= source_database_size:
@@ -647,7 +643,7 @@ async def _build_branch_entity(
             raise AssertionError("clone_parameters required when cloning from a source branch")
 
         # storage backend uses GiB as units. So convert the values to GB before presisting to DB
-        database_size_for_persistence = ((clone_parameters.database_size + GIB - 1) // GIB) * GB
+        database_size_for_persistence = storage_backend_bytes_to_db_bytes(clone_parameters.database_size)
         entity = Branch(
             name=parameters.name,
             project_id=project.id,
@@ -734,14 +730,14 @@ async def _apply_resize_operations(
     if "database_size" in effective_parameters:
         new_database_size = effective_parameters["database_size"]
         pvc_name = f"{autoscaler_vm_name}{AUTOSCALER_PVC_SUFFIX}"
-        storage_size_gb = str(new_database_size)
-        await kube_service.resize_pvc_storage(namespace, pvc_name, storage_size_gb)
+        storage_size_bytes = str(new_database_size)
+        await kube_service.resize_pvc_storage(namespace, pvc_name, storage_size_bytes)
 
     if "storage_size" in effective_parameters:
         new_storage_size = effective_parameters["storage_size"]
         pvc_name = f"{autoscaler_vm_name}{STORAGE_PVC_SUFFIX}"
-        storage_size_gb = str(new_storage_size)
-        await kube_service.resize_pvc_storage(namespace, pvc_name, storage_size_gb)
+        storage_size_bytes = str(new_storage_size)
+        await kube_service.resize_pvc_storage(namespace, pvc_name, storage_size_bytes)
 
     if "iops" in effective_parameters:
         new_iops = effective_parameters["iops"]
@@ -1860,6 +1856,18 @@ async def resize(
     branch: BranchDep,
 ):
     branch_in_session = await session.merge(branch)
+
+    if parameters.database_size is not None:
+        current_database_size = branch_in_session.database_size
+        requested_database_size = parameters.database_size
+        if current_database_size is not None and requested_database_size < current_database_size:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Reducing branch database size is not supported. "
+                    f"Current allocation is {current_database_size} bytes, requested {requested_database_size} bytes."
+                ),
+            )
 
     if parameters.storage_size is not None:
         current_storage = branch_in_session.storage_size
