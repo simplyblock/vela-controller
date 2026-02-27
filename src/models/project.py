@@ -13,10 +13,11 @@ from .._util import (
     VCPU_MILLIS_MIN,
     Identifier,
     Name,
+    empty,
 )
 from ._util import Model
 from .organization import Organization
-from .resources import ResourceLimit, ResourceLimitsPublic
+from .resources import ResourceLimit, ResourceLimitsPublic, ResourceType
 
 if TYPE_CHECKING:
     from .branch import Branch
@@ -45,6 +46,12 @@ class Project(AsyncAttrs, Model, table=True):
     organization: Organization = Relationship(back_populates="projects")
     branches: list["Branch"] = Relationship(back_populates="project", cascade_delete=True)
     limits: list[ResourceLimit] = Relationship(back_populates="project", cascade_delete=True)
+
+    @property
+    async def storage_enabled(self):
+        return not empty(
+            limit for limit in (await self.awaitable_attrs.limits) if limit.resource == ResourceType.storage_size
+        )
 
     __table_args__ = (UniqueConstraint("organization_id", "name", name="unique_project_name"),)
 

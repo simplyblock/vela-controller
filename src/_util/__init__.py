@@ -86,6 +86,17 @@ StatusType = Literal[
 ]
 
 
+def empty(xs):
+    """Returns whether the collection is empty"""
+    it = iter(xs)
+
+    try:
+        next(it)
+        return False
+    except StopIteration:
+        return True
+
+
 def single(xs):
     """Returns the single value in the passed collection
 
