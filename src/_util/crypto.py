@@ -70,12 +70,20 @@ def decrypt_with_base64_key(ciphertext: str, key: str) -> str:
     return plaintext.decode("utf-8")
 
 
-def generate_keys(branch_id: str, jwt_secret: str) -> tuple[str, str]:
+def generate_keys(branch_id: str, jwt_secret: str, expires_at: datetime | None = None) -> tuple[str, str]:
     """Generate anon and service role keys for a branch."""
 
-    iat = int(datetime.now(UTC).timestamp())
-    # 10 years expiration
-    exp = int((datetime.now(UTC) + timedelta(days=365 * 10)).timestamp())
+    now = datetime.now(UTC)
+    iat = int(now.timestamp())
+    if expires_at is not None:
+        if expires_at.tzinfo is None:
+            raise ValueError("expires_at must include a timezone.")
+        expires_at = expires_at.astimezone(UTC)
+        if expires_at <= now:
+            raise ValueError("expires_at must be in the future.")
+    # Default expiration is 10 years from issuance.
+    expiration_time = expires_at or (now + timedelta(days=365 * 10))
+    exp = int(expiration_time.timestamp())
 
     anon_payload = {
         "iss": "vela",

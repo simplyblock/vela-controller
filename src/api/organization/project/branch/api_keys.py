@@ -1,8 +1,9 @@
 import hashlib
+from datetime import UTC, datetime
 from typing import Literal, cast
 
 from fastapi import APIRouter, HTTPException, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy.exc import IntegrityError
 
 from ....._util import Name
@@ -24,6 +25,7 @@ class ApiKeyDetails(BaseModel):
     hash: str
     prefix: str
     description: str
+    expiry_timestamp: datetime
 
     @classmethod
     def from_entry(cls, entry: "BranchApiKey") -> "ApiKeyDetails":
@@ -37,6 +39,7 @@ class ApiKeyDetails(BaseModel):
             hash=hashlib.sha256(key.encode()).hexdigest(),
             prefix=key[:5],
             description=description,
+            expiry_timestamp=entry.expiry_timestamp,
         )
 
 
@@ -61,6 +64,17 @@ class ApiKeyCreate(BaseModel):
     name: Name
     role: ApiKeyRole
     description: str | None = None
+    expiry_timestamp: datetime
+
+    @field_validator("expiry_timestamp")
+    @classmethod
+    def validate_expiry_timestamp(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("expiry_timestamp must include a timezone.")
+        expiry = value.astimezone(UTC)
+        if expiry <= datetime.now(UTC):
+            raise ValueError("expiry_timestamp must be in the future.")
+        return expiry
 
 
 @api.post(
@@ -80,7 +94,7 @@ async def create(
     if not branch.jwt_secret:
         raise HTTPException(status_code=400, detail="Branch JWT secret is not configured.")
 
-    anon_key, service_key = generate_keys(str(branch.id), branch.jwt_secret)
+    anon_key, service_key = generate_keys(str(branch.id), branch.jwt_secret, expires_at=parameters.expiry_timestamp)
     api_key = anon_key if parameters.role == "anon" else service_key
     entry = BranchApiKey(
         branch_id=branch.id,
@@ -88,6 +102,7 @@ async def create(
         role=parameters.role,
         api_key=api_key,
         description=parameters.description,
+        expiry_timestamp=parameters.expiry_timestamp,
     )
     session.add(entry)
     try:
