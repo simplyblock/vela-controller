@@ -209,6 +209,15 @@ def mb_to_bytes(value: int) -> int:
     return value * MB
 
 
+def storage_backend_bytes_to_db_bytes(value: int) -> int:
+    """Map a storage backend byte value (which may be provisioned in GiB) to the requested DB byte value (in GB)."""
+    # Round up to the next decimal-GB boundary.
+    # Examples:
+    # - 84_825_604_096 (79 GiB) -> 84.82 GB --> 85_000_000_000 (85 GB)
+    # - 84_000_000_000 (exactly 84 GB) -> 84_000_000_000 (84 GB)
+    return ((value + GB - 1) // GB) * GB
+
+
 def _normalize_quantity(value: str | Decimal | None) -> Decimal | None:
     """Return the parsed decimal quantity or ``None`` when the input is empty."""
 

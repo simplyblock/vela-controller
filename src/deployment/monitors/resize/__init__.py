@@ -37,6 +37,7 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from ulid import ULID
 
+from ...._util import storage_backend_bytes_to_db_bytes
 from ....api._util.resourcelimit import create_or_update_branch_provisioning
 from ....api.db import engine
 from ....deployment import deployment_branch
@@ -111,22 +112,23 @@ async def _apply_volume_status(
             status_updated = True
 
         if status_updated and status == "COMPLETED" and capacity is not None:
+            normalized_capacity = storage_backend_bytes_to_db_bytes(capacity)
             if resource == "storage":
                 await create_or_update_branch_provisioning(
                     session,
                     branch,
-                    ResourceLimitsPublic(storage_size=capacity),
+                    ResourceLimitsPublic(storage_size=normalized_capacity),
                     commit=False,
                 )
-                branch.storage_size = capacity
+                branch.storage_size = normalized_capacity
             elif resource == "database":
                 await create_or_update_branch_provisioning(
                     session,
                     branch,
-                    ResourceLimitsPublic(database_size=capacity),
+                    ResourceLimitsPublic(database_size=normalized_capacity),
                     commit=False,
                 )
-                branch.database_size = capacity
+                branch.database_size = normalized_capacity
 
         await session.commit()
 
