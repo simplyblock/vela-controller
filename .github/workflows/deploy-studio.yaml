@@ -14,6 +14,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.action == 'update-vela-studio-dev' && 'dev' || github.event.repository.default_branch }}
 
       - name: Set up Helm
         uses: azure/setup-helm@v4
