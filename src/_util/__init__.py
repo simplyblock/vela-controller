@@ -65,6 +65,8 @@ DEFAULT_DB_NAME = "postgres"
 DEFAULT_DB_USER = "postgres"
 
 
+
+
 def single(xs):
     """Returns the single value in the passed collection
 
