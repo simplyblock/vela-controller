@@ -20,12 +20,13 @@ from ....models.project import (
     ProjectPublic,
     ProjectUpdate,
 )
-from ....models.resources import EntityType, ResourceLimit, ResourceType
+from ....models.resources import EntityType, ResourceLimit, ResourceLimitsPublic, ResourceType
 from ..._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ..._util.resourcelimit import (
     delete_branch_provisioning,
     get_organization_resource_limits,
     get_project_limit_totals,
+    project_available,
 )
 from ...auth import security
 from ...db import SessionDep
@@ -313,6 +314,7 @@ async def _persist_project_with_limits(
         organization=organization,
         name=parameters.name,
         max_backups=parameters.max_backups,
+        storage_enabled=parameters.project_limits.storage_size is not None,
     )
     session.add(entity)
     await session.flush()
@@ -553,6 +555,18 @@ async def resume(session: SessionDep, _organization: OrganizationDep, project: P
     project.status = "STARTED"
     await session.commit()
     return Response(status_code=204)
+
+
+@instance_api.get(
+    "/resources/available",
+    name="organizations:projects:resources:available",
+    response_model=ResourceLimitsPublic,
+    responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
+)
+async def resource_availability(session: SessionDep, project: ProjectDep):
+    available = (await project_available(session, project)).to_public()
+    response_data = available.model_dump(exclude=None if (await project.storage_enabled) else {"storage_size"})
+    return JSONResponse(content=response_data)
 
 
 api.include_router(instance_api)

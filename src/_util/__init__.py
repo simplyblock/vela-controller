@@ -86,6 +86,17 @@ StatusType = Literal[
 ]
 
 
+def empty(xs):
+    """Returns whether the collection is empty"""
+    it = iter(xs)
+
+    try:
+        next(it)
+        return False
+    except StopIteration:
+        return True
+
+
 def single(xs):
     """Returns the single value in the passed collection
 
@@ -98,6 +109,26 @@ def single(xs):
         x = next(it)
     except StopIteration:
         raise ValueError("No values present") from None
+
+    try:
+        next(it)
+        raise ValueError("Multiple values present")
+    except StopIteration:
+        return x
+
+
+def single_or_none(xs):
+    """Returns the single value in the passed collection or none if empty
+
+    If `xs` contains multiple values, a ValueError error is raised.
+    """
+
+    it = iter(xs)
+
+    try:
+        x = next(it)
+    except StopIteration:
+        return None
 
     try:
         next(it)
