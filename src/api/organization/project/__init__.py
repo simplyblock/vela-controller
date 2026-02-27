@@ -313,6 +313,7 @@ async def _persist_project_with_limits(
         organization=organization,
         name=parameters.name,
         max_backups=parameters.max_backups,
+        storage_enabled=parameters.project_limits.storage_size is not None,
     )
     session.add(entity)
     await session.flush()
