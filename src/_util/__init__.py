@@ -3,7 +3,7 @@ import re
 import subprocess
 from datetime import timedelta
 from decimal import Decimal
-from typing import Annotated, Any, Final, Literal
+from typing import Annotated, Any, Final
 
 from kubernetes.utils import parse_quantity
 from pydantic import BeforeValidator, Field, PlainSerializer, StringConstraints, WithJsonSchema
