@@ -22,12 +22,6 @@ variable "simplyblock_endpoint" {
 }
 
 
-variable "kubevirt_version" {
-  description = "KubeVirt version to deploy"
-  type        = string
-  default     = "v1.7.0-beta.0"
-}
-
 variable "external_ip" {
   description = "External IP address to use"
   type        = string
