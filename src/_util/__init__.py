@@ -1,7 +1,7 @@
 import asyncio
 import subprocess
 from decimal import Decimal
-from typing import Annotated, Any, Final, Literal
+from typing import Annotated, Any, Final
 
 from kubernetes.utils import parse_quantity
 from pydantic import BeforeValidator, Field, PlainSerializer, StringConstraints, WithJsonSchema
