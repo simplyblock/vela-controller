@@ -409,6 +409,7 @@ def _configure_vela_values(
     pgbouncer_config: Mapping[str, int] | None,
     enable_file_storage: bool,
     pitr_enabled: bool,
+    branch_id: Identifier,
 ) -> dict[str, Any]:
     pgbouncer_values = values_content.setdefault("pgbouncer", {})
     pgbouncer_cfg = pgbouncer_values.setdefault("config", {})
@@ -488,6 +489,9 @@ def _configure_vela_values(
     autoscaler_persistence["storageClassName"] = storage_class_name
     autoscaler_persistence.setdefault("accessModes", ["ReadWriteMany"])
 
+    autoscaler_tls = autoscaler_spec.setdefault("tls", {})
+    autoscaler_tls["serverName"] = branch_db_domain(branch_id)
+
     return values_content
 
 
@@ -535,6 +539,7 @@ async def create_vela_config(
         pgbouncer_config=pgbouncer_config,
         enable_file_storage=parameters.enable_file_storage,
         pitr_enabled=pitr_enabled,
+        branch_id=branch_id,
     )
 
     with (
