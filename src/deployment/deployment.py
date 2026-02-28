@@ -9,7 +9,6 @@ from .._util import (
     MEMORY_CONSTRAINTS,
     STORAGE_SIZE_CONSTRAINTS,
     DBPassword,
-    StatusType,
 )
 
 _SUPPORTED_DATABASE_IMAGE_TAG = {
@@ -43,7 +42,3 @@ class DeploymentParameters(BaseModel):
         if self.enable_file_storage and self.storage_size is None:
             raise ValueError("storage_size is required when file storage is enabled")
         return self
-
-
-class DeploymentStatus(BaseModel):
-    status: StatusType

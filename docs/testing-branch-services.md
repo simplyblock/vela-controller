@@ -126,9 +126,3 @@ sha256sum asdf.txt asdf-out.txt
 ### Debugging
 
 We use Alpine as the base image. The build recipe is available at http://github.com/simplyblock/image-tools/.
-
-To access the KubeVirt VM console:
-
-```
-kubectl virt -n <namespace> console vela-db
-```
