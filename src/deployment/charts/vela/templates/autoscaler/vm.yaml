@@ -83,7 +83,7 @@ spec:
       protocol: TCP
   schedulerName: autoscale-scheduler
   disks:
-    - name: tls
+    - name: dbcerts
       mountPath: "/vela/certs"
       secret:
         secretName: "db-tls-secret"
