@@ -1,11 +1,12 @@
 import hashlib
-from typing import Literal, cast
+from datetime import UTC, datetime, timedelta
+from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, HTTPException, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, BeforeValidator, field_validator
 from sqlalchemy.exc import IntegrityError
 
-from ....._util import Name
+from ....._util import Name, parse_compact_timedelta
 from ....._util.crypto import generate_keys
 from .....models.branch import BranchApiKey
 from ...._util import Conflict, Forbidden, NotFound, Unauthenticated
@@ -24,6 +25,7 @@ class ApiKeyDetails(BaseModel):
     hash: str
     prefix: str
     description: str
+    expiry_timestamp: datetime
 
     @classmethod
     def from_entry(cls, entry: "BranchApiKey") -> "ApiKeyDetails":
@@ -37,6 +39,7 @@ class ApiKeyDetails(BaseModel):
             hash=hashlib.sha256(key.encode()).hexdigest(),
             prefix=key[:5],
             description=description,
+            expiry_timestamp=entry.expiry_timestamp,
         )
 
 
@@ -61,6 +64,14 @@ class ApiKeyCreate(BaseModel):
     name: Name
     role: ApiKeyRole
     description: str | None = None
+    expiry: Annotated[timedelta, BeforeValidator(parse_compact_timedelta)]
+
+    @field_validator("expiry")
+    @classmethod
+    def validate_expiry(cls, value: timedelta) -> timedelta:
+        if value <= timedelta(0):
+            raise ValueError("expiry must be greater than 0.")
+        return value
 
 
 @api.post(
@@ -80,7 +91,8 @@ async def create(
     if not branch.jwt_secret:
         raise HTTPException(status_code=400, detail="Branch JWT secret is not configured.")
 
-    anon_key, service_key = generate_keys(str(branch.id), branch.jwt_secret)
+    expiry_timestamp = datetime.now(UTC) + parameters.expiry
+    anon_key, service_key = generate_keys(str(branch.id), branch.jwt_secret, expires_at=expiry_timestamp)
     api_key = anon_key if parameters.role == "anon" else service_key
     entry = BranchApiKey(
         branch_id=branch.id,
@@ -88,6 +100,7 @@ async def create(
         role=parameters.role,
         api_key=api_key,
         description=parameters.description,
+        expiry_timestamp=expiry_timestamp,
     )
     session.add(entry)
     try:

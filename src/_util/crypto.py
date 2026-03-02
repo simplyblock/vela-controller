@@ -10,6 +10,16 @@ from Crypto.Util.Padding import pad, unpad
 _SALTED_PREFIX = b"Salted__"
 
 
+def normalize_future_utc_datetime(value: datetime, field_name: str) -> datetime:
+    """Validate that `value` is timezone-aware, in the future, and return it in UTC."""
+    if value.tzinfo is None:
+        raise ValueError(f"{field_name} must include a timezone.")
+    normalized = value.astimezone(UTC)
+    if normalized <= datetime.now(UTC):
+        raise ValueError(f"{field_name} must be in the future.")
+    return normalized
+
+
 def _evp_bytes_to_key(passphrase: str, salt: bytes) -> tuple[bytes, bytes]:
     """Derive an AES key and IV from a passphrase following OpenSSL's EVP_BytesToKey."""
     derived = b""
@@ -70,12 +80,16 @@ def decrypt_with_base64_key(ciphertext: str, key: str) -> str:
     return plaintext.decode("utf-8")
 
 
-def generate_keys(branch_id: str, jwt_secret: str) -> tuple[str, str]:
+def generate_keys(branch_id: str, jwt_secret: str, expires_at: datetime | None = None) -> tuple[str, str]:
     """Generate anon and service role keys for a branch."""
 
-    iat = int(datetime.now(UTC).timestamp())
-    # 10 years expiration
-    exp = int((datetime.now(UTC) + timedelta(days=365 * 10)).timestamp())
+    now = datetime.now(UTC)
+    iat = int(now.timestamp())
+    if expires_at is not None:
+        expires_at = normalize_future_utc_datetime(expires_at, "expires_at")
+    # Default expiration is 90 days from issuance.
+    expiration_time = expires_at or (now + timedelta(days=90))
+    exp = int(expiration_time.timestamp())
 
     anon_payload = {
         "iss": "vela",

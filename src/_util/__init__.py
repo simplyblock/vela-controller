@@ -1,5 +1,7 @@
 import asyncio
+import re
 import subprocess
+from datetime import timedelta
 from decimal import Decimal
 from typing import Annotated, Any, Final, Literal
 
@@ -268,3 +270,29 @@ def permissive_numeric_timedelta(value: Any) -> Any:
             pass
 
     return value
+
+
+_COMPACT_DURATION_RE = re.compile(r"^\s*(?P<amount>\d+(?:\.\d+)?)\s*(?P<unit>m|h|d|w)\s*$", re.IGNORECASE)
+_COMPACT_DURATION_UNIT_TO_SECONDS: Final[dict[str, float]] = {
+    "m": 60.0,
+    "h": 3600.0,
+    "d": 86400.0,
+    "w": 604800.0,
+}
+
+
+def parse_compact_timedelta(value: Any) -> Any:
+    """Parse compact duration strings (`m`, `h`, `d`, `w`) into a timedelta."""
+
+    if isinstance(value, timedelta):
+        return value
+    if not isinstance(value, str):
+        return value
+
+    match = _COMPACT_DURATION_RE.fullmatch(value)
+    if not match:
+        return value
+
+    amount = float(match.group("amount"))
+    unit = match.group("unit").lower()
+    return timedelta(seconds=amount * _COMPACT_DURATION_UNIT_TO_SECONDS[unit])
