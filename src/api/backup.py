@@ -50,6 +50,9 @@ VOLUME_SNAPSHOT_CLASS = os.environ.get("VOLUME_SNAPSHOT_CLASS", "simplyblock-csi
 MANUAL_BACKUP_TIMEOUT_SEC = int(os.environ.get("MANUAL_BACKUP_TIMEOUT_SEC", "10"))
 
 UNIT_MULTIPLIER = {
+    "sec": 1,
+    "second": 1,
+    "seconds": 1,
     "min": 60,
     "minute": 60,
     "minutes": 60,
@@ -67,6 +70,9 @@ UNIT_MULTIPLIER = {
 VALID_UNITS = set(UNIT_MULTIPLIER.keys())
 
 INTERVAL_LIMITS = {
+    "second": 59,
+    "seconds": 59,
+    "sec": 59,
     "minute": 59,
     "minutes": 59,
     "min": 59,

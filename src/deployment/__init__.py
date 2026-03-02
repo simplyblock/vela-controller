@@ -87,10 +87,23 @@ DNSRecordType = Literal["AAAA", "CNAME"]
 # TODO: Autoscaler VM's overlay IP is currently IPv4 only.
 # https://github.com/simplyblock/vela/issues/347
 DATABASE_DNS_RECORD_TYPE: Literal["CNAME"] = "CNAME"
+PITR_WAL_PVC_SIZE = "100Gi"
+_DATA_IOPS_PERCENT = 75
+_WAL_IOPS_PERCENT = 25
 
 
 def branch_storage_class_name(branch_id: Identifier) -> str:
     return f"sc-{str(branch_id).lower()}"
+
+
+def branch_wal_storage_class_name(branch_id: Identifier) -> str:
+    return f"{branch_storage_class_name(branch_id)}-wal"
+
+
+def split_branch_iops(iops: int) -> tuple[int, int]:
+    data_iops = max(1, (iops * _DATA_IOPS_PERCENT) // 100)
+    wal_iops = max(1, iops - data_iops)
+    return data_iops, wal_iops
 
 
 def deployment_branch(namespace: str) -> ULID:
@@ -331,6 +344,11 @@ async def resolve_autoscaler_volume_identifiers(namespace: str) -> tuple[UUID, U
     return await _resolve_volume_identifiers(namespace, pvc_name)
 
 
+async def resolve_autoscaler_wal_volume_identifiers(namespace: str) -> tuple[UUID, UUID | None]:
+    pvc_name = f"{_autoscaler_vm_name()}{AUTOSCALER_WAL_PVC_SUFFIX}"
+    return await _resolve_volume_identifiers(namespace, pvc_name)
+
+
 async def resolve_branch_database_volume_size(branch_id: Identifier) -> int:
     namespace = deployment_namespace(branch_id)
     volume, _ = await resolve_autoscaler_volume_identifiers(namespace)
@@ -342,17 +360,27 @@ async def resolve_branch_database_volume_size(branch_id: Identifier) -> int:
         raise VelaDeploymentError(f"Failed to resolve database volume size for branch {branch_id}") from exc
 
 
-async def update_branch_volume_iops(branch_id: Identifier, iops: int) -> None:
+async def update_branch_volume_iops(branch_id: Identifier, iops: int, *, pitr_enabled: bool = False) -> None:
     namespace = deployment_namespace(branch_id)
+    data_iops, wal_iops = split_branch_iops(iops) if pitr_enabled else (iops, None)
 
     volume, _ = await resolve_autoscaler_volume_identifiers(namespace)
     try:
         async with create_simplyblock_api() as sb_api:
-            await sb_api.update_volume(volume=volume, payload={"max_rw_iops": iops})
+            await sb_api.update_volume(volume=volume, payload={"max_rw_iops": data_iops})
+            if pitr_enabled and wal_iops is not None:
+                wal_volume, _ = await resolve_autoscaler_wal_volume_identifiers(namespace)
+                await sb_api.update_volume(volume=wal_volume, payload={"max_rw_iops": wal_iops})
     except VelaSimplyblockAPIError as exc:
         raise VelaDeploymentError("Failed to update volume") from exc
 
-    logger.info("Updated Simplyblock volume %s IOPS to %s", volume, iops)
+    logger.info(
+        "Updated Simplyblock data volume %s IOPS to %s (pitr_enabled=%s, wal_iops=%s)",
+        volume,
+        data_iops,
+        pitr_enabled,
+        wal_iops,
+    )
 
 
 async def ensure_branch_storage_class(branch_id: Identifier, *, iops: int) -> str:
@@ -372,6 +400,34 @@ async def ensure_branch_storage_class(branch_id: Identifier, *, iops: int) -> st
     )
     await kube_service.apply_storage_class(storage_class_manifest)
     return storage_class_name
+
+
+async def ensure_branch_storage_classes(
+    branch_id: Identifier,
+    *,
+    iops: int,
+    pitr_enabled: bool,
+) -> tuple[str, str | None]:
+    if not pitr_enabled:
+        storage_class_name = await ensure_branch_storage_class(branch_id, iops=iops)
+        return storage_class_name, None
+
+    data_iops, wal_iops = split_branch_iops(iops)
+    data_storage_class_name = await ensure_branch_storage_class(branch_id, iops=data_iops)
+    wal_storage_class_name = branch_wal_storage_class_name(branch_id)
+    try:
+        await kube_service.get_storage_class(wal_storage_class_name)
+        logger.info("StorageClass %s already exists; reusing", wal_storage_class_name)
+    except VelaKubernetesError:
+        base_storage_class = await kube_service.get_storage_class(SIMPLYBLOCK_CSI_STORAGE_CLASS)
+        wal_storage_class_manifest = _build_storage_class_manifest(
+            storage_class_name=wal_storage_class_name,
+            iops=wal_iops,
+            base_storage_class=base_storage_class,
+        )
+        await kube_service.apply_storage_class(wal_storage_class_manifest)
+
+    return data_storage_class_name, wal_storage_class_name
 
 
 def _load_compose_manifest() -> dict[str, Any]:
@@ -405,6 +461,7 @@ def _configure_vela_values(
     jwt_secret: str,
     pgbouncer_admin_password: str,
     storage_class_name: str,
+    wal_storage_class_name: str | None,
     use_existing_db_pvc: bool,
     pgbouncer_config: Mapping[str, int] | None,
     enable_file_storage: bool,
@@ -455,8 +512,8 @@ def _configure_vela_values(
     pg_wal_spec["enabled"] = pitr_enabled
     wal_persistence = pg_wal_spec.setdefault("persistence", {})
     wal_persistence["create"] = not use_existing_db_pvc
-    wal_persistence["size"] = str(parameters.database_size)
-    wal_persistence["storageClassName"] = storage_class_name
+    wal_persistence["size"] = PITR_WAL_PVC_SIZE
+    wal_persistence["storageClassName"] = wal_storage_class_name or storage_class_name
     wal_persistence["claimName"] = wal_persistence.get("claimName") or (
         f"{_autoscaler_vm_name()}{AUTOSCALER_WAL_PVC_SUFFIX}"
     )
@@ -524,13 +581,18 @@ async def create_vela_config(
     postgresql_resource = resources.files(__package__).joinpath("postgresql.conf")
     values_content = _load_chart_values(chart)
 
-    storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
+    storage_class_name, wal_storage_class_name = await ensure_branch_storage_classes(
+        branch_id,
+        iops=parameters.iops,
+        pitr_enabled=pitr_enabled,
+    )
     values_content = _configure_vela_values(
         values_content,
         parameters=parameters,
         jwt_secret=jwt_secret,
         pgbouncer_admin_password=pgbouncer_admin_password,
         storage_class_name=storage_class_name,
+        wal_storage_class_name=wal_storage_class_name,
         use_existing_db_pvc=use_existing_db_pvc,
         pgbouncer_config=pgbouncer_config,
         enable_file_storage=parameters.enable_file_storage,
@@ -613,7 +675,7 @@ async def _delete_autoscaler_vm(namespace: str) -> None:
 
 async def delete_deployment(branch_id: Identifier) -> None:
     namespace, _ = get_autoscaler_vm_identity(branch_id)
-    storage_class_name = branch_storage_class_name(branch_id)
+    storage_class_names = (branch_storage_class_name(branch_id), branch_wal_storage_class_name(branch_id))
     await cleanup_branch_dns(branch_id)
     await _delete_autoscaler_vm(namespace)
     try:
@@ -627,13 +689,14 @@ async def delete_deployment(branch_id: Identifier) -> None:
         await delete_vela_grafana_obj(branch_id)
     except VelaGrafanaError:
         logger.info("Grafana dashboard for branch %s not found", branch_id)
-    try:
-        await kube_service.delete_storage_class(storage_class_name)
-    except ApiException as exc:
-        if exc.status == 404:
-            logger.info("StorageClass %s not found", storage_class_name)
-        else:
-            raise
+    for storage_class_name in storage_class_names:
+        try:
+            await kube_service.delete_storage_class(storage_class_name)
+        except ApiException as exc:
+            if exc.status == 404:
+                logger.info("StorageClass %s not found", storage_class_name)
+            else:
+                raise
 
 
 def get_autoscaler_vm_identity(branch_id: Identifier) -> tuple[str, str]:

@@ -38,6 +38,9 @@ POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", "60"))
 logger = logging.getLogger(__name__)
 
 UNIT_MULTIPLIER = {
+    "sec": 1,
+    "second": 1,
+    "seconds": 1,
     "min": 60,
     "minute": 60,
     "minutes": 60,

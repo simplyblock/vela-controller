@@ -32,6 +32,7 @@ from .....deployment import (
     delete_deployment,
     deploy_branch_environment,
     ensure_branch_storage_class,
+    ensure_branch_storage_classes,
     get_autoscaler_vm_identity,
     kube_service,
     resolve_branch_database_volume_size,
@@ -76,7 +77,7 @@ from .....models.branch import (
 )
 from .....models.resources import BranchAllocationPublic, ResourceLimitsPublic, ResourceType
 from ...._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
-from ...._util.backups import copy_branch_backup_schedules, delete_branch_backups
+from ...._util.backups import copy_branch_backup_schedules, delete_branch_backups, ensure_branch_pitr_schedule
 from ...._util.resourcelimit import (
     check_available_resources_limits,
     create_or_update_branch_provisioning,
@@ -741,7 +742,7 @@ async def _apply_resize_operations(
 
     if "iops" in effective_parameters:
         new_iops = effective_parameters["iops"]
-        await update_branch_volume_iops(branch.id, new_iops)
+        await update_branch_volume_iops(branch.id, new_iops, pitr_enabled=branch.pitr_enabled)
         branch.iops = new_iops
         await create_or_update_branch_provisioning(
             session,
@@ -839,14 +840,20 @@ async def _clone_branch_environment_task(
 ) -> None:
     await _persist_branch_status(branch_id, BranchServiceStatus.CREATING)
     storage_class_name: str | None = None
+    wal_storage_class_name: str | None = None
     if copy_data:
         try:
-            storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
+            storage_class_name, wal_storage_class_name = await ensure_branch_storage_classes(
+                branch_id,
+                iops=parameters.iops,
+                pitr_enabled=pitr_enabled,
+            )
             await clone_branch_database_volume(
                 source_branch_id=source_branch_id,
                 target_branch_id=branch_id,
                 snapshot_class=_VOLUME_SNAPSHOT_CLASS,
                 storage_class_name=storage_class_name,
+                wal_storage_class_name=wal_storage_class_name,
                 snapshot_timeout_seconds=_SNAPSHOT_TIMEOUT_SECONDS,
                 snapshot_poll_interval_seconds=_SNAPSHOT_POLL_INTERVAL_SECONDS,
                 pvc_timeout_seconds=_PVC_CLONE_TIMEOUT_SECONDS,
@@ -913,7 +920,11 @@ async def _restore_branch_environment_task(
     await _persist_branch_status(branch_id, BranchServiceStatus.CREATING)
     storage_class_name: str | None = None
     try:
-        storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
+        storage_class_name, _ = await ensure_branch_storage_classes(
+            branch_id,
+            iops=parameters.iops,
+            pitr_enabled=pitr_enabled,
+        )
         await restore_branch_database_volume_from_snapshot(
             source_branch_id=source_branch_id,
             target_branch_id=branch_id,
@@ -1531,6 +1542,7 @@ async def create(  # noqa: C901
         copy_config=copy_config,
         entity=entity,
     )
+    await ensure_branch_pitr_schedule(session, entity)
 
     # Configure allocations
     await create_or_update_branch_provisioning(session, entity, resource_requests)

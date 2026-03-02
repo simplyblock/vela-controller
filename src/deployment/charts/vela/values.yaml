@@ -72,7 +72,7 @@ pg_wal:
   persistence:
     create: true
     storageClassName: "simplyblock-csi-sc"
-    size: 10Gi
+    size: 100Gi
     claimName: ''
     accessModes:
       - ReadWriteMany
