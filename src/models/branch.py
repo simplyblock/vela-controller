@@ -202,6 +202,7 @@ class BranchApiKey(Model, table=True):
     role: Annotated[str, Field(sa_type=String(32))]
     api_key: Annotated[str, Field(sa_type=Text)]
     description: Annotated[str | None, Field(default=None, sa_column=Column(Text, nullable=True))] = None
+    expiry_timestamp: datetime = Field(sa_type=DateTimeTZ, nullable=False)
 
     __table_args__ = (UniqueConstraint("branch_id", "name", name="unique_branch_apikey_name"),)
 
