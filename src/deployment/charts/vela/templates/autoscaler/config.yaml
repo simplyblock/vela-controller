@@ -1,4 +1,4 @@
-{{- if and .Values.autoscalerVm.enabled .Values.composeYaml }}
+{{- if .Values.autoscalerVm.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -10,8 +10,6 @@ data:
 {{- .Values.vectorYaml | nindent 4 }}
   postgresql.conf: |-
 {{- .Values.postgresqlConf | nindent 4 }}
-  docker-compose.yml: |
-{{- .Values.composeYaml | nindent 4 }}
   pg_hba.conf: |-
 {{- .Values.pgHbaConf | nindent 4 }}
   {{- if .Values.pgbouncer.enabled }}
