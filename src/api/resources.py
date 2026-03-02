@@ -15,6 +15,7 @@ from ..check_branch_status import get_branch_status
 from ..deployment import (
     get_autoscaler_vm_identity,
     resolve_autoscaler_volume_identifiers,
+    resolve_autoscaler_wal_volume_identifiers,
     resolve_storage_volume_identifiers,
 )
 from ..deployment.kubernetes._util import custom_api_client
@@ -366,7 +367,15 @@ async def _collect_storage_volume_usage(namespace: str) -> int:
     return stats["size_used"]
 
 
-async def _collect_branch_volume_usage(branch: Branch, namespace: str) -> tuple[int, int, int | None]:
+async def _collect_wal_volume_usage(namespace: str) -> int:
+    stats = await _resolve_volume_stats(
+        volume_identifier_resolver=resolve_autoscaler_wal_volume_identifiers,
+        namespace=namespace,
+    )
+    return stats["size_used"]
+
+
+async def _collect_branch_volume_usage(branch: Branch, namespace: str) -> tuple[int, int, int | None, int | None]:
     db_task = _collect_database_volume_usage(namespace)
     if branch.enable_file_storage:
         storage_task = _collect_storage_volume_usage(namespace)
@@ -375,7 +384,11 @@ async def _collect_branch_volume_usage(branch: Branch, namespace: str) -> tuple[
         nvme_bytes, iops = await db_task
         storage_bytes = None
 
-    return nvme_bytes, iops, storage_bytes
+    wal_bytes = None
+    if branch.pitr_enabled:
+        wal_bytes = await _collect_wal_volume_usage(namespace)
+
+    return nvme_bytes, iops, storage_bytes, wal_bytes
 
 
 async def _collect_branch_resource_usage(branch: Branch) -> ResourceUsageDefinition | None:
@@ -394,9 +407,9 @@ async def _collect_branch_resource_usage(branch: Branch) -> ResourceUsageDefinit
         raise
 
     milli_vcpu, ram_bytes = compute_usage
-    nvme_bytes, iops, storage_bytes = 0, 0, None
+    nvme_bytes, iops, storage_bytes, wal_bytes = 0, 0, None, None
     try:
-        nvme_bytes, iops, storage_bytes = await _collect_branch_volume_usage(branch, namespace)
+        nvme_bytes, iops, storage_bytes, wal_bytes = await _collect_branch_volume_usage(branch, namespace)
     except VelaSimplyblockAPIError as exc:
         logger.error(
             "Failed to collect volume stats for branch %s (namespace %s): %s",
@@ -411,6 +424,7 @@ async def _collect_branch_resource_usage(branch: Branch) -> ResourceUsageDefinit
         nvme_bytes=nvme_bytes,
         iops=iops,
         storage_bytes=storage_bytes,
+        wal_bytes=wal_bytes,
     )
 
 

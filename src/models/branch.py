@@ -47,6 +47,7 @@ def _default_resource_usage_payload() -> dict[str, Any]:
         "nvme_bytes": 0,
         "iops": 0,
         "storage_bytes": None,
+        "wal_bytes": None,
     }
 
 
@@ -186,12 +187,14 @@ class Branch(AsyncAttrs, Model, table=True):
     def get_resource_usage(self) -> "ResourceUsageDefinition":
         payload = self.resource_usage or {}
         storage_value = payload.get("storage_bytes")
+        wal_value = payload.get("wal_bytes")
         return ResourceUsageDefinition(
             milli_vcpu=int(payload.get("milli_vcpu") or 0),
             ram_bytes=int(payload.get("ram_bytes") or 0),
             nvme_bytes=int(payload.get("nvme_bytes") or 0),
             iops=int(payload.get("iops") or 0),
             storage_bytes=None if storage_value is None else int(storage_value),
+            wal_bytes=None if wal_value is None else int(wal_value),
         )
 
 
@@ -443,6 +446,13 @@ class ResourceUsageDefinition(BaseModel):
         PydanticField(
             ge=0,
             description="Measured storage usage in bytes, if available.",
+        ),
+    ] = None
+    wal_bytes: Annotated[
+        int | None,
+        PydanticField(
+            ge=0,
+            description="Measured WAL volume usage in bytes, if available.",
         ),
     ] = None
     snapshot_used_size: Annotated[
