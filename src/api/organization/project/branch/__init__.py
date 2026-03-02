@@ -76,7 +76,7 @@ from .....models.branch import (
 )
 from .....models.resources import BranchAllocationPublic, ResourceLimitsPublic, ResourceType
 from ...._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
-from ...._util.backups import copy_branch_backup_schedules, delete_branch_backups
+from ...._util.backups import copy_branch_backup_schedules, delete_branch_backups, ensure_branch_pitr_schedule
 from ...._util.resourcelimit import (
     check_available_resources_limits,
     create_or_update_branch_provisioning,
@@ -1531,6 +1531,7 @@ async def create(  # noqa: C901
         copy_config=copy_config,
         entity=entity,
     )
+    await ensure_branch_pitr_schedule(session, entity)
 
     # Configure allocations
     await create_or_update_branch_provisioning(session, entity, resource_requests)
