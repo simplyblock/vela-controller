@@ -108,7 +108,7 @@ spec:
         persistentVolumeClaim:
           claimName: {{ include "vela.autoscaler.name" . }}-storage-pvc
     {{- end }}
-    - name: compose
+    - name: config
       mountPath: "/vela/config"
       configMap:
         name: {{ include "vela.autoscaler.composeConfigName" . }}
