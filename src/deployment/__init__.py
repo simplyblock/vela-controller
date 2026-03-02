@@ -332,6 +332,11 @@ async def resolve_autoscaler_volume_identifiers(namespace: str) -> tuple[UUID, U
     return await _resolve_volume_identifiers(namespace, pvc_name)
 
 
+async def resolve_autoscaler_wal_volume_identifiers(namespace: str) -> tuple[UUID, UUID | None]:
+    pvc_name = f"{_autoscaler_vm_name()}{AUTOSCALER_WAL_PVC_SUFFIX}"
+    return await _resolve_volume_identifiers(namespace, pvc_name)
+
+
 async def resolve_branch_database_volume_size(branch_id: Identifier) -> int:
     namespace = deployment_namespace(branch_id)
     volume, _ = await resolve_autoscaler_volume_identifiers(namespace)
