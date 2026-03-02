@@ -54,6 +54,39 @@ async def copy_branch_backup_schedules(
         )
 
 
+async def ensure_branch_pitr_schedule(
+    session: SessionDep,
+    branch: Branch,
+) -> None:
+    """Create a default PITR schedule (30 minutes) when one does not exist."""
+    if not branch.pitr_enabled:
+        return
+    # TODO: Add an adaptive trigger to take an extra snapshot once volume usage reaches 80% full.
+
+    result = await session.exec(select(BackupSchedule).where(BackupSchedule.branch_id == branch.id))
+    schedule = result.one_or_none()
+    if schedule is not None:
+        return
+
+    interval_minutes: int = 30
+    retention: int = 1
+    session.add(
+        BackupSchedule(
+            organization_id=None,
+            branch_id=branch.id,
+            env_type=None,
+            rows=[
+                BackupScheduleRow(
+                    row_index=0,
+                    interval=interval_minutes,
+                    unit="minutes",
+                    retention=retention,
+                )
+            ],
+        )
+    )
+
+
 async def _validate_project_retention_budget(
     session: SessionDep,
     project: Project | None,
