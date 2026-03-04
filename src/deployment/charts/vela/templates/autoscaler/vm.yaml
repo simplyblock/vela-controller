@@ -83,6 +83,12 @@ spec:
       protocol: TCP
   schedulerName: autoscale-scheduler
   disks:
+    - name: dbcerts
+      mountPath: "/vela/certs"
+      secret:
+        secretName: "db-tls-secret"
+        optional: true
+      watch: true
     - name: data
       mountPath: {{ .Values.autoscalerVm.mountPath }}
       blockDevice:
