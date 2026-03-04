@@ -58,6 +58,8 @@ autoscalerVm:
       max: 0
       limit: 0
     memorySlotSize: 128Mi
+  tls:
+    serverName: ""
   persistence:
     create: true
     storageClassName: "simplyblock-csi-sc"
