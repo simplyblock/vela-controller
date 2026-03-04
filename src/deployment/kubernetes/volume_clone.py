@@ -1,4 +1,3 @@
-import asyncio
 import contextlib
 import logging
 import re
@@ -502,7 +501,19 @@ async def clone_branch_database_volume(
         pvc_poll=pvc_poll_interval_seconds,
     )
 
-    operations = []
+    # Intentionally clone in series: pgdata first, then WAL (if PITR is enabled).
+    data_operation = _VolumeCloneOperation(
+        source_branch_id=source_branch_id,
+        target_branch_id=target_branch_id,
+        snapshot_class=snapshot_class,
+        storage_class_name=storage_class_name,
+        target_database_size=database_size,
+        timeouts=timeouts,
+        volume_label="pgdata",
+        pvc_suffix=AUTOSCALER_PVC_SUFFIX,
+    )
+    await data_operation.run()
+
     if pitr_enabled:
         wal_operation = _VolumeCloneOperation(
             source_branch_id=source_branch_id,
@@ -514,21 +525,7 @@ async def clone_branch_database_volume(
             volume_label="wal",
             pvc_suffix=AUTOSCALER_WAL_PVC_SUFFIX,
         )
-        operations.append(wal_operation.run())
-
-    data_operation = _VolumeCloneOperation(
-        source_branch_id=source_branch_id,
-        target_branch_id=target_branch_id,
-        snapshot_class=snapshot_class,
-        storage_class_name=storage_class_name,
-        target_database_size=database_size,
-        timeouts=timeouts,
-        volume_label="pgdata",
-        pvc_suffix=AUTOSCALER_PVC_SUFFIX,
-    )
-    operations.append(data_operation.run())
-
-    await asyncio.gather(*operations)
+        await wal_operation.run()
 
 
 async def restore_branch_database_volume_from_snapshot(
