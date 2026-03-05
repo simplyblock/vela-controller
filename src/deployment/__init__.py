@@ -421,6 +421,8 @@ def _configure_vela_values(
     pitr_enabled: bool,
     branch_id: Identifier,
 ) -> dict[str, Any]:
+    values_content.setdefault("deployment", {})["id"] = str(branch_id)
+
     pgbouncer_values = values_content.setdefault("pgbouncer", {})
     pgbouncer_cfg = pgbouncer_values.setdefault("config", {})
     if pgbouncer_config:
