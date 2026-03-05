@@ -35,7 +35,7 @@ from ._util.backups import _remove_existing_schedule, _validate_project_retentio
 from .auth import authenticated_user
 from .backup_snapshots import (
     SNAPSHOT_POLL_INTERVAL_SEC,
-    create_branch_snapshot,
+    create_branch_snapshot_bundle,
     delete_branch_snapshot,
 )
 from .db import SessionDep
@@ -539,13 +539,14 @@ async def manual_backup(session: SessionDep, branch_id: Identifier) -> BackupCre
     recorded_at = datetime.now(UTC)
 
     try:
-        snapshot = await create_branch_snapshot(
+        data_snapshot, wal_snapshot = await create_branch_snapshot_bundle(
             branch.id,
             backup_id=backup_id,
             snapshot_class=VOLUME_SNAPSHOT_CLASS,
             poll_interval=SNAPSHOT_POLL_INTERVAL_SEC,
             label="manual",
             time_limit=MANUAL_BACKUP_TIMEOUT_SEC,
+            include_wal=branch.pitr_enabled,
         )
     except Exception as exc:
         logger.exception("Manual backup failed for branch %s within timeout", branch.id)
@@ -556,11 +557,12 @@ async def manual_backup(session: SessionDep, branch_id: Identifier) -> BackupCre
         branch_id=branch.id,
         row_index=-1,  # -1 for manual backup
         created_at=recorded_at,
-        size_bytes=snapshot.size_bytes or 0,
-        snapshot_uuid=str(snapshot.snapshot_uuid),
-        snapshot_name=snapshot.name,
-        snapshot_namespace=snapshot.namespace,
-        snapshot_content_name=snapshot.content_name,
+        size_bytes=data_snapshot.size_bytes or 0,
+        snapshot_uuid=str(data_snapshot.snapshot_uuid),
+        snapshot_name=data_snapshot.name,
+        snapshot_namespace=data_snapshot.namespace,
+        snapshot_content_name=data_snapshot.content_name,
+        wal_snapshot_name=(wal_snapshot.name if wal_snapshot else None),
     )
     session.add(backup)
     await session.flush()
@@ -588,6 +590,11 @@ async def delete_backup(session: SessionDep, backup_id: Identifier) -> BackupDel
         raise HTTPException(status_code=404, detail="Backup not found")
 
     try:
+        await delete_branch_snapshot(
+            name=backup.wal_snapshot_name,
+            namespace=backup.snapshot_namespace,
+            content_name=None,
+        )
         await delete_branch_snapshot(
             name=backup.snapshot_name,
             namespace=backup.snapshot_namespace,
