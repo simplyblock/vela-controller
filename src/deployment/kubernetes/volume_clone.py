@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from ..._util import Identifier
+from ..._util import Identifier, quantity_to_bytes, storage_backend_bytes_to_db_bytes
 from ...exceptions import VelaKubernetesError
 from .. import (
     _POD_SECURITY_LABELS,
@@ -270,7 +270,12 @@ class _VolumeCloneOperation:
             branch_id=self.target_branch_id,
             volume_snapshot_name=snapshot_name,
         )
-        new_manifest.spec.resources.requests["storage"] = str(self.target_database_size)
+        source_size = _source_pvc_storage_request_bytes(source_pvc)
+        # The Simplyblock backend rejects clone sizes that are not greater than the source.
+        # Normalize source bytes to DB-byte granularity and enforce that as a lower bound.
+        minimum_size = storage_backend_bytes_to_db_bytes(source_size) if source_size is not None else 0
+        target_size = max(self.target_database_size, minimum_size)
+        new_manifest.spec.resources.requests["storage"] = str(target_size)
         new_manifest.spec.storage_class_name = self.storage_class_name
         if hasattr(new_manifest.spec, "storageClassName"):
             new_manifest.spec.storageClassName = self.storage_class_name
@@ -322,6 +327,8 @@ class _SnapshotRestoreOperation:
     ids: CloneIdentifiers = field(init=False)
     created_target_snapshot: bool = field(default=False, init=False)
     created_content: bool = field(default=False, init=False)
+    snapshot_restore_size_bytes: int | None = field(default=None, init=False)
+    target_snapshot_restore_size_bytes: int | None = field(default=None, init=False)
 
     def __post_init__(self) -> None:
         source_ns = self.snapshot_namespace
@@ -398,6 +405,8 @@ class _SnapshotRestoreOperation:
             timeout=self.timeouts.snapshot_ready,
             poll_interval=self.timeouts.snapshot_poll,
         )
+        status = snapshot.get("status") or {}
+        self.snapshot_restore_size_bytes = quantity_to_bytes(status.get("restoreSize"))
         material, _ = await _extract_snapshot_material(
             namespace=self.snapshot_namespace,
             snapshot=snapshot,
@@ -425,12 +434,14 @@ class _SnapshotRestoreOperation:
         )
         self.created_target_snapshot = True
 
-        await wait_snapshot_ready(
+        target_snapshot = await wait_snapshot_ready(
             self.ids.target_namespace,
             self.ids.target_snapshot,
             timeout=self.timeouts.snapshot_ready,
             poll_interval=self.timeouts.snapshot_poll,
         )
+        target_status = target_snapshot.get("status") or {}
+        self.target_snapshot_restore_size_bytes = quantity_to_bytes(target_status.get("restoreSize"))
 
     async def _create_target_pvc(self) -> None:
         source_pvc = await kube_service.get_persistent_volume_claim(self.ids.source_namespace, self.ids.pvc)
@@ -439,7 +450,20 @@ class _SnapshotRestoreOperation:
             branch_id=self.target_branch_id,
             volume_snapshot_name=self.ids.target_snapshot,
         )
-        new_manifest.spec.resources.requests["storage"] = str(self.target_database_size)
+        source_size = _source_pvc_storage_request_bytes(source_pvc)
+        minimum_size = storage_backend_bytes_to_db_bytes(source_size) if source_size is not None else 0
+        snapshot_minimum_size = (
+            storage_backend_bytes_to_db_bytes(self.snapshot_restore_size_bytes)
+            if self.snapshot_restore_size_bytes is not None
+            else 0
+        )
+        target_snapshot_minimum_size = (
+            storage_backend_bytes_to_db_bytes(self.target_snapshot_restore_size_bytes)
+            if self.target_snapshot_restore_size_bytes is not None
+            else 0
+        )
+        target_size = max(self.target_database_size, minimum_size, snapshot_minimum_size, target_snapshot_minimum_size)
+        new_manifest.spec.resources.requests["storage"] = str(target_size)
         new_manifest.spec.storage_class_name = self.storage_class_name
         if hasattr(new_manifest.spec, "storageClassName"):
             new_manifest.spec.storageClassName = self.storage_class_name
@@ -563,3 +587,13 @@ async def restore_branch_database_volume_from_snapshot(
         ),
     )
     await operation.run()
+
+
+def _source_pvc_storage_request_bytes(pvc: Any) -> int | None:
+    """Return source PVC requested storage in bytes, if present and parseable."""
+    spec = getattr(pvc, "spec", None)
+    resources = getattr(spec, "resources", None) if spec is not None else None
+    requests = getattr(resources, "requests", None) if resources is not None else None
+    if not isinstance(requests, dict):
+        return None
+    return quantity_to_bytes(requests.get("storage"))
