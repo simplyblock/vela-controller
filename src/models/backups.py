@@ -68,6 +68,10 @@ class BackupEntry(AsyncAttrs, Model, table=True):
         default=None,
         sa_column=Column(String(length=255), nullable=True),
     )
+    wal_snapshot_name: str | None = Field(
+        default=None,
+        sa_column=Column(String(length=255), nullable=True),
+    )
 
 
 class BackupLog(AsyncAttrs, Model, table=True):
