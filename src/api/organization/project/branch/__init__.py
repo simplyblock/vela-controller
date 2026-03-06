@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials
 from keycloak.exceptions import KeycloakError
 from kubernetes_asyncio.client.exceptions import ApiException
-from pydantic import ValidationError
+from pydantic import AfterValidator, ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
@@ -64,7 +64,6 @@ from .....models.branch import (
     BranchResizeService,
     BranchResizeStatus,
     BranchResizeStatusEntry,
-    BranchRestore,
     BranchServiceStatus,
     BranchSourceDeploymentParameters,
     BranchStatus,
@@ -125,6 +124,21 @@ _ACTIVE_RESIZE_STATUSES: set[BranchResizeStatus] = {
 }
 _CREATING_STATUS_ERROR_GRACE_PERIOD = timedelta(minutes=5)
 _STARTING_STATUS_ERROR_GRACE_PERIOD = timedelta(minutes=5)
+
+
+def _validate_restore_target_time(value: datetime) -> datetime:
+    now = datetime.now(UTC)
+    if value > now:
+        raise ValueError("recovery_target_time cannot be in the future")
+
+    max_retention = timedelta(days=get_api_settings().pitr_wal_retention_days)
+    if now - value > max_retention:
+        raise ValueError("recovery_target_time exceeds the configured PITR WAL retention window")
+
+    return value
+
+
+BranchRestoreTarget = Identifier | Annotated[datetime, AfterValidator(_validate_restore_target_time)]
 
 
 def _parse_branch_status(value: BranchServiceStatus | str | None) -> BranchServiceStatus:
@@ -1224,13 +1238,15 @@ async def _resolve_source_branch(
     return branch, backup
 
 
-async def _resolve_restore_backup(session: SessionDep, branch_id: Identifier, parameters: BranchRestore) -> BackupEntry:
-    if parameters.backup_id is not None:
+async def _resolve_restore_backup(
+    session: SessionDep, branch_id: Identifier, restore_target: BranchRestoreTarget
+) -> BackupEntry:
+    if not isinstance(restore_target, datetime):
         backup = (
             (
                 await session.execute(
                     select(BackupEntry).where(
-                        BackupEntry.id == parameters.backup_id,
+                        BackupEntry.id == restore_target,
                         BackupEntry.branch_id == branch_id,
                     )
                 )
@@ -1239,18 +1255,15 @@ async def _resolve_restore_backup(session: SessionDep, branch_id: Identifier, pa
             .one_or_none()
         )
         if backup is None:
-            raise HTTPException(status_code=404, detail=f"Backup {parameters.backup_id} not found for this branch")
+            raise HTTPException(status_code=404, detail=f"Backup {restore_target} not found for this branch")
         return backup
-
-    if parameters.recovery_target_time is None:
-        raise HTTPException(status_code=400, detail="Either backup_id or recovery_target_time must be provided")
 
     backup = (
         (
             await session.execute(
                 select(BackupEntry)
                 .where(BackupEntry.branch_id == branch_id)
-                .where(BackupEntry.created_at <= parameters.recovery_target_time)
+                .where(BackupEntry.created_at <= restore_target)
                 .order_by(cast("Any", BackupEntry.created_at).desc())
                 .limit(1)
             )
@@ -1659,9 +1672,9 @@ async def restore(
     _organization: OrganizationDep,
     _project: ProjectDep,
     branch: BranchDep,
-    parameters: BranchRestore,
+    restore_target: BranchRestoreTarget,
 ) -> Response:
-    backup = await _resolve_restore_backup(session, branch.id, parameters)
+    backup = await _resolve_restore_backup(session, branch.id, restore_target)
     branch_id = branch.id
     if not backup.snapshot_name or not backup.snapshot_namespace:
         raise HTTPException(status_code=400, detail="Selected backup does not include complete snapshot metadata")
@@ -1679,7 +1692,7 @@ async def restore(
             snapshot_namespace=snapshot_namespace,
             snapshot_name=snapshot_name,
             snapshot_content_name=snapshot_content_name,
-            recovery_target_time=parameters.recovery_target_time,
+            recovery_target_time=restore_target if isinstance(restore_target, datetime) else None,
         )
     )
 

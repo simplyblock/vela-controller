@@ -1,5 +1,5 @@
 from collections.abc import Mapping
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Literal, Optional
 
@@ -274,29 +274,6 @@ class BranchUpdate(BaseModel):
 
 class BranchPasswordReset(BaseModel):
     new_password: DBPassword
-
-
-class BranchRestore(BaseModel):
-    backup_id: Identifier | None = None
-    recovery_target_time: datetime | None = None
-
-    @model_validator(mode="after")
-    def ensure_restore_target(self) -> "BranchRestore":
-        if self.backup_id is None and self.recovery_target_time is None:
-            raise ValueError("Either backup_id or recovery_target_time must be provided for a restore")
-
-        if self.recovery_target_time is not None:
-            now = datetime.now(UTC)
-            if self.recovery_target_time > now:
-                raise ValueError("recovery_target_time cannot be in the future")
-
-            from ..api.settings import get_settings
-
-            max_retention = timedelta(days=get_settings().pitr_wal_retention_days)
-            if now - self.recovery_target_time > max_retention:
-                raise ValueError("recovery_target_time exceeds the configured PITR WAL retention window")
-
-        return self
 
 
 class BranchPgbouncerConfigUpdate(BaseModel):
