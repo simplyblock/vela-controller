@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials
 from keycloak.exceptions import KeycloakError
 from kubernetes_asyncio.client.exceptions import ApiException
-from pydantic import ValidationError
+from pydantic import AfterValidator, ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
@@ -94,7 +94,7 @@ from ....backup_snapshots import (
 )
 from ....backup_snapshots import branch_snapshots_used_size
 from ....db import AsyncSessionLocal, SessionDep
-from ....dependencies import BranchDep, OrganizationDep, ProjectDep, RestoreBackupDep, branch_lookup
+from ....dependencies import BranchDep, OrganizationDep, ProjectDep, backup_lookup, branch_lookup
 from ....keycloak import realm_admin
 from ....settings import get_settings as get_api_settings
 from .api_keys import api as api_key_api
@@ -124,6 +124,21 @@ _ACTIVE_RESIZE_STATUSES: set[BranchResizeStatus] = {
 }
 _CREATING_STATUS_ERROR_GRACE_PERIOD = timedelta(minutes=5)
 _STARTING_STATUS_ERROR_GRACE_PERIOD = timedelta(minutes=5)
+
+
+def _validate_restore_target_time(value: datetime) -> datetime:
+    now = datetime.now(UTC)
+    if value > now:
+        raise ValueError("recovery_target_time cannot be in the future")
+
+    max_retention = timedelta(days=get_api_settings().pitr_wal_retention_days)
+    if now - value > max_retention:
+        raise ValueError("recovery_target_time exceeds the configured PITR WAL retention window")
+
+    return value
+
+
+BranchRestoreTarget = Identifier | Annotated[datetime, AfterValidator(_validate_restore_target_time)]
 
 
 def _parse_branch_status(value: BranchServiceStatus | str | None) -> BranchServiceStatus:
@@ -852,7 +867,6 @@ async def _clone_branch_environment_task(
                 pvc_timeout_seconds=_PVC_CLONE_TIMEOUT_SECONDS,
                 pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
                 database_size=parameters.database_size,
-                pitr_enabled=pitr_enabled,
             )
         except VelaError:
             await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
@@ -976,6 +990,7 @@ async def _restore_branch_environment_in_place_task(
     snapshot_namespace: str,
     snapshot_name: str,
     snapshot_content_name: str | None,
+    recovery_target_time: datetime | None = None,
 ) -> None:
     await _persist_branch_status(branch_id, BranchServiceStatus.RESTARTING)
     namespace, autoscaler_vm_name = get_autoscaler_vm_identity(branch_id)
@@ -1017,6 +1032,12 @@ async def _restore_branch_environment_in_place_task(
         return
 
     try:
+        if recovery_target_time is not None:
+            await kube_service.patch_autoscaler_vm_recovery_time(
+                namespace,
+                autoscaler_vm_name,
+                recovery_target_time.isoformat(),
+            )
         await set_virtualmachine_power_state(namespace, autoscaler_vm_name, "Running")
     except ApiException as exc:
         if exc.status == 404:
@@ -1206,23 +1227,56 @@ async def _resolve_source_branch(
         branch = await branch_lookup(session, parameters.source.branch_id)
         return branch, None
 
-    if parameters.restore is not None:
-        backup_id = parameters.restore.backup_id
-        result = await session.execute(select(BackupEntry).where(BackupEntry.id == backup_id))
-        backup = result.scalar_one_or_none()
-        if backup is None:
-            raise HTTPException(404, f"Backup {backup_id} not found")
-        try:
-            branch = await branch_lookup(session, backup.branch_id)
-        except HTTPException as exc:
-            if exc.status_code == 404:
-                raise HTTPException(404, f"Backup {backup_id} not found") from exc
-            raise
-        if not backup.snapshot_name or not backup.snapshot_namespace:
-            raise HTTPException(400, "Selected backup does not include complete snapshot metadata")
-        return branch, backup
+    if parameters.restore is None:
+        return None, None
 
-    return None, None
+    backup = await backup_lookup(session, parameters.restore.backup_id)
+    if not backup.snapshot_name or not backup.snapshot_namespace:
+        raise HTTPException(400, "Selected backup does not include complete snapshot metadata")
+
+    branch = await branch_lookup(session, backup.branch_id)
+    return branch, backup
+
+
+async def _resolve_restore_backup(
+    session: SessionDep, branch_id: Identifier, restore_target: BranchRestoreTarget
+) -> BackupEntry:
+    if not isinstance(restore_target, datetime):
+        backup = (
+            (
+                await session.execute(
+                    select(BackupEntry).where(
+                        BackupEntry.id == restore_target,
+                        BackupEntry.branch_id == branch_id,
+                    )
+                )
+            )
+            .scalars()
+            .one_or_none()
+        )
+        if backup is None:
+            raise HTTPException(status_code=404, detail=f"Backup {restore_target} not found for this branch")
+        return backup
+
+    backup = (
+        (
+            await session.execute(
+                select(BackupEntry)
+                .where(BackupEntry.branch_id == branch_id)
+                .where(BackupEntry.created_at <= restore_target)
+                .order_by(cast("Any", BackupEntry.created_at).desc())
+                .limit(1)
+            )
+        )
+        .scalars()
+        .one_or_none()
+    )
+    if backup is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No valid backup snapshot found before the requested recovery time",
+        )
+    return backup
 
 
 def _ensure_branch_resource_limits(
@@ -1614,11 +1668,13 @@ async def status(
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def restore(
+    session: SessionDep,
     _organization: OrganizationDep,
     _project: ProjectDep,
     branch: BranchDep,
-    backup: RestoreBackupDep,
+    restore_target: BranchRestoreTarget,
 ) -> Response:
+    backup = await _resolve_restore_backup(session, branch.id, restore_target)
     branch_id = branch.id
     if not backup.snapshot_name or not backup.snapshot_namespace:
         raise HTTPException(status_code=400, detail="Selected backup does not include complete snapshot metadata")
@@ -1636,6 +1692,7 @@ async def restore(
             snapshot_namespace=snapshot_namespace,
             snapshot_name=snapshot_name,
             snapshot_content_name=snapshot_content_name,
+            recovery_target_time=restore_target if isinstance(restore_target, datetime) else None,
         )
     )
 
