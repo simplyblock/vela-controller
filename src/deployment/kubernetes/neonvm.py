@@ -1,9 +1,9 @@
 from enum import Enum
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from aiohttp.client_exceptions import ClientError
 from kubernetes_asyncio.client.exceptions import ApiException
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, PlainSerializer, ValidationError
 
 from ..._util import quantity_to_bytes, quantity_to_milli_cpu
 from ...exceptions import VelaKubernetesError
@@ -112,12 +112,19 @@ class EnvVar(CamelModel):
     value: str
 
 
+AutoscalerEnv = Annotated[
+    dict[str, str],
+    BeforeValidator(lambda v: {entry["name"]: entry["value"] for entry in v} if isinstance(v, list) else v),
+    PlainSerializer(lambda v: [{"name": k, "value": val} for k, val in v.items()]),
+]
+
+
 class Guest(CamelModel):
     cpus: GuestCPUs
     memory_slots: MemorySlots
     memory_slot_size: Any
     ports: list[Port]
-    env: list[EnvVar] = Field(default_factory=list)
+    env: AutoscalerEnv = Field(default_factory=dict)
 
     @property
     def slot_size_bytes(self) -> int:

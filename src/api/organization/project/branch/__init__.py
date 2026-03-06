@@ -95,7 +95,7 @@ from ....backup_snapshots import (
 )
 from ....backup_snapshots import branch_snapshots_used_size
 from ....db import AsyncSessionLocal, SessionDep
-from ....dependencies import BranchDep, OrganizationDep, ProjectDep, RestoreBackupDep, backup_lookup, branch_lookup
+from ....dependencies import BranchDep, OrganizationDep, ProjectDep, backup_lookup, branch_lookup
 from ....keycloak import realm_admin
 from ....settings import get_settings as get_api_settings
 from .api_keys import api as api_key_api
@@ -1224,6 +1224,48 @@ async def _resolve_source_branch(
     return branch, backup
 
 
+async def _resolve_restore_backup(session: SessionDep, branch_id: Identifier, parameters: BranchRestore) -> BackupEntry:
+    if parameters.backup_id is not None:
+        backup = (
+            (
+                await session.execute(
+                    select(BackupEntry).where(
+                        BackupEntry.id == parameters.backup_id,
+                        BackupEntry.branch_id == branch_id,
+                    )
+                )
+            )
+            .scalars()
+            .one_or_none()
+        )
+        if backup is None:
+            raise HTTPException(status_code=404, detail=f"Backup {parameters.backup_id} not found for this branch")
+        return backup
+
+    if parameters.recovery_target_time is None:
+        raise HTTPException(status_code=400, detail="Either backup_id or recovery_target_time must be provided")
+
+    backup = (
+        (
+            await session.execute(
+                select(BackupEntry)
+                .where(BackupEntry.branch_id == branch_id)
+                .where(BackupEntry.created_at <= parameters.recovery_target_time)
+                .order_by(cast("Any", BackupEntry.created_at).desc())
+                .limit(1)
+            )
+        )
+        .scalars()
+        .one_or_none()
+    )
+    if backup is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No valid backup snapshot found before the requested recovery time",
+        )
+    return backup
+
+
 def _ensure_branch_resource_limits(
     exceeded_limits: Sequence[ResourceType],
     resource_requests: ResourceLimitsPublic,
@@ -1613,12 +1655,13 @@ async def status(
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def restore(
+    session: SessionDep,
     _organization: OrganizationDep,
     _project: ProjectDep,
     branch: BranchDep,
-    backup: RestoreBackupDep,
     parameters: BranchRestore,
 ) -> Response:
+    backup = await _resolve_restore_backup(session, branch.id, parameters)
     branch_id = branch.id
     if not backup.snapshot_name or not backup.snapshot_namespace:
         raise HTTPException(status_code=400, detail="Selected backup does not include complete snapshot metadata")
