@@ -32,7 +32,6 @@ from .._util.crypto import (
     encrypt_with_passphrase,
     encrypt_with_random_passphrase,
 )
-from ..api.settings import get_settings
 from ..deployment import DeploymentParameters
 from ._util import DateTimeTZ, Model
 from .project import Project
@@ -290,6 +289,8 @@ class BranchRestore(BaseModel):
             now = datetime.now(UTC)
             if self.recovery_target_time > now:
                 raise ValueError("recovery_target_time cannot be in the future")
+
+            from ..api.settings import get_settings
 
             max_retention = timedelta(days=get_settings().pitr_wal_retention_days)
             if now - self.recovery_target_time > max_retention:
