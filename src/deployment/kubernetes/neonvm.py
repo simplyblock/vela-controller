@@ -107,11 +107,6 @@ class Port(CamelModel):
     protocol: Literal["TCP", "UDP"]
 
 
-class EnvVar(CamelModel):
-    name: str
-    value: str
-
-
 AutoscalerEnv = Annotated[
     dict[str, str],
     BeforeValidator(lambda v: {entry["name"]: entry["value"] for entry in v} if isinstance(v, list) else v),
