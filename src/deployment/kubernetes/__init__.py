@@ -374,11 +374,8 @@ class KubernetesService:
         Add or update the RECOVERY_TARGET_TIME environment variable for a Neon autoscaler VM.
         """
         vm = await get_neon_vm(namespace, name)
+        vm.guest.env["RECOVERY_TARGET_TIME"] = recovery_target_time
         vm_manifest = _build_autoscaler_vm_manifest(vm.model_dump(by_alias=True), namespace, name)
-        guest_spec = vm_manifest.setdefault("spec", {}).setdefault("guest", {})
-        env = dict(vm.guest.env)
-        env["RECOVERY_TARGET_TIME"] = recovery_target_time
-        guest_spec["env"] = [{"name": key, "value": value} for key, value in env.items()]
 
         return await self.apply_autoscaler_vm(namespace, name, vm_manifest)
 
