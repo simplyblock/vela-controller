@@ -31,6 +31,7 @@ from ...auth import security
 from ...db import SessionDep
 from ...dependencies import OrganizationDep, ProjectDep
 from . import branch as branch_module
+from .resources import api as resources_api
 
 api = APIRouter(tags=["project"])
 
@@ -313,6 +314,7 @@ async def _persist_project_with_limits(
         organization=organization,
         name=parameters.name,
         max_backups=parameters.max_backups,
+        storage_enabled=parameters.project_limits.storage_size is not None,
     )
     session.add(entity)
     await session.flush()
@@ -555,4 +557,5 @@ async def resume(session: SessionDep, _organization: OrganizationDep, project: P
     return Response(status_code=204)
 
 
+instance_api.include_router(resources_api, prefix="/resources")
 api.include_router(instance_api)
