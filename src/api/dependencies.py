@@ -1,4 +1,5 @@
-from typing import Annotated
+from datetime import datetime, timedelta
+from typing import Annotated, Any, cast
 from uuid import UUID
 
 from fastapi import Depends, HTTPException
@@ -14,6 +15,7 @@ from ..models.role import Role
 from ..models.user import User
 from .auth import authenticated_user
 from .db import SessionDep
+from .settings import get_settings
 
 
 async def organization_lookup(session: SessionDep, organization_id: Identifier) -> Organization:
@@ -89,19 +91,60 @@ async def _member_lookup(organization: OrganizationDep, user: UserDep) -> User:
 MemberDep = Annotated[User, Depends(_member_lookup)]
 
 
+async def backup_lookup(session: SessionDep, backup_id: Identifier, branch_id: Identifier | None = None) -> BackupEntry:
+    query = select(BackupEntry).where(BackupEntry.id == backup_id)
+    if branch_id is not None:
+        query = query.where(BackupEntry.branch_id == branch_id)
+    try:
+        return (await session.execute(query)).scalars().one()
+    except NoResultFound as e:
+        detail = f"Backup {backup_id} not found"
+        if branch_id is not None:
+            detail += f" for branch {branch_id}"
+        raise HTTPException(404, detail) from e
+
+
+async def resolve_pitr_backup(
+    session: SessionDep,
+    branch_id: Identifier,
+    recovery_target_time: datetime,
+) -> BackupEntry:
+    query = (
+        select(BackupEntry)
+        .where(BackupEntry.branch_id == branch_id)
+        .where(BackupEntry.created_at <= recovery_target_time)
+        .order_by(cast("Any", BackupEntry.created_at).desc())
+        .limit(1)
+    )
+    backup = (await session.execute(query)).scalars().one_or_none()
+    if backup is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No valid backup snapshot found before the requested recovery time",
+        )
+
+    max_retention = timedelta(days=get_settings().pitr_wal_retention_days)
+    if recovery_target_time - backup.created_at > max_retention:
+        raise HTTPException(
+            status_code=422,
+            detail="Requested recovery time exceeds the WAL archive retention policy for the nearest snapshot.",
+        )
+
+    return backup
+
+
 async def _restore_backup_lookup(
     session: SessionDep,
     branch: BranchDep,
     parameters: BranchRestore,
 ) -> BackupEntry:
-    query = select(BackupEntry).where(
-        BackupEntry.id == parameters.backup_id,
-        BackupEntry.branch_id == branch.id,
-    )
-    backup = (await session.execute(query)).scalars().one_or_none()
-    if backup is None:
-        raise HTTPException(status_code=404, detail=f"Backup {parameters.backup_id} not found for this branch")
-    return backup
+    if parameters.backup_id is not None:
+        return await backup_lookup(session, parameters.backup_id, branch_id=branch.id)
+
+    if parameters.recovery_target_time is not None:
+        return await resolve_pitr_backup(session, branch.id, parameters.recovery_target_time)
+
+    raise HTTPException(status_code=400, detail="Either backup_id or recovery_target_time must be provided")
 
 
 RestoreBackupDep = Annotated[BackupEntry, Depends(_restore_backup_lookup)]

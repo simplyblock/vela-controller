@@ -64,6 +64,7 @@ from .....models.branch import (
     BranchResizeService,
     BranchResizeStatus,
     BranchResizeStatusEntry,
+    BranchRestore,
     BranchServiceStatus,
     BranchSourceDeploymentParameters,
     BranchStatus,
@@ -94,7 +95,7 @@ from ....backup_snapshots import (
 )
 from ....backup_snapshots import branch_snapshots_used_size
 from ....db import AsyncSessionLocal, SessionDep
-from ....dependencies import BranchDep, OrganizationDep, ProjectDep, RestoreBackupDep, branch_lookup
+from ....dependencies import BranchDep, OrganizationDep, ProjectDep, RestoreBackupDep, backup_lookup, branch_lookup
 from ....keycloak import realm_admin
 from ....settings import get_settings as get_api_settings
 from .api_keys import api as api_key_api
@@ -852,7 +853,6 @@ async def _clone_branch_environment_task(
                 pvc_timeout_seconds=_PVC_CLONE_TIMEOUT_SECONDS,
                 pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
                 database_size=parameters.database_size,
-                pitr_enabled=pitr_enabled,
             )
         except VelaError:
             await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
@@ -976,6 +976,7 @@ async def _restore_branch_environment_in_place_task(
     snapshot_namespace: str,
     snapshot_name: str,
     snapshot_content_name: str | None,
+    recovery_target_time: datetime | None = None,
 ) -> None:
     await _persist_branch_status(branch_id, BranchServiceStatus.RESTARTING)
     namespace, autoscaler_vm_name = get_autoscaler_vm_identity(branch_id)
@@ -1017,6 +1018,12 @@ async def _restore_branch_environment_in_place_task(
         return
 
     try:
+        if recovery_target_time is not None:
+            await kube_service.patch_autoscaler_vm_recovery_time(
+                namespace,
+                autoscaler_vm_name,
+                recovery_target_time.isoformat(),
+            )
         await set_virtualmachine_power_state(namespace, autoscaler_vm_name, "Running")
     except ApiException as exc:
         if exc.status == 404:
@@ -1206,23 +1213,15 @@ async def _resolve_source_branch(
         branch = await branch_lookup(session, parameters.source.branch_id)
         return branch, None
 
-    if parameters.restore is not None:
-        backup_id = parameters.restore.backup_id
-        result = await session.execute(select(BackupEntry).where(BackupEntry.id == backup_id))
-        backup = result.scalar_one_or_none()
-        if backup is None:
-            raise HTTPException(404, f"Backup {backup_id} not found")
-        try:
-            branch = await branch_lookup(session, backup.branch_id)
-        except HTTPException as exc:
-            if exc.status_code == 404:
-                raise HTTPException(404, f"Backup {backup_id} not found") from exc
-            raise
-        if not backup.snapshot_name or not backup.snapshot_namespace:
-            raise HTTPException(400, "Selected backup does not include complete snapshot metadata")
-        return branch, backup
+    if parameters.restore is None:
+        return None, None
 
-    return None, None
+    backup = await backup_lookup(session, parameters.restore.backup_id)
+    if not backup.snapshot_name or not backup.snapshot_namespace:
+        raise HTTPException(400, "Selected backup does not include complete snapshot metadata")
+
+    branch = await branch_lookup(session, backup.branch_id)
+    return branch, backup
 
 
 def _ensure_branch_resource_limits(
@@ -1618,6 +1617,7 @@ async def restore(
     _project: ProjectDep,
     branch: BranchDep,
     backup: RestoreBackupDep,
+    parameters: BranchRestore,
 ) -> Response:
     branch_id = branch.id
     if not backup.snapshot_name or not backup.snapshot_namespace:
@@ -1636,6 +1636,7 @@ async def restore(
             snapshot_namespace=snapshot_namespace,
             snapshot_name=snapshot_name,
             snapshot_content_name=snapshot_content_name,
+            recovery_target_time=parameters.recovery_target_time,
         )
     )
 

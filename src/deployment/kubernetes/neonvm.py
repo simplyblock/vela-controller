@@ -107,11 +107,17 @@ class Port(CamelModel):
     protocol: Literal["TCP", "UDP"]
 
 
+class EnvVar(CamelModel):
+    name: str
+    value: str
+
+
 class Guest(CamelModel):
     cpus: GuestCPUs
     memory_slots: MemorySlots
     memory_slot_size: Any
     ports: list[Port]
+    env: list[EnvVar] = Field(default_factory=list)
 
     @property
     def slot_size_bytes(self) -> int:

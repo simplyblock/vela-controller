@@ -364,6 +364,31 @@ class KubernetesService:
 
         return await self.apply_autoscaler_vm(namespace, name, vm_manifest)
 
+    async def patch_autoscaler_vm_recovery_time(
+        self,
+        namespace: str,
+        name: str,
+        recovery_target_time: str,
+    ) -> NeonVM:
+        """
+        Add or update the RECOVERY_TARGET_TIME environment variable for a Neon autoscaler VM.
+        """
+        vm = await get_neon_vm(namespace, name)
+        vm_manifest = _build_autoscaler_vm_manifest(vm.model_dump(by_alias=True), namespace, name)
+        guest_spec = vm_manifest.setdefault("spec", {}).setdefault("guest", {})
+        env = guest_spec.setdefault("env", [])
+
+        found = False
+        for entry in env:
+            if entry.get("name") == "RECOVERY_TARGET_TIME":
+                entry["value"] = recovery_target_time
+                found = True
+                break
+        if not found:
+            env.append({"name": "RECOVERY_TARGET_TIME", "value": recovery_target_time})
+
+        return await self.apply_autoscaler_vm(namespace, name, vm_manifest)
+
     async def apply_autoscaler_vm(self, namespace: str, name: str, vm_manifest: dict[str, Any]) -> NeonVM:
         """
         Apply (create or patch) the Neon autoscaler VM using a merge patch.
