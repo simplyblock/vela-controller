@@ -413,6 +413,7 @@ def _configure_vela_values(
     *,
     parameters: DeploymentParameters,
     jwt_secret: str,
+    database_admin_password: str,
     pgbouncer_admin_password: str,
     storage_class_name: str,
     use_existing_db_pvc: bool,
@@ -447,7 +448,7 @@ def _configure_vela_values(
         secret=jwt_secret,
     )
     secrets.update(pgmeta_crypto_key=get_settings().pgmeta_crypto_key)
-    secrets.setdefault("db", {})["password"] = parameters.database_password
+    secrets.setdefault("db", {})["admin_password"] = database_admin_password
     secrets.setdefault("pgbouncer", {})["admin_password"] = pgbouncer_admin_password
 
     db_values = values_content.setdefault("db", {})
@@ -512,6 +513,7 @@ async def create_vela_config(
     parameters: DeploymentParameters,
     branch: Name,
     jwt_secret: str,
+    database_admin_password: str,
     pgbouncer_admin_password: str,
     *,
     use_existing_db_pvc: bool = False,
@@ -545,6 +547,7 @@ async def create_vela_config(
         values_content,
         parameters=parameters,
         jwt_secret=jwt_secret,
+        database_admin_password=database_admin_password,
         pgbouncer_admin_password=pgbouncer_admin_password,
         storage_class_name=storage_class_name,
         use_existing_db_pvc=use_existing_db_pvc,
@@ -1244,7 +1247,7 @@ async def provision_branch_endpoints(
     return BranchEndpointResult(ref=ref, domain=domain)
 
 
-async def set_initial_password(branch_id: Identifier, password: str, timeout: float) -> None:
+async def set_initial_password(branch_id: Identifier, password: str, admin_password: str, timeout: float) -> None:
     start = datetime.now()
     while (
         (status := vm_monitor.status(branch_id)) is None
@@ -1261,7 +1264,7 @@ async def set_initial_password(branch_id: Identifier, password: str, timeout: fl
         branch_id=branch_id,
         database=DEFAULT_DB_NAME,
         username=DEFAULT_DB_USER,
-        admin_password=password,
+        admin_password=admin_password,
         new_password=password,
     )
 
@@ -1275,6 +1278,7 @@ async def deploy_branch_environment(
     credential: str,
     parameters: DeploymentParameters,
     jwt_secret: str,
+    database_admin_password: str,
     pgbouncer_admin_password: str,
     pgbouncer_config: Mapping[str, int],
     use_existing_pvc: bool = False,
@@ -1290,6 +1294,7 @@ async def deploy_branch_environment(
             parameters=parameters,
             branch=branch_slug,
             jwt_secret=jwt_secret,
+            database_admin_password=database_admin_password,
             pgbouncer_admin_password=pgbouncer_admin_password,
             use_existing_db_pvc=use_existing_pvc,
             ensure_namespace=False,
@@ -1307,7 +1312,7 @@ async def deploy_branch_environment(
             ref=ref,
         ),
         create_vela_grafana_obj(organization_id, branch_id, credential),
-        set_initial_password(branch_id, parameters.database_password, timeout=240),
+        set_initial_password(branch_id, parameters.database_password, database_admin_password, timeout=240),
         return_exceptions=True,
     )
 

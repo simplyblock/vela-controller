@@ -15,7 +15,7 @@ data:
   pg_hba.conf: |-
 {{- .Values.pgHbaConf | nindent 4 }}
   {{- if .Values.pgbouncer.enabled }}
-  {{- $dbPassword := required "Values.secret.db.password is required when PgBouncer is enabled" .Values.secret.db.password }}
+  {{- $dbPassword := required "Values.secret.db.admin_password is required when PgBouncer is enabled" .Values.secret.db.admin_password }}
   {{- $pgbouncerAdminPassword := required "Values.secret.pgbouncer.admin_password is required when PgBouncer is enabled" .Values.secret.pgbouncer.admin_password }}
   {{- $pgbouncerConfig := .Values.pgbouncer.config | default (dict) }}
   namespace: {{ .Release.Namespace }}

@@ -18,7 +18,7 @@ secret:
   # database credentials
   # these fields must be provided even if using external database
   db:
-    password: ""
+    admin_password: ""
   pgbouncer:
     admin_password: "pgadmin_pwd" # TODO: auto generate this in the next PR.
 
