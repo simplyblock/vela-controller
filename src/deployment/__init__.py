@@ -447,7 +447,7 @@ def _configure_vela_values(
         secret=jwt_secret,
     )
     secrets.update(pgmeta_crypto_key=get_settings().pgmeta_crypto_key)
-    secrets.setdefault("db", {})["password"] = parameters.database_password
+    secrets.setdefault("db", {})["admin_password"] = parameters.database_password
     secrets.setdefault("pgbouncer", {})["admin_password"] = pgbouncer_admin_password
 
     db_values = values_content.setdefault("db", {})
