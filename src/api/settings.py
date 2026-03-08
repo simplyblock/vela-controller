@@ -2,7 +2,7 @@ from datetime import timedelta
 from functools import lru_cache
 from typing import Annotated, Literal
 
-from pydantic import BeforeValidator, HttpUrl, PostgresDsn
+from pydantic import BeforeValidator, HttpUrl, PostgresDsn, SecretBytes
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .._util import permissive_numeric_timedelta
@@ -26,6 +26,7 @@ class Settings(BaseSettings):
         seconds=60
     )
     pitr_wal_retention_days: int = 7
+    deployment_password_secret: SecretBytes
 
 
 @lru_cache

@@ -41,6 +41,7 @@ services:
       VELA_GRAFANA_SECURITY_ADMIN_USER: "admin"
       VELA_GRAFANA_SECURITY_ADMIN_PASSWORD: "password"
       VELA_SIMPLYBLOCK_CSI_NAMESPACE: 'simplyblock-csi'
+      VELA_DEPLOYMENT_PASSWORD_SECRET: 'secret'
 
     depends_on:
       database:

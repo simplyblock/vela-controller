@@ -1,5 +1,8 @@
 import asyncio
+import base64
 import contextlib
+import hashlib
+import hmac
 import logging
 import secrets
 from collections.abc import Sequence
@@ -644,6 +647,13 @@ def _build_in_place_restore_parameters(branch: Branch) -> DeploymentParameters:
     )
 
 
+def _generate_database_password(branch: Branch):
+    secret = hmac.new(
+        get_api_settings().deployment_password_secret.get_secret_value(), branch.id.bytes, hashlib.sha256
+    ).digest()
+    return base64.urlsafe_b64encode(secret).rstrip(b"=").decode()
+
+
 async def _build_branch_entity(
     *,
     project: ProjectDep,
@@ -677,7 +687,7 @@ async def _build_branch_entity(
             status_updated_at=datetime.now(UTC),
             pitr_enabled=source.pitr_enabled,
         )
-        entity.database_password = clone_parameters.database_password
+        entity.database_password = _generate_database_password(entity)
         entity.pgbouncer_config = (
             await _copy_pgbouncer_config_from_source(source) if copy_config else _default_pgbouncer_config()
         )
@@ -702,7 +712,7 @@ async def _build_branch_entity(
         status_updated_at=datetime.now(UTC),
         pitr_enabled=parameters.pitr_enabled,
     )
-    entity.database_password = deployment_params.database_password
+    entity.database_password = _generate_database_password(entity)
     entity.pgbouncer_config = _default_pgbouncer_config()
     return entity
 
@@ -806,6 +816,7 @@ async def _deploy_branch_environment_task(
     branch_slug: str,
     parameters: DeploymentParameters,
     jwt_secret: str,
+    database_admin_password: str,
     pgbouncer_admin_password: str,
     pgbouncer_config: PgbouncerConfigSnapshot,
     pitr_enabled: bool,
@@ -820,6 +831,7 @@ async def _deploy_branch_environment_task(
             credential=credential,
             parameters=parameters,
             jwt_secret=jwt_secret,
+            database_admin_password=database_admin_password,
             pgbouncer_admin_password=pgbouncer_admin_password,
             pgbouncer_config=pgbouncer_snapshot_to_mapping(pgbouncer_config),
             pitr_enabled=pitr_enabled,
@@ -846,6 +858,7 @@ async def _clone_branch_environment_task(
     branch_slug: str,
     parameters: DeploymentParameters,
     jwt_secret: str,
+    database_admin_password: str,
     pgbouncer_admin_password: str,
     source_branch_id: Identifier,
     copy_data: bool,
@@ -888,6 +901,7 @@ async def _clone_branch_environment_task(
             credential=credential,
             parameters=parameters,
             jwt_secret=jwt_secret,
+            database_admin_password=database_admin_password,
             pgbouncer_admin_password=pgbouncer_admin_password,
             use_existing_pvc=copy_data,
             pgbouncer_config=pgbouncer_snapshot_to_mapping(pgbouncer_config),
@@ -915,6 +929,7 @@ async def _restore_branch_environment_task(
     branch_slug: str,
     parameters: DeploymentParameters,
     jwt_secret: str,
+    database_admin_password: str,
     pgbouncer_admin_password: str,
     source_branch_id: Identifier,
     snapshot_namespace: str,
@@ -964,6 +979,7 @@ async def _restore_branch_environment_task(
             credential=credential,
             parameters=parameters,
             jwt_secret=jwt_secret,
+            database_admin_password=database_admin_password,
             pgbouncer_admin_password=pgbouncer_admin_password,
             use_existing_pvc=True,
             pgbouncer_config=pgbouncer_snapshot_to_mapping(pgbouncer_config),
@@ -1387,6 +1403,7 @@ def _schedule_branch_environment_tasks(
                 branch_slug=branch.name,
                 parameters=deployment_parameters,
                 jwt_secret=jwt_secret,
+                database_admin_password=branch.database_password,
                 pgbouncer_admin_password=pgbouncer_admin_password,
                 pgbouncer_config=pgbouncer_config,
                 pitr_enabled=branch.pitr_enabled,
@@ -1405,6 +1422,7 @@ def _schedule_branch_environment_tasks(
                 branch_slug=branch.name,
                 parameters=clone_parameters,
                 jwt_secret=jwt_secret,
+                database_admin_password=branch.database_password,
                 pgbouncer_admin_password=pgbouncer_admin_password,
                 source_branch_id=source_id,
                 snapshot_namespace=restore_snapshot["namespace"],
@@ -1426,6 +1444,7 @@ def _schedule_branch_environment_tasks(
                 branch_slug=branch.name,
                 parameters=clone_parameters,
                 jwt_secret=jwt_secret,
+                database_admin_password=branch.database_password,
                 pgbouncer_admin_password=pgbouncer_admin_password,
                 source_branch_id=source_id,
                 copy_data=copy_data,
