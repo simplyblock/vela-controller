@@ -1,4 +1,17 @@
 apiVersion: v1
+kind: Secret
+metadata:
+  name: vela-controller-secret
+type: Opaque
+data:
+  {{- $existingSecret := lookup "v1" "Secret" .Release.Namespace "vela-controller-secret" }}
+  {{- if $existingSecret }}
+    deployment-password-secret: {{ index $existingSecret.data "deployment-password-secret" }}
+  {{- else }}
+    deployment-password-secret: {{ randAlphaNum 32 | b64enc }}
+  {{- end }}
+---
+apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: vela-controller
@@ -70,6 +83,11 @@ spec:
                 secretKeyRef:
                   name: database
                   key: superuser-password
+            - name: VELA_DEPLOYMENT_PASSWORD_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: vela-controller-secret
+                  key: deployment-password-secret
             - name: DB_HOST
               value: database
             - name: VELA_POSTGRES_URL
