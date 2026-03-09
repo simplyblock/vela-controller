@@ -68,7 +68,7 @@ def derive_status(reason: str | None, event_type: str | None, message: str | Non
         return "FILESYSTEM_RESIZE_PENDING"
     if normalized_reason == "RESIZEFINISHED":
         return "FILESYSTEM_RESIZE_PENDING"
-    if normalized_reason == "FILESYSTEMRESIZESUCCESSFUL":
+    if normalized_reason in {"FILESYSTEMRESIZESUCCESSFUL", "VOLUMERESIZESUCCESSFUL"}:
         return "COMPLETED"
     if normalized_reason in {"VOLUMERESIZEFAILED", "FILESYSTEMRESIZEFAILED"}:
         return "FAILED"
