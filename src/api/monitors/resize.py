@@ -38,19 +38,8 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from ulid import ULID
 
 from ..._util import storage_backend_bytes_to_db_bytes
-from .._util.resourcelimit import create_or_update_branch_provisioning
-from ..db import engine
 from ...deployment import deployment_branch
-from ...exceptions import VelaDeploymentError, VelaKubernetesError
-from ...models.branch import (
-    RESIZE_STATUS_PRIORITY,
-    Branch,
-    BranchResizeStatus,
-    aggregate_resize_statuses,
-    should_transition_resize_status,
-)
-from ...models.resources import ResourceLimitsPublic
-from ...deployment.monitors.health import collect_branch_service_health, derive_branch_status_from_services
+from ...deployment.health import collect_branch_service_health, derive_branch_status_from_services
 from ...deployment.monitors.resize import (
     INITIAL_BACKOFF_SECONDS,
     VOLUME_SERVICE_MAP,
@@ -60,6 +49,17 @@ from ...deployment.monitors.resize import (
     resource_from_pvc_name,
     stream_pvc_events,
 )
+from ...exceptions import VelaDeploymentError, VelaKubernetesError
+from ...models.branch import (
+    RESIZE_STATUS_PRIORITY,
+    Branch,
+    BranchResizeStatus,
+    aggregate_resize_statuses,
+    should_transition_resize_status,
+)
+from ...models.resources import ResourceLimitsPublic
+from .._util.resourcelimit import create_or_update_branch_provisioning
+from ..db import engine
 
 logger = logging.getLogger(__name__)
 
