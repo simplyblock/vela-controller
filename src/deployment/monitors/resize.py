@@ -12,8 +12,8 @@ from kubernetes_asyncio.client.exceptions import ApiException
 from kubernetes_asyncio.client.models import CoreV1Event
 
 from ..._util import quantity_to_bytes
-from ...deployment import AUTOSCALER_PVC_SUFFIX, DATABASE_PVC_SUFFIX, STORAGE_PVC_SUFFIX
-from ...deployment.kubernetes._util import core_v1_client
+from .. import AUTOSCALER_PVC_SUFFIX, DATABASE_PVC_SUFFIX, STORAGE_PVC_SUFFIX
+from ..kubernetes._util import core_v1_client
 
 logger = logging.getLogger(__name__)
 
