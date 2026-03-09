@@ -14,7 +14,7 @@ from fastapi.routing import APIRoute
 from pydantic import BaseModel
 
 from ..deployment.monitors.health import vm_monitor
-from ..deployment.monitors.resize import ResizeMonitor
+from .monitors.resize import ResizeMonitor
 from ._util.role import create_access_rights_if_emtpy
 from .backup import router as backup_router
 from .backupmonitor import run_backup_monitor
