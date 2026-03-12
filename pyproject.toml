@@ -35,6 +35,13 @@ package-dir = {'simplyblock.vela' = 'src', 'simplyblock.vela.models.migrations' 
 packages = ['simplyblock.vela']
 
 
+[project.optional-dependencies]
+test = [
+    "pytest>=8",
+    "httpx>=0.27",
+    "pytest-timeout",
+]
+
 [tool.tox]
 requires = ['tox']
 env_list = ['lint', 'type-check', 'format-check']
@@ -60,6 +67,11 @@ deps = ['ruff']
 commands = [['ruff', 'format', '--check']]
 basepython = ['python3.13']
 
+[tool.tox.env.integration]
+description = 'Run integration tests'
+extras = ['test']
+commands = [['pytest', '-v', '--timeout=1200', '{posargs}']]
+
 [tool.tox.env.alembic]
 description = 'Manage migrations'
 deps = ['testcontainers', 'psycopg[binary]']
@@ -67,6 +79,15 @@ commands = [['python3', 'scripts/alembic.py', '{posargs}']]
 passenv = ['DOCKER_HOST']
 basepython = ['python3.13']
 
+
+[tool.pytest.ini_options]
+testpaths = [
+    "tests/test_health.py",
+    "tests/test_organizations.py",
+    "tests/test_projects.py",
+    "tests/test_resources.py",
+    "tests/test_branches.py",
+]
 
 [tool.ruff]
 target-version = 'py313'
