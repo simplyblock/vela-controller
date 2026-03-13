@@ -115,7 +115,7 @@ data:
   VELA_CLOUDFLARE__ZONE_ID: {{ .Values.controller.env.VELA_CLOUDFLARE_ZONE_ID | quote }}
   VELA_CLOUDFLARE__BRANCH_REF: {{ .Values.controller.env.VELA_BRANCH_REF | quote }}
   VELA_CLOUDFLARE__BRANCH_DB_REF: {{ .Values.controller.env.VELA_BRANCH_DB_REF | quote }}
-  VELA_CLOUDFLARE__DOMAIN_SUFFIX: {{ .Values.domain | quote }}
+  VELA_CLOUDFLARE__DOMAIN_SUFFIX: {{ .Values.domainSuffix | default .Values.domain | quote }}
   VELA_DEPLOYMENT_NAMESPACE_PREFIX: {{ .Values.controller.env.VELA_DEPLOYMENT_NAMESPACE_PREFIX | quote }}
   VELA_DEPLOYMENT_SERVICE_PORT: {{ .Values.port | quote }}
   VELA_SERVER_ROOT_URL: "https://{{ .Values.domain }}:{{ .Values.port }}"
