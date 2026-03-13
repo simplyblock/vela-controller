@@ -27,3 +27,24 @@ jobs:
       vector_host_path: false
       database_size: '5Gi'
     secrets: inherit
+
+  test:
+    if: contains(github.event.pull_request.labels.*.name, 'deploy')
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      - run: pip install '.[test]'
+
+      - name: Run API tests
+        env:
+          VELA_API_URL: https://pr${{ github.event.pull_request.number }}.dev.kernel-labs.org/vela
+          VELA_KEYCLOAK_URL: https://pr${{ github.event.pull_request.number }}.dev.kernel-labs.org
+          BRANCH_TIMEOUT_SEC: '900'
+        run: pytest -v --timeout=1200
