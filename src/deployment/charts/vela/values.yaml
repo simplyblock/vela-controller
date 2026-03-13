@@ -4,10 +4,9 @@
 # |-- 3.  Meta
 # |-- 4.  Storage API
 
-# docker-compose payload injected via helm --set-file composeYaml
-composeYaml: ""
 vectorYaml: ""
 pgHbaConf: ""
+postgresqlConf: ""
 
 secret:
   # jwt will be used to reference secret in multiple services:
