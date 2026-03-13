@@ -1226,7 +1226,7 @@ async def set_initial_password(branch_id: Identifier, password: str, admin_passw
     while (
         (status := vm_monitor.status(branch_id)) is None
         or status.services is None
-        or not status.services.get("postgres", False)
+        or not status.services.get("pgbouncer", False)  # Use as a proxy to ensure migrations have run
     ):
         if (datetime.now() - start).total_seconds() > timeout:
             raise TimeoutError("Failed to wait for online database")
