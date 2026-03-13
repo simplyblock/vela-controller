@@ -1123,7 +1123,7 @@ async def _public(branch: Branch) -> BranchPublic:
     port = (await _resolve_branch_db_port(branch.id)) or 0
 
     # pg-meta and pg are in the same network. So password is not required in connection string.
-    connection_string = _build_connection_string(branch.database_user, "postgres", port)
+    connection_string = _build_connection_string("vela", "postgres", 5432)
 
     rest_endpoint = branch_rest_endpoint(branch.id)
     api_domain = branch_api_domain(branch.id)
