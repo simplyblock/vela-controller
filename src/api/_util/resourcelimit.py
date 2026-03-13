@@ -602,9 +602,12 @@ class Resources:
         )
 
     def __sub__(self: Self, other: Self) -> Self:
-        assert self.complete() and other.complete()
+        assert other.complete()
         return self.__class__(
-            **{field.name: getattr(self, field.name) - getattr(other, field.name) for field in fields(self)}
+            **{
+                field.name: (a - getattr(other, field.name)) if (a := getattr(self, field.name)) is not None else None
+                for field in fields(self)
+            }
         )
 
     def to_public(self) -> ResourceLimitsPublic:
