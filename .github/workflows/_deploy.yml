@@ -33,7 +33,6 @@ on:
         description: "Database volume size override (e.g. 10Gi). Uses chart default if not set."
         required: false
         type: string
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -59,6 +58,11 @@ jobs:
 
           HELM_EXTRA_ARGS=()
           [ -n "${{ inputs.database_size }}" ] && HELM_EXTRA_ARGS+=(--set-string "database.size=${{ inputs.database_size }}")
+          # For PR deployments, `domain` is the PR-specific hostname (e.g. pr664.dev.kernel-labs.org),
+          # but VELA_CLOUDFLARE__DOMAIN_SUFFIX must be the base domain (e.g. dev.kernel-labs.org) so
+          # that branch hostnames are <branch_id>.<base_domain> rather than <branch_id>.<pr_domain>.
+          # vars.DOMAIN holds the base domain for the current environment.
+          [ -n "${{ vars.DOMAIN }}" ] && HELM_EXTRA_ARGS+=(--set-string "domainSuffix=${{ vars.DOMAIN }}")
 
           helm upgrade --install "${{ inputs.deployment_name }}" ./chart \
             --namespace "${{ inputs.deployment_name }}" \
