@@ -79,6 +79,7 @@ DATABASE_PVC_SUFFIX = "-db-pvc"
 AUTOSCALER_PVC_SUFFIX = "-block-data"
 AUTOSCALER_WAL_PVC_SUFFIX = "-pg-wal"
 PITR_WAL_PVC_SIZE = "100Gi"
+WAL_IOPS_FRACTION = 0.25
 _LOAD_BALANCER_TIMEOUT_SECONDS = float(600)
 _LOAD_BALANCER_POLL_INTERVAL_SECONDS = float(2)
 _OVERLAY_IP_TIMEOUT_SECONDS = float(300)
@@ -356,13 +357,39 @@ async def update_branch_volume_iops(branch_id: Identifier, iops: int) -> None:
     namespace = deployment_namespace(branch_id)
 
     volume, _ = await resolve_autoscaler_volume_identifiers(namespace)
+
+    # Only split IOPS between data and WAL when a WAL volume exists (PITR enabled).
+    # Otherwise the full IOPS budget goes to the data volume.
+    # Catch only VelaKubernetesError (PVC/PV not found); other failures (e.g. missing
+    # CSI attributes) indicate corruption and must propagate.
+    try:
+        wal_volume, _ = await resolve_autoscaler_wal_volume_identifiers(namespace)
+    except VelaKubernetesError:
+        wal_volume = None
+
+    if wal_volume is not None:
+        data_iops = max(1, round(iops * (1 - WAL_IOPS_FRACTION)))
+        wal_iops = max(1, round(iops * WAL_IOPS_FRACTION))
+    else:
+        data_iops = iops
+
     try:
         async with create_simplyblock_api() as sb_api:
-            await sb_api.update_volume(volume=volume, payload={"max_rw_iops": iops})
+            await sb_api.update_volume(volume=volume, payload={"max_rw_iops": data_iops})
     except VelaSimplyblockAPIError as exc:
         raise VelaDeploymentError("Failed to update volume") from exc
 
-    logger.info("Updated Simplyblock volume %s IOPS to %s", volume, iops)
+    logger.info("Updated Simplyblock data volume %s IOPS to %s", volume, data_iops)
+
+    if wal_volume is not None:
+        try:
+            async with create_simplyblock_api() as sb_api:
+                await sb_api.update_volume(volume=wal_volume, payload={"max_rw_iops": wal_iops})
+        except VelaSimplyblockAPIError as exc:
+            raise VelaDeploymentError("Failed to update WAL volume") from exc
+        logger.info("Updated Simplyblock WAL volume %s IOPS to %s", wal_volume, wal_iops)
+    else:
+        logger.info("WAL volume not found for branch %s; skipping WAL IOPS update", branch_id)
 
 
 async def ensure_branch_storage_class(branch_id: Identifier, *, iops: int) -> str:
@@ -399,6 +426,7 @@ def _configure_vela_values(
     database_admin_password: str,
     pgbouncer_admin_password: str,
     storage_class_name: str,
+    wal_iops: int,
     use_existing_db_pvc: bool,
     pgbouncer_config: Mapping[str, int] | None,
     enable_file_storage: bool,
@@ -454,6 +482,7 @@ def _configure_vela_values(
     wal_persistence["create"] = not use_existing_db_pvc
     wal_persistence["size"] = PITR_WAL_PVC_SIZE
     wal_persistence["storageClassName"] = storage_class_name
+    wal_persistence.setdefault("annotations", {})["simplybk/qos-rw-iops"] = str(wal_iops)
     wal_persistence["claimName"] = wal_persistence.get("claimName") or (
         f"{_autoscaler_vm_name()}{AUTOSCALER_WAL_PVC_SUFFIX}"
     )
@@ -521,7 +550,13 @@ async def create_vela_config(
     postgresql_resource = resources.files(__package__).joinpath("postgresql.conf")
     values_content = _load_chart_values(chart)
 
-    storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
+    if pitr_enabled:
+        data_iops = max(1, round(parameters.iops * (1 - WAL_IOPS_FRACTION)))
+        wal_iops = max(1, round(parameters.iops * WAL_IOPS_FRACTION))
+    else:
+        data_iops = parameters.iops
+        wal_iops = 0
+    storage_class_name = await ensure_branch_storage_class(branch_id, iops=data_iops)
     values_content = _configure_vela_values(
         values_content,
         parameters=parameters,
@@ -529,6 +564,7 @@ async def create_vela_config(
         database_admin_password=database_admin_password,
         pgbouncer_admin_password=pgbouncer_admin_password,
         storage_class_name=storage_class_name,
+        wal_iops=wal_iops,
         use_existing_db_pvc=use_existing_db_pvc,
         pgbouncer_config=pgbouncer_config,
         enable_file_storage=parameters.enable_file_storage,
