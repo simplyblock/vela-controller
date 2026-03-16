@@ -25,6 +25,7 @@ from ....._util import DEFAULT_DB_NAME, DEFAULT_DB_USER, Identifier, storage_bac
 from ....._util.crypto import encrypt_with_passphrase, generate_keys
 from .....database import AsyncSessionLocal, SessionDep
 from .....deployment import (
+    WAL_IOPS_FRACTION,
     DeploymentParameters,
     ResizeParameters,
     branch_api_domain,
@@ -754,7 +755,8 @@ async def _clone_branch_environment_task(
     storage_class_name: str | None = None
     if copy_data:
         try:
-            storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
+            data_iops = max(1, round(parameters.iops * (1 - WAL_IOPS_FRACTION))) if pitr_enabled else parameters.iops
+            storage_class_name = await ensure_branch_storage_class(branch_id, iops=data_iops)
             await clone_branch_database_volume(
                 source_branch_id=source_branch_id,
                 target_branch_id=branch_id,
@@ -829,7 +831,8 @@ async def _restore_branch_environment_task(
     await _persist_branch_status(branch_id, BranchServiceStatus.CREATING)
     storage_class_name: str | None = None
     try:
-        storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
+        data_iops = max(1, round(parameters.iops * (1 - WAL_IOPS_FRACTION))) if pitr_enabled else parameters.iops
+        storage_class_name = await ensure_branch_storage_class(branch_id, iops=data_iops)
         await restore_branch_database_volume_from_snapshot(
             source_branch_id=source_branch_id,
             target_branch_id=branch_id,
@@ -894,6 +897,7 @@ async def _restore_branch_environment_in_place_task(
     snapshot_namespace: str,
     snapshot_name: str,
     snapshot_content_name: str | None,
+    pitr_enabled: bool,
     recovery_target_time: datetime | None = None,
 ) -> None:
     await _persist_branch_status(branch_id, BranchServiceStatus.RESTARTING)
@@ -910,7 +914,8 @@ async def _restore_branch_environment_in_place_task(
             return
 
     try:
-        storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
+        data_iops = max(1, round(parameters.iops * (1 - WAL_IOPS_FRACTION))) if pitr_enabled else parameters.iops
+        storage_class_name = await ensure_branch_storage_class(branch_id, iops=data_iops)
         await restore_branch_database_volume_from_snapshot(
             source_branch_id=source_branch_id,
             target_branch_id=branch_id,
@@ -1600,6 +1605,7 @@ async def restore(
             snapshot_namespace=snapshot_namespace,
             snapshot_name=snapshot_name,
             snapshot_content_name=snapshot_content_name,
+            pitr_enabled=branch.pitr_enabled,
             recovery_target_time=restore_target if isinstance(restore_target, datetime) else None,
         )
     )
