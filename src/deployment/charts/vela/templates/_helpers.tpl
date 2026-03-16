@@ -31,10 +31,10 @@ Return the autoscaler VM fullname.
 {{- end }}
 
 {{/*
-Return the compose config map name associated with the autoscaler VM.
+Return the config map name associated with the autoscaler VM.
 */}}
-{{- define "vela.autoscaler.composeConfigName" -}}
-{{- printf "%s-compose" (include "vela.autoscaler.name" .) | trunc 63 | trimSuffix "-" }}
+{{- define "vela.autoscaler.configName" -}}
+{{- printf "%s-config" (include "vela.autoscaler.name" .) | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
