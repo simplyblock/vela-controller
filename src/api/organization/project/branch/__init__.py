@@ -26,6 +26,7 @@ from ....._util.crypto import encrypt_with_passphrase, generate_keys
 from .....deployment import (
     AUTOSCALER_PVC_SUFFIX,
     STORAGE_PVC_SUFFIX,
+    WAL_IOPS_FRACTION,
     DeploymentParameters,
     ResizeParameters,
     branch_api_domain,
@@ -869,7 +870,8 @@ async def _clone_branch_environment_task(
     storage_class_name: str | None = None
     if copy_data:
         try:
-            storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
+            data_iops = max(1, round(parameters.iops * (1 - WAL_IOPS_FRACTION)))
+            storage_class_name = await ensure_branch_storage_class(branch_id, iops=data_iops)
             await clone_branch_database_volume(
                 source_branch_id=source_branch_id,
                 target_branch_id=branch_id,
@@ -942,7 +944,8 @@ async def _restore_branch_environment_task(
     await _persist_branch_status(branch_id, BranchServiceStatus.CREATING)
     storage_class_name: str | None = None
     try:
-        storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
+        data_iops = max(1, round(parameters.iops * (1 - WAL_IOPS_FRACTION)))
+        storage_class_name = await ensure_branch_storage_class(branch_id, iops=data_iops)
         await restore_branch_database_volume_from_snapshot(
             source_branch_id=source_branch_id,
             target_branch_id=branch_id,
@@ -1022,7 +1025,8 @@ async def _restore_branch_environment_in_place_task(
             return
 
     try:
-        storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
+        data_iops = max(1, round(parameters.iops * (1 - WAL_IOPS_FRACTION)))
+        storage_class_name = await ensure_branch_storage_class(branch_id, iops=data_iops)
         await restore_branch_database_volume_from_snapshot(
             source_branch_id=source_branch_id,
             target_branch_id=branch_id,

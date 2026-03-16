@@ -79,6 +79,7 @@ DATABASE_PVC_SUFFIX = "-db-pvc"
 AUTOSCALER_PVC_SUFFIX = "-block-data"
 AUTOSCALER_WAL_PVC_SUFFIX = "-pg-wal"
 PITR_WAL_PVC_SIZE = "100Gi"
+WAL_IOPS_FRACTION = 0.25
 _LOAD_BALANCER_TIMEOUT_SECONDS = float(600)
 _LOAD_BALANCER_POLL_INTERVAL_SECONDS = float(2)
 _OVERLAY_IP_TIMEOUT_SECONDS = float(300)
@@ -355,14 +356,28 @@ async def resolve_branch_database_volume_size(branch_id: Identifier) -> int:
 async def update_branch_volume_iops(branch_id: Identifier, iops: int) -> None:
     namespace = deployment_namespace(branch_id)
 
+    data_iops = max(1, round(iops * (1 - WAL_IOPS_FRACTION)))
+    wal_iops = max(1, round(iops * WAL_IOPS_FRACTION))
+
     volume, _ = await resolve_autoscaler_volume_identifiers(namespace)
     try:
         async with create_simplyblock_api() as sb_api:
-            await sb_api.update_volume(volume=volume, payload={"max_rw_iops": iops})
+            await sb_api.update_volume(volume=volume, payload={"max_rw_iops": data_iops})
     except VelaSimplyblockAPIError as exc:
         raise VelaDeploymentError("Failed to update volume") from exc
 
-    logger.info("Updated Simplyblock volume %s IOPS to %s", volume, iops)
+    logger.info("Updated Simplyblock data volume %s IOPS to %s", volume, data_iops)
+
+    try:
+        wal_volume, _ = await resolve_autoscaler_wal_volume_identifiers(namespace)
+        try:
+            async with create_simplyblock_api() as sb_api:
+                await sb_api.update_volume(volume=wal_volume, payload={"max_rw_iops": wal_iops})
+        except VelaSimplyblockAPIError as exc:
+            raise VelaDeploymentError("Failed to update WAL volume") from exc
+        logger.info("Updated Simplyblock WAL volume %s IOPS to %s", wal_volume, wal_iops)
+    except VelaDeploymentError as exc:
+        logger.info("WAL volume not found for branch %s; skipping WAL IOPS update: %s", branch_id, exc)
 
 
 async def ensure_branch_storage_class(branch_id: Identifier, *, iops: int) -> str:
@@ -384,6 +399,23 @@ async def ensure_branch_storage_class(branch_id: Identifier, *, iops: int) -> st
     return storage_class_name
 
 
+def _load_compose_manifest() -> dict[str, Any]:
+    compose_resource = resources.files(__package__).joinpath("compose.yml")
+    compose_content = yaml.safe_load(compose_resource.read_text())
+    if not isinstance(compose_content, dict):
+        raise VelaDeploymentError("docker-compose manifest must be a mapping")
+    return compose_content
+
+
+def _configure_compose_storage(compose: dict[str, Any], *, enable_file_storage: bool) -> dict[str, Any]:
+    services = compose.get("services")
+    if not isinstance(services, dict):
+        raise VelaDeploymentError("docker-compose manifest missing 'services' mapping")
+    if not enable_file_storage:
+        services.pop("storage", None)
+    return compose
+
+
 def _load_chart_values(chart_root: Any) -> dict[str, Any]:
     values_content = yaml.safe_load((chart_root / "values.yaml").read_text())
     if not isinstance(values_content, dict):
@@ -399,6 +431,7 @@ def _configure_vela_values(
     database_admin_password: str,
     pgbouncer_admin_password: str,
     storage_class_name: str,
+    wal_iops: int,
     use_existing_db_pvc: bool,
     pgbouncer_config: Mapping[str, int] | None,
     enable_file_storage: bool,
@@ -454,6 +487,7 @@ def _configure_vela_values(
     wal_persistence["create"] = not use_existing_db_pvc
     wal_persistence["size"] = PITR_WAL_PVC_SIZE
     wal_persistence["storageClassName"] = storage_class_name
+    wal_persistence["annotations"] = {"simplybk/qos-rw-iops": str(wal_iops)}
     wal_persistence["claimName"] = wal_persistence.get("claimName") or (
         f"{_autoscaler_vm_name()}{AUTOSCALER_WAL_PVC_SUFFIX}"
     )
@@ -521,7 +555,9 @@ async def create_vela_config(
     postgresql_resource = resources.files(__package__).joinpath("postgresql.conf")
     values_content = _load_chart_values(chart)
 
-    storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
+    data_iops = max(1, round(parameters.iops * (1 - WAL_IOPS_FRACTION)))
+    wal_iops = max(1, round(parameters.iops * WAL_IOPS_FRACTION))
+    storage_class_name = await ensure_branch_storage_class(branch_id, iops=data_iops)
     values_content = _configure_vela_values(
         values_content,
         parameters=parameters,
@@ -529,6 +565,7 @@ async def create_vela_config(
         database_admin_password=database_admin_password,
         pgbouncer_admin_password=pgbouncer_admin_password,
         storage_class_name=storage_class_name,
+        wal_iops=wal_iops,
         use_existing_db_pvc=use_existing_db_pvc,
         pgbouncer_config=pgbouncer_config,
         enable_file_storage=parameters.enable_file_storage,
