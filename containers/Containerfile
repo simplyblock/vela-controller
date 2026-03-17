@@ -17,11 +17,15 @@ RUN --mount=type=cache,target=/var/cache/apt \
 # Installating via the community-apt repository failed when executed as a GitHub action
 RUN curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
+RUN useradd -m -u 1000 vela
+
 WORKDIR /app
 
 COPY .. .
 
 RUN --mount=type=cache,target=/root/.cache/pip pip install .
 RUN rm -r /app/*
+
+USER vela
 
 CMD ["uvicorn", "simplyblock.vela.api:app", "--host", "0.0.0.0", "--proxy-headers"]
