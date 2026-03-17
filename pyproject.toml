@@ -28,6 +28,7 @@ dependencies = [
     'cloudflare',
     'alembic',
     'httpx',
+    'celery[sqlalchemy]',
 ]
 
 [tool.setuptools]
