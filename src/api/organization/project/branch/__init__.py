@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials
 from keycloak.exceptions import KeycloakError
 from kubernetes_asyncio.client.exceptions import ApiException
-from pydantic import AfterValidator, ValidationError
+from pydantic import AfterValidator
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
@@ -45,6 +45,7 @@ from .....deployment._util import deployment_namespace
 from .....deployment.health import (
     collect_branch_service_health,
     deployment_status,
+    derive_branch_status_from_services,
 )
 from .....deployment.kubernetes._util import core_v1_client
 from .....deployment.kubernetes.neonvm import PowerState as NeonVMPowerState
@@ -53,6 +54,7 @@ from .....deployment.kubernetes.volume_clone import (
     clone_branch_database_volume,
     restore_branch_database_volume_from_snapshot,
 )
+from .....deployment.resize import dispatch_resize, get_resize_task_result
 from .....deployment.settings import get_settings as get_deployment_settings
 from .....exceptions import VelaDeploymentError, VelaError, VelaKubernetesError, VelaSimplyblockAPIError
 from .....models.backups import BackupEntry
@@ -64,9 +66,6 @@ from .....models.branch import (
     BranchPgbouncerConfigStatus,
     BranchPgbouncerConfigUpdate,
     BranchPublic,
-    BranchResizeService,
-    BranchResizeStatus,
-    BranchResizeStatusEntry,
     BranchServiceStatus,
     BranchSourceDeploymentParameters,
     BranchStatus,
@@ -75,7 +74,6 @@ from .....models.branch import (
     CapaResizeKey,
     DatabaseInformation,
     PgbouncerConfig,
-    aggregate_resize_statuses,
 )
 from .....models.resources import BranchAllocationPublic, ResourceLimitsPublic, ResourceType
 from ...._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
@@ -102,6 +100,7 @@ from ....keycloak import realm_admin
 from ....settings import get_settings as get_api_settings
 from .api_keys import api as api_key_api
 from .auth import api as auth_api
+from .tasks import task_api
 
 api = APIRouter(tags=["branch"])
 
@@ -120,11 +119,6 @@ _TRANSITIONAL_BRANCH_STATUSES: set[BranchServiceStatus] = {
     BranchServiceStatus.RESIZING,
 }
 _PROTECTED_BRANCH_STATUSES: set[BranchServiceStatus] = {BranchServiceStatus.PAUSED}
-_ACTIVE_RESIZE_STATUSES: set[BranchResizeStatus] = {
-    "PENDING",
-    "RESIZING",
-    "FILESYSTEM_RESIZE_PENDING",
-}
 _CREATING_STATUS_ERROR_GRACE_PERIOD = timedelta(minutes=5)
 _STARTING_STATUS_ERROR_GRACE_PERIOD = timedelta(minutes=5)
 
@@ -190,13 +184,10 @@ async def _cleanup_failed_branch_deployment(branch_id: Identifier) -> None:
 def _should_update_branch_status(
     current: BranchServiceStatus,
     derived: BranchServiceStatus,
-    resize_status: BranchResizeStatus,
 ) -> bool:
     if current == derived:
         return False
-    if current == BranchServiceStatus.RESIZING and resize_status in _ACTIVE_RESIZE_STATUSES:
-        # Keep the explicit RESIZING while a resize is still in progress
-        # unless we detect a hard failure.
+    if current == BranchServiceStatus.RESIZING:
         return derived == BranchServiceStatus.ERROR
     if current == BranchServiceStatus.STARTING and derived == BranchServiceStatus.STOPPED:
         logger.debug("Ignoring STARTING -> STOPPED transition detected by branch status monitor")
@@ -282,36 +273,11 @@ async def _refresh_branch_status(branch: Branch) -> BranchServiceStatus:
         status,
     )
 
-    if _should_update_branch_status(
-        current_status,
-        status,
-        resize_status=branch.resize_status,
-    ):
+    if _should_update_branch_status(current_status, status):
         branch.set_status(status)
         return status
 
     return current_status
-
-
-def _normalize_resize_statuses(branch: Branch) -> dict[str, BranchResizeStatusEntry]:
-    statuses = branch.resize_statuses or {}
-    if not statuses:
-        return {}
-
-    normalized: dict[str, BranchResizeStatusEntry] = {}
-    for service, entry in statuses.items():
-        if isinstance(entry, BranchResizeStatusEntry):
-            normalized[service] = entry
-            continue
-        try:
-            normalized[service] = BranchResizeStatusEntry.model_validate(entry)
-        except ValidationError:
-            logger.warning(
-                "Skipping invalid resize status entry for branch %s service %s",
-                branch.id,
-                service,
-            )
-    return normalized
 
 
 _DEFAULT_SERVICE_STATUS = BranchStatus(
@@ -715,35 +681,6 @@ async def _build_branch_entity(
     entity.database_password = _generate_database_password(entity)
     entity.pgbouncer_config = _default_pgbouncer_config()
     return entity
-
-
-_PARAMETER_TO_SERVICE: dict[CapaResizeKey, BranchResizeService] = {
-    "database_size": "database_disk_resize",
-    "storage_size": "storage_api_disk_resize",
-    "milli_vcpu": "database_cpu_resize",
-    "memory_bytes": "database_memory_resize",
-    "iops": "database_iops_resize",
-}
-
-
-def _track_resize_change(
-    *,
-    parameter_key: CapaResizeKey,
-    new_value: int | None,
-    current_value: int | None,
-    statuses: dict[str, dict[str, Any]],
-    effective: dict[CapaResizeKey, int],
-    timestamp: str,
-) -> None:
-    service_key = _PARAMETER_TO_SERVICE[parameter_key]
-    if new_value is None:
-        return
-    if new_value != current_value:
-        effective[parameter_key] = new_value
-        entry: dict[str, Any] = {"status": "PENDING", "timestamp": timestamp, "requested_at": timestamp}
-        statuses[service_key] = entry
-    elif statuses.get(service_key, {}).get("status") == "PENDING":
-        statuses.pop(service_key, None)
 
 
 async def _apply_resize_operations(
@@ -1667,17 +1604,68 @@ async def detail(
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def status(
+    session: SessionDep,
     _organization: OrganizationDep,
     _project: ProjectDep,
     branch: BranchDep,
 ) -> BranchStatusPublic:
-    normalized_resize_statuses = _normalize_resize_statuses(branch)
     service_status = await collect_branch_service_health(branch.id)
-    return BranchStatusPublic(
-        resize_status=branch.resize_status,
-        resize_statuses=normalized_resize_statuses,
-        service_status=service_status,
-    )
+
+    if branch.resize_task_id is not None:
+        task_result = get_resize_task_result(branch.resize_task_id)
+
+        if task_result.state in ("SUCCESS", "FAILURE", "REVOKED"):
+            branch_in_session = await session.merge(branch)
+            if task_result.state == "SUCCESS" and task_result.result:
+                new_sizes: dict = task_result.result
+                if new_sizes.get("database_size") and branch.database_size != new_sizes["database_size"]:
+                    branch_in_session.database_size = new_sizes["database_size"]
+                    await create_or_update_branch_provisioning(
+                        session,
+                        branch_in_session,
+                        ResourceLimitsPublic(database_size=new_sizes["database_size"]),
+                        commit=False,
+                    )
+                if new_sizes.get("storage_size") and branch.storage_size != new_sizes["storage_size"]:
+                    branch_in_session.storage_size = new_sizes["storage_size"]
+                    await create_or_update_branch_provisioning(
+                        session,
+                        branch_in_session,
+                        ResourceLimitsPublic(storage_size=new_sizes["storage_size"]),
+                        commit=False,
+                    )
+                if new_sizes.get("milli_vcpu") and branch.milli_vcpu != new_sizes["milli_vcpu"]:
+                    branch_in_session.milli_vcpu = new_sizes["milli_vcpu"]
+                    await create_or_update_branch_provisioning(
+                        session,
+                        branch_in_session,
+                        ResourceLimitsPublic(milli_vcpu=new_sizes["milli_vcpu"]),
+                        commit=False,
+                    )
+                if new_sizes.get("memory_bytes") and branch.memory != new_sizes["memory_bytes"]:
+                    branch_in_session.memory = new_sizes["memory_bytes"]
+                    await create_or_update_branch_provisioning(
+                        session,
+                        branch_in_session,
+                        ResourceLimitsPublic(ram=new_sizes["memory_bytes"]),
+                        commit=False,
+                    )
+                if new_sizes.get("iops") and branch.iops != new_sizes["iops"]:
+                    branch_in_session.iops = new_sizes["iops"]
+                    await create_or_update_branch_provisioning(
+                        session,
+                        branch_in_session,
+                        ResourceLimitsPublic(iops=new_sizes["iops"]),
+                        commit=False,
+                    )
+            if branch_in_session.status == BranchServiceStatus.RESIZING:
+                branch_in_session.set_status(
+                    derive_branch_status_from_services(service_status, storage_enabled=branch.enable_file_storage)
+                )
+            branch_in_session.resize_task_id = None
+            await session.commit()
+
+    return BranchStatusPublic(service_status=service_status)
 
 
 @instance_api.post(
@@ -1927,15 +1915,14 @@ async def update_pgbouncer_config(
 )
 async def resize(
     session: SessionDep,
-    _organization: OrganizationDep,
-    _project: ProjectDep,
+    request: Request,
+    organization: OrganizationDep,
+    project: ProjectDep,
     parameters: ResizeParameters,
     branch: BranchDep,
 ):
-    branch_in_session = await session.merge(branch)
-
     if parameters.database_size is not None:
-        current_database_size = branch_in_session.database_size
+        current_database_size = branch.database_size
         requested_database_size = parameters.database_size
         if current_database_size is not None and requested_database_size < current_database_size:
             raise HTTPException(
@@ -1947,7 +1934,7 @@ async def resize(
             )
 
     if parameters.storage_size is not None:
-        current_storage = branch_in_session.storage_size
+        current_storage = branch.storage_size
         requested_storage = parameters.storage_size
         if current_storage is not None and requested_storage < current_storage:
             raise HTTPException(
@@ -1958,72 +1945,47 @@ async def resize(
                 ),
             )
 
-    updated_statuses = dict(branch_in_session.resize_statuses or {})
-    timestamp = datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    # Guard against concurrent resizes
+    if branch.resize_task_id is not None:
+        raise HTTPException(status_code=400, detail="A resize operation is already in progress")
 
     effective_parameters: dict[CapaResizeKey, int] = {}
+    for param_key, new_val, current_val in [
+        ("database_size", parameters.database_size, branch.database_size),
+        ("storage_size", parameters.storage_size, branch.storage_size),
+        ("milli_vcpu", parameters.milli_vcpu, branch.milli_vcpu),
+        ("memory_bytes", parameters.memory_bytes, branch.memory),
+        ("iops", parameters.iops, branch.iops),
+    ]:
+        if new_val is not None and new_val != current_val:
+            effective_parameters[cast("CapaResizeKey", param_key)] = new_val
 
-    _track_resize_change(
-        parameter_key="database_size",
-        new_value=parameters.database_size,
-        current_value=branch_in_session.database_size,
-        statuses=updated_statuses,
-        effective=effective_parameters,
-        timestamp=timestamp,
-    )
-    _track_resize_change(
-        parameter_key="storage_size",
-        new_value=parameters.storage_size,
-        current_value=branch_in_session.storage_size,
-        statuses=updated_statuses,
-        effective=effective_parameters,
-        timestamp=timestamp,
-    )
-    _track_resize_change(
-        parameter_key="milli_vcpu",
-        new_value=parameters.milli_vcpu,
-        current_value=branch_in_session.milli_vcpu,
-        statuses=updated_statuses,
-        effective=effective_parameters,
-        timestamp=timestamp,
-    )
-    _track_resize_change(
-        parameter_key="memory_bytes",
-        new_value=parameters.memory_bytes,
-        current_value=branch_in_session.memory,
-        statuses=updated_statuses,
-        effective=effective_parameters,
-        timestamp=timestamp,
-    )
-    _track_resize_change(
-        parameter_key="iops",
-        new_value=parameters.iops,
-        current_value=branch_in_session.iops,
-        statuses=updated_statuses,
-        effective=effective_parameters,
-        timestamp=timestamp,
+    if not effective_parameters:
+        return Response(status_code=202)
+
+    await _ensure_resize_resource_limits(session, branch, effective_parameters)
+
+    namespace, autoscaler_vm_name = get_autoscaler_vm_identity(branch.id)
+    task_id = dispatch_resize(
+        branch_id=str(branch.id),
+        namespace=namespace,
+        autoscaler_vm_name=autoscaler_vm_name,
+        effective_parameters=dict(effective_parameters),
     )
 
-    if effective_parameters:
-        await _ensure_resize_resource_limits(session, branch_in_session, effective_parameters)
-        await _apply_resize_operations(session, branch_in_session, effective_parameters)
-        completion_timestamp = datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-        for param_key, service_key in (
-            ("iops", "database_iops_resize"),
-            ("milli_vcpu", "database_cpu_resize"),
-            ("memory_bytes", "database_memory_resize"),
-        ):
-            if param_key in effective_parameters:
-                updated_statuses[service_key] = {
-                    "status": "COMPLETED",
-                    "timestamp": completion_timestamp,
-                }
-
-    branch_in_session.resize_statuses = updated_statuses
-    branch_in_session.resize_status = aggregate_resize_statuses(updated_statuses)
-    branch_in_session.set_status(BranchServiceStatus.RESIZING)
+    branch.set_status(BranchServiceStatus.RESIZING)
+    branch.resize_task_id = task_id
     await session.commit()
-    return Response(status_code=202)
+
+    task_url = url_path_for(
+        request,
+        "organizations:projects:branch:tasks:detail",
+        organization_id=await organization.awaitable_attrs.id,
+        project_id=project.id,
+        branch_id=branch.id,
+        task_id=task_id,
+    )
+    return Response(status_code=202, headers={"Location": task_url})
 
 
 _control_responses: dict[int | str, dict[str, Any]] = {
@@ -2139,6 +2101,7 @@ async def control_branch(
 
 instance_api.include_router(auth_api, prefix="/auth")
 instance_api.include_router(api_key_api, prefix="/apikeys")
+instance_api.include_router(task_api, prefix="/tasks")
 
 
 api.include_router(instance_api)
