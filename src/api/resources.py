@@ -35,10 +35,7 @@ from ..models.resources import (
     ConsumptionPayload,
     EntityType,
     LimitResultPublic,
-    ProvisioningLimitPublic,
-    ProvLimitPayload,
     ResourceConsumptionLimit,
-    ResourceLimit,
     ResourceLimitsPublic,
     ResourceUsageMinute,
 )
@@ -48,9 +45,7 @@ from ._util.resourcelimit import (
     dict_to_resource_limits,
     format_limit_violation_details,
     get_current_branch_allocations,
-    get_effective_branch_creation_limits,
     get_effective_branch_limits,
-    get_effective_project_creation_limits,
     get_organization_resource_usage,
     get_project_resource_usage,
     make_usage_cycle,
@@ -134,83 +129,6 @@ async def get_org_usage(
 # ---------------------------
 # Limits endpoints
 # ---------------------------
-@api.get("/organizations/{organization_id}/provisioning/available")
-async def get_available_organization_provisioning_resources(
-    session: SessionDep, organization: OrganizationDep
-) -> ResourceLimitsPublic:
-    return await get_effective_project_creation_limits(session, organization)
-
-
-@api.post("/organizations/{organization_id}/limits/provisioning")
-async def set_organization_provisioning_limit(
-    session: SessionDep, organization: OrganizationDep, payload: ProvLimitPayload
-) -> LimitResultPublic:
-    if (
-        limit := next(
-            (limit for limit in await organization.awaitable_attrs.limits if limit.resource.value == payload.resource),
-            None,
-        )
-    ) is not None:
-        limit.max_total = payload.max_total
-        limit.max_per_branch = payload.max_per_branch
-    else:
-        limit = ResourceLimit(
-            entity_type=EntityType.org,
-            resource=payload.resource,
-            org_id=organization.id,
-            max_total=payload.max_total,
-            max_per_branch=payload.max_per_branch,
-        )
-        session.add(limit)
-    await session.commit()
-
-    return LimitResultPublic(status="ok", limit=await limit.awaitable_attrs.id)
-
-
-@api.get("/organizations/{organization_id}/limits/provisioning")
-async def get_organization_provisioning_limits(organization: OrganizationDep) -> list[ProvisioningLimitPublic]:
-    return [ProvisioningLimitPublic.from_limit(limit) for limit in (await organization.awaitable_attrs.limits)]
-
-
-@api.get("/projects/{project_id}/provisioning/available")
-async def get_available_project_provisioning_resources(
-    session: SessionDep, project: ProjectDep
-) -> ResourceLimitsPublic:
-    return await get_effective_branch_creation_limits(session, project)
-
-
-@api.post("/projects/{project_id}/limits/provisioning")
-async def set_project_provisioning_limit(
-    session: SessionDep, project: ProjectDep, payload: ProvLimitPayload
-) -> LimitResultPublic:
-    if (
-        limit := next(
-            (limit for limit in (await project.awaitable_attrs.limits) if (limit.resource.value == payload.resource)),
-            None,
-        )
-    ) is not None:
-        print(limit)
-        limit.max_total = payload.max_total
-        limit.max_per_branch = payload.max_per_branch
-    else:
-        limit = ResourceLimit(
-            entity_type=EntityType.project,
-            resource=payload.resource,
-            project_id=project.id,
-            max_total=payload.max_total,
-            max_per_branch=payload.max_per_branch,
-        )
-        session.add(limit)
-    await session.commit()
-
-    return LimitResultPublic(status="ok", limit=await limit.awaitable_attrs.id)
-
-
-@api.get("/projects/{project_id}/limits/provisioning")
-async def get_project_provisioning_limits(project: ProjectDep) -> list[ProvisioningLimitPublic]:
-    return [ProvisioningLimitPublic.from_limit(limit) for limit in (await project.awaitable_attrs.limits)]
-
-
 @api.post("/organizations/{organization_id}/limits/consumption")
 async def set_organization_consumption_limit(
     session: SessionDep, organization: OrganizationDep, payload: ConsumptionPayload
