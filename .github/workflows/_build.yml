@@ -46,7 +46,9 @@ jobs:
         images: |
           ${{ vars .REGISTRY }}/simplyblock/vela-controller
         tags: |
-          type=ref,event=pr
+          type=ref,event=pr,enable=${{ github.event_name == 'pull_request' }}
+          type=sha,prefix=${{ github.ref_name == 'main' && 'latest' || github.ref_name }}-,format=short,enable=${{ github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'dev') }}
+          type=raw,value=${{ github.ref_name == 'main' && 'latest' || github.ref_name }},enable=${{ github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'dev') }}
 
     - name: Build and push Docker image
       id: build-push
@@ -61,5 +63,5 @@ jobs:
         cache-to: type=gha,mode=max
         build-args: |
           GIT_COMMIT_SHA=${{ github.sha }}
-          GIT_COMMIT_TIMESTAMP=${{ github.event.head_commit.timestamp || github.run_started_at }}
+          GIT_COMMIT_TIMESTAMP=${{ github.event.head_commit.timestamp }}
 
