@@ -178,12 +178,6 @@ class ResourceLimitsPublic(BaseModel):
     )
 
 
-class ProvLimitPayload(BaseModel):
-    resource: ResourceTypePublic
-    max_total: int
-    max_per_branch: int
-
-
 class ConsumptionPayload(BaseModel):
     resource: ResourceTypePublic
     max_total_minutes: int
@@ -205,20 +199,6 @@ class BranchAllocationPublic(BaseModel):
 class LimitResultPublic(BaseModel):
     status: str
     limit: ULID
-
-
-class ProvisioningLimitPublic(BaseModel):
-    resource: ResourceTypePublic
-    max_total: int
-    max_per_branch: int
-
-    @classmethod
-    def from_limit(cls, limit):
-        return cls(
-            resource=limit.resource.value,
-            max_total=limit.max_total,
-            max_per_branch=limit.max_per_branch,
-        )
 
 
 class ConsumptionLimitPublic(BaseModel):

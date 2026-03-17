@@ -247,16 +247,6 @@ async def get_effective_branch_limits(session: SessionDep, branch: Branch) -> Re
     return await get_remaining_project_resources(session, organization_id, branch.project_id)
 
 
-async def get_effective_branch_creation_limits(session: SessionDep, project: Project) -> ResourceLimitsPublic:
-    return await get_remaining_project_resources(session, project.organization_id, project.id)
-
-
-async def get_effective_project_creation_limits(
-    session: SessionDep, organization: Organization
-) -> ResourceLimitsPublic:
-    return await get_remaining_organization_resources(session, organization.id)
-
-
 async def get_remaining_organization_resources(
     session: SessionDep, organization_id: Identifier, *, exclude_branch_ids: Sequence[Identifier] | None = None
 ) -> ResourceLimitsPublic:
