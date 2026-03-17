@@ -29,6 +29,7 @@ dependencies = [
     'alembic',
     'httpx',
     'python-json-logger>=4.0',
+    'celery[sqlalchemy]',
 ]
 
 [tool.setuptools]
