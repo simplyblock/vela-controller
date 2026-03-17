@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import asc, delete, select
 from ulid import ULID
 
+from ..database import SessionDep
 from ..models._util import Identifier
 from ..models.backups import (
     BackupCreatePublic,
@@ -38,7 +39,6 @@ from .backup_snapshots import (
     create_branch_snapshot_bundle,
     delete_branch_snapshot,
 )
-from .db import SessionDep
 from .dependencies import OrganizationDep
 
 router = APIRouter(dependencies=[Depends(authenticated_user)], tags=["backup"])

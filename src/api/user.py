@@ -8,12 +8,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr, StrictBool
 from sqlmodel import and_, select
 
+from ..database import SessionDep
 from ..models.membership import Membership
 from ..models.role import AccessRight, Role, RoleAccessRight, RoleUserLink, RoleUserLinkPublic, UserPermissionPublic
 from ..models.user import User, UserParameters, UserPublic
 from ._util import NotFound, Unauthenticated
 from .auth import authenticated_user
-from .db import SessionDep
 from .keycloak import realm_admin
 
 api = APIRouter(dependencies=[Depends(authenticated_user)], tags=["user"])

@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from ...database import SessionDep
 from ...models._util import Identifier
 from ...models.role import (
     AccessRight,
@@ -29,7 +30,6 @@ from ...models.role import (
 from .._util import Forbidden, NotFound, Unauthenticated
 from ..access_right_utils import check_access
 from ..auth import authenticated_user
-from ..db import SessionDep
 from ..dependencies import OrganizationDep, RoleDep, branch_lookup, project_lookup
 
 api = APIRouter(dependencies=[Depends(authenticated_user)], tags=["role"])

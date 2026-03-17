@@ -12,6 +12,7 @@ from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from ..._util import Identifier, single_or_none
+from ...database import SessionDep
 from ...exceptions import VelaResourceLimitError
 from ...models.branch import Branch, BranchServiceStatus
 from ...models.organization import Organization
@@ -28,7 +29,6 @@ from ...models.resources import (
     ResourceUsageMinute,
     UsageCycle,
 )
-from ..db import SessionDep
 
 
 async def delete_branch_provisioning(session: SessionDep, branch_id: Identifier, *, commit: bool = True):

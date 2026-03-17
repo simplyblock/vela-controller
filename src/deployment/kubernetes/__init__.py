@@ -1,5 +1,8 @@
+import asyncio
 import logging
 import math
+import re
+import time
 from collections.abc import Mapping
 from copy import deepcopy
 from typing import Any
@@ -7,9 +10,20 @@ from typing import Any
 from aiohttp import ClientError
 from kubernetes_asyncio import client
 
+from ..._util import quantity_to_bytes, storage_backend_bytes_to_db_bytes
 from ...exceptions import VelaKubernetesError
 from ._util import core_v1_client, custom_api_client, discovery_v1_client, storage_v1_client
 from .neonvm import NeonVM, get_neon_vm
+
+POLL_INTERVAL_SECONDS = 5
+POLL_TIMEOUT_SECONDS = 30 * 60  # 30 minutes
+
+_FAILURE_PATTERN = re.compile(
+    r"\b(resize|resizing|resized)\w*\b.*\b(fail|failure|failed|failing|error|err)\w*\b"
+    r"|"
+    r"\b(fail|failure|failed|failing|error|err)\w*\b.*\b(resize|resizing|resized)\w*\b",
+    flags=re.IGNORECASE,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -292,7 +306,7 @@ class KubernetesService:
                     raise VelaKubernetesError(f"PersistentVolumeClaim {namespace!r}/{name!r} not found") from exc
                 raise
 
-    async def resize_pvc_storage(self, namespace: str, name: str, storage: str) -> None:
+    async def resize_pvc_storage(self, namespace: str, name: str, storage: str, *, wait: bool = False) -> None:
         async with core_v1_client() as core_v1:
             try:
                 await core_v1.patch_namespaced_persistent_volume_claim(
@@ -307,6 +321,36 @@ class KubernetesService:
                 ) from exc
 
         logger.info("Resized PVC %s/%s to %s", namespace, name, storage)
+
+        if wait:
+            target = quantity_to_bytes(storage)
+            if target is None:
+                raise VelaKubernetesError(f"Cannot parse storage quantity {storage!r}")
+            await self._poll_pvc_until_complete(namespace, name, target)
+
+    async def _poll_pvc_until_complete(self, namespace: str, name: str, target_bytes: int) -> int:
+        """Poll PVC status every 5s until resize completes or fails. Returns actual capacity."""
+        start = time.monotonic()
+        async with core_v1_client() as core_v1:
+            while True:
+                pvc = await core_v1.read_namespaced_persistent_volume_claim(namespace=namespace, name=name)
+
+                capacity_str = (pvc.status.capacity or {}).get("storage")
+                if capacity_str:
+                    actual = quantity_to_bytes(capacity_str)
+                    if actual and actual >= target_bytes:
+                        return storage_backend_bytes_to_db_bytes(actual)
+
+                for condition in pvc.status.conditions or []:
+                    msg = condition.message or ""
+                    if _FAILURE_PATTERN.search(msg):
+                        raise RuntimeError(f"PVC {namespace}/{name} resize failed: {msg}")
+
+                elapsed = time.monotonic() - start
+                if elapsed >= POLL_TIMEOUT_SECONDS:
+                    raise TimeoutError(f"PVC {namespace}/{name} resize timed out after {POLL_TIMEOUT_SECONDS}s")
+
+                await asyncio.sleep(POLL_INTERVAL_SECONDS)
 
     async def get_persistent_volume(self, name: str) -> Any:
         async with core_v1_client() as core_v1:
