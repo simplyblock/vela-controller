@@ -29,7 +29,6 @@ from ..models.branch import Branch, BranchServiceStatus, ResourceUsageDefinition
 from ..models.project import Project
 from ..models.resources import (
     BranchAllocationPublic,
-    BranchProvisioning,
     BranchProvisionPublic,
     ConsumptionLimitPublic,
     ConsumptionPayload,
@@ -37,11 +36,12 @@ from ..models.resources import (
     LimitResultPublic,
     ResourceConsumptionLimit,
     ResourceLimitsPublic,
+    ResourceType,
     ResourceUsageMinute,
 )
 from ._util.resourcelimit import (
+    apply_branch_resource_allocation,
     check_resource_limits,
-    create_or_update_branch_provisioning,
     dict_to_resource_limits,
     format_limit_violation_details,
     get_current_branch_allocations,
@@ -92,7 +92,7 @@ async def set_branch_allocations(
         violation_details = format_limit_violation_details(exceeded_limits, payload, effective_limits)
         raise HTTPException(422, f"Branch {branch.id} limit(s) exceeded: {violation_details}")
 
-    await create_or_update_branch_provisioning(session, branch, payload)
+    await apply_branch_resource_allocation(session, branch, payload)
 
     return BranchProvisionPublic(status="ok")
 
@@ -340,6 +340,31 @@ async def _collect_branch_resource_usage(branch: Branch) -> ResourceUsageDefinit
     )
 
 
+async def _add_branch_resource_minutes(db: AsyncSession, branch: Branch, ts_minute: datetime) -> None:
+    project = await branch.awaitable_attrs.project
+    resource_map = {
+        ResourceType.milli_vcpu: branch.milli_vcpu,
+        ResourceType.ram: branch.memory,
+        ResourceType.iops: branch.iops,
+        ResourceType.database_size: branch.database_size,
+        ResourceType.storage_size: branch.storage_size,
+    }
+    for resource_type, amount in resource_map.items():
+        if amount is not None:
+            db.add(
+                ResourceUsageMinute(
+                    ts_minute=ts_minute,
+                    org_id=project.organization_id,
+                    project_id=branch.project_id,
+                    original_project_id=branch.project_id,
+                    branch_id=branch.id,
+                    original_branch_id=branch.id,
+                    resource=resource_type,
+                    amount=amount,
+                )
+            )
+
+
 async def monitor_resources():
     interval = get_settings().resource_monitor_interval
 
@@ -373,24 +398,7 @@ async def monitor_resources():
 
                     status = await get_branch_status(branch.id)
                     if status in [BranchServiceStatus.ACTIVE_HEALTHY, BranchServiceStatus.RESIZING]:
-                        prov_result = await db.execute(
-                            select(BranchProvisioning).where(BranchProvisioning.branch_id == branch.id)
-                        )
-                        provisionings = prov_result.scalars().all()
-
-                        for p in provisionings:
-                            project = await branch.awaitable_attrs.project
-                            minute_usage = ResourceUsageMinute(
-                                ts_minute=ts_minute,
-                                org_id=project.organization_id,
-                                project_id=branch.project_id,
-                                original_project_id=branch.project_id,
-                                branch_id=branch.id,
-                                original_branch_id=branch.id,
-                                resource=p.resource,
-                                amount=p.amount,
-                            )
-                            db.add(minute_usage)
+                        await _add_branch_resource_minutes(db, branch, ts_minute)
 
                 await db.commit()
         except Exception:  # noqa: BLE001

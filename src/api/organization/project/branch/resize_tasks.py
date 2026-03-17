@@ -20,7 +20,7 @@ from .....deployment.resize import resize_cpu_memory, resize_database_pvc, resiz
 from .....models.branch import Branch, BranchServiceStatus
 from .....models.resources import ResourceLimitsPublic
 from .....worker import app
-from ...._util.resourcelimit import create_or_update_branch_provisioning
+from ...._util.resourcelimit import apply_branch_resource_allocation
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,7 @@ async def _apply_succeeded_fields(session: object, branch: Branch, succeeded: di
             continue
         setattr(branch, branch_attr, value)
         limits_kwarg = _FIELD_TO_RESOURCE_LIMITS_KWARG[field]
-        await create_or_update_branch_provisioning(
+        await apply_branch_resource_allocation(
             session,  # type: ignore[arg-type]
             branch,
             ResourceLimitsPublic(**{limits_kwarg: value}),
