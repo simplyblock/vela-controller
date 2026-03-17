@@ -13,12 +13,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
 from pydantic import BaseModel
 
+from ..database import engine
 from ..deployment.monitors.health import vm_monitor
-from ..deployment.monitors.resize import ResizeMonitor
 from ._util.role import create_access_rights_if_emtpy
 from .backup import router as backup_router
 from .backupmonitor import run_backup_monitor
-from .db import engine
 from .organization import api as organization_api
 from .resources import api as resources_api
 from .resources import monitor_resources
@@ -248,22 +247,18 @@ app.include_router(backup_router)
 _use_route_names_as_operation_ids(app)
 
 
-_resize_monitor = ResizeMonitor()
-
-
 @app.on_event("startup")
 async def on_startup():
     await _populate_db()
     # start async background monitor
     asyncio.create_task(run_backup_monitor())
     asyncio.create_task(monitor_resources())
-    _resize_monitor.start()
     asyncio.create_task(vm_monitor.run())
 
 
 @app.on_event("shutdown")
 async def on_shutdown():
-    await _resize_monitor.stop()
+    pass
 
 
 __all__ = ["app"]

@@ -6,6 +6,7 @@ from sqlalchemy.exc import NoResultFound
 from sqlmodel import select
 
 from .._util import Identifier
+from ..database import SessionDep
 from ..models.backups import BackupEntry
 from ..models.branch import Branch, BranchApiKey, BranchServiceStatus
 from ..models.organization import Organization
@@ -13,7 +14,6 @@ from ..models.project import Project
 from ..models.role import Role
 from ..models.user import User
 from .auth import authenticated_user
-from .db import SessionDep
 
 
 async def organization_lookup(session: SessionDep, organization_id: Identifier) -> Organization:

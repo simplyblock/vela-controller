@@ -30,6 +30,7 @@ dependencies = [
     'httpx',
     'python-json-logger>=4.0',
     'celery[sqlalchemy]',
+    'asgiref',
 ]
 
 [tool.setuptools]
