@@ -117,24 +117,6 @@ async def create_or_update_branch_provisioning(
         await session.refresh(branch)
 
 
-async def clone_branch_provisioning(session: SessionDep, source: Branch, target: Branch):
-    result = await session.execute(select(BranchProvisioning).where(BranchProvisioning.branch_id == source.id))
-    provisions = result.scalars().all()
-
-    with session.no_autoflush:
-        for provision in provisions:
-            await session.merge(
-                BranchProvisioning(
-                    branch_id=target.id,
-                    resource=provision.resource,
-                    amount=provision.amount,
-                    updated_at=datetime.now(UTC),
-                )
-            )
-    await session.commit()
-    await session.refresh(target)
-
-
 def dict_to_resource_limits(value: Mapping[ResourceType, int | None]) -> ResourceLimitsPublic:
     return ResourceLimitsPublic(
         milli_vcpu=value.get(ResourceType.milli_vcpu),
