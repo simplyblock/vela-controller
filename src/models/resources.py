@@ -91,13 +91,6 @@ class OrganizationLimitDefault(AsyncAttrs, Model, table=True):
     max_per_branch: Annotated[int, Field(sa_type=BigInteger)]
 
 
-class BranchProvisioning(AsyncAttrs, Model, table=True):
-    branch_id: Identifier | None = Model.foreign_key_field("branch", ondelete="CASCADE")
-    resource: ResourceType
-    amount: Annotated[int, Field(sa_type=BigInteger)]
-    updated_at: DateTime
-
-
 class ProvisioningLog(AsyncAttrs, Model, table=True):
     branch_id: Identifier | None = Model.foreign_key_field("branch", ondelete="CASCADE")
     resource: ResourceType

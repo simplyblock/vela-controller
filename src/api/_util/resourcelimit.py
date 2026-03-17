@@ -18,7 +18,6 @@ from ...models.organization import Organization
 from ...models.project import Project
 from ...models.resources import (
     BranchAllocationPublic,
-    BranchProvisioning,
     EntityType,
     OrganizationLimitDefault,
     ProvisioningLog,
@@ -33,24 +32,20 @@ from ..db import SessionDep
 
 async def delete_branch_provisioning(session: SessionDep, branch_id: Identifier, *, commit: bool = True):
     await session.execute(delete(ResourceUsageMinute).where(col(ResourceUsageMinute.branch_id) == branch_id))
-    await session.execute(delete(BranchProvisioning).where(col(BranchProvisioning.branch_id) == branch_id))
     await session.execute(delete(ProvisioningLog).where(col(ProvisioningLog.branch_id) == branch_id))
 
     if commit:
         await session.commit()
 
 
-async def get_current_branch_allocations(session: SessionDep, branch: Branch) -> BranchAllocationPublic:
-    result = await session.execute(select(BranchProvisioning).where(BranchProvisioning.branch_id == branch.id))
-    allocations = list(result.scalars().all())
-
+async def get_current_branch_allocations(_session: SessionDep, branch: Branch) -> BranchAllocationPublic:
     return BranchAllocationPublic(
         branch_id=branch.id,
-        milli_vcpu=_select_allocation(ResourceType.milli_vcpu, allocations),
-        ram=_select_allocation(ResourceType.ram, allocations),
-        iops=_select_allocation(ResourceType.iops, allocations),
-        database_size=_select_allocation(ResourceType.database_size, allocations),
-        storage_size=_select_allocation(ResourceType.storage_size, allocations),
+        milli_vcpu=branch.milli_vcpu,
+        ram=branch.memory,
+        iops=branch.iops,
+        database_size=branch.database_size,
+        storage_size=branch.storage_size,
     )
 
 
@@ -74,44 +69,28 @@ async def audit_new_branch_resource_provisioning(
     await session.merge(new_log)
 
 
-async def create_or_update_branch_provisioning(
+async def apply_branch_resource_allocation(
     session: SessionDep,
     branch: Branch,
     resource_requests: ResourceLimitsPublic,
     *,
     commit: bool = True,
 ) -> None:
+    field_map = {
+        ResourceType.milli_vcpu: "milli_vcpu",
+        ResourceType.ram: "memory",
+        ResourceType.iops: "iops",
+        ResourceType.database_size: "database_size",
+        ResourceType.storage_size: "storage_size",
+    }
     requests = resource_limits_to_dict(resource_requests)
     for resource_type, amount in requests.items():
         if amount is None:
             continue
+        setattr(branch, field_map[resource_type], int(amount))
+        await audit_new_branch_resource_provisioning(session, branch, resource_type, amount, "update")
 
-        # Create or update allocation
-        result = await session.execute(
-            select(BranchProvisioning).where(
-                BranchProvisioning.branch_id == branch.id, BranchProvisioning.resource == resource_type
-            )
-        )
-        allocation = result.scalars().first()
-
-        new_allocation = allocation is None
-        if allocation is None:
-            allocation = BranchProvisioning(
-                branch_id=branch.id,
-                resource=resource_type,
-                amount=amount,
-                updated_at=datetime.now(UTC),
-            )
-        else:
-            allocation.amount = int(amount or 0)  # else won't happen since it's checked above
-            allocation.updated_at = datetime.now(UTC)
-        await session.merge(allocation)
-
-        # Create audit log entry
-        await audit_new_branch_resource_provisioning(
-            session, branch, resource_type, amount, "create" if new_allocation else "update"
-        )
-
+    await session.merge(branch)
     if commit:
         await session.commit()
         await session.refresh(branch)
@@ -393,17 +372,17 @@ async def get_current_organization_allocations(
     *,
     exclude_branch_ids: Sequence[Identifier] | None = None,
 ) -> dict[ResourceType, int]:
-    result = await session.execute(
-        select(BranchProvisioning).join(Branch).join(Project).where(Project.organization_id == organization_id)
-    )
-    rows = list(result.scalars().all())
+    statement = _allocations().join(Project).where(Project.organization_id == organization_id)
     if exclude_branch_ids:
-        excluded = set(exclude_branch_ids)
-        rows = [row for row in rows if row.branch_id not in excluded]
-
-    grouped = _group_by_resource_type(rows)
-    branch_statuses = await _collect_branch_statuses(session, rows)
-    return _aggregate_group_by_resource_type(grouped, branch_statuses)
+        statement = statement.where(col(Branch.id).notin_(exclude_branch_ids))
+    row = (await session.exec(statement)).one()
+    return {
+        ResourceType.milli_vcpu: row.milli_vcpu,
+        ResourceType.ram: row.ram,
+        ResourceType.iops: row.iops,
+        ResourceType.database_size: row.database_size,
+        ResourceType.storage_size: row.storage_size,
+    }
 
 
 async def get_current_project_allocations(
@@ -412,71 +391,17 @@ async def get_current_project_allocations(
     *,
     exclude_branch_ids: Sequence[Identifier] | None = None,
 ) -> dict[ResourceType, int]:
-    result = await session.execute(select(BranchProvisioning).join(Branch).where(Branch.project_id == project_id))
-    rows = list(result.scalars().all())
+    statement = _allocations().where(Branch.project_id == project_id)
     if exclude_branch_ids:
-        excluded = set(exclude_branch_ids)
-        rows = [row for row in rows if row.branch_id not in excluded]
-
-    grouped = _group_by_resource_type(rows)
-    branch_statuses = await _collect_branch_statuses(session, rows)
-    return _aggregate_group_by_resource_type(grouped, branch_statuses)
-
-
-def _aggregate_group_by_resource_type(
-    grouped: dict[ResourceType, list[BranchProvisioning]], branch_statuses: dict[Identifier, BranchServiceStatus]
-) -> dict[ResourceType, int]:
+        statement = statement.where(col(Branch.id).notin_(exclude_branch_ids))
+    row = (await session.exec(statement)).one()
     return {
-        resource_type: sum(
-            allocation.amount
-            for allocation in allocations
-            if (allocation.branch_id is not None)
-            and (
-                branch_statuses.get(allocation.branch_id)
-                not in {BranchServiceStatus.STOPPED, BranchServiceStatus.DELETING}
-            )
-        )
-        for resource_type, allocations in grouped.items()
+        ResourceType.milli_vcpu: row.milli_vcpu,
+        ResourceType.ram: row.ram,
+        ResourceType.iops: row.iops,
+        ResourceType.database_size: row.database_size,
+        ResourceType.storage_size: row.storage_size,
     }
-
-
-async def _collect_branch_statuses(
-    _session: SessionDep, rows: list[BranchProvisioning]
-) -> dict[Identifier, BranchServiceStatus]:
-    branch_ids = {row.branch_id for row in rows if row.branch_id is not None}
-    if not branch_ids:
-        return {}
-
-    from ..organization.project import branch as branch_module
-
-    statuses: dict[Identifier, BranchServiceStatus] = {}
-    for branch_id in branch_ids:
-        statuses[branch_id] = await branch_module.refresh_branch_status(branch_id)
-    return statuses
-
-
-def _group_by_resource_type(allocations: list[BranchProvisioning]) -> dict[ResourceType, list[BranchProvisioning]]:
-    result: dict[ResourceType, list[BranchProvisioning]] = {}
-    for allocation in allocations:
-        result.setdefault(allocation.resource, []).append(allocation)
-    return result
-
-
-def _map_resource_allocation(provisioning_list: list[BranchProvisioning]) -> dict[ResourceType, int]:
-    result: dict[ResourceType, int] = {}
-    for resource_type in ResourceType:
-        result[resource_type] = _select_resource_allocation_or_zero(resource_type, provisioning_list)
-    return result
-
-
-def _select_resource_allocation_or_zero(resource_type: ResourceType, allocations: list[BranchProvisioning]):
-    value: int | None = None
-    for allocation in allocations:
-        if allocation.resource == resource_type:
-            if value is not None:
-                raise ValueError(f"Multiple allocations entries for resource type {resource_type.name}")
-            value = allocation.amount
-    return value if value is not None else 0
 
 
 def _map_resource_usages(usages: list[ResourceUsageMinute]) -> dict[ResourceType, int]:
@@ -484,13 +409,6 @@ def _map_resource_usages(usages: list[ResourceUsageMinute]) -> dict[ResourceType
     for usage in usages:
         result[usage.resource] = result.get(usage.resource, 0) + usage.amount
     return result
-
-
-def _select_allocation(resource_type: ResourceType, allocations: list[BranchProvisioning]):
-    for allocation in allocations:
-        if allocation.resource == resource_type:
-            return allocation.amount
-    return None
 
 
 def _optional_min(a: int | None, b: int | None) -> int | None:

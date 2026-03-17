@@ -38,7 +38,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from ulid import ULID
 
 from ...._util import storage_backend_bytes_to_db_bytes
-from ....api._util.resourcelimit import create_or_update_branch_provisioning
+from ....api._util.resourcelimit import apply_branch_resource_allocation
 from ....api.db import engine
 from ....deployment import deployment_branch
 from ....exceptions import VelaDeploymentError, VelaKubernetesError
@@ -114,21 +114,19 @@ async def _apply_volume_status(
         if status_updated and status == "COMPLETED" and capacity is not None:
             normalized_capacity = storage_backend_bytes_to_db_bytes(capacity)
             if resource == "storage":
-                await create_or_update_branch_provisioning(
+                await apply_branch_resource_allocation(
                     session,
                     branch,
                     ResourceLimitsPublic(storage_size=normalized_capacity),
                     commit=False,
                 )
-                branch.storage_size = normalized_capacity
             elif resource == "database":
-                await create_or_update_branch_provisioning(
+                await apply_branch_resource_allocation(
                     session,
                     branch,
                     ResourceLimitsPublic(database_size=normalized_capacity),
                     commit=False,
                 )
-                branch.database_size = normalized_capacity
 
         await session.commit()
 
