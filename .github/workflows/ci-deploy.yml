@@ -20,5 +20,4 @@ jobs:
       image_tag: ${{ needs.build.outputs.image_tag }}
       deployment_name: vela
       environment: ${{ github.ref_name == 'main' && 'prod' || 'dev' }}
-      domain: ${{ vars.DOMAIN }}
     secrets: inherit

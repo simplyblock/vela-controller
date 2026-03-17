@@ -65,7 +65,7 @@ jobs:
             --create-namespace \
             --wait \
             --timeout 10m \
-            --set-string domain="${{ inputs.domain }}" \
+            --set-string domain="${{ inputs.domain || vars.DOMAIN }}" \
             --set database.replicas=${{ inputs.environment == 'prod' && 3 || 1 }} \
             --set-string database.cpu="${{ inputs.environment == 'prod' && '1' || '500m' }}" \
             --set-string database.memory="${{ inputs.environment == 'prod' && '1Gi' || '0.5Gi' }}" \
