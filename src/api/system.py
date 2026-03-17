@@ -21,10 +21,10 @@ from .._util import (
     VCPU_MILLIS_MIN,
     VCPU_MILLIS_STEP,
 )
+from ..database import SessionDep
 from ..models.resources import OrganizationLimitDefault, ResourceLimitDefinitionPublic, ResourceType
 from ..models.role import AccessRight
 from .auth import authenticated_user
-from .db import SessionDep
 
 api = APIRouter(tags=["system"])
 

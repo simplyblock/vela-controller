@@ -12,6 +12,7 @@ from sqlmodel import select
 
 from .._util import quantity_to_bytes, quantity_to_milli_cpu
 from ..check_branch_status import get_branch_status
+from ..database import SessionDep
 from ..deployment import (
     get_autoscaler_vm_identity,
     resolve_autoscaler_volume_identifiers,
@@ -54,7 +55,6 @@ from ._util.resourcelimit import (
     make_usage_cycle,
 )
 from .auth import authenticated_user
-from .db import SessionDep
 from .dependencies import BranchDep, OrganizationDep, ProjectDep
 from .organization.project.branch import refresh_branch_status
 from .settings import get_settings

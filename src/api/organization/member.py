@@ -6,10 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
+from ...database import SessionDep
 from ...models.user import UserID, UserPublic
 from .._util import Forbidden, NotFound, Unauthenticated
 from ..auth import authenticated_user, user_by_id
-from ..db import SessionDep
 from ..dependencies import MemberDep, OrganizationDep, UserDep
 from ..user import public_list as public_user_list
 
