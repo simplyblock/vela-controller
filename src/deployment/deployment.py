@@ -18,7 +18,7 @@ _SUPPORTED_DATABASE_IMAGE_TAG = {
     },
     "18.1-velaos": {
         "image": "docker.io/simplyblock/vela-image",
-        "tag": "sha-bb0a857",
+        "tag": "sha-c1980c7",
     },
 }
 
