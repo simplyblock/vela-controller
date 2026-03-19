@@ -158,6 +158,20 @@ async def _persist_branch_status(branch_id: Identifier, status: BranchServiceSta
         await session.commit()
 
 
+async def _persist_branch_db_port(branch_id: Identifier) -> None:
+    port = await _resolve_branch_db_port(branch_id)
+    if port is None:
+        logger.warning("Could not resolve db port for branch %s", branch_id)
+        return
+    async with AsyncSessionLocal() as session:
+        branch = await session.get(Branch, branch_id)
+        if branch is None:
+            logger.warning("Branch %s missing while persisting db_port", branch_id)
+            return
+        branch.db_port = port
+        await session.commit()
+
+
 async def _cleanup_failed_branch_deployment(branch_id: Identifier) -> None:
     """Best-effort cleanup when provisioning fails so allocations aren't stranded."""
     try:
@@ -715,6 +729,7 @@ async def _deploy_branch_environment_task(
             branch_slug,
         )
         return
+    await _persist_branch_db_port(branch_id)
     await _persist_branch_status(branch_id, BranchServiceStatus.STARTING)
 
 
@@ -788,6 +803,7 @@ async def _clone_branch_environment_task(
             branch_slug,
         )
         return
+    await _persist_branch_db_port(branch_id)
     await _persist_branch_status(branch_id, BranchServiceStatus.STARTING)
 
 
@@ -868,6 +884,7 @@ async def _restore_branch_environment_task(
             branch_slug,
         )
         return
+    await _persist_branch_db_port(branch_id)
     await _persist_branch_status(branch_id, BranchServiceStatus.STARTING)
 
 
@@ -1009,7 +1026,7 @@ async def _public(branch: Branch) -> BranchPublic:
     project = await branch.awaitable_attrs.project
 
     db_host = _resolve_db_host(branch) or ""
-    port = (await _resolve_branch_db_port(branch.id)) or 0
+    port = branch.db_port or (await _resolve_branch_db_port(branch.id)) or 0
 
     # pg-meta and pg are in the same network. So password is not required in connection string.
     connection_string = _build_connection_string("vela", "postgres", 5432)
