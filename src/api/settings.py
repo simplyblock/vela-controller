@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     keycloak_admin_name: str
     keycloak_admin_secret: str
     log_level: Literal["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"] = "INFO"
+    log_json: bool = True
     resource_monitor_interval: Annotated[timedelta, BeforeValidator(permissive_numeric_timedelta)] = timedelta(
         seconds=60
     )
