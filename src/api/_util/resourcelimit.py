@@ -239,14 +239,6 @@ def format_limit_violation_details(
     return "; ".join(details)
 
 
-# FIXME: @Chris This call should return the limits on the branch which is only meaningful for resizing, however in this
-# case, the calculation is wrong, since it includes it's own allocations. Fixing this requires a change on the
-# frontend,hence it's pushed for now.
-async def get_effective_branch_limits(session: SessionDep, branch: Branch) -> ResourceLimitsPublic:
-    organization_id = (await branch.awaitable_attrs.project).organization_id
-    return await get_remaining_project_resources(session, organization_id, branch.project_id)
-
-
 async def get_remaining_organization_resources(
     session: SessionDep, organization_id: Identifier, *, exclude_branch_ids: Sequence[Identifier] | None = None
 ) -> ResourceLimitsPublic:
