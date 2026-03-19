@@ -28,6 +28,7 @@ dependencies = [
     'cloudflare',
     'alembic',
     'httpx',
+    'python-json-logger>=4.0',
 ]
 
 [tool.setuptools]

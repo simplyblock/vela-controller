@@ -28,17 +28,30 @@ from .user import api as user_api
 
 
 def _logging_config() -> dict[str, Any]:
-    log_format = "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
     date_format = "%Y-%m-%dT%H:%M:%S%z"
-    log_level = get_settings().log_level
+    settings = get_settings()
+    log_level = settings.log_level
+    if settings.log_json:
+        formatter: dict[str, Any] = {
+            "()": "pythonjsonlogger.json.JsonFormatter",
+            "fmt": "%(asctime)s %(levelname)s %(name)s %(message)s",
+            "rename_fields": {
+                "asctime": "timestamp",
+                "levelname": "level",
+                "name": "logger",
+            },
+            "datefmt": date_format,
+        }
+    else:
+        formatter = {
+            "format": "%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+            "datefmt": date_format,
+        }
     return {
         "version": 1,
         "disable_existing_loggers": False,
         "formatters": {
-            "default": {
-                "format": log_format,
-                "datefmt": date_format,
-            },
+            "default": formatter,
         },
         "handlers": {
             "default": {
