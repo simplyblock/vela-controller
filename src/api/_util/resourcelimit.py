@@ -716,3 +716,18 @@ async def project_available(session: AsyncSession, project: Project) -> Resource
         (await project_limits(project)).total - await project_allocations(session, project),
         await organization_available(session, await project.awaitable_attrs.organization),
     )
+
+
+async def project_branch_maxima(session: AsyncSession, project: Project) -> Resources:
+    """Minimum per-branch limit across the hierarchy (project > organization > system).
+
+    Returns None for any field where no per-branch limit has been configured at any level.
+    """
+    organization = await project.awaitable_attrs.organization
+    return Resources.min(
+        Resources.min(
+            (await project_limits(project)).per_branch,
+            (await organization_limits(organization)).per_branch,
+        ),
+        (await system_limits(session)).per_branch,
+    )

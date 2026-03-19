@@ -2,7 +2,14 @@ from fastapi import APIRouter, Response
 
 from ....models.resources import EntityType
 from ..._util import Forbidden, NotFound, Unauthenticated
-from ..._util.resourcelimit import Limits, Resources, project_allocations, project_available, project_limits
+from ..._util.resourcelimit import (
+    Limits,
+    Resources,
+    project_allocations,
+    project_available,
+    project_branch_maxima,
+    project_limits,
+)
 from ...dependencies import ProjectDep, SessionDep
 
 api = APIRouter()
@@ -49,3 +56,12 @@ async def allocations(session: SessionDep, project: ProjectDep) -> Resources:
 )
 async def available(session: SessionDep, project: ProjectDep) -> Resources:
     return await project_available(session, project)
+
+
+@api.get(
+    "/branch-maxima/",
+    name="organizations:projects:resources:branch-maxima",
+    responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
+)
+async def branch_maxima(session: SessionDep, project: ProjectDep) -> Resources:
+    return await project_branch_maxima(session, project)
