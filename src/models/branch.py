@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Literal, Optional
 
+import sqlalchemy as sa
 from pydantic import BaseModel, model_validator
 from pydantic import Field as PydanticField
 from sqlalchemy import BigInteger, Boolean, Column, String, Text, UniqueConstraint, text
@@ -108,6 +109,7 @@ class Branch(AsyncAttrs, Model, table=True):
     )
     pitr_enabled: bool = Field(default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false")))
     resize_task_id: uuid.UUID | None = Field(default=None, nullable=True)
+    db_port: int | None = Field(default=None, sa_column=Column(sa.Integer, nullable=True))
 
     __table_args__ = (UniqueConstraint("project_id", "name", name="unique_branch_name_per_project"),)
 
