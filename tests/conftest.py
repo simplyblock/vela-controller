@@ -72,6 +72,28 @@ def _id(location: str) -> ULID:
     return ULID.from_str(location.rstrip("/").rsplit("/", 1)[-1])
 
 
+_TEST_ORG_NAMES: frozenset[str] = frozenset(
+    {
+        "test-org-lifecycle",
+        "test-org-lifecycle-upd",
+        "test-org-projects",
+        "test-org-resources",
+        "test-org-branches",
+    }
+)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _cleanup_leftover_test_resources(client):
+    """Delete any orgs left behind by a previously interrupted test run."""
+    r = client.get("organizations/")
+    if r.status_code == 200:
+        for org in r.json():
+            if org.get("name") in _TEST_ORG_NAMES:
+                client.delete(f"organizations/{org['id']}/")
+    yield
+
+
 @pytest.fixture(scope="session")
 def client():
     base = VELA_API_URL.rstrip("/") + "/"
