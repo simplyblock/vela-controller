@@ -45,7 +45,6 @@ from ._util.resourcelimit import (
     dict_to_resource_limits,
     format_limit_violation_details,
     get_current_branch_allocations,
-    get_effective_branch_limits,
     get_organization_resource_usage,
     get_project_resource_usage,
     make_usage_cycle,
@@ -153,11 +152,6 @@ async def set_project_consumption_limit(
 @api.get("/projects/{project_id}/limits/consumption")
 async def get_project_consumption_limits(session: SessionDep, project: ProjectDep) -> list[ConsumptionLimitPublic]:
     return await get_consumption_limits(session, EntityType.project, project.id)
-
-
-@api.get("/branches/{branch_id}/limits/")
-async def branch_effective_limit(session: SessionDep, branch: BranchDep) -> ResourceLimitsPublic:
-    return await get_effective_branch_limits(session, branch)
 
 
 async def set_consumption_limit(
