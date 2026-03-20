@@ -5,6 +5,7 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
+from uuid import UUID
 
 from sqlalchemy.util import await_only
 from ulid import ULID
@@ -27,16 +28,17 @@ from ..._util import IOPS_MIN, quantity_to_bytes
 from ...exceptions import VelaDeploymentError, VelaKubernetesError, VelaSimplyblockAPIError
 from .. import (
     AUTOSCALER_PVC_SUFFIX,
+    AUTOSCALER_WAL_PVC_SUFFIX,
+    STORAGE_PVC_SUFFIX,
     ensure_branch_storage_class,
     get_autoscaler_vm_identity,
     kube_service,
-    resolve_autoscaler_volume_identifiers,
     update_branch_volume_iops,
 )
 from ..kubernetes.pvc import delete_pvc, wait_for_pvc_absent
 from ..kubernetes.snapshot import create_snapshot_from_pvc, delete_snapshot, read_snapshot, wait_snapshot_ready
 from ..kubernetes.volume_clone import clone_branch_database_volume, restore_branch_database_volume_from_snapshot
-from ..settings import Settings
+from ..settings import Settings, get_settings
 from ..simplyblock_api import create_simplyblock_api
 
 _SNAPSHOT_TIMEOUT_SECONDS = float(os.environ.get("SNAPSHOT_TIMEOUT_SEC", "120"))
@@ -127,6 +129,57 @@ def _build_storage_class_manifest(*, storage_class_name: str, iops: int, base_st
         manifest["mountOptions"] = list(mount_options)
 
     return manifest
+
+
+def _release_name() -> str:
+    return get_settings().deployment_release_name
+
+
+def _release_fullname() -> str:
+    release = _release_name()
+    return release if "vela" in release else f"{release}-vela"
+
+
+def _autoscaler_vm_name() -> str:
+    name = f"{_release_fullname()}-autoscaler-vm"
+    return name[:63].rstrip("-")
+
+
+async def _resolve_volume_identifiers(namespace: str, pvc_name: str) -> tuple[UUID, UUID | None]:
+    pvc = await kube_service.get_persistent_volume_claim(namespace, pvc_name)
+    pvc_spec = getattr(pvc, "spec", None)
+    volume_name = getattr(pvc_spec, "volume_name", None) if pvc_spec else None
+    if not volume_name:
+        raise VelaDeploymentError(f"PersistentVolumeClaim {namespace}/{pvc_name} is not bound to a PersistentVolume")
+
+    pv = await kube_service.get_persistent_volume(volume_name)
+    pv_spec = getattr(pv, "spec", None)
+    csi_spec = getattr(pv_spec, "csi", None) if pv_spec else None
+    volume_attributes = getattr(csi_spec, "volume_attributes", None) if csi_spec else None
+    if not isinstance(volume_attributes, dict):
+        raise VelaDeploymentError(
+            f"PersistentVolume {volume_name} missing CSI volume attributes; cannot resolve Simplyblock volume UUID"
+        )
+    volume_uuid = volume_attributes.get("uuid")
+    volume_cluster_id = volume_attributes.get("cluster_id")
+    if not volume_uuid:
+        raise VelaDeploymentError(f"PersistentVolume {volume_name} missing 'uuid' attribute in CSI volume attributes")
+    return UUID(volume_uuid), UUID(volume_cluster_id) if volume_cluster_id is not None else None
+
+
+async def resolve_storage_volume_identifiers(namespace: str) -> tuple[UUID, UUID | None]:
+    pvc_name = f"{_autoscaler_vm_name()}{STORAGE_PVC_SUFFIX}"
+    return await _resolve_volume_identifiers(namespace, pvc_name)
+
+
+async def resolve_autoscaler_volume_identifiers(namespace: str) -> tuple[UUID, UUID | None]:
+    pvc_name = f"{_autoscaler_vm_name()}{AUTOSCALER_PVC_SUFFIX}"
+    return await _resolve_volume_identifiers(namespace, pvc_name)
+
+
+async def resolve_autoscaler_wal_volume_identifiers(namespace: str) -> tuple[UUID, UUID | None]:
+    pvc_name = f"{_autoscaler_vm_name()}{AUTOSCALER_WAL_PVC_SUFFIX}"
+    return await _resolve_volume_identifiers(namespace, pvc_name)
 
 
 @dataclass

@@ -235,41 +235,26 @@ async def _initialize_autoscaler_overlay_endpoints(namespace: str) -> None:
     await _ensure_autoscaler_overlay_endpoint_slices(namespace, overlay_ip)
 
 
-async def _resolve_volume_identifiers(namespace: str, pvc_name: str) -> tuple[UUID, UUID | None]:
-    pvc = await kube_service.get_persistent_volume_claim(namespace, pvc_name)
-    pvc_spec = getattr(pvc, "spec", None)
-    volume_name = getattr(pvc_spec, "volume_name", None) if pvc_spec else None
-    if not volume_name:
-        raise VelaDeploymentError(f"PersistentVolumeClaim {namespace}/{pvc_name} is not bound to a PersistentVolume")
-
-    pv = await kube_service.get_persistent_volume(volume_name)
-    pv_spec = getattr(pv, "spec", None)
-    csi_spec = getattr(pv_spec, "csi", None) if pv_spec else None
-    volume_attributes = getattr(csi_spec, "volume_attributes", None) if csi_spec else None
-    if not isinstance(volume_attributes, dict):
-        raise VelaDeploymentError(
-            f"PersistentVolume {volume_name} missing CSI volume attributes; cannot resolve Simplyblock volume UUID"
-        )
-    volume_uuid = volume_attributes.get("uuid")
-    volume_cluster_id = volume_attributes.get("cluster_id")
-    if not volume_uuid:
-        raise VelaDeploymentError(f"PersistentVolume {volume_name} missing 'uuid' attribute in CSI volume attributes")
-    return UUID(volume_uuid), UUID(volume_cluster_id) if volume_cluster_id is not None else None
-
-
 async def resolve_storage_volume_identifiers(namespace: str) -> tuple[UUID, UUID | None]:
-    pvc_name = f"{_autoscaler_vm_name()}{STORAGE_PVC_SUFFIX}"
-    return await _resolve_volume_identifiers(namespace, pvc_name)
+    from .storage_backends.simplyblock import resolve_storage_volume_identifiers as _resolve_storage_volume_identifiers
+
+    return await _resolve_storage_volume_identifiers(namespace)
 
 
 async def resolve_autoscaler_volume_identifiers(namespace: str) -> tuple[UUID, UUID | None]:
-    pvc_name = f"{_autoscaler_vm_name()}{AUTOSCALER_PVC_SUFFIX}"
-    return await _resolve_volume_identifiers(namespace, pvc_name)
+    from .storage_backends.simplyblock import (
+        resolve_autoscaler_volume_identifiers as _resolve_autoscaler_volume_identifiers,
+    )
+
+    return await _resolve_autoscaler_volume_identifiers(namespace)
 
 
 async def resolve_autoscaler_wal_volume_identifiers(namespace: str) -> tuple[UUID, UUID | None]:
-    pvc_name = f"{_autoscaler_vm_name()}{AUTOSCALER_WAL_PVC_SUFFIX}"
-    return await _resolve_volume_identifiers(namespace, pvc_name)
+    from .storage_backends.simplyblock import (
+        resolve_autoscaler_wal_volume_identifiers as _resolve_autoscaler_wal_volume_identifiers,
+    )
+
+    return await _resolve_autoscaler_wal_volume_identifiers(namespace)
 
 
 async def resolve_branch_database_volume_size(branch_id: Identifier) -> int:

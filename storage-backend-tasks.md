@@ -1,7 +1,7 @@
 - Move
   - [x] `vela-controller/src/deployment/__init__.py:241` _build_storage_class_manifest (simplyblock QoS keys) -> move behind SimplyblockBackend provisioning.
   - [x] `vela-controller/src/deployment/__init__.py:287` load_simplyblock_credentials -> move to simplyblock adapter/API client boundary.
-  - `vela-controller/src/deployment/__init__.py:307` _resolve_volume_identifiers + helpers -> move to simplyblock backend usage/lookup implementation.
+  - [x] `vela-controller/src/deployment/__init__.py:307` _resolve_volume_identifiers + helpers -> move to simplyblock backend usage/lookup implementation.
   - `vela-controller/src/deployment/__init__.py:344` resolve_branch_database_volume_size -> backend lookup_volume()/usage path.
   - `vela-controller/src/deployment/__init__.py:355` update_branch_volume_iops -> backend Volume.update_performance.
   - `vela-controller/src/deployment/__init__.py:368` ensure_branch_storage_class -> backend-resolved storage class strategy.
