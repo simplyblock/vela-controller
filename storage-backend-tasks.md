@@ -16,7 +16,7 @@
   - [x] `vela-controller/src/deployment/deployment.py:36`, `vela-controller/src/api/organization/project/branch/__init__.py:529`, `vela-controller/src/models/branch.py:91` required iops contract -> capability-aware handling for non-simplyblock backends.
   - [x] `vela-controller/src/api/organization/project/branch/__init__.py:742` resize path directly calling update_branch_volume_iops -> backend capability-gated update/no-op policy.
   - [x] `vela-controller/src/api/resources.py:410` zero-fallback semantics on simplyblock metric failure -> explicit “metric unavailable” behavior.
-  - `vela-controller/src/deployment/settings.py:16` missing storage_default_class / storage_snapshot_class even though backends use them.
+  - [x] `vela-controller/src/deployment/settings.py:16` missing storage_default_class / storage_snapshot_class even though backends use them.
 
 - Extend
   - `vela-controller/src/deployment/storage_backends/base.py:12` extend interface for snapshot-used-size/telemetry availability surface (needed to remove simplyblock-only metric path).

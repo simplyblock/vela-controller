@@ -41,6 +41,8 @@ class Settings(BaseSettings):
     grafana_security_admin_password: str = "password"
     simplyblock_csi_namespace: str = "simplyblock"
     storage_backend: Literal["simplyblock", "lvm"] = "simplyblock"
+    storage_default_class: str = "simplyblock-csi-sc"
+    storage_snapshot_class: str = "simplyblock-csi-snapshotclass"
     storage_qos_policy: Literal["strict", "best_effort"] = "best_effort"
 
 
