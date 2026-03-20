@@ -163,6 +163,9 @@ def test_branch_resize(client, org, project, branch_id):
         "ACTIVE_HEALTHY",
         BRANCH_TIMEOUT_SEC,
     )
+    r = client.get(f"organizations/{org}/projects/{project}/branches/{branch_id}/")
+    assert r.status_code == 200
+    assert r.json()["max_resources"]["iops"] == 2000
 
 
 def test_branch_resize_cpu(client, org, project, branch_id):
@@ -220,6 +223,27 @@ def test_branch_resize_database_size(client, org, project, branch_id):
     r = client.get(f"organizations/{org}/projects/{project}/branches/{branch_id}/")
     assert r.status_code == 200
     assert r.json()["max_resources"]["nvme_bytes"] == seven_gb
+
+
+def test_branch_resize_storage_size(client, org, project, branch_id):
+    # 2 GB expressed in bytes (must be a multiple of 1 GB)
+    two_gb = 2 * 1_000_000_000
+    # due to GiB rounding by the storage backend: 2 GB -> 2 GiB -> rounds up to 3 GB
+    three_gb = 3 * 1_000_000_000
+    r = client.post(
+        f"organizations/{org}/projects/{project}/branches/{branch_id}/resize",
+        json={"storage_size": two_gb},
+    )
+    assert r.status_code == 202
+    wait_for_status(
+        client,
+        f"organizations/{org}/projects/{project}/branches/{branch_id}/",
+        "ACTIVE_HEALTHY",
+        BRANCH_TIMEOUT_SEC,
+    )
+    r = client.get(f"organizations/{org}/projects/{project}/branches/{branch_id}/")
+    assert r.status_code == 200
+    assert r.json()["max_resources"]["storage_bytes"] == three_gb
 
 
 def test_branch_password_reset(client, org, project, branch_id):
