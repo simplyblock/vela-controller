@@ -10,7 +10,7 @@
   - [x] `vela-controller/src/api/backup_snapshots.py:236` branch_snapshots_used_size (calls simplyblock snapshot API) -> backend-specific snapshot metric provider.
 
 - Adjust
-  - `vela-controller/src/api/organization/project/branch/__init__.py:310` hardcoded _VOLUME_SNAPSHOT_CLASS = "simplyblock-csi-snapshotclass" -> backend resolver.
+  - [x] `vela-controller/src/api/organization/project/branch/__init__.py:310` hardcoded _VOLUME_SNAPSHOT_CLASS = "simplyblock-csi-snapshotclass" -> backend resolver.
   - `vela-controller/src/api/backup.py:49` and `vela-controller/src/api/backupmonitor.py:35` simplyblock snapshot default -> backend resolver.
   - `vela-controller/src/deployment/charts/vela/values.yaml:65`, `vela-controller/src/deployment/charts/vela/values.yaml:76`, `vela-controller/src/deployment/charts/vela/values.yaml:358` hardcoded simplyblock-csi-sc -> resolved storage class.
   - `vela-controller/src/deployment/deployment.py:36`, `vela-controller/src/api/organization/project/branch/__init__.py:529`, `vela-controller/src/models/branch.py:91` required iops contract -> capability-aware handling for non-simplyblock backends.
