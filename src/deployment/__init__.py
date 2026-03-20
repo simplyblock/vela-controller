@@ -1,5 +1,4 @@
 import asyncio
-import base64
 import json
 import logging
 import math
@@ -71,8 +70,6 @@ DATABASE_LOAD_BALANCER_SERVICE_NAME = f"{DEFAULT_DATABASE_VM_NAME}-ext"
 CHECK_ENCRYPTED_HEADER_PLUGIN_NAME = "check-x-connection-encrypted"
 APIKEY_JWT_PLUGIN_NAME = "apikey-jwt"
 CPU_REQUEST_FRACTION = 0.25  # request = 25% of limit
-SIMPLYBLOCK_CSI_CONFIGMAP = "simplyblock-csi-cm"
-SIMPLYBLOCK_CSI_SECRET = "simplyblock-csi-secret"
 SIMPLYBLOCK_CSI_STORAGE_CLASS = "simplyblock-csi-sc"
 STORAGE_PVC_SUFFIX = "-storage-pvc"
 DATABASE_PVC_SUFFIX = "-db-pvc"
@@ -236,26 +233,6 @@ async def _initialize_autoscaler_overlay_endpoints(namespace: str) -> None:
     vm_name = _autoscaler_vm_name()
     overlay_ip = await _wait_for_autoscaler_overlay_ip(namespace, vm_name)
     await _ensure_autoscaler_overlay_endpoint_slices(namespace, overlay_ip)
-
-
-async def load_simplyblock_credentials() -> tuple[str, UUID, str, str]:
-    simplyblock_namespace = get_settings().simplyblock_csi_namespace
-    try:
-        config_map = await kube_service.get_config_map(simplyblock_namespace, SIMPLYBLOCK_CSI_CONFIGMAP)
-        config = json.loads(config_map.data["config.json"])
-        cluster_endpoint = config["simplybk"]["ip"].rstrip("/")
-        cluster_id = UUID(config["simplybk"]["uuid"])
-
-        encoded_secret = await kube_service.get_secret(simplyblock_namespace, SIMPLYBLOCK_CSI_SECRET)
-        secret = json.loads(base64.b64decode(encoded_secret.data["secret.json"]).decode())
-        cluster_secret = secret["simplybk"]["secret"]
-
-        storage_class = await kube_service.get_storage_class(SIMPLYBLOCK_CSI_STORAGE_CLASS)
-        pool_name = storage_class.parameters["pool_name"]
-
-        return cluster_endpoint, cluster_id, cluster_secret, pool_name
-    except (KeyError, TypeError, ValueError, json.JSONDecodeError, VelaKubernetesError) as e:
-        raise VelaDeploymentError("Failed to load simplyblock credentials") from e
 
 
 async def _resolve_volume_identifiers(namespace: str, pvc_name: str) -> tuple[UUID, UUID | None]:
