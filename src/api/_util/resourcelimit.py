@@ -20,6 +20,7 @@ from ...models.resources import (
     BranchAllocationPublic,
     BranchProvisioning,
     EntityType,
+    OrganizationLimitDefault,
     ProvisioningLog,
     ResourceLimit,
     ResourceLimitsPublic,
@@ -132,26 +133,6 @@ async def clone_branch_provisioning(session: SessionDep, source: Branch, target:
             )
     await session.commit()
     await session.refresh(target)
-
-
-async def initialize_organization_resource_limits(session: SessionDep, organization: Organization):
-    result = await session.execute(select(ResourceLimit).where(ResourceLimit.entity_type == EntityType.system))
-    system_limits = result.scalars().all()
-
-    with session.no_autoflush:
-        for system_limit in system_limits:
-            await session.merge(
-                ResourceLimit(
-                    entity_type=EntityType.org,
-                    org_id=organization.id,
-                    project_id=None,
-                    resource=system_limit.resource,
-                    max_total=system_limit.max_total,
-                    max_per_branch=system_limit.max_per_branch,
-                )
-            )
-    await session.commit()
-    await session.refresh(organization)
 
 
 def dict_to_resource_limits(value: Mapping[ResourceType, int | None]) -> ResourceLimitsPublic:
@@ -320,7 +301,6 @@ async def get_remaining_project_resources(
     *,
     exclude_branch_ids: Sequence[Identifier] | None = None,
 ) -> ResourceLimitsPublic:
-    system_limits = await get_system_resource_limits(session)
     organization_limits = await get_organization_resource_limits(session, organization_id)
     project_limits = await get_project_resource_limits(session, project_id)
 
@@ -337,16 +317,13 @@ async def get_remaining_project_resources(
 
     effective_limits: dict[ResourceType, int] = {}
     for resource_type in ResourceType:
-        system_limit = system_limits.get(resource_type)
         organization_limit = organization_limits.get(resource_type)
         project_limit = project_limits.get(resource_type)
         per_branch_limit = (
             project_limit.max_per_branch
-            if project_limit and project_limit.max_per_branch is not None
+            if project_limit
             else organization_limit.max_per_branch
-            if organization_limit and organization_limit.max_per_branch is not None
-            else system_limit.max_per_branch
-            if system_limit and system_limit.max_per_branch is not None
+            if organization_limit
             else None
         )
 
@@ -372,17 +349,6 @@ async def get_remaining_project_resources(
         effective_limits[resource_type] = int(max(min(per_branch_limit, remaining_organization, remaining_project), 0))
 
     return dict_to_resource_limits(effective_limits)
-
-
-async def get_system_resource_limits(session: SessionDep) -> dict[ResourceType, ResourceLimit]:
-    result = await session.execute(
-        select(ResourceLimit).where(
-            ResourceLimit.entity_type == EntityType.system,
-            ResourceLimit.org_id.is_(None),  # type: ignore[union-attr]
-            ResourceLimit.project_id.is_(None),  # type: ignore[union-attr]
-        )
-    )
-    return _map_resource_limits(list(result.scalars().all()))
 
 
 async def get_organization_resource_limits(
@@ -638,6 +604,18 @@ class Limits:
             per_branch=Resources.from_database(limits, "max_per_branch"),
         )
 
+    @classmethod
+    def from_defaults(cls, defaults: Sequence["OrganizationLimitDefault"]) -> Self:
+        return cls(
+            total=Resources.from_database(defaults, "max_total"),
+            per_branch=Resources.from_database(defaults, "max_per_branch"),
+        )
+
+    @classmethod
+    async def organization_defaults(cls, session: AsyncSession) -> Self:
+        result = await session.execute(select(OrganizationLimitDefault))
+        return cls.from_defaults(list(result.scalars().all()))
+
     def to_database(self, entity_type: EntityType) -> list[ResourceLimit]:
         return [
             ResourceLimit(
@@ -649,14 +627,6 @@ class Limits:
             for field in fields(Resources)
             if (getattr(self.total, field.name) is not None) or (getattr(self.per_branch, field.name) is not None)
         ]
-
-
-async def system_limits(session: AsyncSession) -> Limits:
-    statement = select(ResourceLimit).where(
-        col(ResourceLimit.org_id).is_(None), col(ResourceLimit.project_id).is_(None)
-    )
-    entries = (await session.exec(statement)).all()
-    return Limits.from_database(entries)
 
 
 async def organization_limits(organization: Organization) -> Limits:
@@ -683,11 +653,6 @@ def _allocations():
     )
 
 
-async def system_allocations(session: AsyncSession) -> Resources:
-    allocations = (await session.exec(_allocations())).one()
-    return Resources(**(allocations._asdict()))
-
-
 async def organization_allocations(session: AsyncSession, organization: Organization) -> Resources:
     statement = _allocations().join(Project).where(Project.organization_id == organization.id)
     allocations = (await session.exec(statement)).one()
@@ -700,15 +665,8 @@ async def project_allocations(session: AsyncSession, project: Project) -> Resour
     return Resources(**(allocations._asdict()))
 
 
-async def system_available(session: AsyncSession) -> Resources:
-    return (await system_limits(session)).total - await system_allocations(session)
-
-
 async def organization_available(session: AsyncSession, organization: Organization) -> Resources:
-    return Resources.min(
-        (await organization_limits(organization)).total - await organization_allocations(session, organization),
-        await system_available(session),
-    )
+    return (await organization_limits(organization)).total - await organization_allocations(session, organization)
 
 
 async def project_available(session: AsyncSession, project: Project) -> Resources:
@@ -718,16 +676,13 @@ async def project_available(session: AsyncSession, project: Project) -> Resource
     )
 
 
-async def project_branch_maxima(session: AsyncSession, project: Project) -> Resources:
-    """Minimum per-branch limit across the hierarchy (project > organization > system).
+async def project_branch_maxima(project: Project) -> Resources:
+    """Minimum per-branch limit across the hierarchy (project > organization).
 
     Returns None for any field where no per-branch limit has been configured at any level.
     """
     organization = await project.awaitable_attrs.organization
     return Resources.min(
-        Resources.min(
-            (await project_limits(project)).per_branch,
-            (await organization_limits(organization)).per_branch,
-        ),
-        (await system_limits(session)).per_branch,
+        (await project_limits(project)).per_branch,
+        (await organization_limits(organization)).per_branch,
     )
