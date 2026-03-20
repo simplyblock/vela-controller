@@ -388,18 +388,23 @@ async def _collect_branch_resource_usage(branch: Branch) -> ResourceUsageDefinit
         raise
 
     milli_vcpu, ram_bytes = compute_usage
+    capabilities = get_storage_backend().get_capabilities().capabilities
+    supports_storage_metrics = capabilities.supports_volume_usage_storage_metrics
+    supports_qos_metrics = capabilities.supports_volume_usage_qos_metrics
+    should_collect_volume_usage = supports_storage_metrics or supports_qos_metrics
     nvme_bytes, iops, storage_bytes, wal_bytes = 0, 0, None, None
-    volume_metrics_available = True
-    try:
-        nvme_bytes, iops, storage_bytes, wal_bytes = await _collect_branch_volume_usage(branch, namespace)
-    except VelaDeploymentError as exc:
-        volume_metrics_available = False
-        logger.error(
-            "Failed to collect volume stats for branch %s (namespace %s): %s",
-            branch.id,
-            namespace,
-            exc,
-        )
+    volume_metrics_available = should_collect_volume_usage
+    if should_collect_volume_usage:
+        try:
+            nvme_bytes, iops, storage_bytes, wal_bytes = await _collect_branch_volume_usage(branch, namespace)
+        except VelaDeploymentError as exc:
+            volume_metrics_available = False
+            logger.error(
+                "Failed to collect volume stats for branch %s (namespace %s): %s",
+                branch.id,
+                namespace,
+                exc,
+            )
 
     return ResourceUsageDefinition(
         milli_vcpu=milli_vcpu,
