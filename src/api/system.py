@@ -21,9 +21,8 @@ from .._util import (
     VCPU_MILLIS_MIN,
     VCPU_MILLIS_STEP,
 )
-from ..models.resources import ResourceLimitDefinitionPublic, ResourceType
+from ..models.resources import OrganizationLimitDefault, ResourceLimitDefinitionPublic, ResourceType
 from ..models.role import AccessRight
-from ._util.resourcelimit import get_system_resource_limits
 from .auth import authenticated_user
 from .db import SessionDep
 
@@ -68,10 +67,12 @@ async def list_available_permissions(
 async def list_resource_limit_definitions(
     session: SessionDep,
 ) -> list[ResourceLimitDefinitionPublic]:
-    system_limits = await get_system_resource_limits(session)
+    defaults_result = await session.execute(select(OrganizationLimitDefault))
+    defaults = {d.resource: d for d in defaults_result.scalars().all()}
 
     def _get_limit(resource_type: ResourceType, default: int) -> int:
-        return system_limits[resource_type].max_total if system_limits[resource_type] else default
+        d = defaults.get(resource_type)
+        return d.max_total if d else default
 
     max_vcpu_millis = _get_limit(ResourceType.milli_vcpu, VCPU_MILLIS_MAX)
     max_ram_bytes = _get_limit(ResourceType.ram, MEMORY_MAX)

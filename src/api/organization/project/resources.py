@@ -63,5 +63,5 @@ async def available(session: SessionDep, project: ProjectDep) -> Resources:
     name="organizations:projects:resources:branch-maxima",
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
-async def branch_maxima(session: SessionDep, project: ProjectDep) -> Resources:
-    return await project_branch_maxima(session, project)
+async def branch_maxima(project: ProjectDep) -> Resources:
+    return await project_branch_maxima(project)
