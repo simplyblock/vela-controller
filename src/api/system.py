@@ -21,6 +21,7 @@ from .._util import (
     VCPU_MILLIS_MIN,
     VCPU_MILLIS_STEP,
 )
+from ..deployment.storage_backends import StorageCapabilitiesPublic, get_storage_backend
 from ..models.resources import ResourceLimitDefinitionPublic, ResourceType
 from ..models.role import AccessRight
 from ._util.resourcelimit import get_system_resource_limits
@@ -39,6 +40,11 @@ class AvailablePostgresqlVersion(BaseModel):
 class SystemVersion(BaseModel):
     commit_hash: str = ""
     timestamp: str = ""
+
+
+@api.get("/storage-capabilities", dependencies=[Depends(authenticated_user)], response_model=StorageCapabilitiesPublic)
+async def get_storage_capabilities() -> StorageCapabilitiesPublic:
+    return get_storage_backend().get_capabilities()
 
 
 @api.get("/version", response_model=SystemVersion)
