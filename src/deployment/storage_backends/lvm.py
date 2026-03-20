@@ -101,9 +101,6 @@ class LvmVolume(Volume):
     async def usage(self) -> VolumeUsage | None:
         return None
 
-    async def get_usage(self) -> VolumeUsage | None:
-        return await self.usage()
-
     async def relocate(self, target_node: str | None = None) -> None:
         raise VelaDeploymentError("lvm backend does not support volume relocation")
 
@@ -130,9 +127,6 @@ class LvmVolumeGroup(VolumeGroup):
         if volume is None:
             raise VelaDeploymentError(f"No database volume found for identifier={self.identifier}")
         return await volume.snapshot(label, backup_id)
-
-    async def get_usage(self) -> VolumeUsage | None:
-        return None
 
     async def provision_volume(
         self,

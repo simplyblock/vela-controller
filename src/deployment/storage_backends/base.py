@@ -158,9 +158,6 @@ class Volume(ABC):
     @abstractmethod
     async def relocate(self, target_node: str | None = None) -> None: ...
 
-    @abstractmethod
-    async def get_usage(self) -> VolumeUsage | None: ...
-
 
 @dataclass
 class VolumeGroup(ABC):
@@ -177,9 +174,6 @@ class VolumeGroup(ABC):
 
     @abstractmethod
     async def snapshot(self, label: str, backup_id: Identifier) -> "Snapshot": ...
-
-    @abstractmethod
-    async def get_usage(self) -> VolumeUsage | None: ...
 
     @abstractmethod
     async def provision_volume(

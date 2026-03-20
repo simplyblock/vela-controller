@@ -233,9 +233,6 @@ class SimplyblockVolume(Volume):
     async def usage(self) -> VolumeUsage | None:
         return await self._backend._get_volume_usage(self.identifier)
 
-    async def get_usage(self) -> VolumeUsage | None:
-        return await self.usage()
-
     async def relocate(self, target_node: str | None = None) -> None:
         raise VelaDeploymentError("simplyblock backend does not require volume relocation")
 
@@ -256,10 +253,6 @@ class SimplyblockStoragePoolVolumeGroup(VolumeGroup):
     async def snapshot(self, label: str, backup_id: Identifier) -> Snapshot:
         raise VelaDeploymentError("simplyblock backend does not expose volume groups")
 
-    async def get_usage(self) -> VolumeUsage | None:
-        raise VelaDeploymentError("simplyblock backend does not expose volume groups")
-
-
 @dataclass
 class SimplyblockSimpleVolumeGroup(VolumeGroup):
     _backend: "SimplyblockBackend"
@@ -277,9 +270,6 @@ class SimplyblockSimpleVolumeGroup(VolumeGroup):
         return self._backend._list_volume_group_volumes(self.identifier)
 
     async def snapshot(self, label: str, backup_id: Identifier) -> Snapshot:
-        raise VelaDeploymentError("simplyblock backend does not expose volume groups")
-
-    async def get_usage(self) -> VolumeUsage | None:
         raise VelaDeploymentError("simplyblock backend does not expose volume groups")
 
     async def provision_volume(
