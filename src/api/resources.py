@@ -40,10 +40,7 @@ from ..models.resources import (
     ResourceLimitsPublic,
     ResourceUsageMinute,
 )
-from ._util import Unauthenticated
 from ._util.resourcelimit import (
-    Limits,
-    Resources,
     check_resource_limits,
     create_or_update_branch_provisioning,
     dict_to_resource_limits,
@@ -55,9 +52,6 @@ from ._util.resourcelimit import (
     get_organization_resource_usage,
     get_project_resource_usage,
     make_usage_cycle,
-    system_allocations,
-    system_available,
-    system_limits,
 )
 from .auth import authenticated_user
 from .db import SessionDep
@@ -494,30 +488,3 @@ async def monitor_resources():
             await asyncio.sleep((interval - elapsed).total_seconds())
         else:
             logger.warning("Resource monitor execution exeeded desired interval")
-
-
-@api.get(
-    "/limits/",
-    name="resources:limits",
-    responses={401: Unauthenticated},
-)
-async def limits(session: SessionDep) -> Limits:
-    return await system_limits(session)
-
-
-@api.get(
-    "/allocations/",
-    name="resources:allocations",
-    responses={401: Unauthenticated},
-)
-async def allocated(session: SessionDep) -> Resources:
-    return await system_allocations(session)
-
-
-@api.get(
-    "/available/",
-    name="resources:available",
-    responses={401: Unauthenticated},
-)
-async def available(session: SessionDep) -> Resources:
-    return await system_available(session)

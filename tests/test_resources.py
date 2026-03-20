@@ -21,7 +21,6 @@ _PROJECT_LIMITS = {
 _FIELDS = {"milli_vcpu", "ram", "iops", "database_size", "storage_size"}
 
 # Stored during the test run to reuse in later assertions.
-_system_available: dict = {}
 _org_available: dict = {}
 
 
@@ -42,42 +41,34 @@ def project(make_project, org):
 
 
 # ---------------------------------------------------------------------------
-# System
+# Org default limits (must run before test_org_set_limits changes them)
 # ---------------------------------------------------------------------------
 
 
-def test_system_limits(client) -> None:
-    r = client.get("resources/limits/")
+def test_org_has_default_limits_on_creation(client, org) -> None:
+    """New org should have limits populated from OrganizationLimitDefault defaults."""
+    r = client.get(f"organizations/{org}/resources/limits/")
     assert r.status_code == 200
     data = r.json()
     assert set(data.keys()) == {"total", "per_branch"}
     for section in ("total", "per_branch"):
         assert set(data[section].keys()) == _FIELDS
         for v in data[section].values():
-            assert v is not None and isinstance(v, int)
+            assert v is not None and isinstance(v, int) and v > 0
 
 
-def test_system_allocations(client) -> None:
-    r = client.get("resources/allocations/")
-    assert r.status_code == 200
-    data = r.json()
-    assert set(data.keys()) == _FIELDS
-    for v in data.values():
-        assert v == 0
-
-
-def test_system_available(client) -> None:
-    r = client.get("resources/available/")
-    assert r.status_code == 200
-    data = r.json()
-    assert set(data.keys()) == _FIELDS
-    for v in data.values():
-        assert v >= 0
-    _system_available.update(data)
+def test_org_default_limits_are_available(client, org) -> None:
+    """Available resources for a new org should equal its default limits (no branches yet)."""
+    limits_r = client.get(f"organizations/{org}/resources/limits/")
+    avail_r = client.get(f"organizations/{org}/resources/available/")
+    assert limits_r.status_code == 200
+    assert avail_r.status_code == 200
+    for f in _FIELDS:
+        assert avail_r.json()[f] == limits_r.json()["total"][f]
 
 
 # ---------------------------------------------------------------------------
-# Org
+# Org (override limits)
 # ---------------------------------------------------------------------------
 
 
