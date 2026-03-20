@@ -274,7 +274,7 @@ class SimplyblockSimpleVolumeGroup(VolumeGroup):
         raise VelaDeploymentError("simplyblock backend does not expose volume groups")
 
     async def volumes(self) -> list[Volume]:
-        return self._backend._list_volume_group_volumes(self.identifier)
+        return await self._backend._list_volume_group_volumes(self.identifier)
 
     async def snapshot(self, label: str, backup_id: Identifier) -> Snapshot:
         _ = (label, backup_id)
@@ -604,6 +604,10 @@ class SimplyblockBackend(StorageBackend):
             size_bytes=quantity_to_bytes(status.get("restoreSize")),
         )
 
+    async def _list_volume_group_volumes(self, group_id: Identifier) -> list[Volume]:
+        volume = await self.lookup_volume(group_id)
+        return [] if volume is None else [volume]
+
     async def _clone_volume_from_snapshot(
         self,
         source_identifier: Identifier,
@@ -662,10 +666,10 @@ class SimplyblockBackend(StorageBackend):
         iops = (qos.max_read_write_iops if qos is not None else None) or IOPS_MIN
         return max(iops, IOPS_MIN)
 
-    def _build_snapshot_name(self, *, label: str, backup_id: str) -> str:
+    def _build_snapshot_name(self, *, label: str, backup_id: Identifier | str) -> str:
         clean_label = re.sub(r"[^a-z0-9-]", "-", label.lower())
         clean_label = re.sub(r"-+", "-", clean_label).strip("-") or "backup"
-        clean_backup = re.sub(r"[^a-z0-9-]", "-", backup_id.lower())
+        clean_backup = re.sub(r"[^a-z0-9-]", "-", str(backup_id).lower())
         clean_backup = re.sub(r"-+", "-", clean_backup).strip("-") or datetime.now(UTC).strftime("%Y%m%d%H%M%S")
         return f"{clean_label}-{clean_backup}"[:_K8S_NAME_MAX_LENGTH].strip("-")
 
