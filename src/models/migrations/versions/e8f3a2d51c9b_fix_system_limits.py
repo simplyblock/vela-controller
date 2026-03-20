@@ -11,6 +11,7 @@ import sqlalchemy as sa
 import sqlmodel
 import sqlmodel.sql
 from alembic import op
+from sqlalchemy.dialects import postgresql
 from ulid import ULID
 
 # revision identifiers, used by Alembic.
@@ -22,11 +23,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    resource_type_enum = sa.Enum(
-        "milli_vcpu", "ram", "iops", "database_size", "storage_size",
-        name="resourcetype",
-        create_type=False,
-    )
+    resource_type_enum = postgresql.ENUM(name="resourcetype", create_type=False)
 
     # Create the organizationlimitdefault table
     op.create_table(
