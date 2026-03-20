@@ -1,8 +1,17 @@
+import pytest
 from conftest import _id
 
 _ORG_NAME = "test-org-lifecycle"
 _ORG_UPDATED = "test-org-lifecycle-upd"
 _state: dict = {}
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _org_cleanup(client):
+    """Safety net: delete the org if test_org_delete did not run (e.g. early failure)."""
+    yield
+    if "org_id" in _state:
+        client.delete(f"organizations/{_state['org_id']}/")  # no-op if already deleted
 
 
 def test_org_list_empty(client):
