@@ -6,7 +6,7 @@
   - [x] `vela-controller/src/deployment/__init__.py:355` update_branch_volume_iops -> backend Volume.update_performance.
   - [x] `vela-controller/src/deployment/__init__.py:368` ensure_branch_storage_class -> backend-resolved storage class strategy.
   - [x] `vela-controller/src/api/organization/project/branch/__init__.py:844`, `vela-controller/src/api/organization/project/branch/__init__.py:916`, `vela-controller/src/api/organization/project/branch/__init__.py:994` clone/restore orchestration currently composes storage class + snapshot class directly; should be moved to backend Volume/Snapshot operations.
-  - `vela-controller/src/api/resources.py:340–vela-controller/src/api/resources.py:359` direct simplyblock iostats collection/parsing -> backend usage provider.
+  - [x] `vela-controller/src/api/resources.py:340–vela-controller/src/api/resources.py:359` direct simplyblock iostats collection/parsing -> backend usage provider.
   - `vela-controller/src/api/backup_snapshots.py:236` branch_snapshots_used_size (calls simplyblock snapshot API) -> backend-specific snapshot metric provider.
 
 - Adjust

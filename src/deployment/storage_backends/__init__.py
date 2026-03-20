@@ -1,3 +1,5 @@
+from typing import Literal
+
 from .base import (
     Identifier,
     Snapshot,
@@ -107,6 +109,16 @@ class PlaceholderBackend(StorageBackend):
     async def lookup_snapshot(self, snapshot_ref: SnapshotRef) -> Snapshot | None:
         self.validate_capabilities_for_operation("snapshot_lookup")
         raise self._unsupported("snapshot lookup")
+
+    async def get_branch_volume_usage(
+        self,
+        identifier: Identifier,
+        *,
+        volume_type: Literal["database", "storage", "wal"] = "database",
+    ) -> VolumeUsage | None:
+        _ = (identifier, volume_type)
+        self.validate_capabilities_for_operation("volume_usage_storage_metrics")
+        return None
 
     async def clone_branch_database_volume(
         self,

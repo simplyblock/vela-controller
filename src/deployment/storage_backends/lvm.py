@@ -4,6 +4,7 @@ import os
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Literal
 
 from ulid import ULID
 
@@ -277,6 +278,15 @@ class LvmBackend(StorageBackend):
         )
         resolved_ref = SnapshotRef(name=details.name, namespace=details.namespace, content_name=details.content_name)
         return LvmSnapshot(details=details, snapshot_ref=resolved_ref, source_identifier=None, _backend=self)
+
+    async def get_branch_volume_usage(
+        self,
+        identifier: Identifier,
+        *,
+        volume_type: Literal["database", "storage", "wal"] = "database",
+    ) -> VolumeUsage | None:
+        _ = (identifier, volume_type)
+        return None
 
     async def clone_branch_database_volume(
         self,

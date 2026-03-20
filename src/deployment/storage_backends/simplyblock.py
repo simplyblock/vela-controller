@@ -4,7 +4,7 @@ import os
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from sqlalchemy.util import await_only
@@ -396,6 +396,30 @@ class SimplyblockBackend(StorageBackend):
         )
         resolved_ref = SnapshotRef(name=details.name, namespace=details.namespace, content_name=details.content_name)
         return SimplyblockSnapshot(details=details, snapshot_ref=resolved_ref, source_identifier=None, _backend=self)
+
+    async def get_branch_volume_usage(
+        self,
+        identifier: Identifier,
+        *,
+        volume_type: Literal["database", "storage", "wal"] = "database",
+    ) -> VolumeUsage | None:
+        if volume_type == "database":
+            return await self._get_volume_usage(identifier)
+
+        namespace = f"{self.settings.deployment_namespace_prefix}-{str(identifier).lower()}"
+        resolver = resolve_storage_volume_identifiers if volume_type == "storage" else resolve_autoscaler_wal_volume_identifiers
+        try:
+            volume, _ = await resolver(namespace)
+            async with create_simplyblock_api() as sb_api:
+                stats = await sb_api.volume_iostats(volume=volume)
+        except (VelaDeploymentError, VelaSimplyblockAPIError, VelaKubernetesError):
+            return None
+
+        return VolumeUsage(
+            used_bytes=int(stats.get("size_used") or 0),
+            read_iops=int(stats.get("read_io_ps") or 0),
+            write_iops=int(stats.get("write_io_ps") or 0),
+        )
 
     async def clone_branch_database_volume(
         self,

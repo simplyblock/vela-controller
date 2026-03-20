@@ -234,6 +234,14 @@ class StorageBackend(ABC):
     async def lookup_snapshot(self, snapshot_ref: SnapshotRef) -> Snapshot | None: ...
 
     @abstractmethod
+    async def get_branch_volume_usage(
+            self,
+            identifier: Identifier,
+            *,
+            volume_type: Literal["database", "storage", "wal"] = "database",
+    ) -> VolumeUsage | None: ...
+
+    @abstractmethod
     async def clone_branch_database_volume(
             self,
             *,
