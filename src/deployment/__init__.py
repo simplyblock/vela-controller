@@ -16,7 +16,7 @@ import yaml
 from cloudflare import AsyncCloudflare, CloudflareError
 from kubernetes_asyncio import client as kubernetes_client
 from kubernetes_asyncio.client.exceptions import ApiException
-from pydantic import BaseModel, Field, ValidationError, model_validator
+from pydantic import BaseModel, Field, model_validator
 from ulid import ULID
 
 from .._util import (
@@ -258,14 +258,15 @@ async def resolve_autoscaler_wal_volume_identifiers(namespace: str) -> tuple[UUI
 
 
 async def resolve_branch_database_volume_size(branch_id: Identifier) -> int:
-    namespace = deployment_namespace(branch_id)
-    volume, _ = await resolve_autoscaler_volume_identifiers(namespace)
+    from .storage_backends import get_storage_backend
+
     try:
-        async with create_simplyblock_api() as sb_api:
-            volume_payload = await sb_api.get_volume(volume=volume)
-        return volume_payload.size
-    except (VelaSimplyblockAPIError, ValidationError) as exc:
+        volume = await get_storage_backend().lookup_volume(branch_id)
+    except VelaDeploymentError as exc:
         raise VelaDeploymentError(f"Failed to resolve database volume size for branch {branch_id}") from exc
+    if volume is None:
+        raise VelaDeploymentError(f"Failed to resolve database volume size for branch {branch_id}: volume not found")
+    return volume.size_bytes
 
 
 async def update_branch_volume_iops(branch_id: Identifier, iops: int) -> None:

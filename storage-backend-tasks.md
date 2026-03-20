@@ -2,7 +2,7 @@
   - [x] `vela-controller/src/deployment/__init__.py:241` _build_storage_class_manifest (simplyblock QoS keys) -> move behind SimplyblockBackend provisioning.
   - [x] `vela-controller/src/deployment/__init__.py:287` load_simplyblock_credentials -> move to simplyblock adapter/API client boundary.
   - [x] `vela-controller/src/deployment/__init__.py:307` _resolve_volume_identifiers + helpers -> move to simplyblock backend usage/lookup implementation.
-  - `vela-controller/src/deployment/__init__.py:344` resolve_branch_database_volume_size -> backend lookup_volume()/usage path.
+  - [x] `vela-controller/src/deployment/__init__.py:344` resolve_branch_database_volume_size -> backend lookup_volume()/usage path.
   - `vela-controller/src/deployment/__init__.py:355` update_branch_volume_iops -> backend Volume.update_performance.
   - `vela-controller/src/deployment/__init__.py:368` ensure_branch_storage_class -> backend-resolved storage class strategy.
   - `vela-controller/src/api/organization/project/branch/__init__.py:844`, `vela-controller/src/api/organization/project/branch/__init__.py:916`, `vela-controller/src/api/organization/project/branch/__init__.py:994` clone/restore orchestration currently composes storage class + snapshot class directly; should be moved to backend Volume/Snapshot operations.
