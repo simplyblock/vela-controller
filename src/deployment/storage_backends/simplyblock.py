@@ -30,7 +30,6 @@ from .. import (
     AUTOSCALER_PVC_SUFFIX,
     AUTOSCALER_WAL_PVC_SUFFIX,
     STORAGE_PVC_SUFFIX,
-    ensure_branch_storage_class,
     get_autoscaler_vm_identity,
     kube_service,
     update_branch_volume_iops,
@@ -46,6 +45,7 @@ _SNAPSHOT_POLL_INTERVAL_SECONDS = float(os.environ.get("SNAPSHOT_POLL_INTERVAL_S
 _PVC_TIMEOUT_SECONDS = float(600)
 _PVC_POLL_INTERVAL_SECONDS = float(2)
 _K8S_NAME_MAX_LENGTH = 63
+_SIMPLYBLOCK_CSI_STORAGE_CLASS = "simplyblock-csi-sc"
 
 _CAPABILITIES = VolumeCapabilities(
     supports_dynamic_provisioning=True,
@@ -129,6 +129,28 @@ def _build_storage_class_manifest(*, storage_class_name: str, iops: int, base_st
         manifest["mountOptions"] = list(mount_options)
 
     return manifest
+
+
+def _branch_storage_class_name(identifier: Identifier) -> str:
+    return f"sc-{str(identifier).lower()}"
+
+
+async def ensure_branch_storage_class(branch_id: Identifier, *, iops: int) -> str:
+    storage_class_name = _branch_storage_class_name(branch_id)
+    try:
+        await kube_service.get_storage_class(storage_class_name)
+        return storage_class_name
+    except VelaKubernetesError:
+        pass
+
+    base_storage_class = await kube_service.get_storage_class(_SIMPLYBLOCK_CSI_STORAGE_CLASS)
+    storage_class_manifest = _build_storage_class_manifest(
+        storage_class_name=storage_class_name,
+        iops=iops,
+        base_storage_class=base_storage_class,
+    )
+    await kube_service.apply_storage_class(storage_class_manifest)
+    return storage_class_name
 
 
 def _release_name() -> str:
@@ -572,7 +594,7 @@ class SimplyblockBackend(StorageBackend):
         return f"{clean_label}-{clean_backup}"[:_K8S_NAME_MAX_LENGTH].strip("-")
 
     def _branch_storage_class_name(self, identifier: Identifier) -> str:
-        return f"sc-{str(identifier).lower()}"
+        return _branch_storage_class_name(identifier)
 
     def _is_not_found_error(self, exc: VelaKubernetesError) -> bool:
         return "not found" in str(exc).lower()

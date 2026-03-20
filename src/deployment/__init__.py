@@ -68,7 +68,6 @@ DATABASE_LOAD_BALANCER_SERVICE_NAME = f"{DEFAULT_DATABASE_VM_NAME}-ext"
 CHECK_ENCRYPTED_HEADER_PLUGIN_NAME = "check-x-connection-encrypted"
 APIKEY_JWT_PLUGIN_NAME = "apikey-jwt"
 CPU_REQUEST_FRACTION = 0.25  # request = 25% of limit
-SIMPLYBLOCK_CSI_STORAGE_CLASS = "simplyblock-csi-sc"
 STORAGE_PVC_SUFFIX = "-storage-pvc"
 DATABASE_PVC_SUFFIX = "-db-pvc"
 AUTOSCALER_PVC_SUFFIX = "-block-data"
@@ -282,24 +281,13 @@ async def update_branch_volume_iops(branch_id: Identifier, iops: int) -> None:
 
 
 async def ensure_branch_storage_class(branch_id: Identifier, *, iops: int) -> str:
-    from .storage_backends.simplyblock import _build_storage_class_manifest
+    from .storage_backends import get_storage_backend
+    from .storage_backends.simplyblock import ensure_branch_storage_class as ensure_simplyblock_storage_class
 
-    storage_class_name = branch_storage_class_name(branch_id)
-    try:
-        await kube_service.get_storage_class(storage_class_name)
-        logger.info("StorageClass %s already exists; reusing", storage_class_name)
-        return storage_class_name
-    except VelaKubernetesError:
-        pass
-
-    base_storage_class = await kube_service.get_storage_class(SIMPLYBLOCK_CSI_STORAGE_CLASS)
-    storage_class_manifest = _build_storage_class_manifest(
-        storage_class_name=storage_class_name,
-        iops=iops,
-        base_storage_class=base_storage_class,
-    )
-    await kube_service.apply_storage_class(storage_class_manifest)
-    return storage_class_name
+    backend = get_storage_backend()
+    if backend.name == "simplyblock":
+        return await ensure_simplyblock_storage_class(branch_id, iops=iops)
+    return backend.resolve_storage_class()
 
 
 def _load_compose_manifest() -> dict[str, Any]:
