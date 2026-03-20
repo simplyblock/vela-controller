@@ -397,6 +397,52 @@ class SimplyblockBackend(StorageBackend):
         resolved_ref = SnapshotRef(name=details.name, namespace=details.namespace, content_name=details.content_name)
         return SimplyblockSnapshot(details=details, snapshot_ref=resolved_ref, source_identifier=None, _backend=self)
 
+    async def clone_branch_database_volume(
+        self,
+        *,
+        source_identifier: Identifier,
+        target_identifier: Identifier,
+        database_size: int,
+        pitr_enabled: bool = False,
+    ) -> None:
+        storage_class = await ensure_branch_storage_class(target_identifier, iops=IOPS_MIN)
+        await clone_branch_database_volume(
+            source_branch_id=source_identifier,
+            target_branch_id=target_identifier,
+            snapshot_class=self.resolve_snapshot_class(),
+            storage_class_name=storage_class,
+            snapshot_timeout_seconds=_SNAPSHOT_TIMEOUT_SECONDS,
+            snapshot_poll_interval_seconds=_SNAPSHOT_POLL_INTERVAL_SECONDS,
+            pvc_timeout_seconds=_PVC_TIMEOUT_SECONDS,
+            pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
+            database_size=database_size,
+            pitr_enabled=pitr_enabled,
+        )
+
+    async def restore_branch_database_volume_from_snapshot(
+        self,
+        *,
+        source_identifier: Identifier,
+        target_identifier: Identifier,
+        snapshot_ref: SnapshotRef,
+        database_size: int,
+    ) -> None:
+        storage_class = await ensure_branch_storage_class(target_identifier, iops=IOPS_MIN)
+        await restore_branch_database_volume_from_snapshot(
+            source_branch_id=source_identifier,
+            target_branch_id=target_identifier,
+            snapshot_namespace=snapshot_ref.namespace,
+            snapshot_name=snapshot_ref.name,
+            snapshot_content_name=snapshot_ref.content_name,
+            snapshot_class=self.resolve_snapshot_class(),
+            storage_class_name=storage_class,
+            database_size=database_size,
+            snapshot_timeout_seconds=_SNAPSHOT_TIMEOUT_SECONDS,
+            snapshot_poll_interval_seconds=_SNAPSHOT_POLL_INTERVAL_SECONDS,
+            pvc_timeout_seconds=_PVC_TIMEOUT_SECONDS,
+            pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
+        )
+
     def validate_qos_profile(self, qos: VolumeQosProfile) -> None:
         unsupported_fields = [
             field_name
@@ -518,16 +564,9 @@ class SimplyblockBackend(StorageBackend):
         target_identifier: Identifier,
         new_size: int,
     ) -> None:
-        storage_class = await ensure_branch_storage_class(target_identifier, iops=IOPS_MIN)
-        await clone_branch_database_volume(
-            source_branch_id=source_identifier,
-            target_branch_id=target_identifier,
-            snapshot_class=self.resolve_snapshot_class(),
-            storage_class_name=storage_class,
-            snapshot_timeout_seconds=_SNAPSHOT_TIMEOUT_SECONDS,
-            snapshot_poll_interval_seconds=_SNAPSHOT_POLL_INTERVAL_SECONDS,
-            pvc_timeout_seconds=_PVC_TIMEOUT_SECONDS,
-            pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
+        await self.clone_branch_database_volume(
+            source_identifier=source_identifier,
+            target_identifier=target_identifier,
             database_size=new_size,
             pitr_enabled=False,
         )
@@ -539,20 +578,11 @@ class SimplyblockBackend(StorageBackend):
         snapshot_ref: SnapshotRef,
         database_size: int,
     ) -> None:
-        storage_class = await ensure_branch_storage_class(target_identifier, iops=IOPS_MIN)
-        await restore_branch_database_volume_from_snapshot(
-            source_branch_id=source_identifier,
-            target_branch_id=target_identifier,
-            snapshot_namespace=snapshot_ref.namespace,
-            snapshot_name=snapshot_ref.name,
-            snapshot_content_name=snapshot_ref.content_name,
-            snapshot_class=self.resolve_snapshot_class(),
-            storage_class_name=storage_class,
+        await self.restore_branch_database_volume_from_snapshot(
+            source_identifier=source_identifier,
+            target_identifier=target_identifier,
+            snapshot_ref=snapshot_ref,
             database_size=database_size,
-            snapshot_timeout_seconds=_SNAPSHOT_TIMEOUT_SECONDS,
-            snapshot_poll_interval_seconds=_SNAPSHOT_POLL_INTERVAL_SECONDS,
-            pvc_timeout_seconds=_PVC_TIMEOUT_SECONDS,
-            pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
         )
 
     async def _update_volume_performance(self, identifier: Identifier, qos: VolumeQosProfile) -> None:

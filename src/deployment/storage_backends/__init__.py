@@ -108,6 +108,30 @@ class PlaceholderBackend(StorageBackend):
         self.validate_capabilities_for_operation("snapshot_lookup")
         raise self._unsupported("snapshot lookup")
 
+    async def clone_branch_database_volume(
+        self,
+        *,
+        source_identifier: Identifier,
+        target_identifier: Identifier,
+        database_size: int,
+        pitr_enabled: bool = False,
+    ) -> None:
+        _ = (source_identifier, target_identifier, database_size, pitr_enabled)
+        self.validate_capabilities_for_operation("snapshot_restore")
+        raise self._unsupported("branch database volume clone")
+
+    async def restore_branch_database_volume_from_snapshot(
+        self,
+        *,
+        source_identifier: Identifier,
+        target_identifier: Identifier,
+        snapshot_ref: SnapshotRef,
+        database_size: int,
+    ) -> None:
+        _ = (source_identifier, target_identifier, snapshot_ref, database_size)
+        self.validate_capabilities_for_operation("snapshot_restore")
+        raise self._unsupported("branch database volume restore")
+
     def validate_qos_profile(self, qos: VolumeQosProfile) -> None:
         return None
 

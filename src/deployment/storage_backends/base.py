@@ -234,6 +234,26 @@ class StorageBackend(ABC):
     async def lookup_snapshot(self, snapshot_ref: SnapshotRef) -> Snapshot | None: ...
 
     @abstractmethod
+    async def clone_branch_database_volume(
+            self,
+            *,
+            source_identifier: Identifier,
+            target_identifier: Identifier,
+            database_size: int,
+            pitr_enabled: bool = False,
+    ) -> None: ...
+
+    @abstractmethod
+    async def restore_branch_database_volume_from_snapshot(
+            self,
+            *,
+            source_identifier: Identifier,
+            target_identifier: Identifier,
+            snapshot_ref: SnapshotRef,
+            database_size: int,
+    ) -> None: ...
+
+    @abstractmethod
     def validate_qos_profile(self, qos: VolumeQosProfile) -> None: ...
 
     @abstractmethod

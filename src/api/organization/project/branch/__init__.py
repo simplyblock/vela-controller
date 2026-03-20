@@ -29,12 +29,13 @@ from .....deployment import (
     branch_db_domain,
     branch_rest_endpoint,
     branch_service_name,
+    clone_branch_database_volume_with_backend,
     delete_deployment,
     deploy_branch_environment,
-    ensure_branch_storage_class,
     get_autoscaler_vm_identity,
     kube_service,
     resolve_branch_database_volume_size,
+    restore_branch_database_volume_from_snapshot_with_backend,
     update_branch_database_password,
     update_branch_volume_iops,
 )
@@ -46,10 +47,6 @@ from .....deployment.health import (
 from .....deployment.kubernetes._util import core_v1_client
 from .....deployment.kubernetes.neonvm import PowerState as NeonVMPowerState
 from .....deployment.kubernetes.neonvm import set_virtualmachine_power_state
-from .....deployment.kubernetes.volume_clone import (
-    clone_branch_database_volume,
-    restore_branch_database_volume_from_snapshot,
-)
 from .....deployment.settings import get_settings as get_deployment_settings
 from .....exceptions import VelaDeploymentError, VelaError, VelaKubernetesError, VelaSimplyblockAPIError
 from .....models.backups import BackupEntry
@@ -86,12 +83,6 @@ from ...._util.resourcelimit import (
 )
 from ...._util.role import clone_user_role_assignment
 from ....auth import security
-from ....backup_snapshots import (
-    SNAPSHOT_POLL_INTERVAL_SEC as _SNAPSHOT_POLL_INTERVAL_SECONDS,
-)
-from ....backup_snapshots import (
-    SNAPSHOT_TIMEOUT_SEC as _SNAPSHOT_TIMEOUT_SECONDS,
-)
 from ....backup_snapshots import branch_snapshots_used_size
 from ....db import AsyncSessionLocal, SessionDep
 from ....dependencies import BranchDep, OrganizationDep, ProjectDep, RestoreBackupDep, branch_lookup
@@ -302,12 +293,6 @@ _DEFAULT_SERVICE_STATUS = BranchStatus(
     meta=BranchServiceStatus.UNKNOWN,
     rest=BranchServiceStatus.UNKNOWN,
 )
-
-
-_PVC_TIMEOUT_SECONDS = float(600)
-_PVC_CLONE_TIMEOUT_SECONDS = float(120)
-_PVC_POLL_INTERVAL_SECONDS = float(2)
-_VOLUME_SNAPSHOT_CLASS = "simplyblock-csi-snapshotclass"
 
 
 _PGBOUNCER_ADMIN_USER = "pgbouncer_admin"
@@ -841,16 +826,9 @@ async def _clone_branch_environment_task(
     storage_class_name: str | None = None
     if copy_data:
         try:
-            storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
-            await clone_branch_database_volume(
+            await clone_branch_database_volume_with_backend(
                 source_branch_id=source_branch_id,
                 target_branch_id=branch_id,
-                snapshot_class=_VOLUME_SNAPSHOT_CLASS,
-                storage_class_name=storage_class_name,
-                snapshot_timeout_seconds=_SNAPSHOT_TIMEOUT_SECONDS,
-                snapshot_poll_interval_seconds=_SNAPSHOT_POLL_INTERVAL_SECONDS,
-                pvc_timeout_seconds=_PVC_CLONE_TIMEOUT_SECONDS,
-                pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
                 database_size=parameters.database_size,
                 pitr_enabled=pitr_enabled,
             )
@@ -913,19 +891,12 @@ async def _restore_branch_environment_task(
     await _persist_branch_status(branch_id, BranchServiceStatus.CREATING)
     storage_class_name: str | None = None
     try:
-        storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
-        await restore_branch_database_volume_from_snapshot(
+        await restore_branch_database_volume_from_snapshot_with_backend(
             source_branch_id=source_branch_id,
             target_branch_id=branch_id,
             snapshot_namespace=snapshot_namespace,
             snapshot_name=snapshot_name,
             snapshot_content_name=snapshot_content_name,
-            snapshot_class=_VOLUME_SNAPSHOT_CLASS,
-            storage_class_name=storage_class_name,
-            snapshot_timeout_seconds=_SNAPSHOT_TIMEOUT_SECONDS,
-            snapshot_poll_interval_seconds=_SNAPSHOT_POLL_INTERVAL_SECONDS,
-            pvc_timeout_seconds=_PVC_TIMEOUT_SECONDS,
-            pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
             database_size=restore_database_size,
         )
     except VelaError:
@@ -991,19 +962,12 @@ async def _restore_branch_environment_in_place_task(
             return
 
     try:
-        storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
-        await restore_branch_database_volume_from_snapshot(
+        await restore_branch_database_volume_from_snapshot_with_backend(
             source_branch_id=source_branch_id,
             target_branch_id=branch_id,
             snapshot_namespace=snapshot_namespace,
             snapshot_name=snapshot_name,
             snapshot_content_name=snapshot_content_name,
-            snapshot_class=_VOLUME_SNAPSHOT_CLASS,
-            storage_class_name=storage_class_name,
-            snapshot_timeout_seconds=_SNAPSHOT_TIMEOUT_SECONDS,
-            snapshot_poll_interval_seconds=_SNAPSHOT_POLL_INTERVAL_SECONDS,
-            pvc_timeout_seconds=_PVC_TIMEOUT_SECONDS,
-            pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
             database_size=parameters.database_size,
         )
     except VelaError:

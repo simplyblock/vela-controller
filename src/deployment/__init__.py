@@ -290,6 +290,48 @@ async def ensure_branch_storage_class(branch_id: Identifier, *, iops: int) -> st
     return backend.resolve_storage_class()
 
 
+async def clone_branch_database_volume_with_backend(
+    *,
+    source_branch_id: Identifier,
+    target_branch_id: Identifier,
+    database_size: int,
+    pitr_enabled: bool = False,
+) -> None:
+    from .storage_backends import get_storage_backend
+
+    backend = get_storage_backend()
+    await backend.clone_branch_database_volume(
+        source_identifier=source_branch_id,
+        target_identifier=target_branch_id,
+        database_size=database_size,
+        pitr_enabled=pitr_enabled,
+    )
+
+
+async def restore_branch_database_volume_from_snapshot_with_backend(
+    *,
+    source_branch_id: Identifier,
+    target_branch_id: Identifier,
+    snapshot_namespace: str,
+    snapshot_name: str,
+    snapshot_content_name: str | None,
+    database_size: int,
+) -> None:
+    from .storage_backends import SnapshotRef, get_storage_backend
+
+    backend = get_storage_backend()
+    await backend.restore_branch_database_volume_from_snapshot(
+        source_identifier=source_branch_id,
+        target_identifier=target_branch_id,
+        snapshot_ref=SnapshotRef(
+            name=snapshot_name,
+            namespace=snapshot_namespace,
+            content_name=snapshot_content_name,
+        ),
+        database_size=database_size,
+    )
+
+
 def _load_compose_manifest() -> dict[str, Any]:
     compose_resource = resources.files(__package__).joinpath("compose.yml")
     compose_content = yaml.safe_load(compose_resource.read_text())
