@@ -43,7 +43,6 @@ from ..exceptions import (
     VelaDeploymentError,
     VelaGrafanaError,
     VelaKubernetesError,
-    VelaSimplyblockAPIError,
 )
 from ._util import deployment_namespace
 from .deployment import DeploymentParameters, database_image_tag_to_database_images
@@ -52,7 +51,6 @@ from .kubernetes import KubernetesService, get_neon_vm
 from .kubernetes._util import custom_api_client
 from .monitors.health import vm_monitor
 from .settings import CloudflareSettings, get_settings
-from .simplyblock_api import create_simplyblock_api
 
 if TYPE_CHECKING:
     from cloudflare.types.dns.record_list_params import Name as CloudflareRecordName
@@ -270,16 +268,17 @@ async def resolve_branch_database_volume_size(branch_id: Identifier) -> int:
 
 
 async def update_branch_volume_iops(branch_id: Identifier, iops: int) -> None:
-    namespace = deployment_namespace(branch_id)
+    from .storage_backends import VolumeQosProfile, get_storage_backend
 
-    volume, _ = await resolve_autoscaler_volume_identifiers(namespace)
     try:
-        async with create_simplyblock_api() as sb_api:
-            await sb_api.update_volume(volume=volume, payload={"max_rw_iops": iops})
-    except VelaSimplyblockAPIError as exc:
+        volume = await get_storage_backend().lookup_volume(branch_id)
+        if volume is None:
+            raise VelaDeploymentError(f"No branch volume found for {branch_id}")
+        await volume.update_performance(VolumeQosProfile(max_read_write_iops=iops))
+    except VelaDeploymentError as exc:
         raise VelaDeploymentError("Failed to update volume") from exc
 
-    logger.info("Updated Simplyblock volume %s IOPS to %s", volume, iops)
+    logger.info("Updated branch %s IOPS to %s", branch_id, iops)
 
 
 async def ensure_branch_storage_class(branch_id: Identifier, *, iops: int) -> str:
