@@ -1,6 +1,8 @@
 from typing import Literal
 from uuid import UUID
 
+from ...exceptions import VelaDeploymentError
+from ..settings import get_settings
 from .base import (
     Identifier,
     Snapshot,
@@ -18,8 +20,6 @@ from .base import (
 )
 from .lvm import LvmBackend
 from .simplyblock import SimplyblockBackend
-from ..settings import get_settings
-from ...exceptions import VelaDeploymentError
 
 
 class PlaceholderBackend(StorageBackend):
@@ -28,7 +28,10 @@ class PlaceholderBackend(StorageBackend):
 
     def get_capabilities(self) -> StorageCapabilitiesPublic:
         settings = get_settings()
-        warning = f"Storage backend '{self.name}' abstraction is not implemented yet; reporting conservative capabilities."
+        warning = (
+            f"Storage backend '{self.name}' abstraction is not implemented yet; "
+            "reporting conservative capabilities."
+        )
         return StorageCapabilitiesPublic(
             backend=self.name,
             capabilities=VolumeCapabilities(
@@ -85,6 +88,7 @@ class PlaceholderBackend(StorageBackend):
         size_bytes: int,
         qos: VolumeQosProfile | None = None,
     ) -> Volume:
+        _ = (name, size_bytes, qos)
         self.validate_capabilities_for_operation("volume_provision")
         raise self._unsupported("volume provisioning")
 
@@ -94,18 +98,22 @@ class PlaceholderBackend(StorageBackend):
         group_name: str,
         qos: VolumeQosProfile | None = None,
     ) -> VolumeGroup:
+        _ = (group_id, group_name, qos)
         self.validate_capabilities_for_operation("volume_group_provision")
         raise self._unsupported("volume group provisioning")
 
     async def lookup_volume(self, volume_id: Identifier) -> Volume | None:
+        _ = volume_id
         self.validate_capabilities_for_operation("volume_lookup")
         raise self._unsupported("volume lookup")
 
     async def lookup_volume_group(self, group_id: Identifier) -> VolumeGroup | None:
+        _ = group_id
         self.validate_capabilities_for_operation("volume_group_lookup")
         raise self._unsupported("volume group lookup")
 
     async def lookup_snapshot(self, snapshot_ref: SnapshotRef) -> Snapshot | None:
+        _ = snapshot_ref
         self.validate_capabilities_for_operation("snapshot_lookup")
         raise self._unsupported("snapshot lookup")
 
@@ -147,9 +155,11 @@ class PlaceholderBackend(StorageBackend):
         raise self._unsupported("branch database volume restore")
 
     def validate_qos_profile(self, qos: VolumeQosProfile) -> None:
+        _ = qos
         return None
 
     def validate_capabilities_for_operation(self, operation: str, params: dict[str, object] | None = None) -> None:
+        _ = params
         capabilities = self.get_capabilities().capabilities
         checks = {
             "volume_provision": capabilities.supports_dynamic_provisioning,

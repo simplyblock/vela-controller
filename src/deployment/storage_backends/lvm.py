@@ -4,11 +4,16 @@ import os
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Literal
-from uuid import UUID
+from typing import TYPE_CHECKING, Literal
 
 from ulid import ULID
 
+from ..._util import quantity_to_bytes
+from ...exceptions import VelaDeploymentError, VelaKubernetesError
+from .. import AUTOSCALER_PVC_SUFFIX, get_autoscaler_vm_identity, kube_service
+from ..kubernetes.pvc import delete_pvc, wait_for_pvc_absent
+from ..kubernetes.snapshot import create_snapshot_from_pvc, delete_snapshot, read_snapshot, wait_snapshot_ready
+from ..kubernetes.volume_clone import clone_branch_database_volume, restore_branch_database_volume_from_snapshot
 from .base import (
     Identifier,
     Snapshot,
@@ -22,13 +27,11 @@ from .base import (
     VolumeQosProfile,
     VolumeUsage,
 )
-from ..._util import quantity_to_bytes
-from ...exceptions import VelaDeploymentError, VelaKubernetesError
-from .. import AUTOSCALER_PVC_SUFFIX, get_autoscaler_vm_identity, kube_service
-from ..kubernetes.pvc import delete_pvc, wait_for_pvc_absent
-from ..kubernetes.snapshot import create_snapshot_from_pvc, delete_snapshot, read_snapshot, wait_snapshot_ready
-from ..kubernetes.volume_clone import clone_branch_database_volume, restore_branch_database_volume_from_snapshot
-from ..settings import Settings
+
+if TYPE_CHECKING:
+    from uuid import UUID
+
+    from ..settings import Settings
 
 _SNAPSHOT_TIMEOUT_SECONDS = float(os.environ.get("SNAPSHOT_TIMEOUT_SEC", "120"))
 _SNAPSHOT_POLL_INTERVAL_SECONDS = float(os.environ.get("SNAPSHOT_POLL_INTERVAL_SEC", "5"))
@@ -80,7 +83,7 @@ _CAPABILITIES = VolumeCapabilities(
 @dataclass
 class LvmVolume(Volume):
     identifier: Identifier
-    _backend: "LvmBackend"
+    _backend: LvmBackend
 
     async def resize(self, new_size_bytes: int) -> None:
         # Resize execution is handled by PVC workflows outside this backend currently.
@@ -89,10 +92,15 @@ class LvmVolume(Volume):
     async def delete(self) -> None:
         await self._backend._delete_volume(self.identifier)
 
-    async def snapshot(self, label: str, backup_id: Identifier) -> "LvmSnapshot":
+    async def snapshot(self, label: str, backup_id: Identifier) -> LvmSnapshot:
         details = await self._backend._snapshot_volume(self.namespace, self.pvc_name, label=label, backup_id=backup_id)
         snapshot_ref = SnapshotRef(name=details.name, namespace=details.namespace, content_name=details.content_name)
-        return LvmSnapshot(details=details, snapshot_ref=snapshot_ref, source_identifier=self.identifier, _backend=self._backend)
+        return LvmSnapshot(
+            details=details,
+            snapshot_ref=snapshot_ref,
+            source_identifier=self.identifier,
+            _backend=self._backend,
+        )
 
     async def update_performance(self, qos: VolumeQosProfile) -> None:
         self._backend.validate_qos_profile(qos)
@@ -101,13 +109,14 @@ class LvmVolume(Volume):
         return None
 
     async def relocate(self, target_node: str | None = None) -> None:
+        _ = target_node
         raise VelaDeploymentError("lvm backend does not support volume relocation")
 
 
 @dataclass
 class LvmVolumeGroup(VolumeGroup):
     identifier: Identifier
-    _backend: "LvmBackend"
+    _backend: LvmBackend
 
     async def delete(self) -> None:
         volumes = await self.volumes()
@@ -139,7 +148,7 @@ class LvmVolumeGroup(VolumeGroup):
 @dataclass
 class LvmSnapshot(Snapshot):
     source_identifier: Identifier | None
-    _backend: "LvmBackend"
+    _backend: LvmBackend
 
     async def delete(self) -> None:
         await delete_snapshot(self.details.namespace, self.details.name)
@@ -209,6 +218,7 @@ class LvmBackend(StorageBackend):
         size_bytes: int,
         qos: VolumeQosProfile | None = None,
     ) -> Volume:
+        _ = name
         await self._ensure_topolvm_storage_class()
         self.validate_qos_profile(qos or VolumeQosProfile())
         identifier = ULID()
@@ -350,6 +360,7 @@ class LvmBackend(StorageBackend):
             )
 
     def validate_capabilities_for_operation(self, operation: str, params: dict[str, object] | None = None) -> None:
+        _ = params
         capabilities = self.get_capabilities().capabilities
         checks = {
             "volume_expansion": capabilities.supports_volume_expansion,

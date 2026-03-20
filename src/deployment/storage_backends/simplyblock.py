@@ -7,23 +7,8 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from sqlalchemy.util import await_only
 from ulid import ULID
 
-from .base import (
-    Identifier,
-    Snapshot,
-    SnapshotDetails,
-    SnapshotRef,
-    StorageBackend,
-    StorageCapabilitiesPublic,
-    Volume,
-    VolumeCapabilities,
-    VolumeGroup,
-    VolumeQosProfile,
-    VolumeSpec,
-    VolumeUsage,
-)
 from ..._util import IOPS_MIN, quantity_to_bytes
 from ...exceptions import VelaDeploymentError, VelaKubernetesError, VelaSimplyblockAPIError
 from .. import (
@@ -39,6 +24,19 @@ from ..kubernetes.snapshot import create_snapshot_from_pvc, delete_snapshot, rea
 from ..kubernetes.volume_clone import clone_branch_database_volume, restore_branch_database_volume_from_snapshot
 from ..settings import Settings, get_settings
 from ..simplyblock_api import create_simplyblock_api
+from .base import (
+    Identifier,
+    Snapshot,
+    SnapshotDetails,
+    SnapshotRef,
+    StorageBackend,
+    StorageCapabilitiesPublic,
+    Volume,
+    VolumeCapabilities,
+    VolumeGroup,
+    VolumeQosProfile,
+    VolumeUsage,
+)
 
 _SNAPSHOT_TIMEOUT_SECONDS = float(os.environ.get("SNAPSHOT_TIMEOUT_SEC", "120"))
 _SNAPSHOT_POLL_INTERVAL_SECONDS = float(os.environ.get("SNAPSHOT_POLL_INTERVAL_SEC", "5"))
@@ -207,7 +205,7 @@ async def resolve_autoscaler_wal_volume_identifiers(namespace: str) -> tuple[UUI
 @dataclass
 class SimplyblockVolume(Volume):
     identifier: Identifier
-    _backend: "SimplyblockBackend"
+    _backend: SimplyblockBackend
 
     async def resize(self, new_size_bytes: int) -> None:
         await self._backend._resize_volume(self.identifier, new_size_bytes)
@@ -216,7 +214,7 @@ class SimplyblockVolume(Volume):
     async def delete(self) -> None:
         await self._backend._delete_volume(self.identifier)
 
-    async def snapshot(self, label: str, backup_id: Identifier) -> "SimplyblockSnapshot":
+    async def snapshot(self, label: str, backup_id: Identifier) -> SimplyblockSnapshot:
         details = await self._backend._snapshot_volume(
             namespace=self.namespace,
             pvc_name=self.pvc_name,
@@ -224,7 +222,12 @@ class SimplyblockVolume(Volume):
             backup_id=backup_id,
         )
         snapshot_ref = SnapshotRef(name=details.name, namespace=details.namespace, content_name=details.content_name)
-        return SimplyblockSnapshot(details=details, snapshot_ref=snapshot_ref, source_identifier=self.identifier, _backend=self._backend)
+        return SimplyblockSnapshot(
+            details=details,
+            snapshot_ref=snapshot_ref,
+            source_identifier=self.identifier,
+            _backend=self._backend,
+        )
 
     async def update_performance(self, qos: VolumeQosProfile) -> None:
         await self._backend._update_volume_performance(self.identifier, qos)
@@ -233,28 +236,31 @@ class SimplyblockVolume(Volume):
         return await self._backend._get_volume_usage(self.identifier)
 
     async def relocate(self, target_node: str | None = None) -> None:
+        _ = target_node
         raise VelaDeploymentError("simplyblock backend does not require volume relocation")
 
 
 @dataclass
 class SimplyblockStoragePoolVolumeGroup(VolumeGroup):
-    _backend: "SimplyblockBackend"
+    _backend: SimplyblockBackend
 
     async def delete(self) -> None:
         raise VelaDeploymentError("simplyblock backend does not expose volume groups")
 
     async def update_performance(self, qos: VolumeQosProfile) -> None:
+        _ = qos
         raise VelaDeploymentError("simplyblock backend does not expose volume groups")
 
     async def volumes(self) -> list[Volume]:
         raise VelaDeploymentError("simplyblock backend does not expose volume groups")
 
     async def snapshot(self, label: str, backup_id: Identifier) -> Snapshot:
+        _ = (label, backup_id)
         raise VelaDeploymentError("simplyblock backend does not expose volume groups")
 
 @dataclass
 class SimplyblockSimpleVolumeGroup(VolumeGroup):
-    _backend: "SimplyblockBackend"
+    _backend: SimplyblockBackend
     identifier: Identifier
 
     async def delete(self) -> None:
@@ -263,12 +269,14 @@ class SimplyblockSimpleVolumeGroup(VolumeGroup):
             await volume.delete()
 
     async def update_performance(self, qos: VolumeQosProfile) -> None:
+        _ = qos
         raise VelaDeploymentError("simplyblock backend does not expose volume groups")
 
     async def volumes(self) -> list[Volume]:
         return self._backend._list_volume_group_volumes(self.identifier)
 
     async def snapshot(self, label: str, backup_id: Identifier) -> Snapshot:
+        _ = (label, backup_id)
         raise VelaDeploymentError("simplyblock backend does not expose volume groups")
 
     async def provision_volume(
@@ -283,7 +291,7 @@ class SimplyblockSimpleVolumeGroup(VolumeGroup):
 @dataclass
 class SimplyblockSnapshot(Snapshot):
     source_identifier: Identifier | None
-    _backend: "SimplyblockBackend"
+    _backend: SimplyblockBackend
 
     async def delete(self) -> None:
         await self._backend._delete_snapshot(self.details)
@@ -345,6 +353,7 @@ class SimplyblockBackend(StorageBackend):
         group_name: str,
         qos: VolumeQosProfile | None = None,
     ) -> VolumeGroup:
+        _ = qos
         return SimplyblockSimpleVolumeGroup(identifier=group_id, _backend=self, name=group_name)
 
     async def lookup_volume(self, volume_id: Identifier) -> Volume | None:
@@ -385,7 +394,12 @@ class SimplyblockBackend(StorageBackend):
             size_bytes=quantity_to_bytes(status.get("restoreSize")),
         )
         resolved_ref = SnapshotRef(name=details.name, namespace=details.namespace, content_name=details.content_name)
-        return SimplyblockSnapshot(details=details, snapshot_ref=resolved_ref, source_identifier=None, _backend=self)
+        return SimplyblockSnapshot(
+            details=details,
+            snapshot_ref=resolved_ref,
+            source_identifier=None,
+            _backend=self,
+        )
 
     async def get_branch_volume_usage(
         self,
@@ -397,7 +411,11 @@ class SimplyblockBackend(StorageBackend):
             return await self._get_volume_usage(identifier)
 
         namespace = f"{self.settings.deployment_namespace_prefix}-{str(identifier).lower()}"
-        resolver = resolve_storage_volume_identifiers if volume_type == "storage" else resolve_autoscaler_wal_volume_identifiers
+        resolver = (
+            resolve_storage_volume_identifiers
+            if volume_type == "storage"
+            else resolve_autoscaler_wal_volume_identifiers
+        )
         try:
             volume, _ = await resolver(namespace)
             async with create_simplyblock_api() as sb_api:
@@ -483,10 +501,12 @@ class SimplyblockBackend(StorageBackend):
         ]
         if unsupported_fields and self.settings.storage_qos_policy == "strict":
             raise VelaDeploymentError(
-                f"simplyblock backend supports only max_read_write_iops; unsupported fields: {', '.join(unsupported_fields)}"
+                "simplyblock backend supports only max_read_write_iops; "
+                f"unsupported fields: {', '.join(unsupported_fields)}"
             )
 
     def validate_capabilities_for_operation(self, operation: str, params: dict[str, Any] | None = None) -> None:
+        _ = params
         capabilities = self.get_capabilities().capabilities
         checks = {
             "volume_expansion": capabilities.supports_volume_expansion,
@@ -505,6 +525,7 @@ class SimplyblockBackend(StorageBackend):
         size_bytes: int,
         qos: VolumeQosProfile | None = None,
     ) -> Volume:
+        _ = name
         self.validate_qos_profile(qos or VolumeQosProfile())
         iops = self._effective_iops(qos)
         storage_class = await ensure_branch_storage_class(identifier, iops=iops)

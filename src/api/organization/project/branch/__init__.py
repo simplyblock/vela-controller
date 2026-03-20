@@ -604,7 +604,11 @@ def _resolve_database_size_against_source(
 
 
 def _resource_limits_from_deployment(parameters: DeploymentParameters) -> ResourceLimitsPublic:
-    iops_for_limits = parameters.iops if parameters.iops is not None else (IOPS_MIN if _backend_requires_iops() else None)
+    iops_for_limits = (
+        parameters.iops
+        if parameters.iops is not None
+        else (IOPS_MIN if _backend_requires_iops() else None)
+    )
     return ResourceLimitsPublic(
         milli_vcpu=parameters.milli_vcpu,
         ram=parameters.memory_bytes,
@@ -851,7 +855,6 @@ async def _clone_branch_environment_task(
     pitr_enabled: bool,
 ) -> None:
     await _persist_branch_status(branch_id, BranchServiceStatus.CREATING)
-    storage_class_name: str | None = None
     if copy_data:
         try:
             await clone_branch_database_volume_with_backend(
@@ -917,7 +920,6 @@ async def _restore_branch_environment_task(
     pitr_enabled: bool,
 ) -> None:
     await _persist_branch_status(branch_id, BranchServiceStatus.CREATING)
-    storage_class_name: str | None = None
     try:
         await restore_branch_database_volume_from_snapshot_with_backend(
             source_branch_id=source_branch_id,

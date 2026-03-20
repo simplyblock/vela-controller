@@ -107,7 +107,13 @@ async def list_resource_limit_definitions(
     if storage_capabilities.supports_volume_iops:
         definitions.insert(
             2,
-            ResourceLimitDefinitionPublic(resource_type="iops", min=IOPS_MIN, max=max_iops, step=IOPS_STEP, unit="IOPS"),
+            ResourceLimitDefinitionPublic(
+                resource_type="iops",
+                min=IOPS_MIN,
+                max=max_iops,
+                step=IOPS_STEP,
+                unit="IOPS",
+            ),
         )
     return definitions
 

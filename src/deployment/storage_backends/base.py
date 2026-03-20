@@ -4,7 +4,6 @@ from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
-
 from ulid import ULID
 
 StorageBackendName = Literal["simplyblock", "lvm"]

@@ -13,8 +13,8 @@ from sqlmodel import Field, Relationship
 from .._util import (
     CPU_CONSTRAINTS,
     DATABASE_SIZE_CONSTRAINTS,
-    IOPS_MIN,
     IOPS_CONSTRAINTS,
+    IOPS_MIN,
     MEMORY_CONSTRAINTS,
     PGBOUNCER_DEFAULT_MAX_CLIENT_CONN,
     PGBOUNCER_DEFAULT_POOL_SIZE,
