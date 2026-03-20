@@ -238,52 +238,6 @@ async def _initialize_autoscaler_overlay_endpoints(namespace: str) -> None:
     await _ensure_autoscaler_overlay_endpoint_slices(namespace, overlay_ip)
 
 
-def _build_storage_class_manifest(*, storage_class_name: str, iops: int, base_storage_class: Any) -> dict[str, Any]:
-    provisioner = getattr(base_storage_class, "provisioner", None)
-    if not provisioner:
-        raise VelaKubernetesError("Base storage class missing provisioner")
-
-    base_parameters = dict(getattr(base_storage_class, "parameters", {}) or {})
-    cluster_id = base_parameters.get("cluster_id")
-    if not cluster_id:
-        raise VelaKubernetesError("Base storage class missing required parameter 'cluster_id'")
-
-    parameters = {key: str(value) for key, value in base_parameters.items()}
-    parameters.update(
-        {
-            "qos_rw_iops": str(iops),
-            "qos_rw_mbytes": "0",
-            "qos_r_mbytes": "0",
-            "qos_w_mbytes": "0",
-        }
-    )
-
-    allow_volume_expansion = getattr(base_storage_class, "allow_volume_expansion", None)
-    volume_binding_mode = getattr(base_storage_class, "volume_binding_mode", None)
-    reclaim_policy = getattr(base_storage_class, "reclaim_policy", None)
-    mount_options = getattr(base_storage_class, "mount_options", None)
-
-    manifest: dict[str, Any] = {
-        "apiVersion": "storage.k8s.io/v1",
-        "kind": "StorageClass",
-        "metadata": {
-            "name": storage_class_name,
-        },
-        "provisioner": provisioner,
-        "parameters": parameters,
-    }
-    if reclaim_policy is not None:
-        manifest["reclaimPolicy"] = reclaim_policy
-    if volume_binding_mode is not None:
-        manifest["volumeBindingMode"] = volume_binding_mode
-    if allow_volume_expansion is not None:
-        manifest["allowVolumeExpansion"] = bool(allow_volume_expansion)
-    if mount_options:
-        manifest["mountOptions"] = list(mount_options)
-
-    return manifest
-
-
 async def load_simplyblock_credentials() -> tuple[str, UUID, str, str]:
     simplyblock_namespace = get_settings().simplyblock_csi_namespace
     try:
@@ -366,6 +320,8 @@ async def update_branch_volume_iops(branch_id: Identifier, iops: int) -> None:
 
 
 async def ensure_branch_storage_class(branch_id: Identifier, *, iops: int) -> str:
+    from .storage_backends.simplyblock import _build_storage_class_manifest
+
     storage_class_name = branch_storage_class_name(branch_id)
     try:
         await kube_service.get_storage_class(storage_class_name)

@@ -83,6 +83,52 @@ _CAPABILITIES = VolumeCapabilities(
 )
 
 
+def _build_storage_class_manifest(*, storage_class_name: str, iops: int, base_storage_class: Any) -> dict[str, Any]:
+    provisioner = getattr(base_storage_class, "provisioner", None)
+    if not provisioner:
+        raise VelaKubernetesError("Base storage class missing provisioner")
+
+    base_parameters = dict(getattr(base_storage_class, "parameters", {}) or {})
+    cluster_id = base_parameters.get("cluster_id")
+    if not cluster_id:
+        raise VelaKubernetesError("Base storage class missing required parameter 'cluster_id'")
+
+    parameters = {key: str(value) for key, value in base_parameters.items()}
+    parameters.update(
+        {
+            "qos_rw_iops": str(iops),
+            "qos_rw_mbytes": "0",
+            "qos_r_mbytes": "0",
+            "qos_w_mbytes": "0",
+        }
+    )
+
+    allow_volume_expansion = getattr(base_storage_class, "allow_volume_expansion", None)
+    volume_binding_mode = getattr(base_storage_class, "volume_binding_mode", None)
+    reclaim_policy = getattr(base_storage_class, "reclaim_policy", None)
+    mount_options = getattr(base_storage_class, "mount_options", None)
+
+    manifest: dict[str, Any] = {
+        "apiVersion": "storage.k8s.io/v1",
+        "kind": "StorageClass",
+        "metadata": {
+            "name": storage_class_name,
+        },
+        "provisioner": provisioner,
+        "parameters": parameters,
+    }
+    if reclaim_policy is not None:
+        manifest["reclaimPolicy"] = reclaim_policy
+    if volume_binding_mode is not None:
+        manifest["volumeBindingMode"] = volume_binding_mode
+    if allow_volume_expansion is not None:
+        manifest["allowVolumeExpansion"] = bool(allow_volume_expansion)
+    if mount_options:
+        manifest["mountOptions"] = list(mount_options)
+
+    return manifest
+
+
 @dataclass
 class SimplyblockVolume(Volume):
     identifier: Identifier
