@@ -29,8 +29,7 @@ class PlaceholderBackend(StorageBackend):
     def get_capabilities(self) -> StorageCapabilitiesPublic:
         settings = get_settings()
         warning = (
-            f"Storage backend '{self.name}' abstraction is not implemented yet; "
-            "reporting conservative capabilities."
+            f"Storage backend '{self.name}' abstraction is not implemented yet; reporting conservative capabilities."
         )
         return StorageCapabilitiesPublic(
             backend=self.name,
@@ -195,9 +194,7 @@ def get_storage_backend() -> StorageBackend:
         return SimplyblockBackend(settings)
     if backend == "lvm":
         return LvmBackend(settings)
-    raise VelaDeploymentError(
-        f"Unsupported storage backend {backend!r}. Supported backends are: simplyblock, lvm."
-    )
+    raise VelaDeploymentError(f"Unsupported storage backend {backend!r}. Supported backends are: simplyblock, lvm.")
 
 
 __all__ = [

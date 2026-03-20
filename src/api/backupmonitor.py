@@ -41,6 +41,7 @@ logger = logging.getLogger(__name__)
 def _resolve_snapshot_class() -> str:
     return get_storage_backend().resolve_snapshot_class()
 
+
 UNIT_MULTIPLIER = {
     "min": 60,
     "minute": 60,

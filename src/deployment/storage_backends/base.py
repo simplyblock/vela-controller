@@ -171,10 +171,10 @@ class VolumeGroup(ABC):
 
     @abstractmethod
     async def provision_volume(
-            self,
-            name: str,
-            size_bytes: int,
-            qos: VolumeQosProfile | None = None,
+        self,
+        name: str,
+        size_bytes: int,
+        qos: VolumeQosProfile | None = None,
     ) -> Volume: ...
 
 
@@ -204,18 +204,18 @@ class StorageBackend(ABC):
 
     @abstractmethod
     async def provision_volume(
-            self,
-            name: str,
-            size_bytes: int,
-            qos: VolumeQosProfile | None = None,
+        self,
+        name: str,
+        size_bytes: int,
+        qos: VolumeQosProfile | None = None,
     ) -> Volume: ...
 
     @abstractmethod
     async def provision_volume_group(
-            self,
-            group_id: Identifier,
-            group_name: str,
-            qos: VolumeQosProfile | None = None,
+        self,
+        group_id: Identifier,
+        group_name: str,
+        qos: VolumeQosProfile | None = None,
     ) -> VolumeGroup: ...
 
     @abstractmethod
@@ -229,10 +229,10 @@ class StorageBackend(ABC):
 
     @abstractmethod
     async def get_branch_volume_usage(
-            self,
-            identifier: Identifier,
-            *,
-            volume_type: Literal["database", "storage", "wal"] = "database",
+        self,
+        identifier: Identifier,
+        *,
+        volume_type: Literal["database", "storage", "wal"] = "database",
     ) -> VolumeUsage | None: ...
 
     @abstractmethod
@@ -240,22 +240,22 @@ class StorageBackend(ABC):
 
     @abstractmethod
     async def clone_branch_database_volume(
-            self,
-            *,
-            source_identifier: Identifier,
-            target_identifier: Identifier,
-            database_size: int,
-            pitr_enabled: bool = False,
+        self,
+        *,
+        source_identifier: Identifier,
+        target_identifier: Identifier,
+        database_size: int,
+        pitr_enabled: bool = False,
     ) -> None: ...
 
     @abstractmethod
     async def restore_branch_database_volume_from_snapshot(
-            self,
-            *,
-            source_identifier: Identifier,
-            target_identifier: Identifier,
-            snapshot_ref: SnapshotRef,
-            database_size: int,
+        self,
+        *,
+        source_identifier: Identifier,
+        target_identifier: Identifier,
+        snapshot_ref: SnapshotRef,
+        database_size: int,
     ) -> None: ...
 
     @abstractmethod

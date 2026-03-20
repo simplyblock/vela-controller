@@ -49,11 +49,11 @@ _CAPABILITIES = VolumeCapabilities(
     supports_dynamic_provisioning=True,
     supports_storage_class_per_branch=True,
     supports_storage_class_shared=True,
-    supports_topology_awareness=False, # possible but not yet implemented
-    supports_encrypted_volumes=False, # possible but not yet implemented
+    supports_topology_awareness=False,  # possible but not yet implemented
+    supports_encrypted_volumes=False,  # possible but not yet implemented
     supports_vm_live_migration=True,
     supports_usage_qos_metrics=True,
-    supports_qos_read_write_split=False, # possible but not yet implemented
+    supports_qos_read_write_split=False,  # possible but not yet implemented
     supports_usage_storage_metrics=True,
     supports_file_storage_volume=True,
     supports_pitr_wal_volume=True,
@@ -63,23 +63,23 @@ _CAPABILITIES = VolumeCapabilities(
     supports_backup_snapshot_labels=True,
     supports_restore_size_discovery=True,
     supports_volume_groups=True,
-    supports_consistency_group_snapshots=False, # possible but not yet implemented
-    supports_volume_group_iops=False, # possible but not yet implemented
-    supports_volume_group_iops_update=False, # possible but not yet implemented
-    supports_volume_group_throughput=False, # possible but not yet implemented
-    supports_volume_group_throughput_update=False, # possible but not yet implemented
-    supports_volume_group_usage_qos_metrics=False, # possible but not yet implemented
-    supports_volume_group_usage_storage_metrics=False, # possible but not yet implemented
+    supports_consistency_group_snapshots=False,  # possible but not yet implemented
+    supports_volume_group_iops=False,  # possible but not yet implemented
+    supports_volume_group_iops_update=False,  # possible but not yet implemented
+    supports_volume_group_throughput=False,  # possible but not yet implemented
+    supports_volume_group_throughput_update=False,  # possible but not yet implemented
+    supports_volume_group_usage_qos_metrics=False,  # possible but not yet implemented
+    supports_volume_group_usage_storage_metrics=False,  # possible but not yet implemented
     supports_volume_iops=True,
     supports_volume_iops_update=True,
-    supports_volume_throughput=False, # possible but not yet implemented
-    supports_volume_throughput_update=False, # possible but not yet implemented
+    supports_volume_throughput=False,  # possible but not yet implemented
+    supports_volume_throughput_update=False,  # possible but not yet implemented
     supports_volume_usage_qos_metrics=True,
     supports_volume_usage_storage_metrics=True,
     supports_volume_clone_cross_namespace=True,
     supports_volume_expansion=True,
     supports_volume_expansion_online=True,
-    supports_volume_relocation=False, # not required
+    supports_volume_relocation=False,  # not required
 )
 
 
@@ -258,6 +258,7 @@ class SimplyblockStoragePoolVolumeGroup(VolumeGroup):
         _ = (label, backup_id)
         raise VelaDeploymentError("simplyblock backend does not expose volume groups")
 
+
 @dataclass
 class SimplyblockSimpleVolumeGroup(VolumeGroup):
     _backend: SimplyblockBackend
@@ -280,10 +281,10 @@ class SimplyblockSimpleVolumeGroup(VolumeGroup):
         raise VelaDeploymentError("simplyblock backend does not expose volume groups")
 
     async def provision_volume(
-            self,
-            name: str,
-            size_bytes: int,
-            qos: VolumeQosProfile | None = None,
+        self,
+        name: str,
+        size_bytes: int,
+        qos: VolumeQosProfile | None = None,
     ) -> Volume:
         return await self._backend._provision_volume(self.identifier, name, size_bytes, qos)
 

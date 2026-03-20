@@ -605,9 +605,7 @@ def _resolve_database_size_against_source(
 
 def _resource_limits_from_deployment(parameters: DeploymentParameters) -> ResourceLimitsPublic:
     iops_for_limits = (
-        parameters.iops
-        if parameters.iops is not None
-        else (IOPS_MIN if _backend_requires_iops() else None)
+        parameters.iops if parameters.iops is not None else (IOPS_MIN if _backend_requires_iops() else None)
     )
     return ResourceLimitsPublic(
         milli_vcpu=parameters.milli_vcpu,
