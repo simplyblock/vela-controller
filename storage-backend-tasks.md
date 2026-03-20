@@ -12,7 +12,7 @@
 - Adjust
   - [x] `vela-controller/src/api/organization/project/branch/__init__.py:310` hardcoded _VOLUME_SNAPSHOT_CLASS = "simplyblock-csi-snapshotclass" -> backend resolver.
   - [x] `vela-controller/src/api/backup.py:49` and `vela-controller/src/api/backupmonitor.py:35` simplyblock snapshot default -> backend resolver.
-  - `vela-controller/src/deployment/charts/vela/values.yaml:65`, `vela-controller/src/deployment/charts/vela/values.yaml:76`, `vela-controller/src/deployment/charts/vela/values.yaml:358` hardcoded simplyblock-csi-sc -> resolved storage class.
+  - [x] `vela-controller/src/deployment/charts/vela/values.yaml:65`, `vela-controller/src/deployment/charts/vela/values.yaml:76`, `vela-controller/src/deployment/charts/vela/values.yaml:358` hardcoded simplyblock-csi-sc -> resolved storage class.
   - `vela-controller/src/deployment/deployment.py:36`, `vela-controller/src/api/organization/project/branch/__init__.py:529`, `vela-controller/src/models/branch.py:91` required iops contract -> capability-aware handling for non-simplyblock backends.
   - `vela-controller/src/api/organization/project/branch/__init__.py:742` resize path directly calling update_branch_volume_iops -> backend capability-gated update/no-op policy.
   - `vela-controller/src/api/resources.py:410` zero-fallback semantics on simplyblock metric failure -> explicit “metric unavailable” behavior.

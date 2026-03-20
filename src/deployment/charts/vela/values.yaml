@@ -62,7 +62,7 @@ autoscalerVm:
     serverName: ""
   persistence:
     create: true
-    storageClassName: "simplyblock-csi-sc"
+    storageClassName: ""
     size: 20Gi
     claimName: ''
     accessModes:
@@ -73,7 +73,7 @@ pg_wal:
   mountPath: '/mnt/postgres_wal'
   persistence:
     create: true
-    storageClassName: "simplyblock-csi-sc"
+    storageClassName: ""
     size: 10Gi
     claimName: ''
     accessModes:
@@ -355,7 +355,7 @@ storage:
     #   memory: 128Mi
   persistence:
     enabled: true
-    storageClassName: "simplyblock-csi-sc"
+    storageClassName: ""
     annotations: {}
     size: 10Gi
     accessModes:
