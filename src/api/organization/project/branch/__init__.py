@@ -21,7 +21,7 @@ from pydantic import AfterValidator, ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
-from ....._util import DEFAULT_DB_NAME, DEFAULT_DB_USER, Identifier, storage_backend_bytes_to_db_bytes
+from ....._util import DEFAULT_DB_NAME, DEFAULT_DB_USER, IOPS_MIN, Identifier, storage_backend_bytes_to_db_bytes
 from ....._util.crypto import encrypt_with_passphrase, generate_keys
 from .....deployment import (
     AUTOSCALER_PVC_SUFFIX,
@@ -32,12 +32,13 @@ from .....deployment import (
     branch_db_domain,
     branch_rest_endpoint,
     branch_service_name,
+    clone_branch_database_volume_with_backend,
     delete_deployment,
     deploy_branch_environment,
-    ensure_branch_storage_class,
     get_autoscaler_vm_identity,
     kube_service,
     resolve_branch_database_volume_size,
+    restore_branch_database_volume_from_snapshot_with_backend,
     update_branch_database_password,
     update_branch_volume_iops,
 )
@@ -49,11 +50,8 @@ from .....deployment.health import (
 from .....deployment.kubernetes._util import core_v1_client
 from .....deployment.kubernetes.neonvm import PowerState as NeonVMPowerState
 from .....deployment.kubernetes.neonvm import set_virtualmachine_power_state
-from .....deployment.kubernetes.volume_clone import (
-    clone_branch_database_volume,
-    restore_branch_database_volume_from_snapshot,
-)
 from .....deployment.settings import get_settings as get_deployment_settings
+from .....deployment.storage_backends import get_storage_backend
 from .....exceptions import VelaDeploymentError, VelaError, VelaKubernetesError, VelaSimplyblockAPIError
 from .....models.backups import BackupEntry
 from .....models.branch import (
@@ -89,12 +87,6 @@ from ...._util.resourcelimit import (
 )
 from ...._util.role import clone_user_role_assignment
 from ....auth import security
-from ....backup_snapshots import (
-    SNAPSHOT_POLL_INTERVAL_SEC as _SNAPSHOT_POLL_INTERVAL_SECONDS,
-)
-from ....backup_snapshots import (
-    SNAPSHOT_TIMEOUT_SEC as _SNAPSHOT_TIMEOUT_SECONDS,
-)
 from ....backup_snapshots import branch_snapshots_used_size
 from ....db import AsyncSessionLocal, SessionDep
 from ....dependencies import BranchDep, OrganizationDep, ProjectDep, backup_lookup, branch_lookup
@@ -322,12 +314,6 @@ _DEFAULT_SERVICE_STATUS = BranchStatus(
 )
 
 
-_PVC_TIMEOUT_SECONDS = float(600)
-_PVC_CLONE_TIMEOUT_SECONDS = float(120)
-_PVC_POLL_INTERVAL_SECONDS = float(2)
-_VOLUME_SNAPSHOT_CLASS = "simplyblock-csi-snapshotclass"
-
-
 _PGBOUNCER_ADMIN_USER = "pgbouncer_admin"
 _PGBOUNCER_ADMIN_DATABASE = "pgbouncer"
 _PGBOUNCER_SERVICE_PORT = 6432
@@ -455,6 +441,19 @@ class _DeploymentResourceValues(TypedDict):
     iops: int | None
 
 
+def _backend_requires_iops() -> bool:
+    capabilities = get_storage_backend().get_capabilities().capabilities
+    return capabilities.supports_volume_iops
+
+
+def _effective_iops(iops: int | None) -> int:
+    if iops is not None:
+        return iops
+    if _backend_requires_iops():
+        raise HTTPException(status_code=422, detail="iops is required for the configured storage backend")
+    return IOPS_MIN
+
+
 def _normalize_size_from_source(value: int | None) -> int | None:
     if value is None:
         return None
@@ -544,7 +543,7 @@ def _validate_deployment_requirements(
             status_code=422,
             detail="memory_bytes is required when cloning from a source branch",
         )
-    if resources["iops"] is None:
+    if _backend_requires_iops() and resources["iops"] is None:
         raise HTTPException(
             status_code=422,
             detail="iops is required when cloning from a source branch",
@@ -575,7 +574,7 @@ def _deployment_parameters_from_source(
     database_size = cast("int", resource_values["database_size"])
     milli_vcpu = cast("int", resource_values["milli_vcpu"])
     memory_bytes = cast("int", resource_values["memory_bytes"])
-    iops = cast("int", resource_values["iops"])
+    iops = _effective_iops(resource_values["iops"])
     storage_size = resource_values["storage_size"] if enable_file_storage else None
 
     _ensure_clone_storage_capacity(
@@ -623,10 +622,13 @@ def _resolve_database_size_against_source(
 
 
 def _resource_limits_from_deployment(parameters: DeploymentParameters) -> ResourceLimitsPublic:
+    iops_for_limits = (
+        parameters.iops if parameters.iops is not None else (IOPS_MIN if _backend_requires_iops() else None)
+    )
     return ResourceLimitsPublic(
         milli_vcpu=parameters.milli_vcpu,
         ram=parameters.memory_bytes,
-        iops=parameters.iops,
+        iops=iops_for_limits,
         database_size=parameters.database_size,
         storage_size=parameters.storage_size,
     )
@@ -679,7 +681,7 @@ async def _build_branch_entity(
             storage_size=clone_parameters.storage_size if clone_parameters.enable_file_storage else None,
             milli_vcpu=clone_parameters.milli_vcpu,
             memory=clone_parameters.memory_bytes,
-            iops=clone_parameters.iops,
+            iops=_effective_iops(clone_parameters.iops),
             database_image_tag=clone_parameters.database_image_tag,
             env_type=env_type,
             enable_file_storage=clone_parameters.enable_file_storage,
@@ -704,7 +706,7 @@ async def _build_branch_entity(
         storage_size=deployment_params.storage_size if deployment_params.enable_file_storage else None,
         milli_vcpu=deployment_params.milli_vcpu,
         memory=deployment_params.memory_bytes,
-        iops=deployment_params.iops,
+        iops=_effective_iops(deployment_params.iops),
         database_image_tag=deployment_params.database_image_tag,
         env_type=env_type,
         enable_file_storage=deployment_params.enable_file_storage,
@@ -766,7 +768,20 @@ async def _apply_resize_operations(
 
     if "iops" in effective_parameters:
         new_iops = effective_parameters["iops"]
-        await update_branch_volume_iops(branch.id, new_iops)
+        backend_capabilities = get_storage_backend().get_capabilities()
+        supports_runtime_iops_update = backend_capabilities.capabilities.supports_volume_iops_update
+        if supports_runtime_iops_update:
+            await update_branch_volume_iops(branch.id, new_iops)
+        elif backend_capabilities.qos_policy == "strict":
+            raise VelaDeploymentError(
+                f"Storage backend {backend_capabilities.backend!r} does not support runtime IOPS updates"
+            )
+        else:
+            logger.info(
+                "Skipping runtime IOPS update for branch %s because backend %s does not support it (best_effort)",
+                branch.id,
+                backend_capabilities.backend,
+            )
         branch.iops = new_iops
         await create_or_update_branch_provisioning(
             session,
@@ -866,19 +881,11 @@ async def _clone_branch_environment_task(
     pitr_enabled: bool,
 ) -> None:
     await _persist_branch_status(branch_id, BranchServiceStatus.CREATING)
-    storage_class_name: str | None = None
     if copy_data:
         try:
-            storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
-            await clone_branch_database_volume(
+            await clone_branch_database_volume_with_backend(
                 source_branch_id=source_branch_id,
                 target_branch_id=branch_id,
-                snapshot_class=_VOLUME_SNAPSHOT_CLASS,
-                storage_class_name=storage_class_name,
-                snapshot_timeout_seconds=_SNAPSHOT_TIMEOUT_SECONDS,
-                snapshot_poll_interval_seconds=_SNAPSHOT_POLL_INTERVAL_SECONDS,
-                pvc_timeout_seconds=_PVC_CLONE_TIMEOUT_SECONDS,
-                pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
                 database_size=parameters.database_size,
             )
         except VelaError:
@@ -940,21 +947,13 @@ async def _restore_branch_environment_task(
     pitr_enabled: bool,
 ) -> None:
     await _persist_branch_status(branch_id, BranchServiceStatus.CREATING)
-    storage_class_name: str | None = None
     try:
-        storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
-        await restore_branch_database_volume_from_snapshot(
+        await restore_branch_database_volume_from_snapshot_with_backend(
             source_branch_id=source_branch_id,
             target_branch_id=branch_id,
             snapshot_namespace=snapshot_namespace,
             snapshot_name=snapshot_name,
             snapshot_content_name=snapshot_content_name,
-            snapshot_class=_VOLUME_SNAPSHOT_CLASS,
-            storage_class_name=storage_class_name,
-            snapshot_timeout_seconds=_SNAPSHOT_TIMEOUT_SECONDS,
-            snapshot_poll_interval_seconds=_SNAPSHOT_POLL_INTERVAL_SECONDS,
-            pvc_timeout_seconds=_PVC_TIMEOUT_SECONDS,
-            pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
             database_size=restore_database_size,
         )
     except VelaError:
@@ -1022,19 +1021,12 @@ async def _restore_branch_environment_in_place_task(
             return
 
     try:
-        storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
-        await restore_branch_database_volume_from_snapshot(
+        await restore_branch_database_volume_from_snapshot_with_backend(
             source_branch_id=source_branch_id,
             target_branch_id=branch_id,
             snapshot_namespace=snapshot_namespace,
             snapshot_name=snapshot_name,
             snapshot_content_name=snapshot_content_name,
-            snapshot_class=_VOLUME_SNAPSHOT_CLASS,
-            storage_class_name=storage_class_name,
-            snapshot_timeout_seconds=_SNAPSHOT_TIMEOUT_SECONDS,
-            snapshot_poll_interval_seconds=_SNAPSHOT_POLL_INTERVAL_SECONDS,
-            pvc_timeout_seconds=_PVC_TIMEOUT_SECONDS,
-            pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
             database_size=parameters.database_size,
         )
     except VelaError:

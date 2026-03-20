@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, StringConstraints
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     grafana_security_admin_user: str = "admin"
     grafana_security_admin_password: str = "password"
     simplyblock_csi_namespace: str = "simplyblock"
+    storage_backend: Literal["simplyblock", "lvm"] = "simplyblock"
+    storage_default_class: str = "simplyblock-csi-sc"
+    storage_snapshot_class: str = "simplyblock-csi-snapshotclass"
+    storage_qos_policy: Literal["strict", "best_effort"] = "best_effort"
 
 
 @lru_cache

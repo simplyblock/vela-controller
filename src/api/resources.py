@@ -1,9 +1,7 @@
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from kubernetes_asyncio.client.exceptions import ApiException
@@ -14,14 +12,11 @@ from .._util import quantity_to_bytes, quantity_to_milli_cpu
 from ..check_branch_status import get_branch_status
 from ..deployment import (
     get_autoscaler_vm_identity,
-    resolve_autoscaler_volume_identifiers,
-    resolve_autoscaler_wal_volume_identifiers,
-    resolve_storage_volume_identifiers,
 )
 from ..deployment.kubernetes._util import custom_api_client
 from ..deployment.kubernetes.neonvm import resolve_autoscaler_vm_pod_name
-from ..deployment.simplyblock_api import create_simplyblock_api
-from ..exceptions import VelaSimplyblockAPIError
+from ..deployment.storage_backends import get_storage_backend
+from ..exceptions import VelaDeploymentError
 from ..models._util import Identifier
 from ..models.branch import Branch, BranchServiceStatus, ResourceUsageDefinition
 from ..models.project import Project
@@ -342,48 +337,34 @@ async def _collect_compute_usage(namespace: str, vm_name: str) -> tuple[int, int
     return _parse_compute_usage(metrics)
 
 
-async def _resolve_volume_stats(
-    *,
-    volume_identifier_resolver: Callable[[str], Awaitable[tuple[UUID, UUID | None]]],
-    namespace: str,
-) -> dict[str, int]:
-    volume, _ = await volume_identifier_resolver(namespace)
-
-    async with create_simplyblock_api() as sb_api:
-        return await sb_api.volume_iostats(volume=volume)
+async def _collect_database_volume_usage(branch: Branch) -> tuple[int, int]:
+    usage = await get_storage_backend().get_branch_volume_usage(branch.id, volume_type="database")
+    if usage is None:
+        raise VelaDeploymentError(f"Database volume usage unavailable for branch {branch.id}")
+    nvme_bytes = int(usage.used_bytes or 0)
+    iops = int(usage.read_iops or 0) + int(usage.write_iops or 0)
+    return nvme_bytes, iops
 
 
-async def _collect_database_volume_usage(namespace: str) -> tuple[int, int]:
-    stats = await _resolve_volume_stats(
-        volume_identifier_resolver=resolve_autoscaler_volume_identifiers,
-        namespace=namespace,
-    )
-    nvme_bytes = stats["size_used"]
-    read_iops = stats["read_io_ps"]
-    write_iops = stats["write_io_ps"]
-    return nvme_bytes, read_iops + write_iops
+async def _collect_storage_volume_usage(branch: Branch) -> int:
+    usage = await get_storage_backend().get_branch_volume_usage(branch.id, volume_type="storage")
+    if usage is None:
+        raise VelaDeploymentError(f"Storage volume usage unavailable for branch {branch.id}")
+    return int(usage.used_bytes or 0)
 
 
-async def _collect_storage_volume_usage(namespace: str) -> int:
-    stats = await _resolve_volume_stats(
-        volume_identifier_resolver=resolve_storage_volume_identifiers,
-        namespace=namespace,
-    )
-    return stats["size_used"]
-
-
-async def _collect_wal_volume_usage(namespace: str) -> int:
-    stats = await _resolve_volume_stats(
-        volume_identifier_resolver=resolve_autoscaler_wal_volume_identifiers,
-        namespace=namespace,
-    )
-    return stats["size_used"]
+async def _collect_wal_volume_usage(branch: Branch) -> int:
+    usage = await get_storage_backend().get_branch_volume_usage(branch.id, volume_type="wal")
+    if usage is None:
+        raise VelaDeploymentError(f"WAL volume usage unavailable for branch {branch.id}")
+    return int(usage.used_bytes or 0)
 
 
 async def _collect_branch_volume_usage(branch: Branch, namespace: str) -> tuple[int, int, int | None, int | None]:
-    db_task = _collect_database_volume_usage(namespace)
+    _ = namespace
+    db_task = _collect_database_volume_usage(branch)
     if branch.enable_file_storage:
-        storage_task = _collect_storage_volume_usage(namespace)
+        storage_task = _collect_storage_volume_usage(branch)
         (nvme_bytes, iops), storage_bytes = await asyncio.gather(db_task, storage_task)
     else:
         nvme_bytes, iops = await db_task
@@ -391,7 +372,7 @@ async def _collect_branch_volume_usage(branch: Branch, namespace: str) -> tuple[
 
     wal_bytes = None
     if branch.pitr_enabled:
-        wal_bytes = await _collect_wal_volume_usage(namespace)
+        wal_bytes = await _collect_wal_volume_usage(branch)
 
     return nvme_bytes, iops, storage_bytes, wal_bytes
 
@@ -412,16 +393,23 @@ async def _collect_branch_resource_usage(branch: Branch) -> ResourceUsageDefinit
         raise
 
     milli_vcpu, ram_bytes = compute_usage
+    capabilities = get_storage_backend().get_capabilities().capabilities
+    supports_storage_metrics = capabilities.supports_volume_usage_storage_metrics
+    supports_qos_metrics = capabilities.supports_volume_usage_qos_metrics
+    should_collect_volume_usage = supports_storage_metrics or supports_qos_metrics
     nvme_bytes, iops, storage_bytes, wal_bytes = 0, 0, None, None
-    try:
-        nvme_bytes, iops, storage_bytes, wal_bytes = await _collect_branch_volume_usage(branch, namespace)
-    except VelaSimplyblockAPIError as exc:
-        logger.error(
-            "Failed to collect volume stats for branch %s (namespace %s): %s",
-            branch.id,
-            namespace,
-            exc,
-        )
+    volume_metrics_available = should_collect_volume_usage
+    if should_collect_volume_usage:
+        try:
+            nvme_bytes, iops, storage_bytes, wal_bytes = await _collect_branch_volume_usage(branch, namespace)
+        except VelaDeploymentError as exc:
+            volume_metrics_available = False
+            logger.error(
+                "Failed to collect volume stats for branch %s (namespace %s): %s",
+                branch.id,
+                namespace,
+                exc,
+            )
 
     return ResourceUsageDefinition(
         milli_vcpu=milli_vcpu,
@@ -430,6 +418,7 @@ async def _collect_branch_resource_usage(branch: Branch) -> ResourceUsageDefinit
         iops=iops,
         storage_bytes=storage_bytes,
         wal_bytes=wal_bytes,
+        volume_metrics_available=volume_metrics_available,
     )
 
 

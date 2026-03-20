@@ -21,6 +21,7 @@ from .._util import (
     VCPU_MILLIS_MIN,
     VCPU_MILLIS_STEP,
 )
+from ..deployment.storage_backends import StorageCapabilitiesPublic, get_storage_backend
 from ..models.resources import ResourceLimitDefinitionPublic, ResourceType
 from ..models.role import AccessRight
 from ._util.resourcelimit import get_system_resource_limits
@@ -39,6 +40,11 @@ class AvailablePostgresqlVersion(BaseModel):
 class SystemVersion(BaseModel):
     commit_hash: str = ""
     timestamp: str = ""
+
+
+@api.get("/storage-capabilities", dependencies=[Depends(authenticated_user)], response_model=StorageCapabilitiesPublic)
+async def get_storage_capabilities() -> StorageCapabilitiesPublic:
+    return get_storage_backend().get_capabilities()
 
 
 @api.get("/version", response_model=SystemVersion)
@@ -69,6 +75,7 @@ async def list_resource_limit_definitions(
     session: SessionDep,
 ) -> list[ResourceLimitDefinitionPublic]:
     system_limits = await get_system_resource_limits(session)
+    storage_capabilities = get_storage_backend().get_capabilities().capabilities
 
     def _get_limit(resource_type: ResourceType, default: int) -> int:
         return system_limits[resource_type].max_total if system_limits[resource_type] else default
@@ -79,14 +86,13 @@ async def list_resource_limit_definitions(
     max_database_size_bytes = _get_limit(ResourceType.database_size, DB_SIZE_MAX)
     max_storage_size_bytes = _get_limit(ResourceType.storage_size, STORAGE_SIZE_MAX)
 
-    return [
+    definitions = [
         ResourceLimitDefinitionPublic(
             resource_type="milli_vcpu", min=VCPU_MILLIS_MIN, max=max_vcpu_millis, step=VCPU_MILLIS_STEP, unit="Millis"
         ),
         ResourceLimitDefinitionPublic(
             resource_type="ram", min=MEMORY_MIN, max=max_ram_bytes, step=MEMORY_STEP, unit="MiB"
         ),
-        ResourceLimitDefinitionPublic(resource_type="iops", min=IOPS_MIN, max=max_iops, step=IOPS_STEP, unit="IOPS"),
         ResourceLimitDefinitionPublic(
             resource_type="database_size", min=DB_SIZE_MIN, max=max_database_size_bytes, step=DB_SIZE_STEP, unit="GB"
         ),
@@ -98,6 +104,18 @@ async def list_resource_limit_definitions(
             unit="GB",
         ),
     ]
+    if storage_capabilities.supports_volume_iops:
+        definitions.insert(
+            2,
+            ResourceLimitDefinitionPublic(
+                resource_type="iops",
+                min=IOPS_MIN,
+                max=max_iops,
+                step=IOPS_STEP,
+                unit="IOPS",
+            ),
+        )
+    return definitions
 
 
 @api.get("/available-postgresql-versions", dependencies=[Depends(authenticated_user)])

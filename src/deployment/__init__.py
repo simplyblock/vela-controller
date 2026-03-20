@@ -1,5 +1,4 @@
 import asyncio
-import base64
 import json
 import logging
 import math
@@ -17,7 +16,7 @@ import yaml
 from cloudflare import AsyncCloudflare, CloudflareError
 from kubernetes_asyncio import client as kubernetes_client
 from kubernetes_asyncio.client.exceptions import ApiException
-from pydantic import BaseModel, Field, ValidationError, model_validator
+from pydantic import BaseModel, Field, model_validator
 from ulid import ULID
 
 from .._util import (
@@ -29,6 +28,7 @@ from .._util import (
     DEFAULT_DB_NAME,
     DEFAULT_DB_USER,
     IOPS_CONSTRAINTS,
+    IOPS_MIN,
     MEMORY_CONSTRAINTS,
     STORAGE_SIZE_CONSTRAINTS,
     VCPU_MILLIS_MAX,
@@ -44,7 +44,6 @@ from ..exceptions import (
     VelaDeploymentError,
     VelaGrafanaError,
     VelaKubernetesError,
-    VelaSimplyblockAPIError,
 )
 from ._util import deployment_namespace
 from .deployment import DeploymentParameters, database_image_tag_to_database_images
@@ -53,7 +52,6 @@ from .kubernetes import KubernetesService, get_neon_vm
 from .kubernetes._util import custom_api_client
 from .monitors.health import vm_monitor
 from .settings import CloudflareSettings, get_settings
-from .simplyblock_api import create_simplyblock_api
 
 if TYPE_CHECKING:
     from cloudflare.types.dns.record_list_params import Name as CloudflareRecordName
@@ -71,9 +69,6 @@ DATABASE_LOAD_BALANCER_SERVICE_NAME = f"{DEFAULT_DATABASE_VM_NAME}-ext"
 CHECK_ENCRYPTED_HEADER_PLUGIN_NAME = "check-x-connection-encrypted"
 APIKEY_JWT_PLUGIN_NAME = "apikey-jwt"
 CPU_REQUEST_FRACTION = 0.25  # request = 25% of limit
-SIMPLYBLOCK_CSI_CONFIGMAP = "simplyblock-csi-cm"
-SIMPLYBLOCK_CSI_SECRET = "simplyblock-csi-secret"
-SIMPLYBLOCK_CSI_STORAGE_CLASS = "simplyblock-csi-sc"
 STORAGE_PVC_SUFFIX = "-storage-pvc"
 DATABASE_PVC_SUFFIX = "-db-pvc"
 AUTOSCALER_PVC_SUFFIX = "-block-data"
@@ -238,150 +233,104 @@ async def _initialize_autoscaler_overlay_endpoints(namespace: str) -> None:
     await _ensure_autoscaler_overlay_endpoint_slices(namespace, overlay_ip)
 
 
-def _build_storage_class_manifest(*, storage_class_name: str, iops: int, base_storage_class: Any) -> dict[str, Any]:
-    provisioner = getattr(base_storage_class, "provisioner", None)
-    if not provisioner:
-        raise VelaKubernetesError("Base storage class missing provisioner")
-
-    base_parameters = dict(getattr(base_storage_class, "parameters", {}) or {})
-    cluster_id = base_parameters.get("cluster_id")
-    if not cluster_id:
-        raise VelaKubernetesError("Base storage class missing required parameter 'cluster_id'")
-
-    parameters = {key: str(value) for key, value in base_parameters.items()}
-    parameters.update(
-        {
-            "qos_rw_iops": str(iops),
-            "qos_rw_mbytes": "0",
-            "qos_r_mbytes": "0",
-            "qos_w_mbytes": "0",
-        }
-    )
-
-    allow_volume_expansion = getattr(base_storage_class, "allow_volume_expansion", None)
-    volume_binding_mode = getattr(base_storage_class, "volume_binding_mode", None)
-    reclaim_policy = getattr(base_storage_class, "reclaim_policy", None)
-    mount_options = getattr(base_storage_class, "mount_options", None)
-
-    manifest: dict[str, Any] = {
-        "apiVersion": "storage.k8s.io/v1",
-        "kind": "StorageClass",
-        "metadata": {
-            "name": storage_class_name,
-        },
-        "provisioner": provisioner,
-        "parameters": parameters,
-    }
-    if reclaim_policy is not None:
-        manifest["reclaimPolicy"] = reclaim_policy
-    if volume_binding_mode is not None:
-        manifest["volumeBindingMode"] = volume_binding_mode
-    if allow_volume_expansion is not None:
-        manifest["allowVolumeExpansion"] = bool(allow_volume_expansion)
-    if mount_options:
-        manifest["mountOptions"] = list(mount_options)
-
-    return manifest
-
-
-async def load_simplyblock_credentials() -> tuple[str, UUID, str, str]:
-    simplyblock_namespace = get_settings().simplyblock_csi_namespace
-    try:
-        config_map = await kube_service.get_config_map(simplyblock_namespace, SIMPLYBLOCK_CSI_CONFIGMAP)
-        config = json.loads(config_map.data["config.json"])
-        cluster_endpoint = config["simplybk"]["ip"].rstrip("/")
-        cluster_id = UUID(config["simplybk"]["uuid"])
-
-        encoded_secret = await kube_service.get_secret(simplyblock_namespace, SIMPLYBLOCK_CSI_SECRET)
-        secret = json.loads(base64.b64decode(encoded_secret.data["secret.json"]).decode())
-        cluster_secret = secret["simplybk"]["secret"]
-
-        storage_class = await kube_service.get_storage_class(SIMPLYBLOCK_CSI_STORAGE_CLASS)
-        pool_name = storage_class.parameters["pool_name"]
-
-        return cluster_endpoint, cluster_id, cluster_secret, pool_name
-    except (KeyError, TypeError, ValueError, json.JSONDecodeError, VelaKubernetesError) as e:
-        raise VelaDeploymentError("Failed to load simplyblock credentials") from e
-
-
-async def _resolve_volume_identifiers(namespace: str, pvc_name: str) -> tuple[UUID, UUID | None]:
-    pvc = await kube_service.get_persistent_volume_claim(namespace, pvc_name)
-    pvc_spec = getattr(pvc, "spec", None)
-    volume_name = getattr(pvc_spec, "volume_name", None) if pvc_spec else None
-    if not volume_name:
-        raise VelaDeploymentError(f"PersistentVolumeClaim {namespace}/{pvc_name} is not bound to a PersistentVolume")
-
-    pv = await kube_service.get_persistent_volume(volume_name)
-    pv_spec = getattr(pv, "spec", None)
-    csi_spec = getattr(pv_spec, "csi", None) if pv_spec else None
-    volume_attributes = getattr(csi_spec, "volume_attributes", None) if csi_spec else None
-    if not isinstance(volume_attributes, dict):
-        raise VelaDeploymentError(
-            f"PersistentVolume {volume_name} missing CSI volume attributes; cannot resolve Simplyblock volume UUID"
-        )
-    volume_uuid = volume_attributes.get("uuid")
-    volume_cluster_id = volume_attributes.get("cluster_id")
-    if not volume_uuid:
-        raise VelaDeploymentError(f"PersistentVolume {volume_name} missing 'uuid' attribute in CSI volume attributes")
-    return UUID(volume_uuid), UUID(volume_cluster_id) if volume_cluster_id is not None else None
-
-
 async def resolve_storage_volume_identifiers(namespace: str) -> tuple[UUID, UUID | None]:
-    pvc_name = f"{_autoscaler_vm_name()}{STORAGE_PVC_SUFFIX}"
-    return await _resolve_volume_identifiers(namespace, pvc_name)
+    from .storage_backends.simplyblock import resolve_storage_volume_identifiers as _resolve_storage_volume_identifiers
+
+    return await _resolve_storage_volume_identifiers(namespace)
 
 
 async def resolve_autoscaler_volume_identifiers(namespace: str) -> tuple[UUID, UUID | None]:
-    pvc_name = f"{_autoscaler_vm_name()}{AUTOSCALER_PVC_SUFFIX}"
-    return await _resolve_volume_identifiers(namespace, pvc_name)
+    from .storage_backends.simplyblock import (
+        resolve_autoscaler_volume_identifiers as _resolve_autoscaler_volume_identifiers,
+    )
+
+    return await _resolve_autoscaler_volume_identifiers(namespace)
 
 
 async def resolve_autoscaler_wal_volume_identifiers(namespace: str) -> tuple[UUID, UUID | None]:
-    pvc_name = f"{_autoscaler_vm_name()}{AUTOSCALER_WAL_PVC_SUFFIX}"
-    return await _resolve_volume_identifiers(namespace, pvc_name)
+    from .storage_backends.simplyblock import (
+        resolve_autoscaler_wal_volume_identifiers as _resolve_autoscaler_wal_volume_identifiers,
+    )
+
+    return await _resolve_autoscaler_wal_volume_identifiers(namespace)
 
 
 async def resolve_branch_database_volume_size(branch_id: Identifier) -> int:
-    namespace = deployment_namespace(branch_id)
-    volume, _ = await resolve_autoscaler_volume_identifiers(namespace)
+    from .storage_backends import get_storage_backend
+
     try:
-        async with create_simplyblock_api() as sb_api:
-            volume_payload = await sb_api.get_volume(volume=volume)
-        return volume_payload.size
-    except (VelaSimplyblockAPIError, ValidationError) as exc:
+        volume = await get_storage_backend().lookup_volume(branch_id)
+    except VelaDeploymentError as exc:
         raise VelaDeploymentError(f"Failed to resolve database volume size for branch {branch_id}") from exc
+    if volume is None:
+        raise VelaDeploymentError(f"Failed to resolve database volume size for branch {branch_id}: volume not found")
+    return volume.size_bytes
 
 
 async def update_branch_volume_iops(branch_id: Identifier, iops: int) -> None:
-    namespace = deployment_namespace(branch_id)
+    from .storage_backends import VolumeQosProfile, get_storage_backend
 
-    volume, _ = await resolve_autoscaler_volume_identifiers(namespace)
     try:
-        async with create_simplyblock_api() as sb_api:
-            await sb_api.update_volume(volume=volume, payload={"max_rw_iops": iops})
-    except VelaSimplyblockAPIError as exc:
+        volume = await get_storage_backend().lookup_volume(branch_id)
+        if volume is None:
+            raise VelaDeploymentError(f"No branch volume found for {branch_id}")
+        await volume.update_performance(VolumeQosProfile(max_read_write_iops=iops))
+    except VelaDeploymentError as exc:
         raise VelaDeploymentError("Failed to update volume") from exc
 
-    logger.info("Updated Simplyblock volume %s IOPS to %s", volume, iops)
+    logger.info("Updated branch %s IOPS to %s", branch_id, iops)
 
 
 async def ensure_branch_storage_class(branch_id: Identifier, *, iops: int) -> str:
-    storage_class_name = branch_storage_class_name(branch_id)
-    try:
-        await kube_service.get_storage_class(storage_class_name)
-        logger.info("StorageClass %s already exists; reusing", storage_class_name)
-        return storage_class_name
-    except VelaKubernetesError:
-        pass
+    from .storage_backends import get_storage_backend
+    from .storage_backends.simplyblock import ensure_branch_storage_class as ensure_simplyblock_storage_class
 
-    base_storage_class = await kube_service.get_storage_class(SIMPLYBLOCK_CSI_STORAGE_CLASS)
-    storage_class_manifest = _build_storage_class_manifest(
-        storage_class_name=storage_class_name,
-        iops=iops,
-        base_storage_class=base_storage_class,
+    backend = get_storage_backend()
+    if backend.name == "simplyblock":
+        return await ensure_simplyblock_storage_class(branch_id, iops=iops)
+    return backend.resolve_storage_class()
+
+
+async def clone_branch_database_volume_with_backend(
+    *,
+    source_branch_id: Identifier,
+    target_branch_id: Identifier,
+    database_size: int,
+    pitr_enabled: bool = False,
+) -> None:
+    from .storage_backends import get_storage_backend
+
+    backend = get_storage_backend()
+    await backend.clone_branch_database_volume(
+        source_identifier=source_branch_id,
+        target_identifier=target_branch_id,
+        database_size=database_size,
+        pitr_enabled=pitr_enabled,
     )
-    await kube_service.apply_storage_class(storage_class_manifest)
-    return storage_class_name
+
+
+async def restore_branch_database_volume_from_snapshot_with_backend(
+    *,
+    source_branch_id: Identifier,
+    target_branch_id: Identifier,
+    snapshot_namespace: str,
+    snapshot_name: str,
+    snapshot_content_name: str | None,
+    database_size: int,
+) -> None:
+    from .storage_backends import SnapshotRef, get_storage_backend
+
+    backend = get_storage_backend()
+    await backend.restore_branch_database_volume_from_snapshot(
+        source_identifier=source_branch_id,
+        target_identifier=target_branch_id,
+        snapshot_ref=SnapshotRef(
+            name=snapshot_name,
+            namespace=snapshot_namespace,
+            content_name=snapshot_content_name,
+        ),
+        database_size=database_size,
+    )
 
 
 def _load_chart_values(chart_root: Any) -> dict[str, Any]:
@@ -521,7 +470,7 @@ async def create_vela_config(
     postgresql_resource = resources.files(__package__).joinpath("postgresql.conf")
     values_content = _load_chart_values(chart)
 
-    storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
+    storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops or IOPS_MIN)
     values_content = _configure_vela_values(
         values_content,
         parameters=parameters,

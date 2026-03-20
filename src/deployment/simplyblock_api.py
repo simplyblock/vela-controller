@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import json
 import logging
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, Self
@@ -8,13 +10,40 @@ from uuid import UUID
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
-from ..exceptions import VelaSimplyblockAPIError
+from ..exceptions import VelaDeploymentError, VelaKubernetesError, VelaSimplyblockAPIError
+from .kubernetes import KubernetesService
+from .settings import get_settings
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
 
 logger = logging.getLogger(__name__)
+
+_SIMPLYBLOCK_CSI_CONFIGMAP = "simplyblock-csi-cm"
+_SIMPLYBLOCK_CSI_SECRET = "simplyblock-csi-secret"
+_SIMPLYBLOCK_CSI_STORAGE_CLASS = "simplyblock-csi-sc"
+_kube_service = KubernetesService()
+
+
+async def load_simplyblock_credentials() -> tuple[str, UUID, str, str]:
+    simplyblock_namespace = get_settings().simplyblock_csi_namespace
+    try:
+        config_map = await _kube_service.get_config_map(simplyblock_namespace, _SIMPLYBLOCK_CSI_CONFIGMAP)
+        config = json.loads(config_map.data["config.json"])
+        cluster_endpoint = config["simplybk"]["ip"].rstrip("/")
+        cluster_id = UUID(config["simplybk"]["uuid"])
+
+        encoded_secret = await _kube_service.get_secret(simplyblock_namespace, _SIMPLYBLOCK_CSI_SECRET)
+        secret = json.loads(base64.b64decode(encoded_secret.data["secret.json"]).decode())
+        cluster_secret = secret["simplybk"]["secret"]
+
+        storage_class = await _kube_service.get_storage_class(_SIMPLYBLOCK_CSI_STORAGE_CLASS)
+        pool_name = storage_class.parameters["pool_name"]
+
+        return cluster_endpoint, cluster_id, cluster_secret, pool_name
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError, VelaKubernetesError) as e:
+        raise VelaDeploymentError("Failed to load simplyblock credentials") from e
 
 
 class SimplyblockVolume(BaseModel):
@@ -147,8 +176,6 @@ class SimplyblockPoolApi:
 
 @asynccontextmanager
 async def create_simplyblock_api() -> AsyncIterator[SimplyblockPoolApi]:
-    from . import load_simplyblock_credentials
-
     api = SimplyblockPoolApi(*(await load_simplyblock_credentials()))
     async with api:
         yield api

@@ -33,7 +33,7 @@ class DeploymentParameters(BaseModel):
     storage_size: Annotated[int | None, Field(**STORAGE_SIZE_CONSTRAINTS)] = None
     milli_vcpu: Annotated[int, Field(**CPU_CONSTRAINTS)]  # units of milli vCPU
     memory_bytes: Annotated[int, Field(**MEMORY_CONSTRAINTS)]
-    iops: Annotated[int, Field(**IOPS_CONSTRAINTS)]
+    iops: Annotated[int | None, Field(default=None, **IOPS_CONSTRAINTS)] = None
     database_image_tag: Literal["15.1.0.147", "18.1-velaos"]
     enable_file_storage: bool = True
 

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlmodel import SQLModel, asc, delete, select
 from ulid import ULID
 
+from ..deployment.storage_backends import get_storage_backend
 from ..models.backups import (
     BackupEntry,
     BackupLog,
@@ -32,10 +33,14 @@ from .settings import get_settings
 # ---------------------------
 # Config
 # ---------------------------
-VOLUME_SNAPSHOT_CLASS = os.environ.get("VOLUME_SNAPSHOT_CLASS", "simplyblock-csi-snapshotclass")
 POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", "60"))
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_snapshot_class() -> str:
+    return get_storage_backend().resolve_snapshot_class()
+
 
 UNIT_MULTIPLIER = {
     "min": 60,
@@ -311,7 +316,7 @@ class BackupMonitor:
             data_snapshot, wal_snapshot = await create_branch_snapshot_bundle(
                 branch.id,
                 backup_id=backup_id,
-                snapshot_class=VOLUME_SNAPSHOT_CLASS,
+                snapshot_class=_resolve_snapshot_class(),
                 poll_interval=SNAPSHOT_POLL_INTERVAL_SEC,
                 label=f"row-{row.row_index}",
                 time_limit=SNAPSHOT_TIMEOUT_SEC,
