@@ -1,0 +1,24 @@
+- Move
+  - [x] `vela-controller/src/deployment/__init__.py:241` _build_storage_class_manifest (simplyblock QoS keys) -> move behind SimplyblockBackend provisioning.
+  - [x] `vela-controller/src/deployment/__init__.py:287` load_simplyblock_credentials -> move to simplyblock adapter/API client boundary.
+  - `vela-controller/src/deployment/__init__.py:307` _resolve_volume_identifiers + helpers -> move to simplyblock backend usage/lookup implementation.
+  - `vela-controller/src/deployment/__init__.py:344` resolve_branch_database_volume_size -> backend lookup_volume()/usage path.
+  - `vela-controller/src/deployment/__init__.py:355` update_branch_volume_iops -> backend Volume.update_performance.
+  - `vela-controller/src/deployment/__init__.py:368` ensure_branch_storage_class -> backend-resolved storage class strategy.
+  - `vela-controller/src/api/organization/project/branch/__init__.py:844`, `vela-controller/src/api/organization/project/branch/__init__.py:916`, `vela-controller/src/api/organization/project/branch/__init__.py:994` clone/restore orchestration currently composes storage class + snapshot class directly; should be moved to backend Volume/Snapshot operations.
+  - `vela-controller/src/api/resources.py:340–vela-controller/src/api/resources.py:359` direct simplyblock iostats collection/parsing -> backend usage provider.
+  - `vela-controller/src/api/backup_snapshots.py:236` branch_snapshots_used_size (calls simplyblock snapshot API) -> backend-specific snapshot metric provider.
+
+- Adjust
+  - `vela-controller/src/api/organization/project/branch/__init__.py:310` hardcoded _VOLUME_SNAPSHOT_CLASS = "simplyblock-csi-snapshotclass" -> backend resolver.
+  - `vela-controller/src/api/backup.py:49` and `vela-controller/src/api/backupmonitor.py:35` simplyblock snapshot default -> backend resolver.
+  - `vela-controller/src/deployment/charts/vela/values.yaml:65`, `vela-controller/src/deployment/charts/vela/values.yaml:76`, `vela-controller/src/deployment/charts/vela/values.yaml:358` hardcoded simplyblock-csi-sc -> resolved storage class.
+  - `vela-controller/src/deployment/deployment.py:36`, `vela-controller/src/api/organization/project/branch/__init__.py:529`, `vela-controller/src/models/branch.py:91` required iops contract -> capability-aware handling for non-simplyblock backends.
+  - `vela-controller/src/api/organization/project/branch/__init__.py:742` resize path directly calling update_branch_volume_iops -> backend capability-gated update/no-op policy.
+  - `vela-controller/src/api/resources.py:410` zero-fallback semantics on simplyblock metric failure -> explicit “metric unavailable” behavior.
+  - `vela-controller/src/deployment/settings.py:16` missing storage_default_class / storage_snapshot_class even though backends use them.
+
+- Extend
+  - `vela-controller/src/deployment/storage_backends/base.py:12` extend interface for snapshot-used-size/telemetry availability surface (needed to remove simplyblock-only metric path).
+  - `vela-controller/src/deployment/storage_backends/__init__.py:62`, `vela-controller/src/deployment/storage_backends/lvm.py:302`, `vela-controller/src/deployment/storage_backends/simplyblock.py:299` capability checks reference supports_snapshots / supports_snapshot_restore not present in base.py model; extend/fix capability schema alignment.
+  - `vela-controller/src/api/system.py:73` resource-limit definitions should be extended to be backend-capability aware (especially iops visibility/validation paths).
