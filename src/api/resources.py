@@ -389,9 +389,11 @@ async def _collect_branch_resource_usage(branch: Branch) -> ResourceUsageDefinit
 
     milli_vcpu, ram_bytes = compute_usage
     nvme_bytes, iops, storage_bytes, wal_bytes = 0, 0, None, None
+    volume_metrics_available = True
     try:
         nvme_bytes, iops, storage_bytes, wal_bytes = await _collect_branch_volume_usage(branch, namespace)
     except VelaDeploymentError as exc:
+        volume_metrics_available = False
         logger.error(
             "Failed to collect volume stats for branch %s (namespace %s): %s",
             branch.id,
@@ -406,6 +408,7 @@ async def _collect_branch_resource_usage(branch: Branch) -> ResourceUsageDefinit
         iops=iops,
         storage_bytes=storage_bytes,
         wal_bytes=wal_bytes,
+        volume_metrics_available=volume_metrics_available,
     )
 
 

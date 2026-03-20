@@ -15,7 +15,7 @@
   - [x] `vela-controller/src/deployment/charts/vela/values.yaml:65`, `vela-controller/src/deployment/charts/vela/values.yaml:76`, `vela-controller/src/deployment/charts/vela/values.yaml:358` hardcoded simplyblock-csi-sc -> resolved storage class.
   - [x] `vela-controller/src/deployment/deployment.py:36`, `vela-controller/src/api/organization/project/branch/__init__.py:529`, `vela-controller/src/models/branch.py:91` required iops contract -> capability-aware handling for non-simplyblock backends.
   - [x] `vela-controller/src/api/organization/project/branch/__init__.py:742` resize path directly calling update_branch_volume_iops -> backend capability-gated update/no-op policy.
-  - `vela-controller/src/api/resources.py:410` zero-fallback semantics on simplyblock metric failure -> explicit “metric unavailable” behavior.
+  - [x] `vela-controller/src/api/resources.py:410` zero-fallback semantics on simplyblock metric failure -> explicit “metric unavailable” behavior.
   - `vela-controller/src/deployment/settings.py:16` missing storage_default_class / storage_snapshot_class even though backends use them.
 
 - Extend
