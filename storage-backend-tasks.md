@@ -20,5 +20,5 @@
 
 - Extend
   - [x] `vela-controller/src/deployment/storage_backends/base.py:12` extend interface for snapshot-used-size/telemetry availability surface (needed to remove simplyblock-only metric path).
-  - `vela-controller/src/deployment/storage_backends/__init__.py:62`, `vela-controller/src/deployment/storage_backends/lvm.py:302`, `vela-controller/src/deployment/storage_backends/simplyblock.py:299` capability checks reference supports_snapshots / supports_snapshot_restore not present in base.py model; extend/fix capability schema alignment.
+  - [x] `vela-controller/src/deployment/storage_backends/__init__.py:62`, `vela-controller/src/deployment/storage_backends/lvm.py:302`, `vela-controller/src/deployment/storage_backends/simplyblock.py:299` capability checks reference supports_snapshots / supports_snapshot_restore not present in base.py model; extend/fix capability schema alignment.
   - `vela-controller/src/api/system.py:73` resource-limit definitions should be extended to be backend-capability aware (especially iops visibility/validation paths).

@@ -352,8 +352,6 @@ class LvmBackend(StorageBackend):
     def validate_capabilities_for_operation(self, operation: str, params: dict[str, object] | None = None) -> None:
         capabilities = self.get_capabilities().capabilities
         checks = {
-            "snapshots": capabilities.supports_snapshots,
-            "snapshot_restore": capabilities.supports_snapshot_restore,
             "volume_expansion": capabilities.supports_volume_expansion,
             "runtime_iops_update": capabilities.supports_volume_iops_update,
             "volume_group_provision": capabilities.supports_volume_groups,

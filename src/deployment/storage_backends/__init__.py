@@ -62,8 +62,6 @@ class PlaceholderBackend(StorageBackend):
                 supports_volume_throughput_update=False,
                 supports_volume_usage_qos_metrics=False,
                 supports_volume_usage_storage_metrics=False,
-                supports_snapshots=False,
-                supports_snapshot_restore=False,
                 supports_volume_clone_cross_namespace=False,
                 supports_volume_expansion=False,
                 supports_volume_expansion_online=False,
@@ -135,7 +133,6 @@ class PlaceholderBackend(StorageBackend):
         pitr_enabled: bool = False,
     ) -> None:
         _ = (source_identifier, target_identifier, database_size, pitr_enabled)
-        self.validate_capabilities_for_operation("snapshot_restore")
         raise self._unsupported("branch database volume clone")
 
     async def restore_branch_database_volume_from_snapshot(
@@ -147,7 +144,6 @@ class PlaceholderBackend(StorageBackend):
         database_size: int,
     ) -> None:
         _ = (source_identifier, target_identifier, snapshot_ref, database_size)
-        self.validate_capabilities_for_operation("snapshot_restore")
         raise self._unsupported("branch database volume restore")
 
     def validate_qos_profile(self, qos: VolumeQosProfile) -> None:
@@ -160,9 +156,6 @@ class PlaceholderBackend(StorageBackend):
             "volume_group_provision": capabilities.supports_volume_groups,
             "volume_lookup": capabilities.supports_dynamic_provisioning,
             "volume_group_lookup": capabilities.supports_volume_groups,
-            "snapshot_lookup": capabilities.supports_snapshots,
-            "snapshots": capabilities.supports_snapshots,
-            "snapshot_restore": capabilities.supports_snapshot_restore,
             "volume_expansion": capabilities.supports_volume_expansion,
             "volume_relocation": capabilities.supports_volume_relocation,
             "volume_iops_update": capabilities.supports_volume_iops_update,
