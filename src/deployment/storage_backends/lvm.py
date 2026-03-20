@@ -16,7 +16,6 @@ from .base import (
     SnapshotRef,
     StorageBackend,
     StorageCapabilitiesPublic,
-    StorageTelemetryStatus,
     Volume,
     VolumeCapabilities,
     VolumeGroup,
@@ -331,12 +330,6 @@ class LvmBackend(StorageBackend):
     async def get_snapshot_used_size(self, snapshot_ids: list[UUID]) -> int | None:
         _ = snapshot_ids
         return None
-
-    def get_telemetry_status(self) -> StorageTelemetryStatus:
-        return StorageTelemetryStatus(
-            volume_metrics_available=False,
-            snapshot_metrics_available=False,
-        )
 
     def validate_qos_profile(self, qos: VolumeQosProfile) -> None:
         requested_fields = [

@@ -94,11 +94,6 @@ class StorageCapabilitiesPublic(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
-class StorageTelemetryStatus(BaseModel):
-    volume_metrics_available: bool
-    snapshot_metrics_available: bool
-
-
 class VolumeQosProfile(BaseModel):
     max_read_iops: int | None = None
     max_write_iops: int | None = None
@@ -243,9 +238,6 @@ class StorageBackend(ABC):
 
     @abstractmethod
     async def get_snapshot_used_size(self, snapshot_ids: list[UUID]) -> int | None: ...
-
-    @abstractmethod
-    def get_telemetry_status(self) -> StorageTelemetryStatus: ...
 
     @abstractmethod
     async def clone_branch_database_volume(
