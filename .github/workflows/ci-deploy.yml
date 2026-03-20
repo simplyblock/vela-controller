@@ -17,7 +17,7 @@ jobs:
     needs: build
     uses: ./.github/workflows/_deploy.yml
     with:
-      image_tag: ${{ needs.build.outputs.image_tag }}
+      image_tag: '${{ needs.build.outputs.image_tag }}@${{ needs.build.outputs.image_digest }}'
       deployment_name: vela
       environment: ${{ github.ref_name == 'main' && 'prod' || 'dev' }}
     secrets: inherit
