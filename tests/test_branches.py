@@ -165,6 +165,63 @@ def test_branch_resize(client, org, project, branch_id):
     )
 
 
+def test_branch_resize_cpu(client, org, project, branch_id):
+    r = client.post(
+        f"organizations/{org}/projects/{project}/branches/{branch_id}/resize",
+        json={"milli_vcpu": 1000},
+    )
+    assert r.status_code == 202
+    wait_for_status(
+        client,
+        f"organizations/{org}/projects/{project}/branches/{branch_id}/",
+        "ACTIVE_HEALTHY",
+        BRANCH_TIMEOUT_SEC,
+    )
+    r = client.get(f"organizations/{org}/projects/{project}/branches/{branch_id}/")
+    assert r.status_code == 200
+    assert r.json()["max_resources"]["milli_vcpu"] == 1000
+
+
+def test_branch_resize_memory(client, org, project, branch_id):
+    # 2 GiB expressed in bytes (must be a multiple of 256 MiB)
+    two_gib = 2 * 1024 * 1024 * 1024
+    r = client.post(
+        f"organizations/{org}/projects/{project}/branches/{branch_id}/resize",
+        json={"memory_bytes": two_gib},
+    )
+    assert r.status_code == 202
+    wait_for_status(
+        client,
+        f"organizations/{org}/projects/{project}/branches/{branch_id}/",
+        "ACTIVE_HEALTHY",
+        BRANCH_TIMEOUT_SEC,
+    )
+    r = client.get(f"organizations/{org}/projects/{project}/branches/{branch_id}/")
+    assert r.status_code == 200
+    assert r.json()["max_resources"]["ram_bytes"] == two_gib
+
+
+def test_branch_resize_database_size(client, org, project, branch_id):
+    # 6 GB expressed in bytes (must be a multiple of 1 GB)
+    six_gb = 6 * 1_000_000_000
+    # due to issues related to round up
+    seven_gb = 7 * 1_000_000_000
+    r = client.post(
+        f"organizations/{org}/projects/{project}/branches/{branch_id}/resize",
+        json={"database_size": six_gb},
+    )
+    assert r.status_code == 202
+    wait_for_status(
+        client,
+        f"organizations/{org}/projects/{project}/branches/{branch_id}/",
+        "ACTIVE_HEALTHY",
+        BRANCH_TIMEOUT_SEC,
+    )
+    r = client.get(f"organizations/{org}/projects/{project}/branches/{branch_id}/")
+    assert r.status_code == 200
+    assert r.json()["max_resources"]["nvme_bytes"] == seven_gb
+
+
 def test_branch_password_reset(client, org, project, branch_id):
     r = client.post(
         f"organizations/{org}/projects/{project}/branches/{branch_id}/reset-password",
