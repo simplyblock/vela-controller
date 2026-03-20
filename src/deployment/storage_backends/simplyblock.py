@@ -17,6 +17,7 @@ from .base import (
     SnapshotRef,
     StorageBackend,
     StorageCapabilitiesPublic,
+    StorageTelemetryStatus,
     Volume,
     VolumeCapabilities,
     VolumeGroup,
@@ -478,6 +479,12 @@ class SimplyblockBackend(StorageBackend):
             missing = ", ".join(str(snapshot_id) for snapshot_id in sorted(missing_ids, key=str))
             raise VelaSimplyblockAPIError(f"Missing snapshots in Simplyblock response: {missing}")
         return sum(used_size_by_id[snapshot_id] for snapshot_id in snapshot_ids)
+
+    def get_telemetry_status(self) -> StorageTelemetryStatus:
+        return StorageTelemetryStatus(
+            volume_metrics_available=True,
+            snapshot_metrics_available=True,
+        )
 
     def validate_qos_profile(self, qos: VolumeQosProfile) -> None:
         unsupported_fields = [

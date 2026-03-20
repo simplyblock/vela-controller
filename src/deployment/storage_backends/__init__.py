@@ -8,6 +8,7 @@ from .base import (
     StorageBackend,
     StorageBackendName,
     StorageCapabilitiesPublic,
+    StorageTelemetryStatus,
     StorageQosPolicy,
     Volume,
     VolumeCapabilities,
@@ -126,6 +127,13 @@ class PlaceholderBackend(StorageBackend):
         self.validate_capabilities_for_operation("usage_storage_metrics")
         return None
 
+    def get_telemetry_status(self) -> StorageTelemetryStatus:
+        capabilities = self.get_capabilities().capabilities
+        return StorageTelemetryStatus(
+            volume_metrics_available=bool(capabilities.supports_usage_storage_metrics),
+            snapshot_metrics_available=bool(capabilities.supports_usage_storage_metrics),
+        )
+
     async def clone_branch_database_volume(
         self,
         *,
@@ -204,6 +212,7 @@ __all__ = [
     "StorageBackend",
     "StorageBackendName",
     "StorageCapabilitiesPublic",
+    "StorageTelemetryStatus",
     "StorageQosPolicy",
     "Volume",
     "VolumeCapabilities",
