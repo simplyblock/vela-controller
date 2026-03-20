@@ -741,7 +741,20 @@ async def _apply_resize_operations(
 
     if "iops" in effective_parameters:
         new_iops = effective_parameters["iops"]
-        await update_branch_volume_iops(branch.id, new_iops)
+        backend_capabilities = get_storage_backend().get_capabilities()
+        supports_runtime_iops_update = backend_capabilities.capabilities.supports_volume_iops_update
+        if supports_runtime_iops_update:
+            await update_branch_volume_iops(branch.id, new_iops)
+        elif backend_capabilities.qos_policy == "strict":
+            raise VelaDeploymentError(
+                f"Storage backend {backend_capabilities.backend!r} does not support runtime IOPS updates"
+            )
+        else:
+            logger.info(
+                "Skipping runtime IOPS update for branch %s because backend %s does not support it (best_effort)",
+                branch.id,
+                backend_capabilities.backend,
+            )
         branch.iops = new_iops
         await create_or_update_branch_provisioning(
             session,
