@@ -467,6 +467,18 @@ class SimplyblockBackend(StorageBackend):
             pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
         )
 
+    async def get_snapshot_used_size(self, snapshot_ids: list[UUID]) -> int | None:
+        if not snapshot_ids:
+            return 0
+        async with create_simplyblock_api() as sb_api:
+            snapshots = await sb_api.list_snapshots()
+        used_size_by_id: dict[UUID, int] = {snapshot.id: snapshot.used_size for snapshot in snapshots}
+        missing_ids = set(snapshot_ids) - set(used_size_by_id)
+        if missing_ids:
+            missing = ", ".join(str(snapshot_id) for snapshot_id in sorted(missing_ids, key=str))
+            raise VelaSimplyblockAPIError(f"Missing snapshots in Simplyblock response: {missing}")
+        return sum(used_size_by_id[snapshot_id] for snapshot_id in snapshot_ids)
+
     def validate_qos_profile(self, qos: VolumeQosProfile) -> None:
         unsupported_fields = [
             field_name

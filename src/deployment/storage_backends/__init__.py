@@ -1,4 +1,5 @@
 from typing import Literal
+from uuid import UUID
 
 from .base import (
     Identifier,
@@ -118,6 +119,11 @@ class PlaceholderBackend(StorageBackend):
     ) -> VolumeUsage | None:
         _ = (identifier, volume_type)
         self.validate_capabilities_for_operation("volume_usage_storage_metrics")
+        return None
+
+    async def get_snapshot_used_size(self, snapshot_ids: list[UUID]) -> int | None:
+        _ = snapshot_ids
+        self.validate_capabilities_for_operation("usage_storage_metrics")
         return None
 
     async def clone_branch_database_volume(

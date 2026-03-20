@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -240,6 +241,9 @@ class StorageBackend(ABC):
             *,
             volume_type: Literal["database", "storage", "wal"] = "database",
     ) -> VolumeUsage | None: ...
+
+    @abstractmethod
+    async def get_snapshot_used_size(self, snapshot_ids: list[UUID]) -> int | None: ...
 
     @abstractmethod
     async def clone_branch_database_volume(

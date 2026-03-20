@@ -5,6 +5,7 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
+from uuid import UUID
 
 from ulid import ULID
 
@@ -331,6 +332,10 @@ class LvmBackend(StorageBackend):
             pvc_timeout_seconds=_PVC_TIMEOUT_SECONDS,
             pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
         )
+
+    async def get_snapshot_used_size(self, snapshot_ids: list[UUID]) -> int | None:
+        _ = snapshot_ids
+        return None
 
     def validate_qos_profile(self, qos: VolumeQosProfile) -> None:
         requested_fields = [
