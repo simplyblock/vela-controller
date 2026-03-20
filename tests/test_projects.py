@@ -65,3 +65,10 @@ def test_project_list_contains(client, org):
 def test_project_not_found(client, org):
     r = client.get(f"organizations/{org}/projects/00000000000000000000000000/")
     assert r.status_code == 404
+
+
+def test_project_delete(client, org):
+    r = client.delete(f"organizations/{org}/projects/{_state['project_id']}/")
+    assert r.status_code == 204
+    r = client.get(f"organizations/{org}/projects/{_state['project_id']}/")
+    assert r.status_code == 404
