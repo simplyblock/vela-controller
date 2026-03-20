@@ -13,6 +13,7 @@ from sqlmodel import Field, Relationship
 from .._util import (
     CPU_CONSTRAINTS,
     DATABASE_SIZE_CONSTRAINTS,
+    IOPS_MIN,
     IOPS_CONSTRAINTS,
     MEMORY_CONSTRAINTS,
     PGBOUNCER_DEFAULT_MAX_CLIENT_CONN,
@@ -88,7 +89,7 @@ class Branch(AsyncAttrs, Model, table=True):
     database_size: Annotated[int, Field(**DATABASE_SIZE_CONSTRAINTS, sa_column=Column(BigInteger))]
     milli_vcpu: Annotated[int, Field(**CPU_CONSTRAINTS, sa_column=Column(BigInteger))]  # units of milli vCPU
     memory: Annotated[int, Field(**MEMORY_CONSTRAINTS, sa_column=Column(BigInteger))]
-    iops: Annotated[int, Field(**IOPS_CONSTRAINTS, sa_column=Column(BigInteger))]
+    iops: Annotated[int, Field(default=IOPS_MIN, **IOPS_CONSTRAINTS, sa_column=Column(BigInteger))]
     storage_size: Annotated[
         int | None, Field(**STORAGE_SIZE_CONSTRAINTS, sa_column=Column(BigInteger, nullable=True))
     ] = None

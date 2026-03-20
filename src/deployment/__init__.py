@@ -27,6 +27,7 @@ from .._util import (
     DATABASE_SIZE_CONSTRAINTS,
     DEFAULT_DB_NAME,
     DEFAULT_DB_USER,
+    IOPS_MIN,
     IOPS_CONSTRAINTS,
     MEMORY_CONSTRAINTS,
     STORAGE_SIZE_CONSTRAINTS,
@@ -486,7 +487,7 @@ async def create_vela_config(
     postgresql_resource = resources.files(__package__).joinpath("postgresql.conf")
     values_content = _load_chart_values(chart)
 
-    storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
+    storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops or IOPS_MIN)
     values_content = _configure_vela_values(
         values_content,
         parameters=parameters,

@@ -18,7 +18,7 @@ from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
-from ....._util import DEFAULT_DB_NAME, DEFAULT_DB_USER, Identifier, storage_backend_bytes_to_db_bytes
+from ....._util import DEFAULT_DB_NAME, DEFAULT_DB_USER, IOPS_MIN, Identifier, storage_backend_bytes_to_db_bytes
 from ....._util.crypto import encrypt_with_passphrase, generate_keys
 from .....deployment import (
     AUTOSCALER_PVC_SUFFIX,
@@ -48,6 +48,7 @@ from .....deployment.kubernetes._util import core_v1_client
 from .....deployment.kubernetes.neonvm import PowerState as NeonVMPowerState
 from .....deployment.kubernetes.neonvm import set_virtualmachine_power_state
 from .....deployment.settings import get_settings as get_deployment_settings
+from .....deployment.storage_backends import get_storage_backend
 from .....exceptions import VelaDeploymentError, VelaError, VelaKubernetesError, VelaSimplyblockAPIError
 from .....models.backups import BackupEntry
 from .....models.branch import (
@@ -422,6 +423,19 @@ class _DeploymentResourceValues(TypedDict):
     iops: int | None
 
 
+def _backend_requires_iops() -> bool:
+    capabilities = get_storage_backend().get_capabilities().capabilities
+    return capabilities.supports_volume_iops
+
+
+def _effective_iops(iops: int | None) -> int:
+    if iops is not None:
+        return iops
+    if _backend_requires_iops():
+        raise HTTPException(status_code=422, detail="iops is required for the configured storage backend")
+    return IOPS_MIN
+
+
 def _normalize_size_from_source(value: int | None) -> int | None:
     if value is None:
         return None
@@ -511,7 +525,7 @@ def _validate_deployment_requirements(
             status_code=422,
             detail="memory_bytes is required when cloning from a source branch",
         )
-    if resources["iops"] is None:
+    if _backend_requires_iops() and resources["iops"] is None:
         raise HTTPException(
             status_code=422,
             detail="iops is required when cloning from a source branch",
@@ -542,7 +556,7 @@ def _deployment_parameters_from_source(
     database_size = cast("int", resource_values["database_size"])
     milli_vcpu = cast("int", resource_values["milli_vcpu"])
     memory_bytes = cast("int", resource_values["memory_bytes"])
-    iops = cast("int", resource_values["iops"])
+    iops = _effective_iops(resource_values["iops"])
     storage_size = resource_values["storage_size"] if enable_file_storage else None
 
     _ensure_clone_storage_capacity(
@@ -590,10 +604,11 @@ def _resolve_database_size_against_source(
 
 
 def _resource_limits_from_deployment(parameters: DeploymentParameters) -> ResourceLimitsPublic:
+    iops_for_limits = parameters.iops if parameters.iops is not None else (IOPS_MIN if _backend_requires_iops() else None)
     return ResourceLimitsPublic(
         milli_vcpu=parameters.milli_vcpu,
         ram=parameters.memory_bytes,
-        iops=parameters.iops,
+        iops=iops_for_limits,
         database_size=parameters.database_size,
         storage_size=parameters.storage_size,
     )
@@ -639,7 +654,7 @@ async def _build_branch_entity(
             storage_size=clone_parameters.storage_size if clone_parameters.enable_file_storage else None,
             milli_vcpu=clone_parameters.milli_vcpu,
             memory=clone_parameters.memory_bytes,
-            iops=clone_parameters.iops,
+            iops=_effective_iops(clone_parameters.iops),
             database_image_tag=clone_parameters.database_image_tag,
             env_type=env_type,
             enable_file_storage=clone_parameters.enable_file_storage,
@@ -664,7 +679,7 @@ async def _build_branch_entity(
         storage_size=deployment_params.storage_size if deployment_params.enable_file_storage else None,
         milli_vcpu=deployment_params.milli_vcpu,
         memory=deployment_params.memory_bytes,
-        iops=deployment_params.iops,
+        iops=_effective_iops(deployment_params.iops),
         database_image_tag=deployment_params.database_image_tag,
         env_type=env_type,
         enable_file_storage=deployment_params.enable_file_storage,
