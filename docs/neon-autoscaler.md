@@ -80,9 +80,9 @@ kubectl -n neonvm-system \
 kubectl -n neonvm-system rollout status deployment/neonvm-controller
 
 kubectl -n neonvm-system \
-  set image daemonset/neonvm-runner-image-loader \
+  set image daemonset/runner-image-loader \
   neonvm-runner-loader=docker.io/simplyblock/autoscaling:neonvm-runner-main-707a485
-kubectl -n neonvm-system rollout status daemonset/neonvm-runner-image-loader
+kubectl -n neonvm-system rollout status daemonset/runner-image-loader
 
 kubectl -n neonvm-system set env deployment/neonvm-controller \
   VM_RUNNER_IMAGE=docker.io/simplyblock/autoscaling:neonvm-runner-main-707a485
