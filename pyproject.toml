@@ -88,6 +88,7 @@ testpaths = [
     "tests/test_projects.py",
     "tests/test_resources.py",
     "tests/test_branches.py",
+    "tests/test_backup_and_clone.py",
 ]
 
 [tool.ruff]
