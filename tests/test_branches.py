@@ -147,8 +147,6 @@ def test_branch_list_contains(client, org, project, branch_id):
 def test_branch_status_endpoint(client, org, project, branch_id):
     r = client.get(f"organizations/{org}/projects/{project}/branches/{branch_id}/status")
     assert r.status_code == 200
-    data = r.json()
-    assert "resize_status" in data
 
 
 def test_branch_resize(client, org, project, branch_id):

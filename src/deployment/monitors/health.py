@@ -3,10 +3,10 @@ import logging
 import re
 from datetime import datetime, timedelta
 
-from kubernetes_asyncio import client
 from pydantic import BaseModel
 from ulid import ULID
 
+from ..kubernetes._util import custom_api_client
 from ..kubernetes.neonvm import NeonVM, Phase
 from ..settings import get_settings
 
@@ -56,8 +56,7 @@ class VMMonitor:
 
     async def run(self):
         logger.info("Started VM monitor")
-        async with client.ApiClient() as api:
-            custom_api = client.CustomObjectsApi(api)
+        async with custom_api_client() as custom_api:
             while True:
                 try:
                     start = datetime.now()
