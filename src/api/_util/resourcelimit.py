@@ -49,26 +49,6 @@ async def get_current_branch_allocations(_session: SessionDep, branch: Branch) -
     )
 
 
-async def audit_new_branch_resource_provisioning(
-    session: SessionDep,
-    branch: Branch,
-    resource_type: ResourceType,
-    amount: int,
-    action: str,
-    reason: str | None = None,
-):
-    timestamp = datetime.now(UTC)
-    new_log = ProvisioningLog(
-        branch_id=branch.id,
-        resource=resource_type,
-        amount=amount,
-        action=action,
-        reason=reason,
-        ts=timestamp,
-    )
-    await session.merge(new_log)
-
-
 async def apply_branch_resource_allocation(
     session: SessionDep,
     branch: Branch,
@@ -88,7 +68,6 @@ async def apply_branch_resource_allocation(
         if amount is None:
             continue
         setattr(branch, field_map[resource_type], int(amount))
-        await audit_new_branch_resource_provisioning(session, branch, resource_type, amount, "update")
 
     await session.merge(branch)
     if commit:

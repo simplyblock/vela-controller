@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from .api.settings import get_settings
+from .models import events as _  # noqa: F401 — registers SQLAlchemy event listeners
 
 
 def _is_worker() -> bool:
