@@ -17,7 +17,6 @@ from ...models.branch import Branch, BranchServiceStatus
 from ...models.organization import Organization
 from ...models.project import Project
 from ...models.resources import (
-    BranchAllocationPublic,
     EntityType,
     OrganizationLimitDefault,
     ProvisioningLog,
@@ -36,17 +35,6 @@ async def delete_branch_provisioning(session: SessionDep, branch_id: Identifier,
 
     if commit:
         await session.commit()
-
-
-async def get_current_branch_allocations(_session: SessionDep, branch: Branch) -> BranchAllocationPublic:
-    return BranchAllocationPublic(
-        branch_id=branch.id,
-        milli_vcpu=branch.milli_vcpu,
-        ram=branch.memory,
-        iops=branch.iops,
-        database_size=branch.database_size,
-        storage_size=branch.storage_size,
-    )
 
 
 async def apply_branch_resource_allocation(
@@ -133,15 +121,6 @@ async def get_project_resource_usage(
     result = await session.execute(query)
     usages = result.scalars().all()
     return _map_resource_usages(list(usages))
-
-
-async def check_resource_limits(
-    session: SessionDep, branch: Branch, provisioning_request: ResourceLimitsPublic
-) -> tuple[list[ResourceType], ResourceLimitsPublic]:
-    project = await branch.awaitable_attrs.project
-    project_id = branch.project_id
-    organization_id = project.organization_id
-    return await check_available_resources_limits(session, organization_id, project_id, provisioning_request)
 
 
 async def check_available_resources_limits(

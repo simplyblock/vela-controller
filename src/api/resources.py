@@ -26,8 +26,6 @@ from ..models._util import Identifier
 from ..models.branch import Branch, BranchServiceStatus, ResourceUsageDefinition
 from ..models.project import Project
 from ..models.resources import (
-    BranchAllocationPublic,
-    BranchProvisionPublic,
     ConsumptionLimitPublic,
     ConsumptionPayload,
     EntityType,
@@ -38,18 +36,14 @@ from ..models.resources import (
     ResourceUsageMinute,
 )
 from ._util.resourcelimit import (
-    apply_branch_resource_allocation,
-    check_resource_limits,
     dict_to_resource_limits,
-    format_limit_violation_details,
-    get_current_branch_allocations,
     get_organization_resource_usage,
     get_project_resource_usage,
     make_usage_cycle,
 )
 from .auth import authenticated_user
 from .db import SessionDep
-from .dependencies import BranchDep, OrganizationDep, ProjectDep
+from .dependencies import OrganizationDep, ProjectDep
 from .organization.project.branch import refresh_branch_status
 from .settings import get_settings
 
@@ -77,28 +71,6 @@ AsyncSessionLocal = async_sessionmaker(
 )
 
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------
-# Provisioning endpoints
-# ---------------------------
-@api.post("/branches/{branch_id}/allocations")
-async def set_branch_allocations(
-    session: SessionDep, branch: BranchDep, payload: ResourceLimitsPublic
-) -> BranchProvisionPublic:
-    exceeded_limits, effective_limits = await check_resource_limits(session, branch, payload)
-    if exceeded_limits:
-        violation_details = format_limit_violation_details(exceeded_limits, payload, effective_limits)
-        raise HTTPException(422, f"Branch {branch.id} limit(s) exceeded: {violation_details}")
-
-    await apply_branch_resource_allocation(session, branch, payload)
-
-    return BranchProvisionPublic(status="ok")
-
-
-@api.get("/branches/{branch_id}/allocations")
-async def get_branch_allocations(session: SessionDep, branch: BranchDep) -> BranchAllocationPublic:
-    return await get_current_branch_allocations(session, branch)
 
 
 # ---------------------------

@@ -176,19 +176,6 @@ class ConsumptionPayload(BaseModel):
     max_total_minutes: int
 
 
-class BranchProvisionPublic(BaseModel):
-    status: str
-
-
-class BranchAllocationPublic(BaseModel):
-    branch_id: Identifier
-    milli_vcpu: int | None = None
-    ram: int | None = None
-    iops: int | None = None
-    storage_size: int | None = None
-    database_size: int | None = None
-
-
 class LimitResultPublic(BaseModel):
     status: str
     limit: ULID
