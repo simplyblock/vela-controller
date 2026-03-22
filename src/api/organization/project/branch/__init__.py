@@ -20,6 +20,7 @@ from kubernetes_asyncio.client.exceptions import ApiException
 from pydantic import AfterValidator
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from ....._util import DEFAULT_DB_NAME, DEFAULT_DB_USER, Identifier, storage_backend_bytes_to_db_bytes
 from ....._util.crypto import encrypt_with_passphrase, generate_keys
@@ -184,10 +185,19 @@ async def _cleanup_failed_branch_deployment(branch_id: Identifier) -> None:
 def _should_update_branch_status(
     current: BranchServiceStatus,
     derived: BranchServiceStatus,
+    *,
+    resize_in_progress: bool = True,
 ) -> bool:
     if current == derived:
         return False
     if current == BranchServiceStatus.RESIZING:
+        if not resize_in_progress:
+            return derived in {
+                BranchServiceStatus.ACTIVE_HEALTHY,
+                BranchServiceStatus.ACTIVE_UNHEALTHY,
+                BranchServiceStatus.STOPPED,
+                BranchServiceStatus.ERROR,
+            }
         return derived == BranchServiceStatus.ERROR
     if current == BranchServiceStatus.STARTING and derived == BranchServiceStatus.STOPPED:
         logger.debug("Ignoring STARTING -> STOPPED transition detected by branch status monitor")
@@ -273,7 +283,8 @@ async def _refresh_branch_status(branch: Branch) -> BranchServiceStatus:
         status,
     )
 
-    if _should_update_branch_status(current_status, status):
+    resize_in_progress = branch.resize_task_id is not None
+    if _should_update_branch_status(current_status, status, resize_in_progress=resize_in_progress):
         branch.set_status(status)
         return status
 
@@ -1583,6 +1594,68 @@ async def create(  # noqa: C901
 instance_api = APIRouter(prefix="/{branch_id}", tags=["branch"])
 
 
+async def _complete_resize_task_if_done(
+    session: AsyncSession,
+    branch: Branch,
+    service_status: BranchStatus | None = None,
+) -> None:
+    """If the resize task has reached a terminal state, persist results and clear resize_task_id."""
+    if branch.resize_task_id is None:
+        return
+    task_result = get_resize_task_result(branch.resize_task_id)
+    if task_result.state not in ("SUCCESS", "FAILURE", "REVOKED"):
+        return
+    branch_in_session = await session.merge(branch)
+    if task_result.state == "SUCCESS" and task_result.result:
+        new_sizes: dict = task_result.result
+        if new_sizes.get("database_size") and branch.database_size != new_sizes["database_size"]:
+            branch_in_session.database_size = new_sizes["database_size"]
+            await create_or_update_branch_provisioning(
+                session,
+                branch_in_session,
+                ResourceLimitsPublic(database_size=new_sizes["database_size"]),
+                commit=False,
+            )
+        if new_sizes.get("storage_size") and branch.storage_size != new_sizes["storage_size"]:
+            branch_in_session.storage_size = new_sizes["storage_size"]
+            await create_or_update_branch_provisioning(
+                session,
+                branch_in_session,
+                ResourceLimitsPublic(storage_size=new_sizes["storage_size"]),
+                commit=False,
+            )
+        if new_sizes.get("milli_vcpu") and branch.milli_vcpu != new_sizes["milli_vcpu"]:
+            branch_in_session.milli_vcpu = new_sizes["milli_vcpu"]
+            await create_or_update_branch_provisioning(
+                session,
+                branch_in_session,
+                ResourceLimitsPublic(milli_vcpu=new_sizes["milli_vcpu"]),
+                commit=False,
+            )
+        if new_sizes.get("memory_bytes") and branch.memory != new_sizes["memory_bytes"]:
+            branch_in_session.memory = new_sizes["memory_bytes"]
+            await create_or_update_branch_provisioning(
+                session,
+                branch_in_session,
+                ResourceLimitsPublic(ram=new_sizes["memory_bytes"]),
+                commit=False,
+            )
+        if new_sizes.get("iops") and branch.iops != new_sizes["iops"]:
+            branch_in_session.iops = new_sizes["iops"]
+            await create_or_update_branch_provisioning(
+                session,
+                branch_in_session,
+                ResourceLimitsPublic(iops=new_sizes["iops"]),
+                commit=False,
+            )
+    if service_status is not None and branch_in_session.status == BranchServiceStatus.RESIZING:
+        branch_in_session.set_status(
+            derive_branch_status_from_services(service_status, storage_enabled=branch.enable_file_storage)
+        )
+    branch_in_session.resize_task_id = None
+    await session.commit()
+
+
 @instance_api.get(
     "/",
     name="organizations:projects:branch:detail",
@@ -1590,10 +1663,12 @@ instance_api = APIRouter(prefix="/{branch_id}", tags=["branch"])
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def detail(
+    session: SessionDep,
     _organization: OrganizationDep,
     _project: ProjectDep,
     branch: BranchDep,
 ) -> BranchPublic:
+    await _complete_resize_task_if_done(session, branch)
     return await _public(branch)
 
 
@@ -1610,61 +1685,7 @@ async def status(
     branch: BranchDep,
 ) -> BranchStatusPublic:
     service_status = await collect_branch_service_health(branch.id)
-
-    if branch.resize_task_id is not None:
-        task_result = get_resize_task_result(branch.resize_task_id)
-
-        if task_result.state in ("SUCCESS", "FAILURE", "REVOKED"):
-            branch_in_session = await session.merge(branch)
-            if task_result.state == "SUCCESS" and task_result.result:
-                new_sizes: dict = task_result.result
-                if new_sizes.get("database_size") and branch.database_size != new_sizes["database_size"]:
-                    branch_in_session.database_size = new_sizes["database_size"]
-                    await create_or_update_branch_provisioning(
-                        session,
-                        branch_in_session,
-                        ResourceLimitsPublic(database_size=new_sizes["database_size"]),
-                        commit=False,
-                    )
-                if new_sizes.get("storage_size") and branch.storage_size != new_sizes["storage_size"]:
-                    branch_in_session.storage_size = new_sizes["storage_size"]
-                    await create_or_update_branch_provisioning(
-                        session,
-                        branch_in_session,
-                        ResourceLimitsPublic(storage_size=new_sizes["storage_size"]),
-                        commit=False,
-                    )
-                if new_sizes.get("milli_vcpu") and branch.milli_vcpu != new_sizes["milli_vcpu"]:
-                    branch_in_session.milli_vcpu = new_sizes["milli_vcpu"]
-                    await create_or_update_branch_provisioning(
-                        session,
-                        branch_in_session,
-                        ResourceLimitsPublic(milli_vcpu=new_sizes["milli_vcpu"]),
-                        commit=False,
-                    )
-                if new_sizes.get("memory_bytes") and branch.memory != new_sizes["memory_bytes"]:
-                    branch_in_session.memory = new_sizes["memory_bytes"]
-                    await create_or_update_branch_provisioning(
-                        session,
-                        branch_in_session,
-                        ResourceLimitsPublic(ram=new_sizes["memory_bytes"]),
-                        commit=False,
-                    )
-                if new_sizes.get("iops") and branch.iops != new_sizes["iops"]:
-                    branch_in_session.iops = new_sizes["iops"]
-                    await create_or_update_branch_provisioning(
-                        session,
-                        branch_in_session,
-                        ResourceLimitsPublic(iops=new_sizes["iops"]),
-                        commit=False,
-                    )
-            if branch_in_session.status == BranchServiceStatus.RESIZING:
-                branch_in_session.set_status(
-                    derive_branch_status_from_services(service_status, storage_enabled=branch.enable_file_storage)
-                )
-            branch_in_session.resize_task_id = None
-            await session.commit()
-
+    await _complete_resize_task_if_done(session, branch, service_status)
     return BranchStatusPublic(service_status=service_status)
 
 
