@@ -1981,8 +1981,8 @@ async def resize(
         request,
         "organizations:projects:branch:tasks:detail",
         organization_id=await organization.awaitable_attrs.id,
-        project_id=project.id,
-        branch_id=branch.id,
+        project_id=await project.awaitable_attrs.id,
+        branch_id=await branch.awaitable_attrs.id,
         task_id=task_id,
     )
     return Response(status_code=202, headers={"Location": task_url})
