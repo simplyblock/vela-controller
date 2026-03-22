@@ -84,8 +84,9 @@ def client():
 def make_org(client):
     created: list[ULID] = []
 
-    def _factory(name: str) -> ULID:
-        r = client.post("organizations/", json={"name": name, "max_backups": 0, "environments": ""})
+    def _factory(name: str, **overrides: object) -> ULID:
+        payload = {"name": name, "max_backups": 0, "environments": "", **overrides}
+        r = client.post("organizations/", json=payload)
         assert r.status_code == 201
         uid = _id(r.headers["Location"])
         created.append(uid)
@@ -100,10 +101,11 @@ def make_org(client):
 def make_project(client):
     created: list[tuple[ULID, ULID]] = []
 
-    def _factory(org_id: ULID, name: str) -> ULID:
+    def _factory(org_id: ULID, name: str, **overrides: object) -> ULID:
+        payload = {"name": name, "max_backups": 0, "project_limits": {}, "per_branch_limits": {}, **overrides}
         r = client.post(
             f"organizations/{org_id}/projects/",
-            json={"name": name, "max_backups": 0, "project_limits": {}, "per_branch_limits": {}},
+            json=payload,
         )
         assert r.status_code == 201
         uid = _id(r.headers["Location"])
