@@ -5,6 +5,7 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from ..models import events as _  # noqa: F401 — registers SQLAlchemy event listeners
 from .settings import get_settings
 
 # Enable `pool_pre_ping` and periodic recycling so ASGI workers notice connections

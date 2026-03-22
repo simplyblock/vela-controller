@@ -77,15 +77,14 @@ from .....models.branch import (
     PgbouncerConfig,
     aggregate_resize_statuses,
 )
-from .....models.resources import BranchAllocationPublic, ResourceLimitsPublic, ResourceType
+from .....models.resources import ResourceLimitsPublic, ResourceType
 from ...._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
 from ...._util.backups import copy_branch_backup_schedules, delete_branch_backups, ensure_branch_pitr_schedule
 from ...._util.resourcelimit import (
+    apply_branch_resource_allocation,
     check_available_resources_limits,
-    create_or_update_branch_provisioning,
     delete_branch_provisioning,
     format_limit_violation_details,
-    get_current_branch_allocations,
 )
 from ...._util.role import clone_user_role_assignment
 from ....auth import security
@@ -461,25 +460,6 @@ def _normalize_size_from_source(value: int | None) -> int | None:
     return storage_backend_bytes_to_db_bytes(value)
 
 
-def _base_deployment_resources(
-    source: Branch,
-    source_limits: BranchAllocationPublic | None,
-) -> _DeploymentResourceValues:
-    def _value_from_limits(attribute: str, fallback: Any) -> Any:
-        if source_limits is None:
-            return fallback
-        limit_value = getattr(source_limits, attribute)
-        return fallback if limit_value is None else limit_value
-
-    return {
-        "database_size": _normalize_size_from_source(_value_from_limits("database_size", source.database_size)),
-        "storage_size": _normalize_size_from_source(_value_from_limits("storage_size", source.storage_size)),
-        "milli_vcpu": _value_from_limits("milli_vcpu", source.milli_vcpu),
-        "memory_bytes": _value_from_limits("ram", source.memory),
-        "iops": _value_from_limits("iops", source.iops),
-    }
-
-
 def _apply_overrides_to_resources(
     base_values: _DeploymentResourceValues,
     *,
@@ -559,10 +539,15 @@ def _validate_deployment_requirements(
 def _deployment_parameters_from_source(
     source: Branch,
     *,
-    source_limits: BranchAllocationPublic | None = None,
     overrides: BranchSourceDeploymentParameters | None = None,
 ) -> DeploymentParameters:
-    resource_values = _base_deployment_resources(source, source_limits)
+    resource_values: _DeploymentResourceValues = {
+        "database_size": _normalize_size_from_source(source.database_size),
+        "storage_size": _normalize_size_from_source(source.storage_size),
+        "milli_vcpu": source.milli_vcpu,
+        "memory_bytes": source.memory,
+        "iops": source.iops,
+    }
     enable_file_storage = source.enable_file_storage
 
     resource_values, enable_file_storage = _apply_overrides_to_resources(
@@ -768,7 +753,7 @@ async def _apply_resize_operations(
         new_iops = effective_parameters["iops"]
         await update_branch_volume_iops(branch.id, new_iops)
         branch.iops = new_iops
-        await create_or_update_branch_provisioning(
+        await apply_branch_resource_allocation(
             session,
             branch,
             ResourceLimitsPublic(iops=new_iops),
@@ -789,8 +774,7 @@ async def _apply_resize_operations(
             memory_bytes=memory,
         )
         if cpu_changed:
-            branch.milli_vcpu = milli_vcpu
-            await create_or_update_branch_provisioning(
+            await apply_branch_resource_allocation(
                 session,
                 branch,
                 ResourceLimitsPublic(milli_vcpu=milli_vcpu),
@@ -798,8 +782,7 @@ async def _apply_resize_operations(
             )
 
         if memory_changed:
-            branch.memory = memory
-            await create_or_update_branch_provisioning(
+            await apply_branch_resource_allocation(
                 session,
                 branch,
                 ResourceLimitsPublic(ram=memory),
@@ -1520,12 +1503,7 @@ async def create(  # noqa: C901
                 # Clone sizing is validated against the source volume size, not source branch allocation.
                 overrides_for_clone = source_overrides.model_copy(update={"database_size": None})
 
-        source_limits = await get_current_branch_allocations(session, source)
-        clone_parameters = _deployment_parameters_from_source(
-            source,
-            source_limits=source_limits,
-            overrides=overrides_for_clone,
-        )
+        clone_parameters = _deployment_parameters_from_source(source, overrides=overrides_for_clone)
         if is_restore:
             if backup_entry is None:
                 raise AssertionError("backup_entry required for restore branch creation")
@@ -1607,7 +1585,7 @@ async def create(  # noqa: C901
     await ensure_branch_pitr_schedule(session, entity)
 
     # Configure allocations
-    await create_or_update_branch_provisioning(session, entity, resource_requests)
+    await apply_branch_resource_allocation(session, entity, resource_requests)
 
     entity_url = url_path_for(
         request,

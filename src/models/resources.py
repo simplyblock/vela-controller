@@ -91,13 +91,6 @@ class OrganizationLimitDefault(AsyncAttrs, Model, table=True):
     max_per_branch: Annotated[int, Field(sa_type=BigInteger)]
 
 
-class BranchProvisioning(AsyncAttrs, Model, table=True):
-    branch_id: Identifier | None = Model.foreign_key_field("branch", ondelete="CASCADE")
-    resource: ResourceType
-    amount: Annotated[int, Field(sa_type=BigInteger)]
-    updated_at: DateTime
-
-
 class ProvisioningLog(AsyncAttrs, Model, table=True):
     branch_id: Identifier | None = Model.foreign_key_field("branch", ondelete="CASCADE")
     resource: ResourceType
@@ -178,47 +171,14 @@ class ResourceLimitsPublic(BaseModel):
     )
 
 
-class ProvLimitPayload(BaseModel):
-    resource: ResourceTypePublic
-    max_total: int
-    max_per_branch: int
-
-
 class ConsumptionPayload(BaseModel):
     resource: ResourceTypePublic
     max_total_minutes: int
 
 
-class BranchProvisionPublic(BaseModel):
-    status: str
-
-
-class BranchAllocationPublic(BaseModel):
-    branch_id: Identifier
-    milli_vcpu: int | None = None
-    ram: int | None = None
-    iops: int | None = None
-    storage_size: int | None = None
-    database_size: int | None = None
-
-
 class LimitResultPublic(BaseModel):
     status: str
     limit: ULID
-
-
-class ProvisioningLimitPublic(BaseModel):
-    resource: ResourceTypePublic
-    max_total: int
-    max_per_branch: int
-
-    @classmethod
-    def from_limit(cls, limit):
-        return cls(
-            resource=limit.resource.value,
-            max_total=limit.max_total,
-            max_per_branch=limit.max_per_branch,
-        )
 
 
 class ConsumptionLimitPublic(BaseModel):

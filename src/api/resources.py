@@ -26,36 +26,24 @@ from ..models._util import Identifier
 from ..models.branch import Branch, BranchServiceStatus, ResourceUsageDefinition
 from ..models.project import Project
 from ..models.resources import (
-    BranchAllocationPublic,
-    BranchProvisioning,
-    BranchProvisionPublic,
     ConsumptionLimitPublic,
     ConsumptionPayload,
     EntityType,
     LimitResultPublic,
-    ProvisioningLimitPublic,
-    ProvLimitPayload,
     ResourceConsumptionLimit,
-    ResourceLimit,
     ResourceLimitsPublic,
+    ResourceType,
     ResourceUsageMinute,
 )
 from ._util.resourcelimit import (
-    check_resource_limits,
-    create_or_update_branch_provisioning,
     dict_to_resource_limits,
-    format_limit_violation_details,
-    get_current_branch_allocations,
-    get_effective_branch_creation_limits,
-    get_effective_branch_limits,
-    get_effective_project_creation_limits,
     get_organization_resource_usage,
     get_project_resource_usage,
     make_usage_cycle,
 )
 from .auth import authenticated_user
 from .db import SessionDep
-from .dependencies import BranchDep, OrganizationDep, ProjectDep
+from .dependencies import OrganizationDep, ProjectDep
 from .organization.project.branch import refresh_branch_status
 from .settings import get_settings
 
@@ -86,28 +74,6 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------
-# Provisioning endpoints
-# ---------------------------
-@api.post("/branches/{branch_id}/allocations")
-async def set_branch_allocations(
-    session: SessionDep, branch: BranchDep, payload: ResourceLimitsPublic
-) -> BranchProvisionPublic:
-    exceeded_limits, effective_limits = await check_resource_limits(session, branch, payload)
-    if exceeded_limits:
-        violation_details = format_limit_violation_details(exceeded_limits, payload, effective_limits)
-        raise HTTPException(422, f"Branch {branch.id} limit(s) exceeded: {violation_details}")
-
-    await create_or_update_branch_provisioning(session, branch, payload)
-
-    return BranchProvisionPublic(status="ok")
-
-
-@api.get("/branches/{branch_id}/allocations")
-async def get_branch_allocations(session: SessionDep, branch: BranchDep) -> BranchAllocationPublic:
-    return await get_current_branch_allocations(session, branch)
-
-
-# ---------------------------
 # Resource usage endpoints
 # ---------------------------
 #
@@ -133,83 +99,6 @@ async def get_org_usage(
 # ---------------------------
 # Limits endpoints
 # ---------------------------
-@api.get("/organizations/{organization_id}/provisioning/available")
-async def get_available_organization_provisioning_resources(
-    session: SessionDep, organization: OrganizationDep
-) -> ResourceLimitsPublic:
-    return await get_effective_project_creation_limits(session, organization)
-
-
-@api.post("/organizations/{organization_id}/limits/provisioning")
-async def set_organization_provisioning_limit(
-    session: SessionDep, organization: OrganizationDep, payload: ProvLimitPayload
-) -> LimitResultPublic:
-    if (
-        limit := next(
-            (limit for limit in await organization.awaitable_attrs.limits if limit.resource.value == payload.resource),
-            None,
-        )
-    ) is not None:
-        limit.max_total = payload.max_total
-        limit.max_per_branch = payload.max_per_branch
-    else:
-        limit = ResourceLimit(
-            entity_type=EntityType.org,
-            resource=payload.resource,
-            org_id=organization.id,
-            max_total=payload.max_total,
-            max_per_branch=payload.max_per_branch,
-        )
-        session.add(limit)
-    await session.commit()
-
-    return LimitResultPublic(status="ok", limit=await limit.awaitable_attrs.id)
-
-
-@api.get("/organizations/{organization_id}/limits/provisioning")
-async def get_organization_provisioning_limits(organization: OrganizationDep) -> list[ProvisioningLimitPublic]:
-    return [ProvisioningLimitPublic.from_limit(limit) for limit in (await organization.awaitable_attrs.limits)]
-
-
-@api.get("/projects/{project_id}/provisioning/available")
-async def get_available_project_provisioning_resources(
-    session: SessionDep, project: ProjectDep
-) -> ResourceLimitsPublic:
-    return await get_effective_branch_creation_limits(session, project)
-
-
-@api.post("/projects/{project_id}/limits/provisioning")
-async def set_project_provisioning_limit(
-    session: SessionDep, project: ProjectDep, payload: ProvLimitPayload
-) -> LimitResultPublic:
-    if (
-        limit := next(
-            (limit for limit in (await project.awaitable_attrs.limits) if (limit.resource.value == payload.resource)),
-            None,
-        )
-    ) is not None:
-        print(limit)
-        limit.max_total = payload.max_total
-        limit.max_per_branch = payload.max_per_branch
-    else:
-        limit = ResourceLimit(
-            entity_type=EntityType.project,
-            resource=payload.resource,
-            project_id=project.id,
-            max_total=payload.max_total,
-            max_per_branch=payload.max_per_branch,
-        )
-        session.add(limit)
-    await session.commit()
-
-    return LimitResultPublic(status="ok", limit=await limit.awaitable_attrs.id)
-
-
-@api.get("/projects/{project_id}/limits/provisioning")
-async def get_project_provisioning_limits(project: ProjectDep) -> list[ProvisioningLimitPublic]:
-    return [ProvisioningLimitPublic.from_limit(limit) for limit in (await project.awaitable_attrs.limits)]
-
-
 @api.post("/organizations/{organization_id}/limits/consumption")
 async def set_organization_consumption_limit(
     session: SessionDep, organization: OrganizationDep, payload: ConsumptionPayload
@@ -234,11 +123,6 @@ async def set_project_consumption_limit(
 @api.get("/projects/{project_id}/limits/consumption")
 async def get_project_consumption_limits(session: SessionDep, project: ProjectDep) -> list[ConsumptionLimitPublic]:
     return await get_consumption_limits(session, EntityType.project, project.id)
-
-
-@api.get("/branches/{branch_id}/limits/")
-async def branch_effective_limit(session: SessionDep, branch: BranchDep) -> ResourceLimitsPublic:
-    return await get_effective_branch_limits(session, branch)
 
 
 async def set_consumption_limit(
@@ -427,6 +311,31 @@ async def _collect_branch_resource_usage(branch: Branch) -> ResourceUsageDefinit
     )
 
 
+async def _add_branch_resource_minutes(db: AsyncSession, branch: Branch, ts_minute: datetime) -> None:
+    project = await branch.awaitable_attrs.project
+    resource_map = {
+        ResourceType.milli_vcpu: branch.milli_vcpu,
+        ResourceType.ram: branch.memory,
+        ResourceType.iops: branch.iops,
+        ResourceType.database_size: branch.database_size,
+        ResourceType.storage_size: branch.storage_size,
+    }
+    for resource_type, amount in resource_map.items():
+        if amount is not None:
+            db.add(
+                ResourceUsageMinute(
+                    ts_minute=ts_minute,
+                    org_id=project.organization_id,
+                    project_id=branch.project_id,
+                    original_project_id=branch.project_id,
+                    branch_id=branch.id,
+                    original_branch_id=branch.id,
+                    resource=resource_type,
+                    amount=amount,
+                )
+            )
+
+
 async def monitor_resources():
     interval = get_settings().resource_monitor_interval
 
@@ -460,24 +369,7 @@ async def monitor_resources():
 
                     status = await get_branch_status(branch.id)
                     if status in [BranchServiceStatus.ACTIVE_HEALTHY, BranchServiceStatus.RESIZING]:
-                        prov_result = await db.execute(
-                            select(BranchProvisioning).where(BranchProvisioning.branch_id == branch.id)
-                        )
-                        provisionings = prov_result.scalars().all()
-
-                        for p in provisionings:
-                            project = await branch.awaitable_attrs.project
-                            minute_usage = ResourceUsageMinute(
-                                ts_minute=ts_minute,
-                                org_id=project.organization_id,
-                                project_id=branch.project_id,
-                                original_project_id=branch.project_id,
-                                branch_id=branch.id,
-                                original_branch_id=branch.id,
-                                resource=p.resource,
-                                amount=p.amount,
-                            )
-                            db.add(minute_usage)
+                        await _add_branch_resource_minutes(db, branch, ts_minute)
 
                 await db.commit()
         except Exception:  # noqa: BLE001
