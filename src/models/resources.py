@@ -13,6 +13,7 @@ from .._util import Identifier
 from ._util import DatabaseIdentifier, DateTime, Model
 
 if TYPE_CHECKING:
+    from .branch import Branch
     from .organization import Organization
     from .project import Project
 
@@ -93,6 +94,7 @@ class OrganizationLimitDefault(AsyncAttrs, Model, table=True):
 
 class ProvisioningLog(AsyncAttrs, Model, table=True):
     branch_id: Identifier | None = Model.foreign_key_field("branch", ondelete="CASCADE")
+    branch: Optional["Branch"] = Relationship()
     resource: ResourceType
     amount: Annotated[int, Field(sa_type=BigInteger)]
     action: str
