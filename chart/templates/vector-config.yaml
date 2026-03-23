@@ -126,16 +126,23 @@ data:
         inputs:
           - router.controller
         source: |-
-          parsed, err = parse_regex(.event_message, r'^(?P<time>\d+-\d+-\d+T\d+:\d+:\d+([+|-]\d{2}:?\d{2})|Z)\W+(?P<level>\w+)\W+(?P<msg>.*)$', numeric_groups: true)
+          parsed, err = parse_json(.event_message)
           if err == null {
-              .event_message = parsed.msg
-              .timestamp = now()
-              if exists(parsed.time) {
-                  .timestamp = parse_timestamp!(parsed.time, format: "%FT%T%z")
-              }
-              .level = "info"
-              if exists(parsed.level) {
-                  .level = parsed.level
+              .event_message = parsed.message
+              .timestamp = parse_timestamp!(parsed.timestamp, format: "%FT%T%z")
+              .level = downcase!(parsed.level)
+          } else {
+              parsed, err = parse_regex(.event_message, r'^(?P<time>\d+-\d+-\d+T\d+:\d+:\d+([+|-]\d{2}:?\d{2})|Z)\W+(?P<level>\w+)\W+(?P<msg>.*)$', numeric_groups: true)
+              if err == null {
+                  .event_message = parsed.msg
+                  .timestamp = now()
+                  if exists(parsed.time) {
+                      .timestamp = parse_timestamp!(parsed.time, format: "%FT%T%z")
+                  }
+                  .level = "info"
+                  if exists(parsed.level) {
+                      .level = parsed.level
+                  }
               }
           }
 
