@@ -121,6 +121,7 @@ metadata:
   name: vela-controller-config
 data:
   VELA_ROOT_PATH: {{ .Values.controller.env.VELA_ROOT_PATH | quote }}
+  UVICORN_ROOT_PATH: {{ .Values.controller.env.VELA_ROOT_PATH | quote }}
   VELA_JWT_SECRET: {{ .Values.controller.env.VELA_JWT_SECRET | quote }}
   VELA_GATEWAY_NAME: {{ .Values.gateway.name | quote }}
   VELA_GATEWAY_NAMESPACE: {{ .Values.gateway.namespace | quote }}
