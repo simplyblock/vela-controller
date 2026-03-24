@@ -45,11 +45,6 @@ def _check_postgres_connection(db_info: dict, password: str) -> None:
     raise AssertionError(f"Could not connect to postgres at {host}:{port}: {last_exc}") from last_exc
 
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture(scope="module")
 def org(make_org):
     return make_org("test-org-branches")
@@ -81,11 +76,6 @@ def branch_id(client, make_branch, org, project):
     r.raise_for_status()
     _check_postgres_connection(r.json()["database"], _BRANCH_PASSWORD)
     return bid
-
-
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
 
 
 def test_branch_list_empty(client, org, project):

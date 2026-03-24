@@ -4,10 +4,6 @@ pytestmark = pytest.mark.backup
 
 _BRANCH_PASSWORD = "SecurePass1!"
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
 
 @pytest.fixture(scope="module")
 def org(make_org):
@@ -49,11 +45,6 @@ def backup_id(client, branch_id):
     return data["backup_id"]
 
 
-# ---------------------------------------------------------------------------
-# Branch Clone
-# ---------------------------------------------------------------------------
-
-
 def test_branch_clone(client, org, project, branch_id, make_branch):
     """Clone a branch and verify the clone reaches ACTIVE_HEALTHY."""
     clone_id = make_branch(
@@ -67,19 +58,9 @@ def test_branch_clone(client, org, project, branch_id, make_branch):
     assert r.json()["status"] == "ACTIVE_HEALTHY"
 
 
-# ---------------------------------------------------------------------------
-# Manual Backup
-# ---------------------------------------------------------------------------
-
-
 def test_manual_backup(backup_id):
     """Trigger an on-demand backup for the branch and verify a backup_id is returned."""
     assert backup_id, "backup_id fixture must return a valid id"
-
-
-# ---------------------------------------------------------------------------
-# Restore a new branch from backup
-# ---------------------------------------------------------------------------
 
 
 def test_restore_branch_from_backup(client, org, project, backup_id, make_branch):
