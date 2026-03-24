@@ -6,6 +6,7 @@ returns the resulting sizes for the caller to persist.
 """
 
 import logging
+from decimal import Decimal
 
 from asgiref.sync import async_to_sync
 from ulid import ULID
@@ -25,7 +26,10 @@ logger = logging.getLogger(__name__)
 async def _resize_cpu_memory(deployment_id: ULID, milli_vcpu: int | None, memory_bytes: int | None) -> None:
     namespace, autoscaler_vm_name = get_autoscaler_vm_identity(deployment_id)
     await kube_service.resize_autoscaler_vm(
-        namespace, autoscaler_vm_name, cpu_milli=milli_vcpu, memory_bytes=memory_bytes
+        namespace,
+        autoscaler_vm_name,
+        cpu=Decimal(milli_vcpu) / 1000 if milli_vcpu is not None else None,
+        memory_bytes=memory_bytes,
     )
 
 

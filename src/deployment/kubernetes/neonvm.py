@@ -6,7 +6,7 @@ from kubernetes.utils import parse_quantity
 from kubernetes_asyncio.client.exceptions import ApiException
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, PlainSerializer, ValidationError
 
-from ..._util import quantity_to_milli_cpu
+from ..._util import Quantity, quantity_to_milli_cpu
 from ...exceptions import VelaKubernetesError
 from ._util import custom_api_client
 
@@ -57,21 +57,9 @@ class NeonVMStatus(CamelModel):
 
 
 class GuestCPUs(CamelModel):
-    min: Any
-    use: Any
-    max: Any
-
-    @property
-    def use_milli(self) -> int:
-        return _require_cpu_millis(self.use, "guest.cpus.use")
-
-    @property
-    def min_milli(self) -> int:
-        return _require_cpu_millis(self.min, "guest.cpus.min")
-
-    @property
-    def max_milli(self) -> int:
-        return _require_cpu_millis(self.max, "guest.cpus.max")
+    min: Quantity
+    use: Quantity
+    max: Quantity
 
 
 class MemorySlots(CamelModel):

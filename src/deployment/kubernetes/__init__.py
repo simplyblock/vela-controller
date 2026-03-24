@@ -362,7 +362,7 @@ class KubernetesService:
         namespace: str,
         name: str,
         *,
-        cpu_milli: int | None,
+        cpu: Decimal | None,
         memory_bytes: int | None,
     ) -> NeonVM:
         """
@@ -373,13 +373,8 @@ class KubernetesService:
 
         vm_manifest = _build_autoscaler_vm_manifest(vm.model_dump(by_alias=True), namespace, name)
         guest_spec = vm_manifest.setdefault("spec", {}).setdefault("guest", {})
-        cpu_block = guest_spec.setdefault("cpus", {})
-        min_milli = guest.cpus.min_milli
-        max_milli = guest.cpus.max_milli
-        limit_milli = cpu_milli if cpu_milli is not None else guest.cpus.use_milli
-        cpu_block["min"] = _milli_to_cores(min_milli)
-        cpu_block["max"] = _milli_to_cores(max_milli)
-        cpu_block["limit"] = _milli_to_cores(limit_milli)
+        if cpu is not None:
+            guest_spec.setdefault("cpus", {})["limit"] = str(cpu)
 
         if memory_bytes is not None:
             slot_size_bytes = guest.slot_size_bytes
@@ -442,11 +437,6 @@ class KubernetesService:
             raise VelaKubernetesError(f"Autoscaler VM apply for {namespace!r}/{name!r} failed") from exc
 
         return NeonVM.model_validate(applied)
-
-
-def _milli_to_cores(value: int) -> int | float:
-    cores = value / 1000
-    return int(cores) if cores.is_integer() else cores
 
 
 def _build_autoscaler_vm_manifest(vm_obj: dict[str, Any], namespace: str, name: str) -> dict[str, Any]:
