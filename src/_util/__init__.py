@@ -169,7 +169,7 @@ Identifier = Annotated[
     ),
 ]
 
-Quantity = Annotated[Decimal, BeforeValidator(parse_quantity)]
+Quantity = Annotated[Decimal, BeforeValidator(parse_quantity), PlainSerializer(lambda d: str(d))]
 
 
 def bytes_to_kb(value: int) -> int:
