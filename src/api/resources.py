@@ -6,11 +6,12 @@ from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from kubernetes.utils import parse_quantity
 from kubernetes_asyncio.client.exceptions import ApiException
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlmodel import select
 
-from .._util import quantity_to_bytes, quantity_to_milli_cpu
+from .._util import quantity_to_milli_cpu
 from ..check_branch_status import get_branch_status
 from ..database import SessionDep
 from ..deployment import (
@@ -315,9 +316,9 @@ def _parse_compute_usage(metrics: dict[str, Any]) -> tuple[int, int]:
 
     usage = cast("dict[str, Any]", compute_usage["usage"])
     cpu_usage = quantity_to_milli_cpu(usage["cpu"])
-    memory_usage = quantity_to_bytes(usage["memory"])
+    memory_usage = parse_quantity(usage["memory"])
 
-    if cpu_usage is None or memory_usage is None:
+    if cpu_usage is None:
         raise ValueError("Metrics API returned empty resource usage for compute container")
 
     return cpu_usage, memory_usage
