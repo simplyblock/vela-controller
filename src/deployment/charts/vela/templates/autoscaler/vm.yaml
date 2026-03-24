@@ -81,7 +81,6 @@ spec:
     - name: monitor
       port: 10301
       protocol: TCP
-  serviceAccountName: neonvm-runner
   schedulerName: autoscale-scheduler
   disks:
     - name: dbcerts
