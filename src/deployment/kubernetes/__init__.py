@@ -5,12 +5,13 @@ import re
 import time
 from collections.abc import Mapping
 from copy import deepcopy
+from decimal import Decimal
 from typing import Any
 
 from aiohttp import ClientError
+from kubernetes.utils import parse_quantity
 from kubernetes_asyncio import client
 
-from ..._util import quantity_to_bytes, storage_backend_bytes_to_db_bytes
 from ...exceptions import VelaKubernetesError
 from ._util import core_v1_client, custom_api_client, discovery_v1_client, storage_v1_client
 from .neonvm import NeonVM, get_neon_vm
@@ -323,12 +324,9 @@ class KubernetesService:
         logger.info("Resized PVC %s/%s to %s", namespace, name, storage)
 
         if wait:
-            target = quantity_to_bytes(storage)
-            if target is None:
-                raise VelaKubernetesError(f"Cannot parse storage quantity {storage!r}")
-            await self._poll_pvc_until_complete(namespace, name, target)
+            await self._poll_pvc_until_complete(namespace, name, parse_quantity(storage))
 
-    async def _poll_pvc_until_complete(self, namespace: str, name: str, target_bytes: int) -> int:
+    async def _poll_pvc_until_complete(self, namespace: str, name: str, target_bytes: Decimal) -> int:
         """Poll PVC status every 5s until resize completes or fails. Returns actual capacity."""
         start = time.monotonic()
         async with core_v1_client() as core_v1:
@@ -336,10 +334,8 @@ class KubernetesService:
                 pvc = await core_v1.read_namespaced_persistent_volume_claim(namespace=namespace, name=name)
 
                 capacity_str = (pvc.status.capacity or {}).get("storage")
-                if capacity_str:
-                    actual = quantity_to_bytes(capacity_str)
-                    if actual and actual >= target_bytes:
-                        return storage_backend_bytes_to_db_bytes(actual)
+                if capacity_str and ((actual := parse_quantity(capacity_str)) >= target_bytes):
+                    return int(actual)
 
                 for condition in pvc.status.conditions or []:
                     msg = condition.message or ""

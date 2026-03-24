@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 import httpx
+from kubernetes.utils import parse_quantity
 
-from .._util import Identifier, quantity_to_bytes
 from ..deployment import AUTOSCALER_PVC_SUFFIX, AUTOSCALER_WAL_PVC_SUFFIX, get_autoscaler_vm_identity
 from ..deployment.kubernetes.snapshot import (
     create_snapshot_from_pvc,
@@ -26,6 +26,7 @@ from ..exceptions import VelaKubernetesError, VelaSimplyblockAPIError, VelaSnaps
 if TYPE_CHECKING:
     from ulid import ULID
 
+    from .._util import Identifier
     from ..models.backups import BackupEntry
 
 logger = logging.getLogger(__name__)
@@ -154,7 +155,7 @@ async def _create_snapshot_for_pvc(
     status = snapshot.get("status") or {}
     content_name_payload = status.get("boundVolumeSnapshotContentName")
     content_name = content_name_payload if isinstance(content_name_payload, str) else None
-    size_bytes = quantity_to_bytes(status.get("restoreSize"))
+    size_bytes = parse_quantity(status["restoreSize"])
 
     try:
         if content_name is None:
