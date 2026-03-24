@@ -22,6 +22,12 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "vela.labels" . | nindent 4 }}
+  {{- if $pgWalPersistence.annotations }}
+  annotations:
+    {{- range $k, $v := $pgWalPersistence.annotations }}
+    {{ $k }}: {{ $v | quote }}
+    {{- end }}
+  {{- end }}
 spec:
   {{- if $pgWalPersistence.storageClassName }}
   storageClassName: {{ $pgWalPersistence.storageClassName }}
