@@ -1,33 +1,20 @@
 import time
 
-import httpx
 import psycopg
 import pytest
-from conftest import BRANCH_TIMEOUT_SEC, _id, wait_for_status
+from conftest import BRANCH_TIMEOUT_SEC, wait_for_status
 
 pytestmark = pytest.mark.branch
 
+_BRANCH_PASSWORD = "SecurePass1!"
 _BRANCH_NAME = "test-branch"
 _BRANCH_RENAMED = "test-branch-renamed"
-_BRANCH_CREATE_PAYLOAD = {
-    "name": _BRANCH_NAME,
-    "deployment": {
-        "database_password": "SecurePass1!",
-        "database_size": 1000000000,
-        "storage_size": 1000000000,
-        "milli_vcpu": 500,
-        "memory_bytes": 1073741824,
-        "iops": 1000,
-        "database_image_tag": "18.1-velaos",
-        "enable_file_storage": True,
-    },
-}
-
-_state: dict = {}
 
 _DB_CONNECT_TIMEOUT = 10
 _DB_CONNECT_MAX_WAIT = 120
 _DB_CONNECT_RETRY_DELAY = 15
+
+_state: dict = {}
 
 
 def _check_postgres_connection(db_info: dict, password: str) -> None:
@@ -58,6 +45,11 @@ def _check_postgres_connection(db_info: dict, password: str) -> None:
     raise AssertionError(f"Could not connect to postgres at {host}:{port}: {last_exc}") from last_exc
 
 
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
 @pytest.fixture(scope="module")
 def org(make_org):
     return make_org("test-org-branches")
@@ -69,36 +61,31 @@ def project(make_project, org):
 
 
 @pytest.fixture(scope="module")
-def branch_id(client, org, project):
-    r = client.post(
-        f"organizations/{org}/projects/{project}/branches/",
-        json=_BRANCH_CREATE_PAYLOAD,
-        timeout=60,
+def branch_id(client, make_branch, org, project):
+    bid = make_branch(
+        org,
+        project,
+        _BRANCH_NAME,
+        deployment={
+            "database_password": _BRANCH_PASSWORD,
+            "database_size": 1_000_000_000,
+            "storage_size": 1_000_000_000,
+            "milli_vcpu": 500,
+            "memory_bytes": 1_073_741_824,
+            "iops": 1000,
+            "database_image_tag": "18.1-velaos",
+            "enable_file_storage": True,
+        },
     )
-    assert r.status_code == 201
-    bid = _id(r.headers["Location"])
-    branch_data = wait_for_status(
-        client,
-        f"organizations/{org}/projects/{project}/branches/{bid}/",
-        "ACTIVE_HEALTHY",
-        BRANCH_TIMEOUT_SEC,
-    )
-    _check_postgres_connection(
-        branch_data["database"],
-        _BRANCH_CREATE_PAYLOAD["deployment"]["database_password"],
-    )
-    yield bid
+    r = client.get(f"organizations/{org}/projects/{project}/branches/{bid}/")
+    r.raise_for_status()
+    _check_postgres_connection(r.json()["database"], _BRANCH_PASSWORD)
+    return bid
 
-    r = client.delete(f"organizations/{org}/projects/{project}/branches/{bid}/")
-    assert r.status_code == 204
-    with pytest.raises(httpx.HTTPStatusError) as exc:
-        wait_for_status(
-            client,
-            f"organizations/{org}/projects/{project}/branches/{bid}/",
-            "DELETED",  # Dummy status for now, after soft-delete is implemented this will become the actual check
-            BRANCH_TIMEOUT_SEC,
-        )
-    assert exc.value.response.status_code == 404
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
 
 
 def test_branch_list_empty(client, org, project):

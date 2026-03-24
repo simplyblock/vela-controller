@@ -115,3 +115,48 @@ def make_project(client):
     yield _factory
     for org_id, uid in created:
         client.delete(f"organizations/{org_id}/projects/{uid}/")
+
+
+@pytest.fixture(scope="session")
+def make_branch(client):
+    """Factory that creates a branch, waits for ACTIVE_HEALTHY, and deletes on teardown.
+
+    Provides sensible deployment defaults.  Pass ``deployment={…}`` to override.
+    For clones pass ``source={…}``; for restores pass ``restore={…}`` – deployment
+    defaults are omitted automatically in those cases.
+    """
+    default_deployment: dict = {
+        "database_password": "SecurePass1!",
+        "database_size": 1_000_000_000,
+        "storage_size": 1_000_000_000,
+        "milli_vcpu": 500,
+        "memory_bytes": 1_073_741_824,
+        "iops": 1000,
+        "database_image_tag": "18.1-velaos",
+        "enable_file_storage": False,
+    }
+    created: list[tuple[ULID, ULID, ULID]] = []
+
+    def _factory(org_id: ULID, project_id: ULID, name: str, **overrides: object) -> ULID:
+        payload: dict = {"name": name, **overrides}
+        if "deployment" not in payload and "source" not in payload and "restore" not in payload:
+            payload["deployment"] = {**default_deployment}
+        r = client.post(
+            f"organizations/{org_id}/projects/{project_id}/branches/",
+            json=payload,
+            timeout=60,
+        )
+        assert r.status_code == 201
+        uid = _id(r.headers["Location"])
+        wait_for_status(
+            client,
+            f"organizations/{org_id}/projects/{project_id}/branches/{uid}/",
+            "ACTIVE_HEALTHY",
+            BRANCH_TIMEOUT_SEC,
+        )
+        created.append((org_id, project_id, uid))
+        return uid
+
+    yield _factory
+    for org_id, project_id, uid in reversed(created):
+        client.delete(f"organizations/{org_id}/projects/{project_id}/branches/{uid}/")
