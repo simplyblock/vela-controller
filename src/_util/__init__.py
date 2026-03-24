@@ -243,16 +243,6 @@ def quantity_to_milli_cpu(value: str | Decimal | None) -> int | None:
     return int(quantity * Decimal(1000))
 
 
-def quantity_to_bytes(value: str | Decimal | None) -> int | None:
-    """Convert a Kubernetes-style quantity string (e.g. '10Gi', '512Mi') to bytes."""
-
-    quantity = _normalize_quantity(value)
-    if quantity is None:
-        return None
-
-    return int(quantity)
-
-
 def permissive_numeric_timedelta(value: Any) -> Any:
     """Parses the given value into timedelta
 
