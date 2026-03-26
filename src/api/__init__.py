@@ -13,9 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
 from pydantic import BaseModel
 
-from ..database import engine
 from ..deployment.monitors.health import vm_monitor
-from ._util.role import create_access_rights_if_emtpy
 from .backup import router as backup_router
 from .backupmonitor import run_backup_monitor
 from .organization import api as organization_api
@@ -193,9 +191,6 @@ async def _populate_db():
     config = Config()
     config.set_main_option("script_location", migrations_path)
     command.upgrade(config, "head")
-
-    async with engine.begin() as conn:
-        await create_access_rights_if_emtpy(conn)
 
 
 def _use_route_names_as_operation_ids(app: FastAPI) -> None:
