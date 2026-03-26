@@ -1,8 +1,8 @@
 from enum import Enum as PyEnum
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, StringConstraints
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship
 
@@ -17,78 +17,7 @@ if TYPE_CHECKING:
 RoleTypePublic = Literal["organization", "environment", "project", "branch"]
 
 
-AccessRightPublic = Literal[
-    "org:owner:admin",
-    "org:settings:read",
-    "org:settings:admin",
-    "org:auth:read",
-    "org:auth:admin",
-    "org:backup:read",
-    "org:backup:update",
-    "org:backup:create",
-    "org:backup:delete",
-    "org:metering:read",
-    "org:role:read",
-    "org:role:admin",
-    "org:user:read",
-    "org:user:admin",
-    "org:role-assign:read",
-    "org:role-assign:admin",
-    "org:projects:read",
-    "org:projects:write",
-    "org:projects:create",
-    "org:projects:stop",
-    "org:projects:pause",
-    "org:projects:delete",
-    "org:projects:pause",
-    "org:projects:apikeys",
-    "org:limits:read",
-    "env:db:admin",
-    "env:projects:read",
-    "env:projects:admin",
-    "org:limits:admin",
-    "env:backup:read",
-    "env:backup:admin",
-    "env:projects:read",
-    "env:projects:write",
-    "env:projects:create",
-    "env:role-assign:read",
-    "env:role-assign:admin",
-    "env:projects:stop",
-    "env:projects:pause",
-    "env:projects:delete",
-    "env:projects:getkeys",
-    "env:db:admin",
-    "env:projects:read",
-    "env:projects:admin",
-    "project:settings:read",
-    "project:settings:write",
-    "project:role-assign:read",
-    "project:role-assign:admin",
-    "project:branches:create",
-    "project:branches:delete",
-    "project:branches:stop",
-    "branch:settings:read",
-    "branch:settings:admin",
-    "branch:role-assign:read",
-    "branch:role-assign:admin",
-    "branch:auth:read",
-    "branch:auth:admin",
-    "branch:api:getkeys",
-    "branch:replicate:read",
-    "branch:replicate:admin",
-    "branch:import:read",
-    "branch:import:admin",
-    "branch:logging:read",
-    "branch:monitoring:read",
-    "branch:db:admin",
-    "branch:rls:read",
-    "branch:rls:admin",
-    "branch:edge:read",
-    "branch:edge:admin",
-    "branch:rt:read",
-    "branch:rt:admin",
-]
+AccessRightPublic = Annotated[str, StringConstraints(pattern=r"^(org|env|project|branch):[a-z][a-z\-]*:[a-z][a-z\-]*$")]
 
 
 class RoleType(PyEnum):
