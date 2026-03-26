@@ -24,7 +24,7 @@ services:
     environment:
       VELA_ROOT_PATH: '/vela'
       VELA_JWT_SECRET: 'http://auth:8080/auth/realms/vela/protocol/openid-connect/certs'
-      VELA_POSTGRES_URL: 'postgresql+asyncpg://postgres:vela@database:5432/vela'
+      VELA_POSTGRES_URL: 'postgresql+asyncpg://vela_controller:controller@database:5432/controller'
       VELA_CORS_ORIGINS: '["http://localhost:3000"]'
       VELA_PGMETA_CRYPTO_KEY: 'secret'
       VELA_KEYCLOAK_URL: 'http://auth:8080/auth/'
@@ -42,8 +42,8 @@ services:
       VELA_GRAFANA_SECURITY_ADMIN_PASSWORD: "password"
       VELA_SIMPLYBLOCK_CSI_NAMESPACE: 'simplyblock-csi'
       VELA_DEPLOYMENT_PASSWORD_SECRET: 'secret'
-      VELA_BROKER_URL: 'sqla+postgresql+psycopg://postgres:vela@database:5432/vela'
-      VELA_RESULT_BACKEND: 'db+postgresql+psycopg://postgres:vela@database:5432/vela'
+      VELA_BROKER_URL: 'sqla+postgresql+psycopg://vela_celery:celery@database:5432/controller'
+      VELA_RESULT_BACKEND: 'db+postgresql+psycopg://vela_celery:celery@database:5432/controller'
 
     depends_on:
       database:
@@ -65,11 +65,11 @@ services:
       - ..:/app
     command: 'bash -c "python -m venv /tmp/venv && source /tmp/venv/bin/activate && pip install -e . && celery -A simplyblock.vela.worker worker --loglevel=info"'
     environment:
-      VELA_BROKER_URL: 'sqla+postgresql+psycopg://postgres:vela@database:5432/vela'
-      VELA_RESULT_BACKEND: 'db+postgresql+psycopg://postgres:vela@database:5432/vela'
+      VELA_BROKER_URL: 'sqla+postgresql+psycopg://vela_celery:celery@database:5432/controller'
+      VELA_RESULT_BACKEND: 'db+postgresql+psycopg://vela_celery:celery@database:5432/controller'
       VELA_ROOT_PATH: '/vela'
       VELA_JWT_SECRET: 'http://auth:8080/auth/realms/vela/protocol/openid-connect/certs'
-      VELA_POSTGRES_URL: 'postgresql+asyncpg://postgres:vela@database:5432/vela'
+      VELA_POSTGRES_URL: 'postgresql+asyncpg://vela_controller:controller@database:5432/controller'
       VELA_CORS_ORIGINS: '["http://localhost:3000"]'
       VELA_PGMETA_CRYPTO_KEY: 'secret'
       VELA_KEYCLOAK_URL: 'http://auth:8080/auth/'
@@ -123,12 +123,12 @@ services:
   database:
     image: docker.io/postgres:17
     environment:
-      POSTGRES_PASSWORD: vela
-      POSTGRES_DB: vela
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
     volumes:
     - ./init.sql:/docker-entrypoint-initdb.d/90-init.sql:ro
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postgres -d vela']
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d postgres']
       timeout: 5s
       interval: 5s
       retries: 3

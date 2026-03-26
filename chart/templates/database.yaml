@@ -46,3 +46,6 @@ spec:
   replication:
     mode: async
     role: ha-read
+  managedSql:
+    scripts:
+    - sgScript: controller-db-init
