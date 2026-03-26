@@ -8,8 +8,11 @@ pytestmark = pytest.mark.backup
 _BRANCH_PASSWORD = "SecurePass1!"
 
 
-def _execute_sql(db_info: dict, password: str, sql: str) -> list[tuple]:
-    """Execute SQL with retries for DNS propagation delay."""
+def _execute_sql(db_info: dict, password: str, *statements: str) -> list[tuple]:
+    """Execute one or more SQL statements with retries for DNS propagation delay.
+
+    Returns the result of the *last* statement that produces rows.
+    """
     host = db_info["host"]
     port = db_info["port"] or 5432
     deadline = time.monotonic() + 120  # Max wait
@@ -28,10 +31,12 @@ def _execute_sql(db_info: dict, password: str, sql: str) -> list[tuple]:
                 ) as conn,
                 conn.cursor() as cur,
             ):
-                cur.execute(sql)
-                if cur.description:
-                    return cur.fetchall()
-                return []
+                result: list[tuple] = []
+                for sql in statements:
+                    cur.execute(sql)
+                    if cur.description:
+                        result = cur.fetchall()
+                return result
         except psycopg.OperationalError as exc:
             last_exc = exc
         time.sleep(15)
@@ -74,8 +79,12 @@ def populated_branch_id(client, org, project, branch_id):
     assert r.status_code == 200
     db_info = r.json()["database"]
 
-    _execute_sql(db_info, _BRANCH_PASSWORD, "CREATE TABLE test_data_integrity (id SERIAL PRIMARY KEY, value TEXT)")
-    _execute_sql(db_info, _BRANCH_PASSWORD, "INSERT INTO test_data_integrity (value) VALUES ('original_data')")
+    _execute_sql(
+        db_info,
+        _BRANCH_PASSWORD,
+        "CREATE TABLE test_data_integrity (id SERIAL PRIMARY KEY, value TEXT)",
+        "INSERT INTO test_data_integrity (value) VALUES ('original_data')",
+    )
 
     return branch_id
 
