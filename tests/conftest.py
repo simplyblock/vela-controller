@@ -36,6 +36,7 @@ class _KeycloakAuth(httpx.Auth):
                 "password": VELA_TEST_PASSWORD,
             },
             timeout=30,
+            verify=False,
         )
         r.raise_for_status()
         data = r.json()
@@ -75,7 +76,7 @@ def _id(location: str) -> ULID:
 @pytest.fixture(scope="session")
 def client():
     base = VELA_API_URL.rstrip("/") + "/"
-    c = httpx.Client(base_url=base, auth=_KeycloakAuth(), timeout=30)
+    c = httpx.Client(base_url=base, auth=_KeycloakAuth(), timeout=30, verify=False)
     yield c
     c.close()
 
