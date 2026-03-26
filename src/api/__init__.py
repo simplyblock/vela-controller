@@ -5,6 +5,7 @@ import re
 import sys
 from importlib.resources import files
 from typing import Any, Literal
+from urllib.parse import urlparse, urlunparse
 
 from alembic import command
 from alembic.config import Config
@@ -12,6 +13,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
 from pydantic import BaseModel
+from starlette.datastructures import MutableHeaders
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ..deployment.monitors.health import vm_monitor
 from .backup import router as backup_router
@@ -88,6 +91,39 @@ def _logging_config() -> dict[str, Any]:
 
 logging.config.dictConfig(_logging_config())
 logger = logging.getLogger(__name__)
+
+
+class _RootPathRedirectMiddleware:
+    """Fix Starlette's automatic redirect responses to include root_path.
+
+    Starlette's Router generates trailing-slash redirects (307) using
+    URL(scope=...) which only reads scope["path"] and ignores
+    scope["root_path"]. This middleware rewrites the Location header on
+    redirect responses so the root_path prefix is included.
+    """
+
+    def __init__(self, app: ASGIApp, root_path: str = "") -> None:
+        self.app = app
+        self.root_path = root_path
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or not self.root_path:
+            await self.app(scope, receive, send)
+            return
+
+        root_path = self.root_path
+
+        async def send_wrapper(message: dict) -> None:
+            if message["type"] == "http.response.start" and 300 <= message.get("status", 200) < 400:
+                headers = MutableHeaders(scope=message)
+                location = headers.get("location")
+                if location:
+                    parsed = urlparse(location)
+                    if parsed.path and not parsed.path.startswith(root_path):
+                        headers["location"] = urlunparse(parsed._replace(path=root_path + parsed.path))
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
 
 
 class _FastAPI(FastAPI):
@@ -215,6 +251,7 @@ _tags = [
 
 app = _FastAPI(openapi_tags=_tags, root_path=get_settings().root_path)
 
+app.add_middleware(_RootPathRedirectMiddleware, root_path=get_settings().root_path)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_settings().cors_origins,
