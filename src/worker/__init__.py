@@ -1,14 +1,20 @@
+import sentry_sdk
 from celery import Celery
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sentry_sdk.integrations.celery import CeleryIntegration
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="vela_", case_sensitive=False)
     broker_url: str
     result_backend: str
+    sentry_dsn: str | None = None
 
 
 _settings = Settings()  # type: ignore[call-arg]
+
+if _settings.sentry_dsn:
+    sentry_sdk.init(dsn=_settings.sentry_dsn, integrations=[CeleryIntegration()])
 
 app = Celery("vela", broker=_settings.broker_url, backend=_settings.result_backend)
 
