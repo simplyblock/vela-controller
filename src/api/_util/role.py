@@ -1,13 +1,9 @@
-from typing import get_args
-
-from sqlalchemy.ext.asyncio import AsyncConnection
-from sqlmodel import insert, select
-from ulid import ULID
+from sqlmodel import select
 
 from ..._util import Identifier
 from ...database import SessionDep
 from ...models.branch import Branch
-from ...models.role import AccessRight, AccessRightPublic, Organization, Role, RoleAccessRight, RoleType, RoleUserLink
+from ...models.role import AccessRight, Organization, Role, RoleAccessRight, RoleType, RoleUserLink
 
 
 async def clone_user_role_assignment(
@@ -32,33 +28,6 @@ async def clone_user_role_assignment(
             )
     await session.commit()
     await session.refresh(target)
-
-
-def get_role_type(access_right: AccessRightPublic) -> RoleType:
-    name = str(access_right)
-    if name.startswith("org:"):
-        return RoleType.organization
-    elif name.startswith("env:"):
-        return RoleType.environment
-    elif name.startswith("project:"):
-        return RoleType.project
-    elif name.startswith("branch:"):
-        return RoleType.branch
-    else:
-        raise ValueError(f"Invalid access right: {name}")
-
-
-async def create_access_rights_if_emtpy(conn: AsyncConnection):
-    result = await conn.execute(select(AccessRight))
-    if len(list(result.scalars().all())) == 0:
-        for access_right_public in get_args(AccessRightPublic):
-            await conn.execute(
-                insert(AccessRight).values(
-                    id=ULID(),
-                    entry=access_right_public,
-                    role_type=get_role_type(access_right_public).name,
-                )
-            )
 
 
 async def get_access_rights(session: SessionDep) -> list[AccessRight]:
