@@ -7,12 +7,12 @@ services:
       - ~/.kube/config:/home/vela/.kube/config:ro
       - ..:/app
     environment:
-      VELA_POSTGRES_URL: 'postgresql+asyncpg://postgres:vela@database:5432/vela'
+      VELA_POSTGRES_URL: 'postgresql+asyncpg://vela_controller:controller@database:5432/controller'
       VELA_JWT_SECRET: 'secret'
       VELA_CORS_ORIGINS: '["http://localhost:3000"]'
       VELA_ENABLE_DB_EXTERNAL_IPV6_LOADBALANCER: 'false'
-      VELA_BROKER_URL: 'sqla+postgresql+psycopg://postgres:vela@database:5432/vela'
-      VELA_RESULT_BACKEND: 'db+postgresql+psycopg://postgres:vela@database:5432/vela'
+      VELA_BROKER_URL: 'sqla+postgresql+psycopg://vela_celery:celery@database:5432/controller'
+      VELA_RESULT_BACKEND: 'db+postgresql+psycopg://vela_celery:celery@database:5432/controller'
     ports:
       - 8000:8000
     command: 'bash -c "python -m venv /tmp/venv && source /tmp/venv/bin/activate && pip install -e . && uvicorn --host 0.0.0.0 --reload simplyblock.vela.api:app"'
@@ -36,9 +36,9 @@ services:
       - ..:/app
     command: 'bash -c "python -m venv /tmp/venv && source /tmp/venv/bin/activate && pip install -e . && celery -A simplyblock.vela.worker worker --loglevel=info"'
     environment:
-      VELA_BROKER_URL: 'sqla+postgresql+psycopg://postgres:vela@database:5432/vela'
-      VELA_RESULT_BACKEND: 'db+postgresql+psycopg://postgres:vela@database:5432/vela'
-      VELA_POSTGRES_URL: 'postgresql+asyncpg://postgres:vela@database:5432/vela'
+      VELA_BROKER_URL: 'sqla+postgresql+psycopg://vela_celery:celery@database:5432/controller'
+      VELA_RESULT_BACKEND: 'db+postgresql+psycopg://vela_celery:celery@database:5432/controller'
+      VELA_POSTGRES_URL: 'postgresql+asyncpg://vela_controller:controller@database:5432/controller'
       VELA_JWT_SECRET: 'secret'
       VELA_ENABLE_DB_EXTERNAL_IPV6_LOADBALANCER: 'false'
     depends_on:
@@ -50,10 +50,12 @@ services:
   database:
     image: docker.io/postgres:17
     environment:
-      POSTGRES_PASSWORD: vela
-      POSTGRES_DB: vela
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/90-init.sql:ro
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postgres -d vela']
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d postgres']
       timeout: 5s
       interval: 5s
       retries: 3

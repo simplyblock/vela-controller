@@ -1,0 +1,27 @@
+apiVersion: stackgres.io/v1
+kind: SGScript
+metadata:
+  name: controller-db-init
+  namespace: {{ .Release.Namespace }}
+spec:
+  continueOnError: true
+  scripts:
+  - id: 1
+    name: create-database
+    scriptFrom:
+      secretKeyRef:
+        name: vela-db-init-sql
+        key: create-database.sql
+  - id: 2
+    name: init-users-and-grants
+    scriptFrom:
+      secretKeyRef:
+        name: vela-db-init-sql
+        key: init.sql
+  - id: 3
+    name: init-controller-db-schemas
+    database: controller
+    scriptFrom:
+      secretKeyRef:
+        name: vela-db-init-sql
+        key: init-controller-db.sql
