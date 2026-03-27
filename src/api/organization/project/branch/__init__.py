@@ -7,6 +7,7 @@ import logging
 import secrets
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import Annotated, Any, Literal, TypedDict, cast
 from urllib.parse import urlsplit, urlunsplit
 
@@ -784,7 +785,7 @@ async def _apply_resize_operations(
         await kube_service.resize_autoscaler_vm(
             namespace,
             autoscaler_vm_name,
-            cpu_milli=milli_vcpu,
+            cpu=Decimal(milli_vcpu) / 1000,
             memory_bytes=memory,
         )
         if cpu_changed:
