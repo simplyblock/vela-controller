@@ -84,6 +84,11 @@ def _logging_config() -> dict[str, Any]:
                 "level": log_level,
                 "propagate": False,
             },
+            "httpx": {
+                "handlers": ["default"],
+                "level": "WARNING",
+                "propagate": False,
+            },
         },
     }
 
