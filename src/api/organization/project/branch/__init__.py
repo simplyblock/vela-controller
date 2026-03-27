@@ -805,6 +805,8 @@ async def _apply_resize_operations(
                 ResourceLimitsPublic(ram=memory),
                 commit=False,
             )
+
+
 async def _deploy_branch_environment_task(
     *,
     organization_id: Identifier,
