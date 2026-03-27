@@ -6,12 +6,15 @@ import sys
 from importlib.resources import files
 from typing import Any, Literal
 
+import sentry_sdk
 from alembic import command
 from alembic.config import Config
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
 from pydantic import BaseModel
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.starlette import StarletteIntegration
 
 from ..deployment.monitors.health import vm_monitor
 from .backup import router as backup_router
@@ -88,6 +91,13 @@ def _logging_config() -> dict[str, Any]:
 
 logging.config.dictConfig(_logging_config())
 logger = logging.getLogger(__name__)
+
+_sentry_dsn = get_settings().sentry_dsn
+if _sentry_dsn:
+    sentry_sdk.init(
+        dsn=_sentry_dsn,
+        integrations=[StarletteIntegration(), FastApiIntegration()],
+    )
 
 
 class _FastAPI(FastAPI):

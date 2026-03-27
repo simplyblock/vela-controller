@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     )
     pitr_wal_retention_days: int = 7
     deployment_password_secret: SecretBytes
+    sentry_dsn: str | None = None
 
 
 @lru_cache

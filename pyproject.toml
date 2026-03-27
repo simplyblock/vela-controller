@@ -31,6 +31,7 @@ dependencies = [
     'python-json-logger>=4.0',
     'celery[sqlalchemy]',
     'asgiref',
+    'sentry-sdk',
 ]
 
 [tool.setuptools]
