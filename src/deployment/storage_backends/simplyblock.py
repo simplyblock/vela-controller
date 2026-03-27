@@ -17,7 +17,6 @@ from .. import (
     STORAGE_PVC_SUFFIX,
     get_autoscaler_vm_identity,
     kube_service,
-    update_branch_volume_iops,
 )
 from ..kubernetes.pvc import delete_pvc, wait_for_pvc_absent
 from ..kubernetes.snapshot import create_snapshot_from_pvc, delete_snapshot, read_snapshot, wait_snapshot_ready
@@ -637,7 +636,19 @@ class SimplyblockBackend(StorageBackend):
 
     async def _update_volume_performance(self, identifier: Identifier, qos: VolumeQosProfile) -> None:
         self.validate_qos_profile(qos)
-        await update_branch_volume_iops(identifier, self._effective_iops(qos))
+        iops = self._effective_iops(qos)
+        storage_class_name = self._branch_storage_class_name(identifier)
+        try:
+            base_storage_class = await kube_service.get_storage_class(storage_class_name)
+        except VelaKubernetesError:
+            base_storage_class = await kube_service.get_storage_class(_SIMPLYBLOCK_CSI_STORAGE_CLASS)
+
+        storage_class_manifest = _build_storage_class_manifest(
+            storage_class_name=storage_class_name,
+            iops=iops,
+            base_storage_class=base_storage_class,
+        )
+        await kube_service.apply_storage_class(storage_class_manifest)
 
     async def _get_volume_usage(self, identifier: Identifier) -> VolumeUsage | None:
         namespace = f"{self.settings.deployment_namespace_prefix}-{str(identifier).lower()}"
