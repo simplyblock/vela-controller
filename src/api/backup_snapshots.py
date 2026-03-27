@@ -20,8 +20,8 @@ from ..deployment.kubernetes.snapshot import (
     read_snapshot_content,
     wait_snapshot_ready,
 )
-from ..deployment.simplyblock_api import create_simplyblock_api
-from ..exceptions import VelaKubernetesError, VelaSimplyblockAPIError, VelaSnapshotTimeoutError
+from ..deployment.storage_backends import get_storage_backend
+from ..exceptions import VelaDeploymentError, VelaKubernetesError, VelaSimplyblockAPIError, VelaSnapshotTimeoutError
 
 if TYPE_CHECKING:
     from ulid import ULID
@@ -285,19 +285,7 @@ async def branch_snapshots_used_size(
         raise VelaSimplyblockAPIError("Invalid snapshot UUID in backup entries") from exc
 
     try:
-        async with create_simplyblock_api() as sb_api:
-            snapshots = await sb_api.list_snapshots()
-    except httpx.HTTPError as exc:
-        logger.exception(
-            "Failed to list Simplyblock snapshots for backup entries",
-        )
-        raise VelaSimplyblockAPIError("Failed to list Simplyblock snapshots") from exc
-
-    used_size_by_id: dict[UUID, int] = {snapshot.id: snapshot.used_size for snapshot in snapshots}
-
-    missing_ids = set(snapshot_ids) - set(used_size_by_id)
-    if missing_ids:
-        missing = ", ".join(str(snapshot_id) for snapshot_id in sorted(missing_ids, key=str))
-        raise VelaSimplyblockAPIError(f"Missing snapshots in Simplyblock response: {missing}")
-
-    return sum(used_size_by_id[snapshot_id] for snapshot_id in snapshot_ids)
+        used_size = await get_storage_backend().get_snapshot_used_size(snapshot_ids)
+    except VelaDeploymentError as exc:
+        raise VelaSimplyblockAPIError("Failed to collect snapshot usage from storage backend") from exc
+    return int(used_size or 0)

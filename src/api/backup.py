@@ -13,6 +13,7 @@ from sqlmodel import asc, delete, select
 from ulid import ULID
 
 from ..database import SessionDep
+from ..deployment.storage_backends import get_storage_backend
 from ..models._util import Identifier
 from ..models.backups import (
     BackupCreatePublic,
@@ -46,7 +47,6 @@ router = APIRouter(dependencies=[Depends(authenticated_user)], tags=["backup"])
 # ---------------------------
 # Constants
 # ---------------------------
-VOLUME_SNAPSHOT_CLASS = os.environ.get("VOLUME_SNAPSHOT_CLASS", "simplyblock-csi-snapshotclass")
 MANUAL_BACKUP_TIMEOUT_SEC = int(os.environ.get("MANUAL_BACKUP_TIMEOUT_SEC", "10"))
 
 UNIT_MULTIPLIER = {
@@ -187,6 +187,10 @@ class BackupScheduleUpdate(SchedulePayload):
 
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_snapshot_class() -> str:
+    return get_storage_backend().resolve_snapshot_class()
 
 
 # ---------------------------
@@ -542,7 +546,7 @@ async def manual_backup(session: SessionDep, branch_id: Identifier) -> BackupCre
         data_snapshot, wal_snapshot = await create_branch_snapshot_bundle(
             branch.id,
             backup_id=backup_id,
-            snapshot_class=VOLUME_SNAPSHOT_CLASS,
+            snapshot_class=_resolve_snapshot_class(),
             poll_interval=SNAPSHOT_POLL_INTERVAL_SEC,
             label="manual",
             time_limit=MANUAL_BACKUP_TIMEOUT_SEC,

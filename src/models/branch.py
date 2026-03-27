@@ -14,6 +14,7 @@ from .._util import (
     CPU_CONSTRAINTS,
     DATABASE_SIZE_CONSTRAINTS,
     IOPS_CONSTRAINTS,
+    IOPS_MIN,
     MEMORY_CONSTRAINTS,
     PGBOUNCER_DEFAULT_MAX_CLIENT_CONN,
     PGBOUNCER_DEFAULT_POOL_SIZE,
@@ -48,6 +49,7 @@ def _default_resource_usage_payload() -> dict[str, Any]:
         "iops": 0,
         "storage_bytes": None,
         "wal_bytes": None,
+        "volume_metrics_available": None,
     }
 
 
@@ -88,7 +90,7 @@ class Branch(AsyncAttrs, Model, table=True):
     database_size: Annotated[int, Field(**DATABASE_SIZE_CONSTRAINTS, sa_column=Column(BigInteger))]
     milli_vcpu: Annotated[int, Field(**CPU_CONSTRAINTS, sa_column=Column(BigInteger))]  # units of milli vCPU
     memory: Annotated[int, Field(**MEMORY_CONSTRAINTS, sa_column=Column(BigInteger))]
-    iops: Annotated[int, Field(**IOPS_CONSTRAINTS, sa_column=Column(BigInteger))]
+    iops: Annotated[int, Field(default=IOPS_MIN, **IOPS_CONSTRAINTS, sa_column=Column(BigInteger))]
     storage_size: Annotated[
         int | None, Field(**STORAGE_SIZE_CONSTRAINTS, sa_column=Column(BigInteger, nullable=True))
     ] = None
@@ -188,6 +190,7 @@ class Branch(AsyncAttrs, Model, table=True):
             iops=int(payload.get("iops") or 0),
             storage_bytes=None if storage_value is None else int(storage_value),
             wal_bytes=None if wal_value is None else int(wal_value),
+            volume_metrics_available=payload.get("volume_metrics_available"),
         )
 
 
@@ -449,6 +452,12 @@ class ResourceUsageDefinition(BaseModel):
         PydanticField(
             ge=0,
             description="Measured total snapshot used size in bytes, if available.",
+        ),
+    ] = None
+    volume_metrics_available: Annotated[
+        bool | None,
+        PydanticField(
+            description="Whether volume/storage usage metrics were available from the active storage backend.",
         ),
     ] = None
 

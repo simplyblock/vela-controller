@@ -357,6 +357,18 @@ class KubernetesService:
                     raise VelaKubernetesError(f"PersistentVolume {name!r} not found") from exc
                 raise
 
+    async def delete_persistent_volume(self, name: str) -> None:
+        async with core_v1_client() as core_v1:
+            try:
+                await core_v1.delete_persistent_volume(name=name)
+                logger.info("Deleted PersistentVolume %s", name)
+            except client.exceptions.ApiException as exc:
+                if exc.status == 404:
+                    logger.info("PersistentVolume %s not found; skipping delete", name)
+                    return
+                detail = exc.body or exc.reason or exc
+                raise VelaKubernetesError(f"Failed to delete PersistentVolume {name!r}: {detail!r}") from exc
+
     async def resize_autoscaler_vm(
         self,
         namespace: str,
