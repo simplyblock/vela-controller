@@ -333,23 +333,6 @@ async def restore_branch_database_volume_from_snapshot_with_backend(
     )
 
 
-def _load_compose_manifest() -> dict[str, Any]:
-    compose_resource = resources.files(__package__).joinpath("compose.yml")
-    compose_content = yaml.safe_load(compose_resource.read_text())
-    if not isinstance(compose_content, dict):
-        raise VelaDeploymentError("docker-compose manifest must be a mapping")
-    return compose_content
-
-
-def _configure_compose_storage(compose: dict[str, Any], *, enable_file_storage: bool) -> dict[str, Any]:
-    services = compose.get("services")
-    if not isinstance(services, dict):
-        raise VelaDeploymentError("docker-compose manifest missing 'services' mapping")
-    if not enable_file_storage:
-        services.pop("storage", None)
-    return compose
-
-
 def _load_chart_values(chart_root: Any) -> dict[str, Any]:
     values_content = yaml.safe_load((chart_root / "values.yaml").read_text())
     if not isinstance(values_content, dict):
@@ -362,6 +345,7 @@ def _configure_vela_values(
     *,
     parameters: DeploymentParameters,
     jwt_secret: str,
+    database_admin_password: str,
     pgbouncer_admin_password: str,
     storage_class_name: str,
     use_existing_db_pvc: bool,
@@ -370,6 +354,8 @@ def _configure_vela_values(
     pitr_enabled: bool,
     branch_id: Identifier,
 ) -> dict[str, Any]:
+    values_content.setdefault("deployment", {})["id"] = str(branch_id)
+
     pgbouncer_values = values_content.setdefault("pgbouncer", {})
     pgbouncer_cfg = pgbouncer_values.setdefault("config", {})
     if pgbouncer_config:
@@ -394,7 +380,7 @@ def _configure_vela_values(
         secret=jwt_secret,
     )
     secrets.update(pgmeta_crypto_key=get_settings().pgmeta_crypto_key)
-    secrets.setdefault("db", {})["password"] = parameters.database_password
+    secrets.setdefault("db", {})["admin_password"] = database_admin_password
     secrets.setdefault("pgbouncer", {})["admin_password"] = pgbouncer_admin_password
 
     db_values = values_content.setdefault("db", {})
@@ -459,6 +445,7 @@ async def create_vela_config(
     parameters: DeploymentParameters,
     branch: Name,
     jwt_secret: str,
+    database_admin_password: str,
     pgbouncer_admin_password: str,
     *,
     use_existing_db_pvc: bool = False,
@@ -478,10 +465,6 @@ async def create_vela_config(
         await kube_service.ensure_namespace(namespace, labels=_POD_SECURITY_LABELS)
 
     chart = resources.files(__package__) / "charts" / "vela"
-    compose_file = _configure_compose_storage(
-        _load_compose_manifest(),
-        enable_file_storage=parameters.enable_file_storage,
-    )
     vector_resource = resources.files(__package__).joinpath("vector.yml")
     pb_hba_resource = resources.files(__package__).joinpath("pg_hba.conf")
     postgresql_resource = resources.files(__package__).joinpath("postgresql.conf")
@@ -492,6 +475,7 @@ async def create_vela_config(
         values_content,
         parameters=parameters,
         jwt_secret=jwt_secret,
+        database_admin_password=database_admin_password,
         pgbouncer_admin_password=pgbouncer_admin_password,
         storage_class_name=storage_class_name,
         use_existing_db_pvc=use_existing_db_pvc,
@@ -506,11 +490,8 @@ async def create_vela_config(
         resources.as_file(pb_hba_resource) as pb_hba_conf,
         resources.as_file(postgresql_resource) as postgresql_conf,
         tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as temp_values,
-        tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as modified_compose,
     ):
-        yaml.safe_dump(compose_file, modified_compose, default_flow_style=False)
         yaml.safe_dump(values_content, temp_values, default_flow_style=False)
-        modified_compose.flush()
         temp_values.flush()
 
         try:
@@ -523,8 +504,6 @@ async def create_vela_config(
                     "--namespace",
                     namespace,
                     "--create-namespace",
-                    "--set-file",
-                    f"composeYaml={modified_compose.name}",
                     "--set-file",
                     f"vectorYaml={vector_file}",
                     "--set-file",
@@ -1191,12 +1170,12 @@ async def provision_branch_endpoints(
     return BranchEndpointResult(ref=ref, domain=domain)
 
 
-async def set_initial_password(branch_id: Identifier, password: str, timeout: float) -> None:
+async def set_initial_password(branch_id: Identifier, password: str, admin_password: str, timeout: float) -> None:
     start = datetime.now()
     while (
         (status := vm_monitor.status(branch_id)) is None
         or status.services is None
-        or not status.services.get("postgres", False)
+        or not status.services.get("pgbouncer", False)  # Use as a proxy to ensure migrations have run
     ):
         if (datetime.now() - start).total_seconds() > timeout:
             raise TimeoutError("Failed to wait for online database")
@@ -1208,7 +1187,7 @@ async def set_initial_password(branch_id: Identifier, password: str, timeout: fl
         branch_id=branch_id,
         database=DEFAULT_DB_NAME,
         username=DEFAULT_DB_USER,
-        admin_password=password,
+        admin_password=admin_password,
         new_password=password,
     )
 
@@ -1222,6 +1201,7 @@ async def deploy_branch_environment(
     credential: str,
     parameters: DeploymentParameters,
     jwt_secret: str,
+    database_admin_password: str,
     pgbouncer_admin_password: str,
     pgbouncer_config: Mapping[str, int],
     use_existing_pvc: bool = False,
@@ -1237,6 +1217,7 @@ async def deploy_branch_environment(
             parameters=parameters,
             branch=branch_slug,
             jwt_secret=jwt_secret,
+            database_admin_password=database_admin_password,
             pgbouncer_admin_password=pgbouncer_admin_password,
             use_existing_db_pvc=use_existing_pvc,
             ensure_namespace=False,
@@ -1254,7 +1235,7 @@ async def deploy_branch_environment(
             ref=ref,
         ),
         create_vela_grafana_obj(organization_id, branch_id, credential),
-        set_initial_password(branch_id, parameters.database_password, timeout=240),
+        set_initial_password(branch_id, parameters.database_password, database_admin_password, timeout=240),
         return_exceptions=True,
     )
 

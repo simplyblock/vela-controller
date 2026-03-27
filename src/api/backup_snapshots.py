@@ -9,9 +9,9 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 import httpx
+from kubernetes.utils import parse_quantity
 
-from .._util import Identifier, quantity_to_bytes
-from ..deployment import AUTOSCALER_PVC_SUFFIX, get_autoscaler_vm_identity
+from ..deployment import AUTOSCALER_PVC_SUFFIX, AUTOSCALER_WAL_PVC_SUFFIX, get_autoscaler_vm_identity
 from ..deployment.kubernetes.snapshot import (
     create_snapshot_from_pvc,
     ensure_snapshot_absent,
@@ -26,6 +26,7 @@ from ..exceptions import VelaDeploymentError, VelaKubernetesError, VelaSimplyblo
 if TYPE_CHECKING:
     from ulid import ULID
 
+    from .._util import Identifier
     from ..models.backups import BackupEntry
 
 logger = logging.getLogger(__name__)
@@ -76,7 +77,7 @@ def _build_snapshot_name(*, label: str, backup_id: ULID) -> str:
     return f"{label_component}{separator}{backup_component}"
 
 
-async def create_branch_snapshot(
+async def create_branch_snapshot_bundle(
     branch_id: Identifier,
     *,
     backup_id: ULID,
@@ -84,9 +85,44 @@ async def create_branch_snapshot(
     poll_interval: float,
     label: str,
     time_limit: float,
+    include_wal: bool,
+) -> tuple[SnapshotDetails, SnapshotDetails | None]:
+    data_snapshot = await _create_snapshot_for_pvc(
+        branch_id=branch_id,
+        backup_id=backup_id,
+        snapshot_class=snapshot_class,
+        poll_interval=poll_interval,
+        label=f"{label}-data",
+        time_limit=time_limit,
+        pvc_suffix=AUTOSCALER_PVC_SUFFIX,
+    )
+    wal_snapshot: SnapshotDetails | None = None
+    if include_wal:
+        wal_snapshot = await _create_snapshot_for_pvc(
+            branch_id=branch_id,
+            backup_id=backup_id,
+            snapshot_class=snapshot_class,
+            poll_interval=poll_interval,
+            label=f"{label}-wal",
+            time_limit=time_limit,
+            pvc_suffix=AUTOSCALER_WAL_PVC_SUFFIX,
+        )
+
+    return data_snapshot, wal_snapshot
+
+
+async def _create_snapshot_for_pvc(
+    *,
+    branch_id: Identifier,
+    backup_id: ULID,
+    snapshot_class: str,
+    poll_interval: float,
+    label: str,
+    time_limit: float,
+    pvc_suffix: str,
 ) -> SnapshotDetails:
     namespace, autoscaler_vm_name = get_autoscaler_vm_identity(branch_id)
-    pvc_name = f"{autoscaler_vm_name}{AUTOSCALER_PVC_SUFFIX}"
+    pvc_name = f"{autoscaler_vm_name}{pvc_suffix}"
     snapshot_name = _build_snapshot_name(label=label, backup_id=backup_id)
 
     logger.info("Creating VolumeSnapshot %s/%s for branch %s", namespace, snapshot_name, branch_id)
@@ -119,7 +155,7 @@ async def create_branch_snapshot(
     status = snapshot.get("status") or {}
     content_name_payload = status.get("boundVolumeSnapshotContentName")
     content_name = content_name_payload if isinstance(content_name_payload, str) else None
-    size_bytes = quantity_to_bytes(status.get("restoreSize"))
+    size_bytes = parse_quantity(status["restoreSize"])
 
     try:
         if content_name is None:

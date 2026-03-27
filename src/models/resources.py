@@ -29,7 +29,6 @@ class ResourceType(PyEnum):
 
 
 class EntityType(PyEnum):
-    system = "system"
     org = "org"
     project = "project"
 
@@ -81,6 +80,13 @@ class ResourceLimit(AsyncAttrs, Model, table=True):
     env_type: str | None = None
     project_id: Identifier | None = Model.foreign_key_field("project", ondelete="CASCADE")
     project: Optional["Project"] = Relationship(back_populates="limits")
+    max_total: Annotated[int, Field(sa_type=BigInteger)]
+    max_per_branch: Annotated[int, Field(sa_type=BigInteger)]
+
+
+class OrganizationLimitDefault(AsyncAttrs, Model, table=True):
+    __table_args__ = (Index("uq_org_limit_default_resource", "resource", unique=True),)
+    resource: ResourceType
     max_total: Annotated[int, Field(sa_type=BigInteger)]
     max_per_branch: Annotated[int, Field(sa_type=BigInteger)]
 

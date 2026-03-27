@@ -13,32 +13,44 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
 from pydantic import BaseModel
 
+from ..database import engine
 from ..deployment.monitors.health import vm_monitor
-from ..deployment.monitors.resize import ResizeMonitor
 from ._util.role import create_access_rights_if_emtpy
 from .backup import router as backup_router
 from .backupmonitor import run_backup_monitor
-from .db import engine
 from .organization import api as organization_api
+from .resources import api as resources_api
 from .resources import monitor_resources
-from .resources import router as resources_router
 from .settings import get_settings
 from .system import api as system_api
 from .user import api as user_api
 
 
 def _logging_config() -> dict[str, Any]:
-    log_format = "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
     date_format = "%Y-%m-%dT%H:%M:%S%z"
-    log_level = get_settings().log_level
+    settings = get_settings()
+    log_level = settings.log_level
+    if settings.log_json:
+        formatter: dict[str, Any] = {
+            "()": "pythonjsonlogger.json.JsonFormatter",
+            "fmt": "%(asctime)s %(levelname)s %(name)s %(message)s",
+            "rename_fields": {
+                "asctime": "timestamp",
+                "levelname": "level",
+                "name": "logger",
+            },
+            "datefmt": date_format,
+        }
+    else:
+        formatter = {
+            "format": "%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+            "datefmt": date_format,
+        }
     return {
         "version": 1,
         "disable_existing_loggers": False,
         "formatters": {
-            "default": {
-                "format": log_format,
-                "datefmt": date_format,
-            },
+            "default": formatter,
         },
         "handlers": {
             "default": {
@@ -229,13 +241,10 @@ def health():
 
 app.include_router(organization_api, prefix="/organizations")
 app.include_router(user_api, prefix="/users")
-app.include_router(resources_router, prefix="/resources")
+app.include_router(resources_api, prefix="/resources")
 app.include_router(system_api, prefix="/system")
 app.include_router(backup_router)
 _use_route_names_as_operation_ids(app)
-
-
-_resize_monitor = ResizeMonitor()
 
 
 @app.on_event("startup")
@@ -244,13 +253,12 @@ async def on_startup():
     # start async background monitor
     asyncio.create_task(run_backup_monitor())
     asyncio.create_task(monitor_resources())
-    _resize_monitor.start()
     asyncio.create_task(vm_monitor.run())
 
 
 @app.on_event("shutdown")
 async def on_shutdown():
-    await _resize_monitor.stop()
+    pass
 
 
 __all__ = ["app"]

@@ -13,14 +13,15 @@ from ulid import ULID
 from ...deployment import delete_deployment
 from ...models.audit import OrganizationAuditLog
 from ...models.organization import Organization, OrganizationCreate, OrganizationUpdate
-from ...models.resources import ResourceTypePublic, ResourceUsageMinute
+from ...models.resources import EntityType, ResourceTypePublic, ResourceUsageMinute
 from .._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
-from .._util.resourcelimit import initialize_organization_resource_limits
+from .._util.resourcelimit import Limits
 from .._util.role import create_organization_admin_role
 from ..auth import authenticated_user
 from ..dependencies import AuthUserDep, OrganizationDep, SessionDep
 from .member import api as member_api
 from .project import api as project_api
+from .resources import api as resources_api
 from .role import RoleUserLink
 from .role import api as role_api
 
@@ -86,7 +87,12 @@ async def create(
     user: AuthUserDep,
     response: Literal["empty", "full"] = "empty",
 ) -> JSONResponse:
-    entity = Organization(**parameters.model_dump(), users=[user])
+    default_limits = await Limits.organization_defaults(session)
+    entity = Organization(
+        **parameters.model_dump(),
+        users=[user],
+        limits=default_limits.to_database(EntityType.org),
+    )
     session.add(entity)
     try:
         await session.commit()
@@ -106,9 +112,6 @@ async def create(
     session.add(link)
     await session.commit()
     await session.refresh(entity)
-
-    # Set up initial organization resource limits
-    await initialize_organization_resource_limits(session, entity)
 
     entity_url = url_path_for(request, "organizations:detail", organization_id=entity.id)
     return JSONResponse(
@@ -272,4 +275,5 @@ async def metering(
 instance_api.include_router(project_api, prefix="/projects")
 instance_api.include_router(member_api, prefix="/members")
 instance_api.include_router(role_api, prefix="/roles")
+instance_api.include_router(resources_api, prefix="/resources")
 api.include_router(instance_api)

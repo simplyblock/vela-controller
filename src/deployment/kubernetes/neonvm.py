@@ -1,11 +1,12 @@
 from enum import Enum
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from aiohttp.client_exceptions import ClientError
+from kubernetes.utils import parse_quantity
 from kubernetes_asyncio.client.exceptions import ApiException
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, PlainSerializer, ValidationError
 
-from ..._util import quantity_to_bytes, quantity_to_milli_cpu
+from ..._util import Quantity, quantity_to_milli_cpu
 from ...exceptions import VelaKubernetesError
 from ._util import custom_api_client
 
@@ -17,16 +18,6 @@ def _require_int(value: Any, field: str) -> int:
         return int(value)
     except (TypeError, ValueError):
         raise VelaKubernetesError(f"Autoscaler VM missing required integer field {field}") from None
-
-
-def _require_quantity_bytes(value: Any, field: str) -> int:
-    if isinstance(value, (int, float)):
-        return int(value)
-    if isinstance(value, str):
-        parsed = quantity_to_bytes(value)
-        if parsed is not None:
-            return parsed
-    raise VelaKubernetesError(f"Autoscaler VM missing required quantity field {field}")
 
 
 def _require_cpu_millis(value: Any, field: str) -> int:
@@ -66,21 +57,9 @@ class NeonVMStatus(CamelModel):
 
 
 class GuestCPUs(CamelModel):
-    min: Any
-    use: Any
-    max: Any
-
-    @property
-    def use_milli(self) -> int:
-        return _require_cpu_millis(self.use, "guest.cpus.use")
-
-    @property
-    def min_milli(self) -> int:
-        return _require_cpu_millis(self.min, "guest.cpus.min")
-
-    @property
-    def max_milli(self) -> int:
-        return _require_cpu_millis(self.max, "guest.cpus.max")
+    min: Quantity
+    use: Quantity
+    max: Quantity
 
 
 class MemorySlots(CamelModel):
@@ -107,15 +86,23 @@ class Port(CamelModel):
     protocol: Literal["TCP", "UDP"]
 
 
+AutoscalerEnv = Annotated[
+    dict[str, str],
+    BeforeValidator(lambda v: {entry["name"]: entry["value"] for entry in v} if isinstance(v, list) else v),
+    PlainSerializer(lambda v: [{"name": k, "value": val} for k, val in v.items()]),
+]
+
+
 class Guest(CamelModel):
     cpus: GuestCPUs
     memory_slots: MemorySlots
-    memory_slot_size: Any
+    memory_slot_size: str
     ports: list[Port]
+    env: AutoscalerEnv = Field(default_factory=dict)
 
     @property
     def slot_size_bytes(self) -> int:
-        return _require_quantity_bytes(self.memory_slot_size, "guest.memorySlotSize")
+        return int(parse_quantity(self.memory_slot_size))
 
 
 class NeonVMSpec(CamelModel):

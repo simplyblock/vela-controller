@@ -47,6 +47,10 @@ spec:
             - name: proxy
               image: kong/kong-gateway:3.9
               env:
+                - name: KONG_NGINX_HTTP_LARGE_CLIENT_HEADER_BUFFERS
+                  value: "8 32k"
+                - name: KONG_NGINX_HTTP_CLIENT_HEADER_BUFFER_SIZE
+                  value: "32k"
                 - name: KONG_NGINX_PROXY_PROXY_BUFFER_SIZE
                   value: "128k"
                 - name: KONG_NGINX_PROXY_PROXY_BUFFERS

@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Annotated
 
 from pydantic import BaseModel
-from sqlalchemy import BigInteger, Column, String, UniqueConstraint
+from sqlalchemy import BigInteger, Column, UniqueConstraint
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlmodel import Field, Relationship
 
@@ -55,19 +55,11 @@ class BackupEntry(AsyncAttrs, Model, table=True):
     row_index: int
     created_at: DateTime
     size_bytes: Annotated[int, Field(sa_column=Column(BigInteger, nullable=True))]
-    snapshot_uuid: Annotated[str, Field(sa_column=Column(String(length=64), nullable=False))]
-    snapshot_name: str | None = Field(
-        default=None,
-        sa_column=Column(String(length=255), nullable=True),
-    )
-    snapshot_namespace: str | None = Field(
-        default=None,
-        sa_column=Column(String(length=255), nullable=True),
-    )
-    snapshot_content_name: str | None = Field(
-        default=None,
-        sa_column=Column(String(length=255), nullable=True),
-    )
+    snapshot_uuid: Annotated[str, Field(max_length=64)]
+    snapshot_name: str | None = Field(default=None, max_length=255)
+    snapshot_namespace: str | None = Field(default=None, max_length=255)
+    snapshot_content_name: str | None = Field(default=None, max_length=255)
+    wal_snapshot_name: str | None = Field(default=None, max_length=255)
 
 
 class BackupLog(AsyncAttrs, Model, table=True):

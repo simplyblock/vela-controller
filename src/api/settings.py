@@ -2,7 +2,7 @@ from datetime import timedelta
 from functools import lru_cache
 from typing import Annotated, Literal
 
-from pydantic import BeforeValidator, HttpUrl, PostgresDsn
+from pydantic import BeforeValidator, HttpUrl, PostgresDsn, SecretBytes
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .._util import permissive_numeric_timedelta
@@ -22,9 +22,12 @@ class Settings(BaseSettings):
     keycloak_admin_name: str
     keycloak_admin_secret: str
     log_level: Literal["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"] = "INFO"
+    log_json: bool = True
     resource_monitor_interval: Annotated[timedelta, BeforeValidator(permissive_numeric_timedelta)] = timedelta(
         seconds=60
     )
+    pitr_wal_retention_days: int = 7
+    deployment_password_secret: SecretBytes
 
 
 @lru_cache

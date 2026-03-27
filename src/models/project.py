@@ -68,7 +68,13 @@ class ProjectCreate(BaseModel):
             per_branch_value = getattr(self.per_branch_limits, resource_name)
             project_value = getattr(self.project_limits, resource_name)
             min_value = minimums.get(resource_name)
-            if project_value is not None and min_value is not None and project_value < min_value:
+            storage_disabled = resource_name == "storage_size" and project_value == 0
+            if (
+                not storage_disabled
+                and project_value is not None
+                and min_value is not None
+                and project_value < min_value
+            ):
                 raise ValueError(
                     f"project_limits.{resource_name} ({project_value}) is below the minimum allowed value ({min_value})"
                 )
@@ -78,7 +84,7 @@ class ProjectCreate(BaseModel):
                 raise ValueError(
                     f"per_branch_limits.{resource_name} is set but project_limits.{resource_name} is not defined"
                 )
-            if min_value is not None and per_branch_value < min_value:
+            if min_value is not None and not storage_disabled and per_branch_value < min_value:
                 raise ValueError(
                     f"per_branch_limits.{resource_name} ({per_branch_value}) is below "
                     f"the minimum allowed value ({min_value})"

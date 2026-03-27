@@ -4,10 +4,9 @@
 # |-- 3.  Meta
 # |-- 4.  Storage API
 
-# docker-compose payload injected via helm --set-file composeYaml
-composeYaml: ""
 vectorYaml: ""
 pgHbaConf: ""
+postgresqlConf: ""
 
 secret:
   # jwt will be used to reference secret in multiple services:
@@ -18,7 +17,7 @@ secret:
   # database credentials
   # these fields must be provided even if using external database
   db:
-    password: ""
+    admin_password: ""
   pgbouncer:
     admin_password: "pgadmin_pwd" # TODO: auto generate this in the next PR.
 
@@ -70,7 +69,7 @@ autoscalerVm:
 
 pg_wal:
   enabled: false
-  mountPath: '/mnt/postgres_wal'
+  mountPath: '/var/lib/postgresql/wal'
   persistence:
     create: true
     storageClassName: ""

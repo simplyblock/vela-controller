@@ -4,12 +4,14 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException
+from kubernetes.utils import parse_quantity
 from kubernetes_asyncio.client.exceptions import ApiException
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlmodel import select
 
-from .._util import quantity_to_bytes, quantity_to_milli_cpu
+from .._util import quantity_to_milli_cpu
 from ..check_branch_status import get_branch_status
+from ..database import SessionDep
 from ..deployment import (
     get_autoscaler_vm_identity,
 )
@@ -49,16 +51,14 @@ from ._util.resourcelimit import (
     make_usage_cycle,
 )
 from .auth import authenticated_user
-from .db import SessionDep
 from .dependencies import BranchDep, OrganizationDep, ProjectDep
 from .organization.project.branch import refresh_branch_status
 from .settings import get_settings
 
-router = APIRouter(dependencies=[Depends(authenticated_user)], tags=["resource"])
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-router = APIRouter(tags=["resource"])
+api = APIRouter(dependencies=[Depends(authenticated_user)], tags=["resource"])
 
 
 # ---------------------------
@@ -84,7 +84,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------
 # Provisioning endpoints
 # ---------------------------
-@router.post("/branches/{branch_id}/allocations")
+@api.post("/branches/{branch_id}/allocations")
 async def set_branch_allocations(
     session: SessionDep, branch: BranchDep, payload: ResourceLimitsPublic
 ) -> BranchProvisionPublic:
@@ -98,7 +98,7 @@ async def set_branch_allocations(
     return BranchProvisionPublic(status="ok")
 
 
-@router.get("/branches/{branch_id}/allocations")
+@api.get("/branches/{branch_id}/allocations")
 async def get_branch_allocations(session: SessionDep, branch: BranchDep) -> BranchAllocationPublic:
     return await get_current_branch_allocations(session, branch)
 
@@ -107,7 +107,7 @@ async def get_branch_allocations(session: SessionDep, branch: BranchDep) -> Bran
 # Resource usage endpoints
 # ---------------------------
 #
-@router.get("/projects/{project_id}/usage")
+@api.get("/projects/{project_id}/usage")
 async def get_project_usage(
     session: SessionDep, project: ProjectDep, cycle_start: datetime | None = None, cycle_end: datetime | None = None
 ) -> ResourceLimitsPublic:
@@ -115,7 +115,7 @@ async def get_project_usage(
     return dict_to_resource_limits(await get_project_resource_usage(session, project.id, usage_cycle))
 
 
-@router.get("/organizations/{organization_id}/usage")
+@api.get("/organizations/{organization_id}/usage")
 async def get_org_usage(
     session: SessionDep,
     organization: OrganizationDep,
@@ -129,14 +129,14 @@ async def get_org_usage(
 # ---------------------------
 # Limits endpoints
 # ---------------------------
-@router.get("/organizations/{organization_id}/provisioning/available")
+@api.get("/organizations/{organization_id}/provisioning/available")
 async def get_available_organization_provisioning_resources(
     session: SessionDep, organization: OrganizationDep
 ) -> ResourceLimitsPublic:
     return await get_effective_project_creation_limits(session, organization)
 
 
-@router.post("/organizations/{organization_id}/limits/provisioning")
+@api.post("/organizations/{organization_id}/limits/provisioning")
 async def set_organization_provisioning_limit(
     session: SessionDep, organization: OrganizationDep, payload: ProvLimitPayload
 ) -> LimitResultPublic:
@@ -162,19 +162,19 @@ async def set_organization_provisioning_limit(
     return LimitResultPublic(status="ok", limit=await limit.awaitable_attrs.id)
 
 
-@router.get("/organizations/{organization_id}/limits/provisioning")
+@api.get("/organizations/{organization_id}/limits/provisioning")
 async def get_organization_provisioning_limits(organization: OrganizationDep) -> list[ProvisioningLimitPublic]:
     return [ProvisioningLimitPublic.from_limit(limit) for limit in (await organization.awaitable_attrs.limits)]
 
 
-@router.get("/projects/{project_id}/provisioning/available")
+@api.get("/projects/{project_id}/provisioning/available")
 async def get_available_project_provisioning_resources(
     session: SessionDep, project: ProjectDep
 ) -> ResourceLimitsPublic:
     return await get_effective_branch_creation_limits(session, project)
 
 
-@router.post("/projects/{project_id}/limits/provisioning")
+@api.post("/projects/{project_id}/limits/provisioning")
 async def set_project_provisioning_limit(
     session: SessionDep, project: ProjectDep, payload: ProvLimitPayload
 ) -> LimitResultPublic:
@@ -201,38 +201,38 @@ async def set_project_provisioning_limit(
     return LimitResultPublic(status="ok", limit=await limit.awaitable_attrs.id)
 
 
-@router.get("/projects/{project_id}/limits/provisioning")
+@api.get("/projects/{project_id}/limits/provisioning")
 async def get_project_provisioning_limits(project: ProjectDep) -> list[ProvisioningLimitPublic]:
     return [ProvisioningLimitPublic.from_limit(limit) for limit in (await project.awaitable_attrs.limits)]
 
 
-@router.post("/organizations/{organization_id}/limits/consumption")
+@api.post("/organizations/{organization_id}/limits/consumption")
 async def set_organization_consumption_limit(
     session: SessionDep, organization: OrganizationDep, payload: ConsumptionPayload
 ) -> LimitResultPublic:
     return await set_consumption_limit(session, EntityType.org, organization.id, payload)
 
 
-@router.get("/organizations/{organization_id}/limits/consumption")
+@api.get("/organizations/{organization_id}/limits/consumption")
 async def get_organization_consumption_limits(
     session: SessionDep, organization: OrganizationDep
 ) -> list[ConsumptionLimitPublic]:
     return await get_consumption_limits(session, EntityType.org, organization.id)
 
 
-@router.post("/projects/{project_id}/limits/consumption")
+@api.post("/projects/{project_id}/limits/consumption")
 async def set_project_consumption_limit(
     session: SessionDep, project: ProjectDep, payload: ConsumptionPayload
 ) -> LimitResultPublic:
     return await set_consumption_limit(session, EntityType.project, project.id, payload)
 
 
-@router.get("/projects/{project_id}/limits/consumption")
+@api.get("/projects/{project_id}/limits/consumption")
 async def get_project_consumption_limits(session: SessionDep, project: ProjectDep) -> list[ConsumptionLimitPublic]:
     return await get_consumption_limits(session, EntityType.project, project.id)
 
 
-@router.get("/branches/{branch_id}/limits/")
+@api.get("/branches/{branch_id}/limits/")
 async def branch_effective_limit(session: SessionDep, branch: BranchDep) -> ResourceLimitsPublic:
     return await get_effective_branch_limits(session, branch)
 
@@ -311,9 +311,9 @@ def _parse_compute_usage(metrics: dict[str, Any]) -> tuple[int, int]:
 
     usage = cast("dict[str, Any]", compute_usage["usage"])
     cpu_usage = quantity_to_milli_cpu(usage["cpu"])
-    memory_usage = quantity_to_bytes(usage["memory"])
+    memory_usage = parse_quantity(usage["memory"])
 
-    if cpu_usage is None or memory_usage is None:
+    if cpu_usage is None:
         raise ValueError("Metrics API returned empty resource usage for compute container")
 
     return cpu_usage, memory_usage

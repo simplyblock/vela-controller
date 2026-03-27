@@ -1,5 +1,8 @@
 import asyncio
+import base64
 import contextlib
+import hashlib
+import hmac
 import logging
 import secrets
 from collections.abc import Sequence
@@ -14,15 +17,14 @@ from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials
 from keycloak.exceptions import KeycloakError
 from kubernetes_asyncio.client.exceptions import ApiException
-from pydantic import ValidationError
+from pydantic import AfterValidator
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
 from ....._util import DEFAULT_DB_NAME, DEFAULT_DB_USER, IOPS_MIN, Identifier, storage_backend_bytes_to_db_bytes
 from ....._util.crypto import encrypt_with_passphrase, generate_keys
+from .....database import AsyncSessionLocal, SessionDep
 from .....deployment import (
-    AUTOSCALER_PVC_SUFFIX,
-    STORAGE_PVC_SUFFIX,
     DeploymentParameters,
     ResizeParameters,
     branch_api_domain,
@@ -37,7 +39,6 @@ from .....deployment import (
     resolve_branch_database_volume_size,
     restore_branch_database_volume_from_snapshot_with_backend,
     update_branch_database_password,
-    update_branch_volume_iops,
 )
 from .....deployment._util import deployment_namespace
 from .....deployment.health import (
@@ -59,9 +60,6 @@ from .....models.branch import (
     BranchPgbouncerConfigStatus,
     BranchPgbouncerConfigUpdate,
     BranchPublic,
-    BranchResizeService,
-    BranchResizeStatus,
-    BranchResizeStatusEntry,
     BranchServiceStatus,
     BranchSourceDeploymentParameters,
     BranchStatus,
@@ -70,7 +68,6 @@ from .....models.branch import (
     CapaResizeKey,
     DatabaseInformation,
     PgbouncerConfig,
-    aggregate_resize_statuses,
 )
 from .....models.resources import BranchAllocationPublic, ResourceLimitsPublic, ResourceType
 from ...._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
@@ -85,12 +82,13 @@ from ...._util.resourcelimit import (
 from ...._util.role import clone_user_role_assignment
 from ....auth import security
 from ....backup_snapshots import branch_snapshots_used_size
-from ....db import AsyncSessionLocal, SessionDep
-from ....dependencies import BranchDep, OrganizationDep, ProjectDep, RestoreBackupDep, branch_lookup
+from ....dependencies import BranchDep, OrganizationDep, ProjectDep, backup_lookup, branch_lookup
 from ....keycloak import realm_admin
 from ....settings import get_settings as get_api_settings
 from .api_keys import api as api_key_api
 from .auth import api as auth_api
+from .resize_tasks import dispatch_resize
+from .tasks import task_api
 
 api = APIRouter(tags=["branch"])
 
@@ -109,13 +107,23 @@ _TRANSITIONAL_BRANCH_STATUSES: set[BranchServiceStatus] = {
     BranchServiceStatus.RESIZING,
 }
 _PROTECTED_BRANCH_STATUSES: set[BranchServiceStatus] = {BranchServiceStatus.PAUSED}
-_ACTIVE_RESIZE_STATUSES: set[BranchResizeStatus] = {
-    "PENDING",
-    "RESIZING",
-    "FILESYSTEM_RESIZE_PENDING",
-}
 _CREATING_STATUS_ERROR_GRACE_PERIOD = timedelta(minutes=5)
 _STARTING_STATUS_ERROR_GRACE_PERIOD = timedelta(minutes=5)
+
+
+def _validate_restore_target_time(value: datetime) -> datetime:
+    now = datetime.now(UTC)
+    if value > now:
+        raise ValueError("recovery_target_time cannot be in the future")
+
+    max_retention = timedelta(days=get_api_settings().pitr_wal_retention_days)
+    if now - value > max_retention:
+        raise ValueError("recovery_target_time exceeds the configured PITR WAL retention window")
+
+    return value
+
+
+BranchRestoreTarget = Identifier | Annotated[datetime, AfterValidator(_validate_restore_target_time)]
 
 
 def _parse_branch_status(value: BranchServiceStatus | str | None) -> BranchServiceStatus:
@@ -164,13 +172,19 @@ async def _cleanup_failed_branch_deployment(branch_id: Identifier) -> None:
 def _should_update_branch_status(
     current: BranchServiceStatus,
     derived: BranchServiceStatus,
-    resize_status: BranchResizeStatus,
+    *,
+    resize_in_progress: bool = True,
 ) -> bool:
     if current == derived:
         return False
-    if current == BranchServiceStatus.RESIZING and resize_status in _ACTIVE_RESIZE_STATUSES:
-        # Keep the explicit RESIZING while a resize is still in progress
-        # unless we detect a hard failure.
+    if current == BranchServiceStatus.RESIZING:
+        if not resize_in_progress:
+            return derived in {
+                BranchServiceStatus.ACTIVE_HEALTHY,
+                BranchServiceStatus.ACTIVE_UNHEALTHY,
+                BranchServiceStatus.STOPPED,
+                BranchServiceStatus.ERROR,
+            }
         return derived == BranchServiceStatus.ERROR
     if current == BranchServiceStatus.STARTING and derived == BranchServiceStatus.STOPPED:
         logger.debug("Ignoring STARTING -> STOPPED transition detected by branch status monitor")
@@ -256,36 +270,12 @@ async def _refresh_branch_status(branch: Branch) -> BranchServiceStatus:
         status,
     )
 
-    if _should_update_branch_status(
-        current_status,
-        status,
-        resize_status=branch.resize_status,
-    ):
+    resize_in_progress = branch.resize_task_id is not None
+    if _should_update_branch_status(current_status, status, resize_in_progress=resize_in_progress):
         branch.set_status(status)
         return status
 
     return current_status
-
-
-def _normalize_resize_statuses(branch: Branch) -> dict[str, BranchResizeStatusEntry]:
-    statuses = branch.resize_statuses or {}
-    if not statuses:
-        return {}
-
-    normalized: dict[str, BranchResizeStatusEntry] = {}
-    for service, entry in statuses.items():
-        if isinstance(entry, BranchResizeStatusEntry):
-            normalized[service] = entry
-            continue
-        try:
-            normalized[service] = BranchResizeStatusEntry.model_validate(entry)
-        except ValidationError:
-            logger.warning(
-                "Skipping invalid resize status entry for branch %s service %s",
-                branch.id,
-                service,
-            )
-    return normalized
 
 
 _DEFAULT_SERVICE_STATUS = BranchStatus(
@@ -631,6 +621,13 @@ def _build_in_place_restore_parameters(branch: Branch) -> DeploymentParameters:
     )
 
 
+def _generate_database_password(branch: Branch):
+    secret = hmac.new(
+        get_api_settings().deployment_password_secret.get_secret_value(), branch.id.bytes, hashlib.sha256
+    ).digest()
+    return base64.urlsafe_b64encode(secret).rstrip(b"=").decode()
+
+
 async def _build_branch_entity(
     *,
     project: ProjectDep,
@@ -664,7 +661,7 @@ async def _build_branch_entity(
             status_updated_at=datetime.now(UTC),
             pitr_enabled=source.pitr_enabled,
         )
-        entity.database_password = clone_parameters.database_password
+        entity.database_password = _generate_database_password(entity)
         entity.pgbouncer_config = (
             await _copy_pgbouncer_config_from_source(source) if copy_config else _default_pgbouncer_config()
         )
@@ -689,7 +686,7 @@ async def _build_branch_entity(
         status_updated_at=datetime.now(UTC),
         pitr_enabled=parameters.pitr_enabled,
     )
-    entity.database_password = deployment_params.database_password
+    entity.database_password = _generate_database_password(entity)
     entity.pgbouncer_config = _default_pgbouncer_config()
     return entity
 
@@ -795,8 +792,6 @@ async def _apply_resize_operations(
                 ResourceLimitsPublic(ram=memory),
                 commit=False,
             )
-
-
 async def _deploy_branch_environment_task(
     *,
     organization_id: Identifier,
@@ -806,6 +801,7 @@ async def _deploy_branch_environment_task(
     branch_slug: str,
     parameters: DeploymentParameters,
     jwt_secret: str,
+    database_admin_password: str,
     pgbouncer_admin_password: str,
     pgbouncer_config: PgbouncerConfigSnapshot,
     pitr_enabled: bool,
@@ -820,6 +816,7 @@ async def _deploy_branch_environment_task(
             credential=credential,
             parameters=parameters,
             jwt_secret=jwt_secret,
+            database_admin_password=database_admin_password,
             pgbouncer_admin_password=pgbouncer_admin_password,
             pgbouncer_config=pgbouncer_snapshot_to_mapping(pgbouncer_config),
             pitr_enabled=pitr_enabled,
@@ -846,6 +843,7 @@ async def _clone_branch_environment_task(
     branch_slug: str,
     parameters: DeploymentParameters,
     jwt_secret: str,
+    database_admin_password: str,
     pgbouncer_admin_password: str,
     source_branch_id: Identifier,
     copy_data: bool,
@@ -859,7 +857,6 @@ async def _clone_branch_environment_task(
                 source_branch_id=source_branch_id,
                 target_branch_id=branch_id,
                 database_size=parameters.database_size,
-                pitr_enabled=pitr_enabled,
             )
         except VelaError:
             await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
@@ -881,6 +878,7 @@ async def _clone_branch_environment_task(
             credential=credential,
             parameters=parameters,
             jwt_secret=jwt_secret,
+            database_admin_password=database_admin_password,
             pgbouncer_admin_password=pgbouncer_admin_password,
             use_existing_pvc=copy_data,
             pgbouncer_config=pgbouncer_snapshot_to_mapping(pgbouncer_config),
@@ -908,6 +906,7 @@ async def _restore_branch_environment_task(
     branch_slug: str,
     parameters: DeploymentParameters,
     jwt_secret: str,
+    database_admin_password: str,
     pgbouncer_admin_password: str,
     source_branch_id: Identifier,
     snapshot_namespace: str,
@@ -949,6 +948,7 @@ async def _restore_branch_environment_task(
             credential=credential,
             parameters=parameters,
             jwt_secret=jwt_secret,
+            database_admin_password=database_admin_password,
             pgbouncer_admin_password=pgbouncer_admin_password,
             use_existing_pvc=True,
             pgbouncer_config=pgbouncer_snapshot_to_mapping(pgbouncer_config),
@@ -975,6 +975,7 @@ async def _restore_branch_environment_in_place_task(
     snapshot_namespace: str,
     snapshot_name: str,
     snapshot_content_name: str | None,
+    recovery_target_time: datetime | None = None,
 ) -> None:
     await _persist_branch_status(branch_id, BranchServiceStatus.RESTARTING)
     namespace, autoscaler_vm_name = get_autoscaler_vm_identity(branch_id)
@@ -1009,6 +1010,12 @@ async def _restore_branch_environment_in_place_task(
         return
 
     try:
+        if recovery_target_time is not None:
+            await kube_service.patch_autoscaler_vm_recovery_time(
+                namespace,
+                autoscaler_vm_name,
+                recovery_target_time.isoformat(),
+            )
         await set_virtualmachine_power_state(namespace, autoscaler_vm_name, "Running")
     except ApiException as exc:
         if exc.status == 404:
@@ -1094,7 +1101,7 @@ async def _public(branch: Branch) -> BranchPublic:
     port = (await _resolve_branch_db_port(branch.id)) or 0
 
     # pg-meta and pg are in the same network. So password is not required in connection string.
-    connection_string = _build_connection_string(branch.database_user, "postgres", port)
+    connection_string = _build_connection_string("vela", "postgres", 5432)
 
     rest_endpoint = branch_rest_endpoint(branch.id)
     api_domain = branch_api_domain(branch.id)
@@ -1198,23 +1205,56 @@ async def _resolve_source_branch(
         branch = await branch_lookup(session, parameters.source.branch_id)
         return branch, None
 
-    if parameters.restore is not None:
-        backup_id = parameters.restore.backup_id
-        result = await session.execute(select(BackupEntry).where(BackupEntry.id == backup_id))
-        backup = result.scalar_one_or_none()
-        if backup is None:
-            raise HTTPException(404, f"Backup {backup_id} not found")
-        try:
-            branch = await branch_lookup(session, backup.branch_id)
-        except HTTPException as exc:
-            if exc.status_code == 404:
-                raise HTTPException(404, f"Backup {backup_id} not found") from exc
-            raise
-        if not backup.snapshot_name or not backup.snapshot_namespace:
-            raise HTTPException(400, "Selected backup does not include complete snapshot metadata")
-        return branch, backup
+    if parameters.restore is None:
+        return None, None
 
-    return None, None
+    backup = await backup_lookup(session, parameters.restore.backup_id)
+    if not backup.snapshot_name or not backup.snapshot_namespace:
+        raise HTTPException(400, "Selected backup does not include complete snapshot metadata")
+
+    branch = await branch_lookup(session, backup.branch_id)
+    return branch, backup
+
+
+async def _resolve_restore_backup(
+    session: SessionDep, branch_id: Identifier, restore_target: BranchRestoreTarget
+) -> BackupEntry:
+    if not isinstance(restore_target, datetime):
+        backup = (
+            (
+                await session.execute(
+                    select(BackupEntry).where(
+                        BackupEntry.id == restore_target,
+                        BackupEntry.branch_id == branch_id,
+                    )
+                )
+            )
+            .scalars()
+            .one_or_none()
+        )
+        if backup is None:
+            raise HTTPException(status_code=404, detail=f"Backup {restore_target} not found for this branch")
+        return backup
+
+    backup = (
+        (
+            await session.execute(
+                select(BackupEntry)
+                .where(BackupEntry.branch_id == branch_id)
+                .where(BackupEntry.created_at <= restore_target)
+                .order_by(cast("Any", BackupEntry.created_at).desc())
+                .limit(1)
+            )
+        )
+        .scalars()
+        .one_or_none()
+    )
+    if backup is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No valid backup snapshot found before the requested recovery time",
+        )
+    return backup
 
 
 def _ensure_branch_resource_limits(
@@ -1325,6 +1365,7 @@ def _schedule_branch_environment_tasks(
                 branch_slug=branch.name,
                 parameters=deployment_parameters,
                 jwt_secret=jwt_secret,
+                database_admin_password=branch.database_password,
                 pgbouncer_admin_password=pgbouncer_admin_password,
                 pgbouncer_config=pgbouncer_config,
                 pitr_enabled=branch.pitr_enabled,
@@ -1343,6 +1384,7 @@ def _schedule_branch_environment_tasks(
                 branch_slug=branch.name,
                 parameters=clone_parameters,
                 jwt_secret=jwt_secret,
+                database_admin_password=branch.database_password,
                 pgbouncer_admin_password=pgbouncer_admin_password,
                 source_branch_id=source_id,
                 snapshot_namespace=restore_snapshot["namespace"],
@@ -1364,6 +1406,7 @@ def _schedule_branch_environment_tasks(
                 branch_slug=branch.name,
                 parameters=clone_parameters,
                 jwt_secret=jwt_secret,
+                database_admin_password=branch.database_password,
                 pgbouncer_admin_password=pgbouncer_admin_password,
                 source_branch_id=source_id,
                 copy_data=copy_data,
@@ -1590,13 +1633,8 @@ async def status(
     _project: ProjectDep,
     branch: BranchDep,
 ) -> BranchStatusPublic:
-    normalized_resize_statuses = _normalize_resize_statuses(branch)
     service_status = await collect_branch_service_health(branch.id)
-    return BranchStatusPublic(
-        resize_status=branch.resize_status,
-        resize_statuses=normalized_resize_statuses,
-        service_status=service_status,
-    )
+    return BranchStatusPublic(service_status=service_status)
 
 
 @instance_api.post(
@@ -1606,11 +1644,13 @@ async def status(
     responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
 )
 async def restore(
+    session: SessionDep,
     _organization: OrganizationDep,
     _project: ProjectDep,
     branch: BranchDep,
-    backup: RestoreBackupDep,
+    restore_target: BranchRestoreTarget,
 ) -> Response:
+    backup = await _resolve_restore_backup(session, branch.id, restore_target)
     branch_id = branch.id
     if not backup.snapshot_name or not backup.snapshot_namespace:
         raise HTTPException(status_code=400, detail="Selected backup does not include complete snapshot metadata")
@@ -1628,6 +1668,7 @@ async def restore(
             snapshot_namespace=snapshot_namespace,
             snapshot_name=snapshot_name,
             snapshot_content_name=snapshot_content_name,
+            recovery_target_time=restore_target if isinstance(restore_target, datetime) else None,
         )
     )
 
@@ -1843,15 +1884,14 @@ async def update_pgbouncer_config(
 )
 async def resize(
     session: SessionDep,
-    _organization: OrganizationDep,
-    _project: ProjectDep,
+    request: Request,
+    organization: OrganizationDep,
+    project: ProjectDep,
     parameters: ResizeParameters,
     branch: BranchDep,
 ):
-    branch_in_session = await session.merge(branch)
-
     if parameters.database_size is not None:
-        current_database_size = branch_in_session.database_size
+        current_database_size = branch.database_size
         requested_database_size = parameters.database_size
         if current_database_size is not None and requested_database_size < current_database_size:
             raise HTTPException(
@@ -1863,7 +1903,7 @@ async def resize(
             )
 
     if parameters.storage_size is not None:
-        current_storage = branch_in_session.storage_size
+        current_storage = branch.storage_size
         requested_storage = parameters.storage_size
         if current_storage is not None and requested_storage < current_storage:
             raise HTTPException(
@@ -1874,72 +1914,41 @@ async def resize(
                 ),
             )
 
-    updated_statuses = dict(branch_in_session.resize_statuses or {})
-    timestamp = datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    # Guard against concurrent resizes
+    if branch.resize_task_id is not None:
+        raise HTTPException(status_code=400, detail="A resize operation is already in progress")
 
     effective_parameters: dict[CapaResizeKey, int] = {}
+    for param_key, new_val, current_val in [
+        ("database_size", parameters.database_size, branch.database_size),
+        ("storage_size", parameters.storage_size, branch.storage_size),
+        ("milli_vcpu", parameters.milli_vcpu, branch.milli_vcpu),
+        ("memory_bytes", parameters.memory_bytes, branch.memory),
+        ("iops", parameters.iops, branch.iops),
+    ]:
+        if new_val is not None and new_val != current_val:
+            effective_parameters[cast("CapaResizeKey", param_key)] = new_val
 
-    _track_resize_change(
-        parameter_key="database_size",
-        new_value=parameters.database_size,
-        current_value=branch_in_session.database_size,
-        statuses=updated_statuses,
-        effective=effective_parameters,
-        timestamp=timestamp,
-    )
-    _track_resize_change(
-        parameter_key="storage_size",
-        new_value=parameters.storage_size,
-        current_value=branch_in_session.storage_size,
-        statuses=updated_statuses,
-        effective=effective_parameters,
-        timestamp=timestamp,
-    )
-    _track_resize_change(
-        parameter_key="milli_vcpu",
-        new_value=parameters.milli_vcpu,
-        current_value=branch_in_session.milli_vcpu,
-        statuses=updated_statuses,
-        effective=effective_parameters,
-        timestamp=timestamp,
-    )
-    _track_resize_change(
-        parameter_key="memory_bytes",
-        new_value=parameters.memory_bytes,
-        current_value=branch_in_session.memory,
-        statuses=updated_statuses,
-        effective=effective_parameters,
-        timestamp=timestamp,
-    )
-    _track_resize_change(
-        parameter_key="iops",
-        new_value=parameters.iops,
-        current_value=branch_in_session.iops,
-        statuses=updated_statuses,
-        effective=effective_parameters,
-        timestamp=timestamp,
-    )
+    if not effective_parameters:
+        return Response(status_code=202)
 
-    if effective_parameters:
-        await _ensure_resize_resource_limits(session, branch_in_session, effective_parameters)
-        await _apply_resize_operations(session, branch_in_session, effective_parameters)
-        completion_timestamp = datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-        for param_key, service_key in (
-            ("iops", "database_iops_resize"),
-            ("milli_vcpu", "database_cpu_resize"),
-            ("memory_bytes", "database_memory_resize"),
-        ):
-            if param_key in effective_parameters:
-                updated_statuses[service_key] = {
-                    "status": "COMPLETED",
-                    "timestamp": completion_timestamp,
-                }
+    await _ensure_resize_resource_limits(session, branch, effective_parameters)
 
-    branch_in_session.resize_statuses = updated_statuses
-    branch_in_session.resize_status = aggregate_resize_statuses(updated_statuses)
-    branch_in_session.set_status(BranchServiceStatus.RESIZING)
+    task_id = dispatch_resize(str(branch.id), dict(effective_parameters))
+
+    branch.set_status(BranchServiceStatus.RESIZING)
+    branch.resize_task_id = task_id
     await session.commit()
-    return Response(status_code=202)
+
+    task_url = url_path_for(
+        request,
+        "organizations:projects:branch:tasks:detail",
+        organization_id=await organization.awaitable_attrs.id,
+        project_id=await project.awaitable_attrs.id,
+        branch_id=await branch.awaitable_attrs.id,
+        task_id=task_id,
+    )
+    return Response(status_code=202, headers={"Location": task_url})
 
 
 _control_responses: dict[int | str, dict[str, Any]] = {
@@ -2055,6 +2064,7 @@ async def control_branch(
 
 instance_api.include_router(auth_api, prefix="/auth")
 instance_api.include_router(api_key_api, prefix="/apikeys")
+instance_api.include_router(task_api, prefix="/tasks")
 
 
 api.include_router(instance_api)

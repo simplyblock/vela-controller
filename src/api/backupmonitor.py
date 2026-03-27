@@ -24,7 +24,7 @@ from ..models.project import Project
 from .backup_snapshots import (
     SNAPSHOT_POLL_INTERVAL_SEC,
     SNAPSHOT_TIMEOUT_SEC,
-    create_branch_snapshot,
+    create_branch_snapshot_bundle,
     delete_branch_snapshot,
 )
 from .organization.project.branch import refresh_branch_status
@@ -211,6 +211,11 @@ class BackupMonitor:
         for backup in backups:
             try:
                 await delete_branch_snapshot(
+                    name=backup.wal_snapshot_name,
+                    namespace=backup.snapshot_namespace,
+                    content_name=None,
+                )
+                await delete_branch_snapshot(
                     name=backup.snapshot_name,
                     namespace=backup.snapshot_namespace,
                     content_name=backup.snapshot_content_name,
@@ -308,13 +313,14 @@ class BackupMonitor:
         backup_id = ULID()
 
         try:
-            snapshot = await create_branch_snapshot(
+            data_snapshot, wal_snapshot = await create_branch_snapshot_bundle(
                 branch.id,
                 backup_id=backup_id,
                 snapshot_class=_resolve_snapshot_class(),
                 poll_interval=SNAPSHOT_POLL_INTERVAL_SEC,
                 label=f"row-{row.row_index}",
                 time_limit=SNAPSHOT_TIMEOUT_SEC,
+                include_wal=branch.pitr_enabled,
             )
         except Exception:
             nb.next_at = next_due
@@ -329,11 +335,12 @@ class BackupMonitor:
             branch_id=branch.id,
             row_index=row.row_index,
             created_at=created_at,
-            size_bytes=snapshot.size_bytes or 0,
-            snapshot_uuid=str(snapshot.snapshot_uuid),
-            snapshot_name=snapshot.name,
-            snapshot_namespace=snapshot.namespace,
-            snapshot_content_name=snapshot.content_name,
+            size_bytes=data_snapshot.size_bytes or 0,
+            snapshot_uuid=str(data_snapshot.snapshot_uuid),
+            snapshot_name=data_snapshot.name,
+            snapshot_namespace=data_snapshot.namespace,
+            snapshot_content_name=data_snapshot.content_name,
+            wal_snapshot_name=(wal_snapshot.name if wal_snapshot else None),
         )
         db.add(be)
         await db.flush()
@@ -357,8 +364,8 @@ class BackupMonitor:
             be.id,
             branch.id,
             row.row_index,
-            snapshot.namespace,
-            snapshot.name,
+            data_snapshot.namespace,
+            data_snapshot.name,
         )
 
     async def prune_backups(self, db: AsyncSession, branch: Branch, row: BackupScheduleRow):

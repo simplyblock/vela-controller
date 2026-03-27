@@ -1,15 +1,30 @@
+import asyncio
 import logging
 import math
+import re
+import time
 from collections.abc import Mapping
 from copy import deepcopy
+from decimal import Decimal
 from typing import Any
 
 from aiohttp import ClientError
+from kubernetes.utils import parse_quantity
 from kubernetes_asyncio import client
 
 from ...exceptions import VelaKubernetesError
 from ._util import core_v1_client, custom_api_client, discovery_v1_client, storage_v1_client
 from .neonvm import NeonVM, get_neon_vm
+
+POLL_INTERVAL_SECONDS = 5
+POLL_TIMEOUT_SECONDS = 30 * 60  # 30 minutes
+
+_FAILURE_PATTERN = re.compile(
+    r"\b(resize|resizing|resized)\w*\b.*\b(fail|failure|failed|failing|error|err)\w*\b"
+    r"|"
+    r"\b(fail|failure|failed|failing|error|err)\w*\b.*\b(resize|resizing|resized)\w*\b",
+    flags=re.IGNORECASE,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -292,7 +307,7 @@ class KubernetesService:
                     raise VelaKubernetesError(f"PersistentVolumeClaim {namespace!r}/{name!r} not found") from exc
                 raise
 
-    async def resize_pvc_storage(self, namespace: str, name: str, storage: str) -> None:
+    async def resize_pvc_storage(self, namespace: str, name: str, storage: str, *, wait: bool = False) -> None:
         async with core_v1_client() as core_v1:
             try:
                 await core_v1.patch_namespaced_persistent_volume_claim(
@@ -307,6 +322,31 @@ class KubernetesService:
                 ) from exc
 
         logger.info("Resized PVC %s/%s to %s", namespace, name, storage)
+
+        if wait:
+            await self._poll_pvc_until_complete(namespace, name, parse_quantity(storage))
+
+    async def _poll_pvc_until_complete(self, namespace: str, name: str, target_bytes: Decimal) -> int:
+        """Poll PVC status every 5s until resize completes or fails. Returns actual capacity."""
+        start = time.monotonic()
+        async with core_v1_client() as core_v1:
+            while True:
+                pvc = await core_v1.read_namespaced_persistent_volume_claim(namespace=namespace, name=name)
+
+                capacity_str = (pvc.status.capacity or {}).get("storage")
+                if capacity_str and ((actual := parse_quantity(capacity_str)) >= target_bytes):
+                    return int(actual)
+
+                for condition in pvc.status.conditions or []:
+                    msg = condition.message or ""
+                    if _FAILURE_PATTERN.search(msg):
+                        raise RuntimeError(f"PVC {namespace}/{name} resize failed: {msg}")
+
+                elapsed = time.monotonic() - start
+                if elapsed >= POLL_TIMEOUT_SECONDS:
+                    raise TimeoutError(f"PVC {namespace}/{name} resize timed out after {POLL_TIMEOUT_SECONDS}s")
+
+                await asyncio.sleep(POLL_INTERVAL_SECONDS)
 
     async def get_persistent_volume(self, name: str) -> Any:
         async with core_v1_client() as core_v1:
@@ -334,7 +374,7 @@ class KubernetesService:
         namespace: str,
         name: str,
         *,
-        cpu_milli: int | None,
+        cpu: Decimal | None,
         memory_bytes: int | None,
     ) -> NeonVM:
         """
@@ -345,13 +385,8 @@ class KubernetesService:
 
         vm_manifest = _build_autoscaler_vm_manifest(vm.model_dump(by_alias=True), namespace, name)
         guest_spec = vm_manifest.setdefault("spec", {}).setdefault("guest", {})
-        cpu_block = guest_spec.setdefault("cpus", {})
-        min_milli = guest.cpus.min_milli
-        max_milli = guest.cpus.max_milli
-        limit_milli = cpu_milli if cpu_milli is not None else guest.cpus.use_milli
-        cpu_block["min"] = _milli_to_cores(min_milli)
-        cpu_block["max"] = _milli_to_cores(max_milli)
-        cpu_block["limit"] = _milli_to_cores(limit_milli)
+        if cpu is not None:
+            guest_spec.setdefault("cpus", {})["limit"] = str(cpu)
 
         if memory_bytes is not None:
             slot_size_bytes = guest.slot_size_bytes
@@ -373,6 +408,21 @@ class KubernetesService:
                 )
 
             guest_spec.setdefault("memorySlots", {})["limit"] = desired_slots
+
+        return await self.apply_autoscaler_vm(namespace, name, vm_manifest)
+
+    async def patch_autoscaler_vm_recovery_time(
+        self,
+        namespace: str,
+        name: str,
+        recovery_target_time: str,
+    ) -> NeonVM:
+        """
+        Add or update the RECOVERY_TARGET_TIME environment variable for a Neon autoscaler VM.
+        """
+        vm = await get_neon_vm(namespace, name)
+        vm.guest.env["RECOVERY_TARGET_TIME"] = recovery_target_time
+        vm_manifest = _build_autoscaler_vm_manifest(vm.model_dump(by_alias=True), namespace, name)
 
         return await self.apply_autoscaler_vm(namespace, name, vm_manifest)
 
@@ -399,11 +449,6 @@ class KubernetesService:
             raise VelaKubernetesError(f"Autoscaler VM apply for {namespace!r}/{name!r} failed") from exc
 
         return NeonVM.model_validate(applied)
-
-
-def _milli_to_cores(value: int) -> int | float:
-    cores = value / 1000
-    return int(cores) if cores.is_integer() else cores
 
 
 def _build_autoscaler_vm_manifest(vm_obj: dict[str, Any], namespace: str, name: str) -> dict[str, Any]:

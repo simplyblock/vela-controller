@@ -85,6 +85,26 @@ def single(xs):
         return x
 
 
+def single_or_none(xs):
+    """Returns the single value in the passed collection or None if empty
+
+    If `xs` contains multiple values, a ValueError error is raised.
+    """
+
+    it = iter(xs)
+
+    try:
+        x = next(it)
+    except StopIteration:
+        return None
+
+    try:
+        next(it)
+        raise ValueError("Multiple values present")
+    except StopIteration:
+        return x
+
+
 dbstr = Annotated[str, Field(pattern=r"^[^\x00]*$")]
 
 Name = Annotated[
@@ -149,7 +169,7 @@ Identifier = Annotated[
     ),
 ]
 
-Quantity = Annotated[Decimal, BeforeValidator(parse_quantity)]
+Quantity = Annotated[Decimal, BeforeValidator(parse_quantity), PlainSerializer(lambda d: str(d))]
 
 
 def bytes_to_kb(value: int) -> int:
@@ -221,16 +241,6 @@ def quantity_to_milli_cpu(value: str | Decimal | None) -> int | None:
         return None
 
     return int(quantity * Decimal(1000))
-
-
-def quantity_to_bytes(value: str | Decimal | None) -> int | None:
-    """Convert a Kubernetes-style quantity string (e.g. '10Gi', '512Mi') to bytes."""
-
-    quantity = _normalize_quantity(value)
-    if quantity is None:
-        return None
-
-    return int(quantity)
 
 
 def permissive_numeric_timedelta(value: Any) -> Any:

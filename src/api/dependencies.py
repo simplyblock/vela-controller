@@ -6,14 +6,14 @@ from sqlalchemy.exc import NoResultFound
 from sqlmodel import select
 
 from .._util import Identifier
+from ..database import SessionDep
 from ..models.backups import BackupEntry
-from ..models.branch import Branch, BranchApiKey, BranchRestore, BranchServiceStatus
+from ..models.branch import Branch, BranchApiKey, BranchServiceStatus
 from ..models.organization import Organization
 from ..models.project import Project
 from ..models.role import Role
 from ..models.user import User
 from .auth import authenticated_user
-from .db import SessionDep
 
 
 async def organization_lookup(session: SessionDep, organization_id: Identifier) -> Organization:
@@ -89,22 +89,12 @@ async def _member_lookup(organization: OrganizationDep, user: UserDep) -> User:
 MemberDep = Annotated[User, Depends(_member_lookup)]
 
 
-async def _restore_backup_lookup(
-    session: SessionDep,
-    branch: BranchDep,
-    parameters: BranchRestore,
-) -> BackupEntry:
-    query = select(BackupEntry).where(
-        BackupEntry.id == parameters.backup_id,
-        BackupEntry.branch_id == branch.id,
-    )
-    backup = (await session.execute(query)).scalars().one_or_none()
-    if backup is None:
-        raise HTTPException(status_code=404, detail=f"Backup {parameters.backup_id} not found for this branch")
-    return backup
-
-
-RestoreBackupDep = Annotated[BackupEntry, Depends(_restore_backup_lookup)]
+async def backup_lookup(session: SessionDep, backup_id: Identifier) -> BackupEntry:
+    query = select(BackupEntry).where(BackupEntry.id == backup_id)
+    try:
+        return (await session.execute(query)).scalars().one()
+    except NoResultFound as e:
+        raise HTTPException(404, f"Backup {backup_id} not found") from e
 
 
 async def _api_key_lookup(session: SessionDep, api_key_id: Identifier) -> BranchApiKey:

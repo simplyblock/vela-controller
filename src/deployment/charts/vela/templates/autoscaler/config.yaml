@@ -1,8 +1,8 @@
-{{- if and .Values.autoscalerVm.enabled .Values.composeYaml }}
+{{- if .Values.autoscalerVm.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "vela.autoscaler.composeConfigName" . }}
+  name: {{ include "vela.autoscaler.configName" . }}
   labels:
     {{- include "vela.labels" . | nindent 4 }}
 data:
@@ -10,12 +10,10 @@ data:
 {{- .Values.vectorYaml | nindent 4 }}
   postgresql.conf: |-
 {{- .Values.postgresqlConf | nindent 4 }}
-  docker-compose.yml: |
-{{- .Values.composeYaml | nindent 4 }}
   pg_hba.conf: |-
 {{- .Values.pgHbaConf | nindent 4 }}
   {{- if .Values.pgbouncer.enabled }}
-  {{- $dbPassword := required "Values.secret.db.password is required when PgBouncer is enabled" .Values.secret.db.password }}
+  {{- $dbPassword := required "Values.secret.db.admin_password is required when PgBouncer is enabled" .Values.secret.db.admin_password }}
   {{- $pgbouncerAdminPassword := required "Values.secret.pgbouncer.admin_password is required when PgBouncer is enabled" .Values.secret.pgbouncer.admin_password }}
   {{- $pgbouncerConfig := .Values.pgbouncer.config | default (dict) }}
   namespace: {{ .Release.Namespace }}
