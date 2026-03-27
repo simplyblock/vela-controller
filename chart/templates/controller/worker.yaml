@@ -23,7 +23,7 @@ spec:
         - name: vela-controller-worker
           image: "{{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag }}"
           imagePullPolicy: Always
-          command: ["celery", "-A", "simplyblock.vela.worker", "worker", "--loglevel=info"]
+          command: ["celery", "-A", "simplyblock.vela.worker", "worker", "--loglevel=info", "--concurrency=8"]
           envFrom:
             - configMapRef:
                 name: vela-controller-config
