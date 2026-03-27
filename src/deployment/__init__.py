@@ -9,7 +9,6 @@ from collections.abc import Mapping
 from datetime import datetime
 from importlib import resources
 from typing import TYPE_CHECKING, Annotated, Any, Literal, cast
-from uuid import UUID
 
 import asyncpg
 import yaml
@@ -52,6 +51,8 @@ from .kubernetes import KubernetesService, get_neon_vm
 from .kubernetes._util import custom_api_client
 from .monitors.health import vm_monitor
 from .settings import CloudflareSettings, get_settings
+from .storage_backends import get_storage_backend, SnapshotRef, VolumeQosProfile
+from .storage_backends.simplyblock import ensure_branch_storage_class as ensure_simplyblock_storage_class
 
 if TYPE_CHECKING:
     from cloudflare.types.dns.record_list_params import Name as CloudflareRecordName
@@ -233,31 +234,7 @@ async def _initialize_autoscaler_overlay_endpoints(namespace: str) -> None:
     await _ensure_autoscaler_overlay_endpoint_slices(namespace, overlay_ip)
 
 
-async def resolve_storage_volume_identifiers(namespace: str) -> tuple[UUID, UUID | None]:
-    from .storage_backends.simplyblock import resolve_storage_volume_identifiers as _resolve_storage_volume_identifiers
-
-    return await _resolve_storage_volume_identifiers(namespace)
-
-
-async def resolve_autoscaler_volume_identifiers(namespace: str) -> tuple[UUID, UUID | None]:
-    from .storage_backends.simplyblock import (
-        resolve_autoscaler_volume_identifiers as _resolve_autoscaler_volume_identifiers,
-    )
-
-    return await _resolve_autoscaler_volume_identifiers(namespace)
-
-
-async def resolve_autoscaler_wal_volume_identifiers(namespace: str) -> tuple[UUID, UUID | None]:
-    from .storage_backends.simplyblock import (
-        resolve_autoscaler_wal_volume_identifiers as _resolve_autoscaler_wal_volume_identifiers,
-    )
-
-    return await _resolve_autoscaler_wal_volume_identifiers(namespace)
-
-
 async def resolve_branch_database_volume_size(branch_id: Identifier) -> int:
-    from .storage_backends import get_storage_backend
-
     try:
         volume = await get_storage_backend().lookup_volume(branch_id)
     except VelaDeploymentError as exc:
@@ -268,8 +245,6 @@ async def resolve_branch_database_volume_size(branch_id: Identifier) -> int:
 
 
 async def update_branch_volume_iops(branch_id: Identifier, iops: int) -> None:
-    from .storage_backends import VolumeQosProfile, get_storage_backend
-
     try:
         volume = await get_storage_backend().lookup_volume(branch_id)
         if volume is None:
@@ -282,9 +257,6 @@ async def update_branch_volume_iops(branch_id: Identifier, iops: int) -> None:
 
 
 async def ensure_branch_storage_class(branch_id: Identifier, *, iops: int) -> str:
-    from .storage_backends import get_storage_backend
-    from .storage_backends.simplyblock import ensure_branch_storage_class as ensure_simplyblock_storage_class
-
     backend = get_storage_backend()
     if backend.name == "simplyblock":
         return await ensure_simplyblock_storage_class(branch_id, iops=iops)
@@ -298,8 +270,6 @@ async def clone_branch_database_volume_with_backend(
     database_size: int,
     pitr_enabled: bool = False,
 ) -> None:
-    from .storage_backends import get_storage_backend
-
     backend = get_storage_backend()
     await backend.clone_branch_database_volume(
         source_identifier=source_branch_id,
@@ -318,8 +288,6 @@ async def restore_branch_database_volume_from_snapshot_with_backend(
     snapshot_content_name: str | None,
     database_size: int,
 ) -> None:
-    from .storage_backends import SnapshotRef, get_storage_backend
-
     backend = get_storage_backend()
     await backend.restore_branch_database_volume_from_snapshot(
         source_identifier=source_branch_id,
