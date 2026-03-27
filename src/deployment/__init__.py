@@ -51,7 +51,7 @@ from .kubernetes import KubernetesService, get_neon_vm
 from .kubernetes._util import custom_api_client
 from .monitors.health import vm_monitor
 from .settings import CloudflareSettings, get_settings
-from .storage_backends import get_storage_backend, SnapshotRef, VolumeQosProfile
+from .storage_backends import SnapshotRef, VolumeQosProfile, get_storage_backend
 from .storage_backends.simplyblock import ensure_branch_storage_class as ensure_simplyblock_storage_class
 
 if TYPE_CHECKING:
