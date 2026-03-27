@@ -25,6 +25,8 @@ from ....._util import DEFAULT_DB_NAME, DEFAULT_DB_USER, IOPS_MIN, Identifier, s
 from ....._util.crypto import encrypt_with_passphrase, generate_keys
 from .....database import AsyncSessionLocal, SessionDep
 from .....deployment import (
+    AUTOSCALER_PVC_SUFFIX,
+    STORAGE_PVC_SUFFIX,
     DeploymentParameters,
     ResizeParameters,
     branch_api_domain,
@@ -39,6 +41,7 @@ from .....deployment import (
     resolve_branch_database_volume_size,
     restore_branch_database_volume_from_snapshot_with_backend,
     update_branch_database_password,
+    update_branch_volume_iops,
 )
 from .....deployment._util import deployment_namespace
 from .....deployment.health import (
@@ -689,6 +692,15 @@ async def _build_branch_entity(
     entity.database_password = _generate_database_password(entity)
     entity.pgbouncer_config = _default_pgbouncer_config()
     return entity
+
+
+type BranchResizeService = Literal[
+    "database_disk_resize",
+    "storage_api_disk_resize",
+    "database_cpu_resize",
+    "database_memory_resize",
+    "database_iops_resize",
+]
 
 
 _PARAMETER_TO_SERVICE: dict[CapaResizeKey, BranchResizeService] = {
