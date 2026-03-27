@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials
 from keycloak.exceptions import KeycloakError
 from kubernetes_asyncio.client.exceptions import ApiException
-from pydantic import AfterValidator
+from pydantic import AfterValidator, BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
@@ -2134,3 +2134,89 @@ async def _apply_pgbouncer_settings(*, host: str, password: str, update_commands
 def _persist_pgbouncer_settings(config: PgbouncerConfig, updates: dict[str, int]) -> None:
     for field, value in updates.items():
         setattr(config, field, value)
+
+
+class CompactWalResponse(BaseModel):
+    safe_wal: str
+    snapshot_name: str
+    removed_files: int | None = None
+
+
+@api.post("/{branch_id}/compactwal", response_model=CompactWalResponse)
+async def compact_branch_wal(
+    branch: BranchDep,
+) -> CompactWalResponse:
+    if not branch.pitr_enabled:
+        raise HTTPException(status_code=400, detail="PITR is not enabled for this branch.")
+
+    import contextlib
+    import time
+
+    import asyncpg
+    import httpx
+    from asyncpg import exceptions as asyncpg_exceptions
+
+    from .....deployment import AUTOSCALER_PVC_SUFFIX, branch_db_domain, get_autoscaler_vm_identity
+    from .....deployment.kubernetes.snapshot import create_snapshot_from_pvc
+
+    db_host = branch_db_domain(branch.id)
+    connection = None
+    try:
+        connection = await asyncpg.connect(
+            user="supabase_admin",
+            password=branch.database_password,
+            database=branch.database,
+            host=db_host,
+            port=5432,
+            server_settings={"application_name": "vela-wal-compact"},
+            command_timeout=10,
+        )
+        safe_wal = await connection.fetchval("SELECT pg_walfile_name(redo_lsn) FROM pg_control_checkpoint();")
+    except (asyncpg_exceptions.PostgresError, OSError) as exc:
+        logger.exception("Failed to connect to database %s to determine safe WAL", branch.id)
+        raise HTTPException(status_code=502, detail="Failed to connect to database to determine safe WAL.") from exc
+    finally:
+        with contextlib.suppress(Exception):
+            if connection is not None:
+                await connection.close()
+
+    if not safe_wal:
+        raise HTTPException(status_code=500, detail="Safe WAL query returned null.")
+
+    namespace, vm_name = get_autoscaler_vm_identity(branch.id)
+    pvc_name = f"{vm_name}{AUTOSCALER_PVC_SUFFIX}"
+    snapshot_name = f"{str(branch.id).lower()}-compact-{int(time.time())}"[:63]
+    snapshot_class = "simplyblock-csi-snapshotclass"
+
+    try:
+        await create_snapshot_from_pvc(
+            namespace=namespace,
+            name=snapshot_name,
+            snapshot_class=snapshot_class,
+            pvc_name=pvc_name,
+        )
+        logger.info("Created simplyblock compaction snapshot %s for branch %s", snapshot_name, branch.id)
+    except ApiException as exc:
+        logger.exception("Failed to create snapshot for branch %s", branch.id)
+        raise HTTPException(status_code=500, detail="Failed to create WAL compaction snapshot.") from exc
+
+    removed_files = None
+    daemon_url = f"http://{db_host}:9100/wal/compact"
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                daemon_url,
+                json={"safe_wal": safe_wal, "archive_dir": "/wal-archive"},
+                timeout=15.0,
+            )
+            response.raise_for_status()
+            logger.info("Successfully compacted WAL archives for branch %s up to %s", branch.id, safe_wal)
+            removed_files = 0
+    except httpx.HTTPError as exc:
+        logger.warning("Failed to invoke neonvm-daemon /wal/compact, old WALs may not be deleted: %s", exc)
+
+    return CompactWalResponse(
+        safe_wal=safe_wal,
+        snapshot_name=snapshot_name,
+        removed_files=removed_files,
+    )
