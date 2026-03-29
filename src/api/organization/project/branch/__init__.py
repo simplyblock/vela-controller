@@ -50,6 +50,7 @@ from .....deployment.kubernetes.neonvm import set_virtualmachine_power_state
 from .....deployment.kubernetes.volume_clone import (
     clone_branch_database_volume,
     restore_branch_database_volume_from_snapshot,
+    restore_branch_wal_volume_from_snapshot,
 )
 from .....deployment.settings import get_settings as get_deployment_settings
 from .....exceptions import VelaDeploymentError, VelaError, VelaKubernetesError, VelaSimplyblockAPIError
@@ -344,6 +345,7 @@ class RestoreSnapshotContext(TypedDict):
     namespace: str
     name: str
     content_name: str | None
+    wal_snapshot_name: str | None
 
 
 def snapshot_pgbouncer_config(config: PgbouncerConfig | None) -> PgbouncerConfigSnapshot:
@@ -747,6 +749,7 @@ async def _clone_branch_environment_task(
                 pvc_timeout_seconds=_PVC_CLONE_TIMEOUT_SECONDS,
                 pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
                 database_size=parameters.database_size,
+                pitr_enabled=pitr_enabled,
             )
         except VelaError:
             await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
@@ -802,6 +805,7 @@ async def _restore_branch_environment_task(
     snapshot_namespace: str,
     snapshot_name: str,
     snapshot_content_name: str | None,
+    wal_snapshot_name: str | None,
     restore_database_size: int,
     pgbouncer_config: PgbouncerConfigSnapshot,
     pitr_enabled: bool,
@@ -824,6 +828,19 @@ async def _restore_branch_environment_task(
             pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
             database_size=restore_database_size,
         )
+        if wal_snapshot_name is not None:
+            await restore_branch_wal_volume_from_snapshot(
+                source_branch_id=source_branch_id,
+                target_branch_id=branch_id,
+                snapshot_namespace=snapshot_namespace,
+                snapshot_name=wal_snapshot_name,
+                snapshot_class=_VOLUME_SNAPSHOT_CLASS,
+                storage_class_name=storage_class_name,
+                snapshot_timeout_seconds=_SNAPSHOT_TIMEOUT_SECONDS,
+                snapshot_poll_interval_seconds=_SNAPSHOT_POLL_INTERVAL_SECONDS,
+                pvc_timeout_seconds=_PVC_TIMEOUT_SECONDS,
+                pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
+            )
     except VelaError:
         await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
         await _cleanup_failed_branch_deployment(branch_id)
@@ -1295,6 +1312,7 @@ def _schedule_branch_environment_tasks(
                 snapshot_namespace=restore_snapshot["namespace"],
                 snapshot_name=restore_snapshot["name"],
                 snapshot_content_name=restore_snapshot["content_name"],
+                wal_snapshot_name=restore_snapshot["wal_snapshot_name"],
                 restore_database_size=restore_database_size,
                 pgbouncer_config=pgbouncer_config,
                 pitr_enabled=branch.pitr_enabled,
@@ -1359,6 +1377,7 @@ async def create(  # noqa: C901
             namespace=cast("str", backup_entry.snapshot_namespace),
             name=cast("str", backup_entry.snapshot_name),
             content_name=backup_entry.snapshot_content_name,
+            wal_snapshot_name=backup_entry.wal_snapshot_name,
         )
     source_id: Identifier | None = getattr(source, "id", None)
     clone_parameters: DeploymentParameters | None = None

@@ -5,12 +5,15 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
+from kubernetes.utils import parse_quantity
+
 from ..._util import Identifier
 from ...exceptions import VelaKubernetesError
 from .. import (
     _POD_SECURITY_LABELS,
     AUTOSCALER_PVC_SUFFIX,
     AUTOSCALER_WAL_PVC_SUFFIX,
+    PITR_WAL_PVC_SIZE,
     get_autoscaler_vm_identity,
     kube_service,
 )
@@ -35,6 +38,8 @@ from .snapshot import (
 )
 
 logger = logging.getLogger(__name__)
+
+_PITR_WAL_PVC_SIZE_BYTES: int = int(parse_quantity(PITR_WAL_PVC_SIZE))
 
 
 @dataclass(frozen=True)
@@ -319,6 +324,7 @@ class _SnapshotRestoreOperation:
     storage_class_name: str
     target_database_size: int
     timeouts: CloneTimeouts
+    pvc_suffix: str = AUTOSCALER_PVC_SUFFIX
     ids: CloneIdentifiers = field(init=False)
     created_target_snapshot: bool = field(default=False, init=False)
     created_content: bool = field(default=False, init=False)
@@ -327,8 +333,8 @@ class _SnapshotRestoreOperation:
         source_ns = self.snapshot_namespace
         _, source_vm_name = get_autoscaler_vm_identity(self.source_branch_id)
         target_ns, target_vm_name = get_autoscaler_vm_identity(self.target_branch_id)
-        pvc_name = f"{source_vm_name}{AUTOSCALER_PVC_SUFFIX}"
-        target_pvc_name = f"{target_vm_name}{AUTOSCALER_PVC_SUFFIX}"
+        pvc_name = f"{source_vm_name}{self.pvc_suffix}"
+        target_pvc_name = f"{target_vm_name}{self.pvc_suffix}"
         if target_pvc_name != pvc_name:
             raise VelaKubernetesError(
                 f"Autoscaler PVC name mismatch between source ({pvc_name}) and target ({target_pvc_name})"
@@ -520,7 +526,7 @@ async def clone_branch_database_volume(
             target_branch_id=target_branch_id,
             snapshot_class=snapshot_class,
             storage_class_name=storage_class_name,
-            target_database_size=database_size,
+            target_database_size=_PITR_WAL_PVC_SIZE_BYTES,
             timeouts=timeouts,
             volume_label="wal",
             pvc_suffix=AUTOSCALER_WAL_PVC_SUFFIX,
@@ -555,6 +561,43 @@ async def restore_branch_database_volume_from_snapshot(
         snapshot_class=snapshot_class,
         storage_class_name=storage_class_name,
         target_database_size=database_size,
+        timeouts=CloneTimeouts(
+            snapshot_ready=snapshot_timeout_seconds,
+            snapshot_poll=snapshot_poll_interval_seconds,
+            pvc_ready=pvc_timeout_seconds,
+            pvc_poll=pvc_poll_interval_seconds,
+        ),
+    )
+    await operation.run()
+
+
+async def restore_branch_wal_volume_from_snapshot(
+    *,
+    source_branch_id: Identifier,
+    target_branch_id: Identifier,
+    snapshot_namespace: str,
+    snapshot_name: str,
+    snapshot_class: str,
+    storage_class_name: str,
+    snapshot_timeout_seconds: float,
+    snapshot_poll_interval_seconds: float,
+    pvc_timeout_seconds: float,
+    pvc_poll_interval_seconds: float,
+) -> None:
+    """
+    Restore the WAL volume for a PITR-enabled branch from an existing VolumeSnapshot.
+    The WAL PVC is always restored to PITR_WAL_PVC_SIZE (100Gi).
+    """
+    operation = _SnapshotRestoreOperation(
+        source_branch_id=source_branch_id,
+        target_branch_id=target_branch_id,
+        snapshot_namespace=snapshot_namespace,
+        snapshot_name=snapshot_name,
+        snapshot_content_name=None,
+        snapshot_class=snapshot_class,
+        storage_class_name=storage_class_name,
+        target_database_size=_PITR_WAL_PVC_SIZE_BYTES,
+        pvc_suffix=AUTOSCALER_WAL_PVC_SUFFIX,
         timeouts=CloneTimeouts(
             snapshot_ready=snapshot_timeout_seconds,
             snapshot_poll=snapshot_poll_interval_seconds,
