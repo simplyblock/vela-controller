@@ -46,6 +46,7 @@ class Phase(Enum):
     scaling = "Scaling"
     pending = "Pending"
     succeeded = "Succeeded"
+    stopped = "Stopped"
     failed = "Failed"
 
 
