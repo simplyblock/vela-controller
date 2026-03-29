@@ -72,7 +72,7 @@ def deployment_status(id_: Identifier) -> BranchServiceStatus:
     if status.phase == Phase.failed:
         return BranchServiceStatus.ERROR
 
-    if status.phase in {Phase.succeeded, Phase.pending}:
+    if status.phase in {Phase.succeeded, Phase.stopped, Phase.pending}:
         return BranchServiceStatus.STOPPED
 
     if status.services is None or not status.services.get("postgres", False):
