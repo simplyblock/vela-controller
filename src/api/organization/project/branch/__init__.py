@@ -687,6 +687,7 @@ async def _deploy_branch_environment_task(
     pgbouncer_admin_password: str,
     pgbouncer_config: PgbouncerConfigSnapshot,
     pitr_enabled: bool,
+    initial_password: str,
 ) -> None:
     await _persist_branch_status(branch_id, BranchServiceStatus.CREATING)
     try:
@@ -702,6 +703,7 @@ async def _deploy_branch_environment_task(
             pgbouncer_admin_password=pgbouncer_admin_password,
             pgbouncer_config=pgbouncer_snapshot_to_mapping(pgbouncer_config),
             pitr_enabled=pitr_enabled,
+            initial_password=initial_password,
         )
     except VelaError:
         await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
@@ -731,6 +733,7 @@ async def _clone_branch_environment_task(
     copy_data: bool,
     pgbouncer_config: PgbouncerConfigSnapshot,
     pitr_enabled: bool,
+    initial_password: str | None,
 ) -> None:
     await _persist_branch_status(branch_id, BranchServiceStatus.CREATING)
     storage_class_name: str | None = None
@@ -773,6 +776,7 @@ async def _clone_branch_environment_task(
             use_existing_pvc=copy_data,
             pgbouncer_config=pgbouncer_snapshot_to_mapping(pgbouncer_config),
             pitr_enabled=pitr_enabled,
+            initial_password=initial_password,
         )
     except VelaError:
         await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
@@ -805,6 +809,7 @@ async def _restore_branch_environment_task(
     restore_database_size: int,
     pgbouncer_config: PgbouncerConfigSnapshot,
     pitr_enabled: bool,
+    initial_password: str | None,
 ) -> None:
     await _persist_branch_status(branch_id, BranchServiceStatus.CREATING)
     storage_class_name: str | None = None
@@ -851,6 +856,7 @@ async def _restore_branch_environment_task(
             use_existing_pvc=True,
             pgbouncer_config=pgbouncer_snapshot_to_mapping(pgbouncer_config),
             pitr_enabled=pitr_enabled,
+            initial_password=initial_password,
         )
     except VelaError:
         await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
@@ -1259,6 +1265,7 @@ def _schedule_branch_environment_tasks(
     pgbouncer_config: PgbouncerConfigSnapshot,
     restore_snapshot: RestoreSnapshotContext | None,
     restore_database_size: int | None,
+    initial_password: str | None = None,
 ) -> None:
     if deployment_parameters is not None:
         asyncio.create_task(
@@ -1274,6 +1281,7 @@ def _schedule_branch_environment_tasks(
                 pgbouncer_admin_password=pgbouncer_admin_password,
                 pgbouncer_config=pgbouncer_config,
                 pitr_enabled=branch.pitr_enabled,
+                initial_password=deployment_parameters.database_password,
             )
         )
         return
@@ -1298,6 +1306,7 @@ def _schedule_branch_environment_tasks(
                 restore_database_size=restore_database_size,
                 pgbouncer_config=pgbouncer_config,
                 pitr_enabled=branch.pitr_enabled,
+                initial_password=initial_password,
             )
         )
         return
@@ -1317,6 +1326,7 @@ def _schedule_branch_environment_tasks(
                 copy_data=copy_data,
                 pgbouncer_config=pgbouncer_config,
                 pitr_enabled=branch.pitr_enabled,
+                initial_password=initial_password,
             )
         )
 
@@ -1363,11 +1373,11 @@ async def create(  # noqa: C901
     source_id: Identifier | None = getattr(source, "id", None)
     clone_parameters: DeploymentParameters | None = None
     restore_database_size: int | None = None
+    source_overrides: BranchSourceDeploymentParameters | None = None
     restore_params = parameters.restore
     is_restore = restore_params is not None
     is_data_clone = bool(parameters.source and parameters.source.data_copy)
     if source is not None:
-        source_overrides: BranchSourceDeploymentParameters | None = None
         if parameters.source is not None:
             source_overrides = parameters.source.deployment_parameters
         elif restore_params is not None:
@@ -1480,6 +1490,10 @@ async def create(  # noqa: C901
     )
     restore_snapshot: RestoreSnapshotContext | None = restore_snapshot_context
 
+    clone_initial_password: str | None = None
+    if source_overrides is not None and source_overrides.database_password is not None:
+        clone_initial_password = source_overrides.database_password
+
     _schedule_branch_environment_tasks(
         deployment_parameters=parameters.deployment,
         organization_id=organization.id,
@@ -1494,6 +1508,7 @@ async def create(  # noqa: C901
         pgbouncer_config=pgbouncer_config_snapshot,
         restore_snapshot=restore_snapshot,
         restore_database_size=restore_database_size,
+        initial_password=clone_initial_password,
     )
 
     payload = (await _public(entity)).model_dump(mode="json") if response == "full" else None

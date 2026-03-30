@@ -503,6 +503,7 @@ async def create_vela_config(
     ensure_namespace: bool = True,
     pgbouncer_config: Mapping[str, int] | None = None,
     pitr_enabled: bool = False,
+    initial_password: str | None = None,
 ):
     namespace = deployment_namespace(branch_id)
     logging.info(
@@ -568,7 +569,8 @@ async def create_vela_config(
                 text=True,
             )
             await _initialize_autoscaler_overlay_endpoints(namespace)
-            await set_initial_password(branch_id, parameters.database_password, database_admin_password, timeout=240)
+            if initial_password is not None:
+                await set_initial_password(branch_id, initial_password, database_admin_password, timeout=240)
         except subprocess.CalledProcessError as e:
             logger.exception(f"Failed to create deployment: {e.stderr}")
             release_name = _release_name()
@@ -1259,6 +1261,7 @@ async def deploy_branch_environment(
     pgbouncer_config: Mapping[str, int],
     use_existing_pvc: bool = False,
     pitr_enabled: bool = False,
+    initial_password: str | None = None,
 ) -> None:
     """Background task: provision infra for a branch and persist the resulting endpoint."""
     await kube_service.ensure_namespace(deployment_namespace(branch_id), labels=_POD_SECURITY_LABELS)
@@ -1276,6 +1279,7 @@ async def deploy_branch_environment(
             ensure_namespace=False,
             pgbouncer_config=pgbouncer_config,
             pitr_enabled=pitr_enabled,
+            initial_password=initial_password,
         ),
         provision_branch_endpoints(
             spec=BranchEndpointProvisionSpec(
