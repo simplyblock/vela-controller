@@ -102,18 +102,6 @@ api = APIRouter(tags=["branch"])
 logger = logging.getLogger(__name__)
 
 
-_TRANSITIONAL_BRANCH_STATUSES: set[BranchServiceStatus] = {
-    BranchServiceStatus.CREATING,
-    BranchServiceStatus.STARTING,
-    BranchServiceStatus.STOPPING,
-    BranchServiceStatus.RESTARTING,
-    BranchServiceStatus.PAUSING,
-    BranchServiceStatus.RESUMING,
-    BranchServiceStatus.UPDATING,
-    BranchServiceStatus.DELETING,
-    BranchServiceStatus.RESIZING,
-}
-_PROTECTED_BRANCH_STATUSES: set[BranchServiceStatus] = {BranchServiceStatus.PAUSED}
 _CREATING_STATUS_ERROR_GRACE_PERIOD = timedelta(minutes=5)
 _STARTING_STATUS_ERROR_GRACE_PERIOD = timedelta(minutes=5)
 
@@ -180,71 +168,74 @@ def _should_update_branch_status(
     current: BranchServiceStatus,
     derived: BranchServiceStatus,
     *,
-    resize_in_progress: bool = True,
+    resize_in_progress: bool = False,
 ) -> bool:
     if current == derived:
         return False
+
+    # Resize is driven by a background task. Only ERROR exits while the task runs;
+    # once the task clears resize_task_id, any terminal state is accepted.
     if current == BranchServiceStatus.RESIZING:
-        if not resize_in_progress:
-            return derived in {
-                BranchServiceStatus.ACTIVE_HEALTHY,
-                BranchServiceStatus.ACTIVE_UNHEALTHY,
-                BranchServiceStatus.STOPPED,
-                BranchServiceStatus.ERROR,
-            }
-        return derived == BranchServiceStatus.ERROR
-    if current == BranchServiceStatus.STARTING and derived == BranchServiceStatus.STOPPED:
-        logger.debug("Ignoring STARTING -> STOPPED transition detected by branch status monitor")
-        return False
-    if current in _PROTECTED_BRANCH_STATUSES and derived not in {
-        BranchServiceStatus.ACTIVE_HEALTHY,
-        BranchServiceStatus.ERROR,
+        if resize_in_progress:
+            return derived == BranchServiceStatus.ERROR
+        return derived in {
+            BranchServiceStatus.ACTIVE_HEALTHY,
+            BranchServiceStatus.ACTIVE_UNHEALTHY,
+            BranchServiceStatus.STOPPED,
+            BranchServiceStatus.ERROR,
+        }
+
+    # During creation or start, a STOPPED observation is premature noise — services haven't
+    # come up yet. _adjust_derived_status_for_stuck_start converts it to ERROR after the
+    # grace period if the VM genuinely never starts.
+    if derived == BranchServiceStatus.STOPPED and current in {
+        BranchServiceStatus.CREATING,
+        BranchServiceStatus.STARTING,
     }:
         return False
-    if (
-        derived == BranchServiceStatus.STOPPED
-        and current in _TRANSITIONAL_BRANCH_STATUSES
-        and current != BranchServiceStatus.STOPPING
-    ):
-        return False
-    if derived in {
-        BranchServiceStatus.ACTIVE_HEALTHY,
-        BranchServiceStatus.ACTIVE_UNHEALTHY,
-        BranchServiceStatus.STOPPED,
-        BranchServiceStatus.ERROR,
-    }:
-        return True
+
+    # PAUSED is a protected state: only restored health or an error can unseal it.
+    if current == BranchServiceStatus.PAUSED:
+        return derived in {BranchServiceStatus.ACTIVE_HEALTHY, BranchServiceStatus.ERROR}
+
+    # UNKNOWN is a weak signal — don't let it overwrite a more meaningful state.
     if derived == BranchServiceStatus.UNKNOWN:
-        if current == BranchServiceStatus.ERROR:
-            return False
-        return current not in _TRANSITIONAL_BRANCH_STATUSES and current not in _PROTECTED_BRANCH_STATUSES
+        return current not in {
+            BranchServiceStatus.CREATING,
+            BranchServiceStatus.STARTING,
+            BranchServiceStatus.PAUSED,
+            BranchServiceStatus.ERROR,
+        }
+
     return True
 
 
-def _adjust_derived_status_for_stuck_creation(
+def _adjust_derived_status_for_stuck_start(
     branch: Branch, current: BranchServiceStatus, derived: BranchServiceStatus
 ) -> BranchServiceStatus:
+    """Convert a prolonged STOPPED observation to ERROR for branches stuck in a transient boot state."""
     if derived != BranchServiceStatus.STOPPED:
         return derived
 
-    status_timestamp = branch.status_updated_at or branch.created_datetime
-    elapsed = datetime.now(UTC) - status_timestamp
+    if current == BranchServiceStatus.CREATING:
+        elapsed = datetime.now(UTC) - (branch.status_updated_at or branch.created_datetime)
+        if elapsed >= _CREATING_STATUS_ERROR_GRACE_PERIOD:
+            logger.warning(
+                "Branch %s still CREATING after %s with STOPPED services; marking ERROR",
+                branch.id,
+                elapsed,
+            )
+            return BranchServiceStatus.ERROR
 
-    if current == BranchServiceStatus.CREATING and elapsed >= _CREATING_STATUS_ERROR_GRACE_PERIOD:
-        logger.warning(
-            "Branch %s still CREATING after %s with STOPPED services; marking ERROR",
-            branch.id,
-            elapsed,
-        )
-        return BranchServiceStatus.ERROR
-
-    if current == BranchServiceStatus.STARTING and elapsed >= _STARTING_STATUS_ERROR_GRACE_PERIOD:
-        logger.warning(
-            "Branch %s still STARTING after %s with STOPPED services; marking ERROR",
-            branch.id,
-            elapsed,
-        )
-        return BranchServiceStatus.ERROR
+    if current == BranchServiceStatus.STARTING and branch.start_requested_at is not None:
+        elapsed = datetime.now(UTC) - branch.start_requested_at
+        if elapsed >= _STARTING_STATUS_ERROR_GRACE_PERIOD:
+            logger.warning(
+                "Branch %s still STARTING after %s with STOPPED services; marking ERROR",
+                branch.id,
+                elapsed,
+            )
+            return BranchServiceStatus.ERROR
 
     return derived
 
@@ -269,18 +260,22 @@ async def refresh_branch_status(branch_id: Identifier) -> BranchServiceStatus:
 
 async def _refresh_branch_status(branch: Branch) -> BranchServiceStatus:
     current_status = _parse_branch_status(branch.status)
-    status = deployment_status(branch.id)
+    derived = deployment_status(branch.id)
 
-    status = _adjust_derived_status_for_stuck_creation(
-        branch,
-        current_status,
-        status,
-    )
+    derived = _adjust_derived_status_for_stuck_start(branch, current_status, derived)
 
     resize_in_progress = branch.resize_task_id is not None
-    if _should_update_branch_status(current_status, status, resize_in_progress=resize_in_progress):
-        branch.set_status(status)
-        return status
+    if _should_update_branch_status(current_status, derived, resize_in_progress=resize_in_progress):
+        branch.set_status(derived)
+        # Once the branch settles into any stable state, the start is no longer in flight.
+        if branch.start_requested_at is not None and derived in {
+            BranchServiceStatus.ACTIVE_HEALTHY,
+            BranchServiceStatus.ACTIVE_UNHEALTHY,
+            BranchServiceStatus.STOPPED,
+            BranchServiceStatus.ERROR,
+        }:
+            branch.start_requested_at = None
+        return derived
 
     return current_status
 
@@ -1864,47 +1859,10 @@ _CONTROL_TO_AUTOSCALER_POWERSTATE: dict[str, NeonVMPowerState] = {
     "stop": "Stopped",
 }
 
-_CONTROL_TRANSITION_INITIAL: dict[str, BranchServiceStatus] = {
-    "pause": BranchServiceStatus.PAUSING,
-    "resume": BranchServiceStatus.RESUMING,
-    "start": BranchServiceStatus.STARTING,
-    "stop": BranchServiceStatus.STOPPING,
-}
-
-_CONTROL_TRANSITION_FINAL: dict[str, BranchServiceStatus | None] = {
-    "pause": BranchServiceStatus.PAUSED,
-    "resume": BranchServiceStatus.STARTING,
-    "start": None,
-    "stop": BranchServiceStatus.STOPPED,
-}
-
 
 async def _set_branch_status(session: SessionDep, branch: Branch, status: BranchServiceStatus):
     branch.set_status(status)
     await session.commit()
-
-
-async def _set_final_branch_status(session: SessionDep, branch: Branch, action: str) -> None:
-    final_status = _CONTROL_TRANSITION_FINAL[action]
-    if final_status is None:
-        return
-    await _set_branch_status(session, branch, final_status)
-
-
-async def _set_autoscaler_power_state(action: str, namespace: str, name: str) -> None:
-    power_state = _CONTROL_TO_AUTOSCALER_POWERSTATE.get(action)
-    if power_state is None:
-        return
-    await set_virtualmachine_power_state(namespace, name, power_state)
-
-
-async def _apply_branch_action(
-    *,
-    action: str,
-    autoscaler_namespace: str,
-    autoscaler_vm_name: str,
-) -> None:
-    await _set_autoscaler_power_state(action, autoscaler_namespace, autoscaler_vm_name)
 
 
 @instance_api.post(
@@ -1940,25 +1898,39 @@ async def control_branch(
 ):
     action = request.scope["route"].name.split(":")[-1]
     assert action in _CONTROL_TO_AUTOSCALER_POWERSTATE
+
     branch_in_session = await session.merge(branch)
     branch_id = branch_in_session.id
     autoscaler_namespace, autoscaler_vm_name = get_autoscaler_vm_identity(branch_id)
-    await _set_branch_status(session, branch_in_session, _CONTROL_TRANSITION_INITIAL[action])
+
+    # start/resume: record when the start was requested and move to STARTING immediately.
+    # The health monitor will drive STARTING → ACTIVE_HEALTHY once services are up.
+    if action in ("start", "resume"):
+        branch_in_session.start_requested_at = datetime.now(UTC)
+        await _set_branch_status(session, branch_in_session, BranchServiceStatus.STARTING)
+
     try:
-        await _apply_branch_action(
-            action=action,
-            autoscaler_namespace=autoscaler_namespace,
-            autoscaler_vm_name=autoscaler_vm_name,
-        )
+        power_state = _CONTROL_TO_AUTOSCALER_POWERSTATE[action]
+        await set_virtualmachine_power_state(autoscaler_namespace, autoscaler_vm_name, power_state)
     except ApiException as e:
+        branch_in_session.start_requested_at = None
         await _set_branch_status(session, branch_in_session, BranchServiceStatus.ERROR)
         status = 404 if e.status == 404 else 400
         raise HTTPException(status_code=status, detail=e.body or str(e)) from e
     except VelaKubernetesError as e:
+        branch_in_session.start_requested_at = None
         await _set_branch_status(session, branch_in_session, BranchServiceStatus.ERROR)
         raise HTTPException(status_code=500, detail=str(e)) from e
-    else:
-        await _set_final_branch_status(session, branch_in_session, action)
+
+    # stop/pause: the k8s patch is synchronous, so the branch is already stopped/paused.
+    # Cancel any in-flight start and write the final state immediately.
+    if action == "stop":
+        branch_in_session.start_requested_at = None
+        await _set_branch_status(session, branch_in_session, BranchServiceStatus.STOPPED)
+    elif action == "pause":
+        branch_in_session.start_requested_at = None
+        await _set_branch_status(session, branch_in_session, BranchServiceStatus.PAUSED)
+
     return Response(status_code=204)
 
 

@@ -108,6 +108,10 @@ class Branch(AsyncAttrs, Model, table=True):
     )
     pitr_enabled: bool = Field(default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false")))
     resize_task_id: uuid.UUID | None = Field(default=None, nullable=True)
+    # Set when a start/resume is dispatched; cleared once the branch reaches a stable state.
+    # The health monitor uses this to know it should wait for ACTIVE_HEALTHY rather than
+    # accepting an early STOPPED observation as the branch's real state.
+    start_requested_at: datetime | None = Field(default=None, nullable=True, sa_type=DateTimeTZ)
 
     __table_args__ = (UniqueConstraint("project_id", "name", name="unique_branch_name_per_project"),)
 
