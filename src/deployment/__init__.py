@@ -568,6 +568,7 @@ async def create_vela_config(
                 text=True,
             )
             await _initialize_autoscaler_overlay_endpoints(namespace)
+            await set_initial_password(branch_id, parameters.database_password, database_admin_password, timeout=240)
         except subprocess.CalledProcessError as e:
             logger.exception(f"Failed to create deployment: {e.stderr}")
             release_name = _release_name()
@@ -1240,6 +1241,7 @@ async def set_initial_password(branch_id: Identifier, password: str, admin_passw
         username=DEFAULT_DB_USER,
         admin_password=admin_password,
         new_password=password,
+        ssl="allow",
     )
 
 
@@ -1286,11 +1288,10 @@ async def deploy_branch_environment(
             ref=ref,
         ),
         create_vela_grafana_obj(organization_id, branch_id, credential),
-        set_initial_password(branch_id, parameters.database_password, database_admin_password, timeout=240),
         return_exceptions=True,
     )
 
-    config_result, endpoint_result, grafana_result, set_password_result = results
+    config_result, endpoint_result, grafana_result = results
     if isinstance(grafana_result, Exception):
         logger.error(
             "Grafana object creation failed for organization_id=%s branch_id=%s",
@@ -1298,7 +1299,5 @@ async def deploy_branch_environment(
             branch_id,
             exc_info=grafana_result,
         )
-    if exceptions := [
-        result for result in (config_result, endpoint_result, set_password_result) if isinstance(result, Exception)
-    ]:
+    if exceptions := [result for result in (config_result, endpoint_result) if isinstance(result, Exception)]:
         raise VelaDeployError("Failed operations during vela deployment", exceptions)
