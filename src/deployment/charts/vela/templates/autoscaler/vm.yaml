@@ -23,6 +23,7 @@ metadata:
   labels:
     {{- include "vela.labels" . | nindent 4 }}
     autoscaling.neon.tech/enabled: "true"
+    autoscaling.neon.tech/auto-migration-enabled: "true"
 spec:
   powerState: {{ .Values.autoscalerVm.powerState }}
   extraNetwork:
