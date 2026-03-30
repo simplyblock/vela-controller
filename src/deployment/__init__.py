@@ -391,6 +391,37 @@ def _load_chart_values(chart_root: Any) -> dict[str, Any]:
     return values_content
 
 
+async def _create_fresh_pvcs(
+    namespace: str,
+    storage_class_name: str,
+    parameters: DeploymentParameters,
+    *,
+    pitr_enabled: bool,
+) -> None:
+    """Create empty block PVCs for a brand-new deployment before helm install."""
+    from .kubernetes.pvc import create_pvc
+
+    access_modes = ["ReadWriteMany"]
+
+    def _pvc(name: str, size: str) -> kubernetes_client.V1PersistentVolumeClaim:
+        return kubernetes_client.V1PersistentVolumeClaim(
+            metadata=kubernetes_client.V1ObjectMeta(name=name),
+            spec=kubernetes_client.V1PersistentVolumeClaimSpec(
+                access_modes=access_modes,
+                storage_class_name=storage_class_name,
+                volume_mode="Block",
+                resources=kubernetes_client.V1VolumeResourceRequirements(requests={"storage": size}),
+            ),
+        )
+
+    db_pvc_name = f"{_autoscaler_vm_name()}{AUTOSCALER_PVC_SUFFIX}"
+    await create_pvc(namespace, _pvc(db_pvc_name, str(parameters.database_size)))
+
+    if pitr_enabled:
+        wal_pvc_name = f"{_autoscaler_vm_name()}{AUTOSCALER_WAL_PVC_SUFFIX}"
+        await create_pvc(namespace, _pvc(wal_pvc_name, PITR_WAL_PVC_SIZE))
+
+
 def _configure_vela_values(
     values_content: dict[str, Any],
     *,
@@ -399,7 +430,6 @@ def _configure_vela_values(
     database_admin_password: str,
     pgbouncer_admin_password: str,
     storage_class_name: str,
-    use_existing_db_pvc: bool,
     pgbouncer_config: Mapping[str, int] | None,
     enable_file_storage: bool,
     pitr_enabled: bool,
@@ -451,7 +481,6 @@ def _configure_vela_values(
     pg_wal_spec = values_content.setdefault("pg_wal", wal_archive_spec or {})
     pg_wal_spec["enabled"] = pitr_enabled
     wal_persistence = pg_wal_spec.setdefault("persistence", {})
-    wal_persistence["create"] = not use_existing_db_pvc
     wal_persistence["size"] = PITR_WAL_PVC_SIZE
     wal_persistence["storageClassName"] = storage_class_name
     wal_persistence["claimName"] = wal_persistence.get("claimName") or (
@@ -461,8 +490,6 @@ def _configure_vela_values(
 
     db_persistence = db_spec.setdefault("persistence", {})
     db_persistence["size"] = str(parameters.database_size)
-    if use_existing_db_pvc:
-        db_persistence["create"] = False
     db_persistence["storageClassName"] = storage_class_name
 
     autoscaler_spec = values_content.setdefault("autoscalerVm", {})
@@ -479,7 +506,6 @@ def _configure_vela_values(
     autoscaler_resources["memorySlots"] = memory_slots
 
     autoscaler_persistence = autoscaler_spec.setdefault("persistence", {})
-    autoscaler_persistence["create"] = not use_existing_db_pvc
     autoscaler_persistence["claimName"] = f"{_autoscaler_vm_name()}{AUTOSCALER_PVC_SUFFIX}"
     autoscaler_persistence["size"] = str(parameters.database_size)
     autoscaler_persistence["storageClassName"] = storage_class_name
@@ -522,6 +548,10 @@ async def create_vela_config(
     values_content = _load_chart_values(chart)
 
     storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
+
+    if not use_existing_db_pvc:
+        await _create_fresh_pvcs(namespace, storage_class_name, parameters, pitr_enabled=pitr_enabled)
+
     values_content = _configure_vela_values(
         values_content,
         parameters=parameters,
@@ -529,7 +559,6 @@ async def create_vela_config(
         database_admin_password=database_admin_password,
         pgbouncer_admin_password=pgbouncer_admin_password,
         storage_class_name=storage_class_name,
-        use_existing_db_pvc=use_existing_db_pvc,
         pgbouncer_config=pgbouncer_config,
         enable_file_storage=parameters.enable_file_storage,
         pitr_enabled=pitr_enabled,
