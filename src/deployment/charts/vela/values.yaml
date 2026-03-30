@@ -60,7 +60,6 @@ autoscalerVm:
   tls:
     serverName: ""
   persistence:
-    create: true
     storageClassName: "simplyblock-csi-sc"
     size: 20Gi
     claimName: ''
@@ -71,7 +70,6 @@ pg_wal:
   enabled: false
   mountPath: '/var/lib/postgresql/wal'
   persistence:
-    create: true
     storageClassName: "simplyblock-csi-sc"
     size: 10Gi
     claimName: ''
