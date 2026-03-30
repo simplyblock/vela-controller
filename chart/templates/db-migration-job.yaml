@@ -1,0 +1,64 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vela-db-migration
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook: pre-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: db-migration
+          image: postgres:17-alpine
+          env:
+            - name: DB_HOST
+              value: database
+            - name: SUPERUSER
+              valueFrom:
+                secretKeyRef:
+                  name: database
+                  key: superuser-username
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: database
+                  key: superuser-password
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              until pg_isready -h "$DB_HOST" -U "$SUPERUSER"; do
+                echo "Waiting for database..."
+                sleep 2
+              done
+
+              # Create controller database if it doesn't exist yet.
+              # The SGScript normally handles this, but it runs asynchronously after
+              # the upgrade so the migration job must bootstrap the database itself.
+              psql -h "$DB_HOST" -U "$SUPERUSER" -d postgres \
+                -c "CREATE DATABASE controller" 2>/dev/null || true
+
+              if psql -h "$DB_HOST" -U "$SUPERUSER" -d controller \
+                   -c "SELECT 1 FROM alembic_version LIMIT 1" 2>/dev/null; then
+                echo "Migration already done, skipping."
+                exit 0
+              fi
+
+              if ! psql -h "$DB_HOST" -U "$SUPERUSER" -d postgres \
+                    -c "SELECT 1 FROM alembic_version LIMIT 1" 2>/dev/null; then
+                echo "No source data found, skipping migration."
+                exit 0
+              fi
+
+              echo "Migrating data from postgres to controller database..."
+              pg_dump -h "$DB_HOST" -U "$SUPERUSER" -d postgres \
+                --schema=public --no-owner --no-privileges \
+                --exclude-table=kombu_message \
+                --exclude-table=kombu_queue \
+                --exclude-table=celery_taskmeta \
+                --exclude-table=celery_tasksetmeta \
+              | psql -h "$DB_HOST" -U "$SUPERUSER" -d controller
+              echo "Migration complete."

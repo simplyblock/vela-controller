@@ -18,7 +18,12 @@ spec:
     spec:
       serviceAccountName: vela-controller
       initContainers:
-{{ include "vela.waitForPostgresInitContainer" (dict) | nindent 8 }}
+{{ include "vela.waitForPostgresInitContainer" (dict
+    "secretName" "vela-controller-secret"
+    "usernameKey" "controller-db-username"
+    "passwordKey" "controller-db-password"
+    "database" "controller"
+  ) | nindent 8 }}
       containers:
         - name: vela-controller-worker
           image: "{{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag }}"
@@ -38,29 +43,29 @@ spec:
                 secretKeyRef:
                   name: vela-grafana-secret
                   key: VELA_GRAFANA_SECURITY_ADMIN_PASSWORD
-            - name: DB_USER
+            - name: CONTROLLER_DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: database
-                  key: superuser-username
-            - name: DB_PASSWORD
+                  name: vela-controller-secret
+                  key: controller-db-password
+            - name: CELERY_DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: database
-                  key: superuser-password
-            - name: DB_HOST
-              value: database
-            - name: VELA_BROKER_URL
-              value: 'sqla+postgresql+psycopg://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):5432/postgres'
-            - name: VELA_RESULT_BACKEND
-              value: 'db+postgresql+psycopg://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):5432/postgres'
+                  name: vela-controller-secret
+                  key: celery-db-password
             - name: VELA_DEPLOYMENT_PASSWORD_SECRET
               valueFrom:
                 secretKeyRef:
                   name: vela-controller-secret
                   key: deployment-password-secret
+            - name: DB_HOST
+              value: database
             - name: VELA_POSTGRES_URL
-              value: 'postgresql+asyncpg://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):5432/postgres'
+              value: 'postgresql+asyncpg://vela_controller:$(CONTROLLER_DB_PASSWORD)@$(DB_HOST):5432/controller'
+            - name: VELA_BROKER_URL
+              value: 'sqla+postgresql+psycopg://vela_celery:$(CELERY_DB_PASSWORD)@$(DB_HOST):5432/controller'
+            - name: VELA_RESULT_BACKEND
+              value: 'db+postgresql+psycopg://vela_celery:$(CELERY_DB_PASSWORD)@$(DB_HOST):5432/controller'
           {{- with .Values.containerSecurityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}
