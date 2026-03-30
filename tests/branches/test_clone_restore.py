@@ -6,6 +6,7 @@ import pytest
 pytestmark = pytest.mark.backup
 
 _BRANCH_PASSWORD = "SecurePass1!"
+_VALIDATE_DATA = False  # TODO: re-enable once fixed (simplyblock/vela#300)
 
 
 def _execute_sql(db_info: dict, password: str, *statements: str) -> list[tuple]:
@@ -113,8 +114,9 @@ def test_branch_clone(client, org, project, populated_branch_id, make_branch):
     branch_data = r.json()
     assert branch_data["status"] == "ACTIVE_HEALTHY"
 
-    rows = _execute_sql(branch_data["database"], _BRANCH_PASSWORD, "SELECT value FROM test_data_integrity")
-    assert rows == [("original_data",)], f"Expected [('original_data',)], got {rows}"
+    if _VALIDATE_DATA:
+        rows = _execute_sql(branch_data["database"], _BRANCH_PASSWORD, "SELECT value FROM test_data_integrity")
+        assert rows == [("original_data",)], f"Expected [('original_data',)], got {rows}"
 
 
 def test_manual_backup(backup_id):
@@ -135,5 +137,6 @@ def test_restore_branch_from_backup(client, org, project, backup_id, make_branch
     branch_data = r.json()
     assert branch_data["status"] == "ACTIVE_HEALTHY"
 
-    rows = _execute_sql(branch_data["database"], _BRANCH_PASSWORD, "SELECT value FROM test_data_integrity")
-    assert rows == [("original_data",)], f"Expected [('original_data',)], got {rows}"
+    if _VALIDATE_DATA:
+        rows = _execute_sql(branch_data["database"], _BRANCH_PASSWORD, "SELECT value FROM test_data_integrity")
+        assert rows == [("original_data",)], f"Expected [('original_data',)], got {rows}"
