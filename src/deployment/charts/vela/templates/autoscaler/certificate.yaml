@@ -9,6 +9,8 @@ metadata:
     {{- include "vela.labels" . | nindent 4 }}
 spec:
   secretName: "db-tls-secret"
+  privateKey:
+    rotationPolicy: Always
   issuerRef:
     name: "letsencrypt-dns"
     kind: ClusterIssuer
