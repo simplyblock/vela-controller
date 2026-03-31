@@ -353,7 +353,7 @@ class BranchServiceStatus(StrEnum):
 
 class DatabaseInformation(BaseModel):
     host: str
-    port: int
+    port: int | None
     username: str
     name: str
     encrypted_connection_string: str
