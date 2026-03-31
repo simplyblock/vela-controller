@@ -158,12 +158,12 @@ async def _persist_branch_status(branch_id: Identifier, status: BranchServiceSta
         await session.commit()
 
 
-async def _get_branch_db_port(branch: Branch) -> int:
+async def _get_branch_db_port(branch: Branch) -> int | None:
     if branch.db_port is not None:
         return branch.db_port
     port = await _resolve_branch_db_port(branch.id)
     if port is None:
-        raise VelaKubernetesError(f"Could not resolve db port for branch {branch.id}")
+        return None
     async with AsyncSessionLocal() as session:
         db_branch = await session.get(Branch, branch.id)
         if db_branch is not None:
@@ -1025,6 +1025,8 @@ async def _public(branch: Branch) -> BranchPublic:
 
     db_host = _resolve_db_host(branch) or ""
     port = await _get_branch_db_port(branch)
+    if port is None:
+        logger.warning("db port not yet available for branch %s", branch.id)
 
     # pg-meta and pg are in the same network. So password is not required in connection string.
     connection_string = _build_connection_string("vela", "postgres", 5432)
