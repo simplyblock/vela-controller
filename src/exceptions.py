@@ -30,5 +30,9 @@ class VelaSnapshotTimeoutError(VelaDeploymentError, TimeoutError):
     """Timed out waiting for a snapshot operation to complete"""
 
 
+class VelaWALPVCError(VelaDeploymentError):
+    """Expected WAL PVC is missing or unusable"""
+
+
 class VelaSimplyblockAPIError(VelaError):
     """Error occured while interacting with Simplyblock API"""
