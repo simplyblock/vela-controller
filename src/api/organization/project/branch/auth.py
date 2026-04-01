@@ -48,7 +48,6 @@ async def proxy_keycloak_admin(
         else:
             raise HTTPException(status_code=405, detail="Method not allowed")
 
-        print(response.content)
         return JSONResponse(
             content=response.json() if response.content else {},
             status_code=response.status_code,
