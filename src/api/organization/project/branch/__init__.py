@@ -1766,7 +1766,7 @@ async def update_pgbouncer_config(
     branch: BranchDep,
     parameters: BranchPgbouncerConfigUpdate,
 ) -> BranchPgbouncerConfigStatus:
-    config = await _ensure_pgbouncer_config(session, branch)
+    config = await _ensure_pgbouncer_config(branch)
 
     namespace, vmi_name = get_autoscaler_vm_identity(branch.id)
     host = _pgbouncer_host_for_namespace(namespace)
@@ -2002,20 +2002,10 @@ instance_api.include_router(task_api, prefix="/tasks")
 api.include_router(instance_api)
 
 
-async def _ensure_pgbouncer_config(session: SessionDep, branch: Branch) -> PgbouncerConfig:
-    config = await session.scalar(select(PgbouncerConfig).where(PgbouncerConfig.branch_id == branch.id))
+async def _ensure_pgbouncer_config(branch: Branch) -> PgbouncerConfig:
+    config = await branch.awaitable_attrs.pgbouncer_config
     if config is None:
-        config = PgbouncerConfig(
-            default_pool_size=PgbouncerConfig.DEFAULT_POOL_SIZE,
-            max_client_conn=PgbouncerConfig.DEFAULT_MAX_CLIENT_CONN,
-            query_wait_timeout=PgbouncerConfig.DEFAULT_QUERY_WAIT_TIMEOUT,
-            reserve_pool_size=PgbouncerConfig.DEFAULT_RESERVE_POOL_SIZE,
-            server_idle_timeout=PgbouncerConfig.DEFAULT_SERVER_IDLE_TIMEOUT,
-            server_lifetime=PgbouncerConfig.DEFAULT_SERVER_LIFETIME,
-        )
-        branch.pgbouncer_config = config
-        session.add(config)
-    else:
+        config = _default_pgbouncer_config()
         branch.pgbouncer_config = config
     return config
 
