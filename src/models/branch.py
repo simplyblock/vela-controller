@@ -83,7 +83,7 @@ class Branch(AsyncAttrs, Model, table=True):
 
     pgbouncer_config: Optional["PgbouncerConfig"] = Relationship(
         back_populates="branch",
-        sa_relationship_kwargs={"uselist": False, "cascade": "all, delete-orphan"},
+        cascade_delete=True,
     )
 
     database_size: Annotated[int, Field(**DATABASE_SIZE_CONSTRAINTS, sa_column=Column(BigInteger))]
@@ -213,7 +213,7 @@ class PgbouncerConfig(Model, table=True):
     DEFAULT_SERVER_IDLE_TIMEOUT: ClassVar[int | None] = PGBOUNCER_DEFAULT_SERVER_IDLE_TIMEOUT
     DEFAULT_SERVER_LIFETIME: ClassVar[int | None] = PGBOUNCER_DEFAULT_SERVER_LIFETIME
 
-    branch_id: Identifier = Model.foreign_key_field("branch", nullable=False, unique=True)
+    branch_id: Identifier = Model.foreign_key_field("branch", ondelete="CASCADE", unique=True)
     branch: Branch = Relationship(back_populates="pgbouncer_config")
 
     max_client_conn: Annotated[int | None, Field(default=None, ge=1)]
