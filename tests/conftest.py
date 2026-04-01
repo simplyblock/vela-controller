@@ -1,3 +1,4 @@
+import contextlib
 import operator
 import os
 import time
@@ -54,6 +55,18 @@ class _KeycloakAuth(httpx.Auth):
             self._refresh()
         request.headers["Authorization"] = f"Bearer {self._token}"
         yield request
+
+
+def wait_for_deletion(client: httpx.Client, url: str, timeout: int = BRANCH_TIMEOUT_SEC) -> None:
+    """Poll GET url until it returns 404 (resource deleted) or timeout."""
+    deadline = time.monotonic() + timeout
+    while True:
+        r = client.get(url, timeout=30)
+        if r.status_code == 404:
+            return
+        if time.monotonic() >= deadline:
+            raise TimeoutError(f"Timed out waiting for deletion of {url}")
+        time.sleep(_POLL_INTERVAL)
 
 
 def wait_for_status(
@@ -177,4 +190,8 @@ def make_branch(client):
 
     yield _factory
     for org_id, project_id, uid in reversed(created):
-        client.delete(f"organizations/{org_id}/projects/{project_id}/branches/{uid}/")
+        r = client.delete(f"organizations/{org_id}/projects/{project_id}/branches/{uid}/")
+        if r.status_code == 202:
+            # Async delete — wait for the branch to be fully removed before proceeding
+            with contextlib.suppress(TimeoutError):
+                wait_for_deletion(client, f"organizations/{org_id}/projects/{project_id}/branches/{uid}/")

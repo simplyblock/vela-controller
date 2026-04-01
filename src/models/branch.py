@@ -112,9 +112,10 @@ class Branch(AsyncAttrs, Model, table=True):
         sa_column=Column(JSONB, nullable=False, server_default=text("'{}'::jsonb")),
     )
     pitr_enabled: bool = Field(default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false")))
+    control_task_id: uuid.UUID | None = None
+    delete_task_id: uuid.UUID | None = None
     resize_task_id: uuid.UUID | None = None
     db_port: int | None = None
-    control_task_id: uuid.UUID | None = None
 
     __table_args__ = (UniqueConstraint("project_id", "name", name="unique_branch_name_per_project"),)
 

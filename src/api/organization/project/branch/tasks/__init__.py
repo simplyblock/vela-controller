@@ -11,12 +11,13 @@ from ._control import _CONTROL_TO_POWER_STATE as _CONTROL_TO_POWER_STATE
 from ._control import dispatch_control as dispatch_control
 from ._control import get_control_in_progress_status as get_control_in_progress_status
 from ._control import perform_control
+from ._delete import finalize_delete
 from ._resize import dispatch_resize as dispatch_resize
 from ._resize import finalize_resize
 
 api = APIRouter(tags=["branch"])
 
-TaskType = Literal["control", "resize"]
+TaskType = Literal["control", "delete", "resize"]
 
 _CELERY_STATE_TO_STATUS: dict[str, str] = {
     "PENDING": "PENDING",
@@ -40,6 +41,7 @@ class BranchTaskPublic(BaseModel):
 def _build_task_public(task_id: UUID, task_type: TaskType) -> BranchTaskPublic:
     tasks = {
         "control": perform_control,
+        "delete": finalize_delete,
         "resize": finalize_resize,
     }
     result = tasks[task_type].AsyncResult(str(task_id))
@@ -48,11 +50,12 @@ def _build_task_public(task_id: UUID, task_type: TaskType) -> BranchTaskPublic:
     status = _CELERY_STATE_TO_STATUS.get(state, state)
     kwargs: dict = result.kwargs or {}
     task_type = task_type if task_type != "control" else kwargs["action"]
+    parameters = {k: v for k, v in kwargs.items() if k not in {"branch_id", "action"}}
     return BranchTaskPublic(
         id=task_id,
         task_type=task_type,
         status=status,
-        parameters=kwargs.get("effective_parameters", {}),
+        parameters=parameters,
         result=result.result if state == "SUCCESS" else None,
         error=str(result.traceback) if state == "FAILURE" and result.traceback else None,
         date_done=result.date_done,
@@ -72,6 +75,7 @@ async def list_tasks(
 ) -> list[BranchTaskPublic]:
     tasks: list[tuple[UUID | None, TaskType]] = [
         (branch.control_task_id, "control"),
+        (branch.delete_task_id, "delete"),
         (branch.resize_task_id, "resize"),
     ]
     return [_build_task_public(task_id, task_type) for task_id, task_type in tasks if task_id is not None]
@@ -93,4 +97,6 @@ async def get_task(
         return _build_task_public(task_id, "resize")
     if branch.control_task_id == task_id:
         return _build_task_public(task_id, "control")
+    if branch.delete_task_id == task_id:
+        return _build_task_public(task_id, "delete")
     raise HTTPException(status_code=404, detail="Task not found")
