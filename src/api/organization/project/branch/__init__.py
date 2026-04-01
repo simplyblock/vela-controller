@@ -45,7 +45,6 @@ from .....deployment.health import (
     deployment_status,
 )
 from .....deployment.kubernetes._util import core_v1_client
-from .....deployment.kubernetes.neonvm import PowerState as NeonVMPowerState
 from .....deployment.kubernetes.neonvm import set_virtualmachine_power_state
 from .....deployment.kubernetes.volume_clone import (
     clone_branch_database_volume,
@@ -95,6 +94,11 @@ from ....keycloak import realm_admin
 from ....settings import get_settings as get_api_settings
 from .api_keys import api as api_key_api
 from .auth import api as auth_api
+from .control_tasks import (
+    _CONTROL_TO_POWER_STATE,
+    dispatch_control,
+    get_control_in_progress_status,
+)
 from .resize_tasks import dispatch_resize
 from .tasks import task_api
 
@@ -195,20 +199,9 @@ async def _cleanup_failed_branch_deployment(branch_id: Identifier) -> None:
 def _should_update_branch_status(
     current: BranchServiceStatus,
     derived: BranchServiceStatus,
-    *,
-    resize_in_progress: bool = True,
 ) -> bool:
     if current == derived:
         return False
-    if current == BranchServiceStatus.RESIZING:
-        if not resize_in_progress:
-            return derived in {
-                BranchServiceStatus.ACTIVE_HEALTHY,
-                BranchServiceStatus.ACTIVE_UNHEALTHY,
-                BranchServiceStatus.STOPPED,
-                BranchServiceStatus.ERROR,
-            }
-        return derived == BranchServiceStatus.ERROR
     if current == BranchServiceStatus.STARTING and derived == BranchServiceStatus.STOPPED:
         logger.debug("Ignoring STARTING -> STOPPED transition detected by branch status monitor")
         return False
@@ -240,29 +233,37 @@ def _should_update_branch_status(
 def _adjust_derived_status_for_stuck_creation(
     branch: Branch, current: BranchServiceStatus, derived: BranchServiceStatus
 ) -> BranchServiceStatus:
-    if derived != BranchServiceStatus.STOPPED:
+    if current not in {BranchServiceStatus.CREATING, BranchServiceStatus.STARTING}:
         return derived
 
     status_timestamp = branch.status_updated_at or branch.created_datetime
     elapsed = datetime.now(UTC) - status_timestamp
 
-    if current == BranchServiceStatus.CREATING and elapsed >= _CREATING_STATUS_ERROR_GRACE_PERIOD:
+    if current == BranchServiceStatus.CREATING:
+        if derived == BranchServiceStatus.ACTIVE_HEALTHY:
+            return derived
+        if derived == BranchServiceStatus.ERROR:
+            return derived
+        if derived == BranchServiceStatus.STOPPED and elapsed >= _CREATING_STATUS_ERROR_GRACE_PERIOD:
+            logger.warning(
+                "Branch %s still CREATING after %s with STOPPED services; marking ERROR",
+                branch.id,
+                elapsed,
+            )
+            return BranchServiceStatus.ERROR
+        return current  # Stay CREATING (suppresses ACTIVE_UNHEALTHY, STOPPED within grace, UNKNOWN, …)
+
+    # current == STARTING (legacy / safety net — control tasks use shadow status instead)
+    if derived not in {BranchServiceStatus.STOPPED, BranchServiceStatus.ERROR}:
+        return derived
+    if elapsed >= _STARTING_STATUS_ERROR_GRACE_PERIOD:
         logger.warning(
-            "Branch %s still CREATING after %s with STOPPED services; marking ERROR",
+            "Branch %s still STARTING after %s; marking ERROR",
             branch.id,
             elapsed,
         )
         return BranchServiceStatus.ERROR
-
-    if current == BranchServiceStatus.STARTING and elapsed >= _STARTING_STATUS_ERROR_GRACE_PERIOD:
-        logger.warning(
-            "Branch %s still STARTING after %s with STOPPED services; marking ERROR",
-            branch.id,
-            elapsed,
-        )
-        return BranchServiceStatus.ERROR
-
-    return derived
+    return current
 
 
 async def refresh_branch_status(branch_id: Identifier) -> BranchServiceStatus:
@@ -283,7 +284,22 @@ async def refresh_branch_status(branch_id: Identifier) -> BranchServiceStatus:
         return new_status
 
 
+def _active_task_status(branch: Branch) -> BranchServiceStatus | None:
+    """Return the in-progress status for the running task, or None if idle."""
+    if branch.control_task_id is not None:
+        status = get_control_in_progress_status(branch.control_task_id)
+        if status is not None:
+            return status
+    if branch.resize_task_id is not None:
+        return BranchServiceStatus.RESIZING
+    return None
+
+
 async def _refresh_branch_status(branch: Branch) -> BranchServiceStatus:
+    in_progress = _active_task_status(branch)
+    if in_progress is not None:
+        return in_progress
+
     current_status = _parse_branch_status(branch.status)
     status = deployment_status(branch.id)
 
@@ -293,8 +309,7 @@ async def _refresh_branch_status(branch: Branch) -> BranchServiceStatus:
         status,
     )
 
-    resize_in_progress = branch.resize_task_id is not None
-    if _should_update_branch_status(current_status, status, resize_in_progress=resize_in_progress):
+    if _should_update_branch_status(current_status, status):
         branch.set_status(status)
         return status
 
@@ -732,7 +747,6 @@ async def _deploy_branch_environment_task(
             branch_slug,
         )
         return
-    await _persist_branch_status(branch_id, BranchServiceStatus.STARTING)
 
 
 async def _clone_branch_environment_task(
@@ -806,7 +820,6 @@ async def _clone_branch_environment_task(
             branch_slug,
         )
         return
-    await _persist_branch_status(branch_id, BranchServiceStatus.STARTING)
 
 
 async def _restore_branch_environment_task(
@@ -900,7 +913,6 @@ async def _restore_branch_environment_task(
             branch_slug,
         )
         return
-    await _persist_branch_status(branch_id, BranchServiceStatus.STARTING)
 
 
 async def _restore_branch_environment_in_place_task(
@@ -1887,7 +1899,6 @@ async def resize(
 
     task_id = dispatch_resize(str(branch.id), dict(effective_parameters))
 
-    branch.set_status(BranchServiceStatus.RESIZING)
     branch.resize_task_id = task_id
     await session.commit()
 
@@ -1908,109 +1919,58 @@ _control_responses: dict[int | str, dict[str, Any]] = {
     404: NotFound,
 }
 
-_CONTROL_TO_AUTOSCALER_POWERSTATE: dict[str, NeonVMPowerState] = {
-    "pause": "Stopped",
-    "resume": "Running",
-    "start": "Running",
-    "stop": "Stopped",
-}
-
-_CONTROL_TRANSITION_INITIAL: dict[str, BranchServiceStatus] = {
-    "pause": BranchServiceStatus.PAUSING,
-    "resume": BranchServiceStatus.RESUMING,
-    "start": BranchServiceStatus.STARTING,
-    "stop": BranchServiceStatus.STOPPING,
-}
-
-_CONTROL_TRANSITION_FINAL: dict[str, BranchServiceStatus | None] = {
-    "pause": BranchServiceStatus.PAUSED,
-    "resume": BranchServiceStatus.STARTING,
-    "start": None,
-    "stop": BranchServiceStatus.STOPPED,
-}
-
 
 async def _set_branch_status(session: SessionDep, branch: Branch, status: BranchServiceStatus):
     branch.set_status(status)
     await session.commit()
 
 
-async def _set_final_branch_status(session: SessionDep, branch: Branch, action: str) -> None:
-    final_status = _CONTROL_TRANSITION_FINAL[action]
-    if final_status is None:
-        return
-    await _set_branch_status(session, branch, final_status)
-
-
-async def _set_autoscaler_power_state(action: str, namespace: str, name: str) -> None:
-    power_state = _CONTROL_TO_AUTOSCALER_POWERSTATE.get(action)
-    if power_state is None:
-        return
-    await set_virtualmachine_power_state(namespace, name, power_state)
-
-
-async def _apply_branch_action(
-    *,
-    action: str,
-    autoscaler_namespace: str,
-    autoscaler_vm_name: str,
-) -> None:
-    await _set_autoscaler_power_state(action, autoscaler_namespace, autoscaler_vm_name)
-
-
 @instance_api.post(
     "/pause",
     name="organizations:projects:branch:pause",
-    status_code=204,
+    status_code=202,
     responses=_control_responses,
 )
 @instance_api.post(
     "/resume",
     name="organizations:projects:branch:resume",
-    status_code=204,
+    status_code=202,
     responses=_control_responses,
 )
 @instance_api.post(
     "/start",
     name="organizations:projects:branch:start",
-    status_code=204,
+    status_code=202,
     responses=_control_responses,
 )
 @instance_api.post(
     "/stop",
     name="organizations:projects:branch:stop",
-    status_code=204,
+    status_code=202,
     responses=_control_responses,
 )
 async def control_branch(
     session: SessionDep,
     request: Request,
-    _organization: OrganizationDep,
-    _project: ProjectDep,
+    organization: OrganizationDep,
+    project: ProjectDep,
     branch: BranchDep,
 ):
     action = request.scope["route"].name.split(":")[-1]
-    assert action in _CONTROL_TO_AUTOSCALER_POWERSTATE
-    branch_in_session = await session.merge(branch)
-    branch_id = branch_in_session.id
-    autoscaler_namespace, autoscaler_vm_name = get_autoscaler_vm_identity(branch_id)
-    await _set_branch_status(session, branch_in_session, _CONTROL_TRANSITION_INITIAL[action])
-    try:
-        await _apply_branch_action(
-            action=action,
-            autoscaler_namespace=autoscaler_namespace,
-            autoscaler_vm_name=autoscaler_vm_name,
-        )
-    except ApiException as e:
-        await _set_branch_status(session, branch_in_session, BranchServiceStatus.ERROR)
-        status = 404 if e.status == 404 else 400
-        raise HTTPException(status_code=status, detail=e.body or str(e)) from e
-    except VelaKubernetesError as e:
-        await _set_branch_status(session, branch_in_session, BranchServiceStatus.ERROR)
-        raise HTTPException(status_code=500, detail=str(e)) from e
-    else:
-        await _set_final_branch_status(session, branch_in_session, action)
-    return Response(status_code=204)
+    assert action in _CONTROL_TO_POWER_STATE
+    task_id = dispatch_control(str(branch.id), action)
+    branch.control_task_id = task_id
+    await session.commit()
+
+    task_url = url_path_for(
+        request,
+        "organizations:projects:branch:tasks:detail",
+        organization_id=await organization.awaitable_attrs.id,
+        project_id=await project.awaitable_attrs.id,
+        branch_id=await branch.awaitable_attrs.id,
+        task_id=task_id,
+    )
+    return Response(status_code=202, headers={"Location": task_url})
 
 
 instance_api.include_router(auth_api, prefix="/auth")

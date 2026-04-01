@@ -27,6 +27,25 @@ class VMStatus(BaseModel):
     services: dict[str, bool] | None = None
 
 
+async def check_vm_status(vm: NeonVM, timeout: float = 0.5) -> VMStatus:
+    phase = vm.status.phase if vm.status is not None else None
+    vm_ip = vm.status.pod_ip if vm.status is not None else None
+    online = vm_ip is not None and phase in {Phase.running, Phase.pre_migrating, Phase.migrating, Phase.scaling}
+    ports = {port.name: port.port for port in vm.spec.guest.ports if port.protocol == "TCP"}
+    return VMStatus(
+        phase=phase,
+        services=dict(
+            zip(
+                ports.keys(),
+                await asyncio.gather(*(_check_port(vm_ip, port, timeout=timeout) for port in ports.values())),
+                strict=True,
+            )
+        )
+        if online
+        else None,
+    )
+
+
 class VMMonitor:
     _NAMESPACE_PATTERN = re.compile(rf"^{get_settings().deployment_namespace_prefix}-(?P<id>[0-9a-hjkmnp-tv-z]{{26}})$")
 
@@ -34,25 +53,6 @@ class VMMonitor:
         self._statuses: dict[ULID, VMStatus] = {}
         self._interval = interval
         self._timeout = timeout
-
-    async def _check_status(self, vm: NeonVM):
-        phase = vm.status.phase if vm.status is not None else None
-        vm_ip = vm.status.pod_ip if vm.status is not None else None
-        online = vm_ip is not None and phase in {Phase.running, Phase.pre_migrating, Phase.migrating, Phase.scaling}
-        ports = {port.name: port.port for port in vm.spec.guest.ports if port.protocol == "TCP"}
-
-        return VMStatus(
-            phase=phase,
-            services=dict(
-                zip(
-                    ports.keys(),
-                    await asyncio.gather(*(_check_port(vm_ip, port, timeout=self._timeout) for port in ports.values())),
-                    strict=True,
-                )
-            )
-            if online
-            else None,
-        )
 
     async def run(self):
         logger.info("Started VM monitor")
@@ -76,7 +76,7 @@ class VMMonitor:
                     self._statuses = dict(
                         zip(
                             vms.keys(),
-                            await asyncio.gather(*(self._check_status(vm) for vm in vms.values())),
+                            await asyncio.gather(*(check_vm_status(vm, timeout=self._timeout) for vm in vms.values())),
                             strict=True,
                         )
                     )

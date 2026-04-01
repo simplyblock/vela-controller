@@ -21,21 +21,23 @@ def branch_id(make_branch, org, project):
 
 def test_branch_stop(client, org, project, branch_id):
     r = client.post(f"organizations/{org}/projects/{project}/branches/{branch_id}/stop")
-    assert r.status_code == 204
+    assert r.status_code == 202
+    assert "Location" in r.headers
     wait_for_status(
         client,
         f"organizations/{org}/projects/{project}/branches/{branch_id}/",
-        "STOPPED",
+        ["STOPPING", "STOPPED"],
         BRANCH_TIMEOUT_SEC,
     )
 
 
 def test_branch_start(client, org, project, branch_id):
     r = client.post(f"organizations/{org}/projects/{project}/branches/{branch_id}/start")
-    assert r.status_code == 204
+    assert r.status_code == 202
+    assert "Location" in r.headers
     wait_for_status(
         client,
         f"organizations/{org}/projects/{project}/branches/{branch_id}/",
-        "ACTIVE_HEALTHY",
+        ["STARTING", "ACTIVE_HEALTHY"],
         BRANCH_TIMEOUT_SEC,
     )

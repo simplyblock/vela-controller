@@ -3,13 +3,12 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Literal, Optional
 
-import sqlalchemy as sa
 from pydantic import BaseModel, model_validator
 from pydantic import Field as PydanticField
 from sqlalchemy import BigInteger, Boolean, Column, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlmodel import Field, Relationship
+from sqlalchemy.ext.asyncio import AsyncAttrs, AsyncSession
+from sqlmodel import Field, Relationship, select
 
 from .._util import (
     CPU_CONSTRAINTS,
@@ -54,6 +53,11 @@ def _default_resource_usage_payload() -> dict[str, Any]:
 
 def _utcnow() -> datetime:
     return datetime.now(UTC)
+
+
+async def lookup(session: AsyncSession, branch_id: Identifier) -> "Branch":
+    """Fetch a Branch by primary key; raises NoResultFound if absent."""
+    return (await session.execute(select(Branch).where(Branch.id == branch_id))).scalars().one()
 
 
 class Branch(AsyncAttrs, Model, table=True):
@@ -108,8 +112,9 @@ class Branch(AsyncAttrs, Model, table=True):
         sa_column=Column(JSONB, nullable=False, server_default=text("'{}'::jsonb")),
     )
     pitr_enabled: bool = Field(default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false")))
-    resize_task_id: uuid.UUID | None = Field(default=None, nullable=True)
-    db_port: int | None = Field(default=None, sa_column=Column(sa.Integer, nullable=True))
+    resize_task_id: uuid.UUID | None = None
+    db_port: int | None = None
+    control_task_id: uuid.UUID | None = None
 
     __table_args__ = (UniqueConstraint("project_id", "name", name="unique_branch_name_per_project"),)
 

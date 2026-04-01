@@ -1,3 +1,4 @@
+import operator
 import os
 import time
 from collections.abc import Generator
@@ -14,7 +15,11 @@ VELA_KEYCLOAK_CLIENT_ID = os.getenv("VELA_KEYCLOAK_CLIENT_ID", "controller")
 VELA_KEYCLOAK_CLIENT_SECRET = os.getenv("VELA_KEYCLOAK_CLIENT_SECRET", "controller-secret")
 BRANCH_TIMEOUT_SEC = int(os.getenv("BRANCH_TIMEOUT_SEC", "900"))
 
-_POLL_INTERVAL = 10
+_POLL_INTERVAL = 1
+
+
+def _startswith(xs, ys):
+    return (len(xs) >= len(ys)) and all(map(operator.eq, xs, ys))
 
 
 class _KeycloakAuth(httpx.Auth):
@@ -51,20 +56,32 @@ class _KeycloakAuth(httpx.Auth):
         yield request
 
 
-def wait_for_status(client: httpx.Client, url: str, expected: str, timeout: int = BRANCH_TIMEOUT_SEC) -> dict:
-    """Poll GET url every 10s until response.json()["status"] == expected or timeout."""
+def wait_for_status(
+    client: httpx.Client,
+    url: str,
+    expected: list[str],
+    timeout: int = BRANCH_TIMEOUT_SEC,
+) -> dict:
+    """Poll GET url until the resource progresses through ``expected``.
+
+    ``expected`` is an ordered list of statuses.
+    """
     deadline = time.monotonic() + timeout
-    while True:
+
+    seen = []
+
+    while seen != expected:
         r = client.get(url, timeout=30)
         r.raise_for_status()
-        data = r.json()
-        current = data.get("status")
-        if current == expected:
-            return data
-        if current == "ERROR":
-            raise RuntimeError(f"Resource entered ERROR state while waiting for status={expected!r}")
+
+        current = r.json()["status"]
+        if (not seen) or (seen[-1] != current):
+            seen.append(current)
+
+        assert _startswith(expected, seen)
+
         if time.monotonic() >= deadline:
-            raise TimeoutError(f"Timed out waiting for status={expected!r}; last status={current!r}")
+            raise TimeoutError(f"Timed out waiting for statuses={expected!r}; seen={seen}")
         time.sleep(_POLL_INTERVAL)
 
 
@@ -152,7 +169,7 @@ def make_branch(client):
         wait_for_status(
             client,
             f"organizations/{org_id}/projects/{project_id}/branches/{uid}/",
-            "ACTIVE_HEALTHY",
+            ["CREATING", "ACTIVE_HEALTHY"],
             BRANCH_TIMEOUT_SEC,
         )
         created.append((org_id, project_id, uid))

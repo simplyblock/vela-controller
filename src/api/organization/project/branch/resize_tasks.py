@@ -17,7 +17,7 @@ from ulid import ULID
 from .....database import AsyncSessionLocal
 from .....deployment.health import collect_branch_service_health, derive_branch_status_from_services
 from .....deployment.resize import resize_cpu_memory, resize_database_pvc, resize_iops, resize_storage_pvc
-from .....models.branch import Branch, BranchServiceStatus
+from .....models.branch import Branch
 from .....models.resources import ResourceLimitsPublic
 from .....worker import app
 from ...._util.resourcelimit import apply_branch_resource_allocation
@@ -85,11 +85,9 @@ async def _async_finalize_resize(
         await _apply_succeeded_fields(session, branch, succeeded)
 
         service_status = await collect_branch_service_health(branch.id)
-        if branch.status == BranchServiceStatus.RESIZING:
-            branch.set_status(
-                derive_branch_status_from_services(service_status, storage_enabled=branch.enable_file_storage)
-            )
-
+        branch.set_status(
+            derive_branch_status_from_services(service_status, storage_enabled=branch.enable_file_storage)
+        )
         branch.resize_task_id = None
         await session.commit()
 

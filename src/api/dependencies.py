@@ -7,6 +7,7 @@ from sqlmodel import select
 
 from .._util import Identifier
 from ..database import SessionDep
+from ..models import branch as models_branch
 from ..models.backups import BackupEntry
 from ..models.branch import Branch, BranchApiKey, BranchServiceStatus
 from ..models.organization import Organization
@@ -50,17 +51,12 @@ RoleDep = Annotated[Role, Depends(_role_lookup)]
 
 async def branch_lookup(session: SessionDep, branch_id: Identifier) -> Branch:
     try:
-        query = select(Branch).where(Branch.id == branch_id)
-        branch = (await session.execute(query)).scalars().one()
-        status_value = branch.status
-        if (
-            status_value
-            and BranchServiceStatus._value2member_map_.get(str(status_value)) == BranchServiceStatus.DELETING
-        ):
-            raise HTTPException(status_code=409, detail="Branch is being deleted and cannot be manipulated.")
-        return branch
+        branch = await models_branch.lookup(session, branch_id)
     except NoResultFound as e:
         raise HTTPException(404, f"Branch {branch_id} not found") from e
+    if branch.status == BranchServiceStatus.DELETING:
+        raise HTTPException(status_code=409, detail="Branch is being deleted and cannot be manipulated.")
+    return branch
 
 
 BranchDep = Annotated[Branch, Depends(branch_lookup)]
