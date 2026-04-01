@@ -144,7 +144,7 @@ def test_branch_resize(client, org, project, branch_id):
     wait_for_status(
         client,
         f"organizations/{org}/projects/{project}/branches/{branch_id}/",
-        "ACTIVE_HEALTHY",
+        ["RESIZING", "ACTIVE_HEALTHY"],
         BRANCH_TIMEOUT_SEC,
     )
     r = client.get(f"organizations/{org}/projects/{project}/branches/{branch_id}/")

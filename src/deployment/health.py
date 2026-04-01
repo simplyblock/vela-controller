@@ -2,8 +2,8 @@ import logging
 
 from .._util import Identifier
 from ..models.branch import BranchServiceStatus, BranchStatus
-from .kubernetes.neonvm import Phase
-from .monitors.health import vm_monitor
+from .kubernetes.neonvm import Phase, get_neon_vm
+from .monitors.health import VMStatus, check_vm_status, vm_monitor
 
 logger = logging.getLogger(__name__)
 
@@ -64,11 +64,7 @@ async def collect_branch_service_health(id_: Identifier) -> BranchStatus:
     )
 
 
-def deployment_status(id_: Identifier) -> BranchServiceStatus:
-    status = vm_monitor.status(id_)
-    if status is None:
-        return BranchServiceStatus.UNKNOWN
-
+def _status_from_vm_status(status: VMStatus) -> BranchServiceStatus:
     if status.phase == Phase.failed:
         return BranchServiceStatus.ERROR
 
@@ -87,3 +83,19 @@ def deployment_status(id_: Identifier) -> BranchServiceStatus:
         ]
     )
     return BranchServiceStatus.ACTIVE_HEALTHY if healthy else BranchServiceStatus.ACTIVE_UNHEALTHY
+
+
+def deployment_status(id_: Identifier) -> BranchServiceStatus:
+    status = vm_monitor.status(id_)
+    if status is None:
+        return BranchServiceStatus.UNKNOWN
+    return _status_from_vm_status(status)
+
+
+async def query_deployment_status(namespace: str, name: str) -> BranchServiceStatus:
+    """Direct async VM status check — does not rely on the background vm_monitor cache."""
+    try:
+        vm = await get_neon_vm(namespace, name)
+    except RuntimeError:
+        return BranchServiceStatus.UNKNOWN
+    return _status_from_vm_status(await check_vm_status(vm))

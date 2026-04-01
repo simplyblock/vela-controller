@@ -1,6 +1,6 @@
 """Branch task list/detail endpoints.
 
-Exposes Celery task state (currently resize only) under:
+Exposes Celery task state (resize and control) under:
   GET .../branches/{branch_id}/tasks
   GET .../branches/{branch_id}/tasks/{task_id}
 """
@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from ...._util import Forbidden, NotFound, Unauthenticated
 from ....dependencies import BranchDep, OrganizationDep, ProjectDep
+from .control_tasks import perform_control
 from .resize_tasks import finalize_resize
 
 task_api = APIRouter(tags=["branch"])
@@ -37,7 +38,7 @@ class BranchTaskPublic(BaseModel):
     date_done: datetime | None
 
 
-def _build_task_public(task_id: UUID) -> BranchTaskPublic:
+def _build_resize_task_public(task_id: UUID) -> BranchTaskPublic:
     result = finalize_resize.AsyncResult(str(task_id))
     state = result.state
     status = _CELERY_STATE_TO_STATUS.get(state, state)
@@ -47,6 +48,23 @@ def _build_task_public(task_id: UUID) -> BranchTaskPublic:
         task_type="resize",
         status=status,
         parameters=kwargs.get("effective_parameters", {}),
+        result=result.result if state == "SUCCESS" else None,
+        error=str(result.traceback) if state == "FAILURE" and result.traceback else None,
+        date_done=result.date_done,
+    )
+
+
+def _build_control_task_public(task_id: UUID) -> BranchTaskPublic:
+    result = perform_control.AsyncResult(str(task_id))
+    state = result.state
+    status = _CELERY_STATE_TO_STATUS.get(state, state)
+    kwargs: dict = result.kwargs or {}
+    action = kwargs.get("action", "control")
+    return BranchTaskPublic(
+        id=task_id,
+        task_type=action,
+        status=status,
+        parameters={"action": action},
         result=result.result if state == "SUCCESS" else None,
         error=str(result.traceback) if state == "FAILURE" and result.traceback else None,
         date_done=result.date_done,
@@ -64,9 +82,12 @@ async def list_tasks(
     _project: ProjectDep,
     branch: BranchDep,
 ) -> list[BranchTaskPublic]:
-    if branch.resize_task_id is None:
-        return []
-    return [_build_task_public(branch.resize_task_id)]
+    tasks = []
+    if branch.resize_task_id is not None:
+        tasks.append(_build_resize_task_public(branch.resize_task_id))
+    if branch.control_task_id is not None:
+        tasks.append(_build_control_task_public(branch.control_task_id))
+    return tasks
 
 
 @task_api.get(
@@ -81,6 +102,8 @@ async def get_task(
     branch: BranchDep,
     task_id: UUID,
 ) -> BranchTaskPublic:
-    if branch.resize_task_id != task_id:
-        raise HTTPException(status_code=404, detail="Task not found")
-    return _build_task_public(task_id)
+    if branch.resize_task_id == task_id:
+        return _build_resize_task_public(task_id)
+    if branch.control_task_id == task_id:
+        return _build_control_task_public(task_id)
+    raise HTTPException(status_code=404, detail="Task not found")
