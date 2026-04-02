@@ -25,7 +25,6 @@ from ....._util import DEFAULT_DB_NAME, DEFAULT_DB_USER, Identifier, storage_bac
 from ....._util.crypto import encrypt_with_passphrase, generate_keys
 from .....database import AsyncSessionLocal, SessionDep
 from .....deployment import (
-    WAL_IOPS_FRACTION,
     DeploymentParameters,
     ResizeParameters,
     branch_api_domain,
@@ -38,6 +37,7 @@ from .....deployment import (
     get_autoscaler_vm_identity,
     kube_service,
     resolve_branch_database_volume_size,
+    split_iops,
     update_branch_database_password,
 )
 from .....deployment._util import deployment_namespace
@@ -755,7 +755,7 @@ async def _clone_branch_environment_task(
     storage_class_name: str | None = None
     if copy_data:
         try:
-            data_iops = max(1, round(parameters.iops * (1 - WAL_IOPS_FRACTION))) if pitr_enabled else parameters.iops
+            data_iops, _ = split_iops(parameters.iops, pitr_enabled=pitr_enabled)
             storage_class_name = await ensure_branch_storage_class(branch_id, iops=data_iops)
             await clone_branch_database_volume(
                 source_branch_id=source_branch_id,
@@ -831,7 +831,7 @@ async def _restore_branch_environment_task(
     await _persist_branch_status(branch_id, BranchServiceStatus.CREATING)
     storage_class_name: str | None = None
     try:
-        data_iops = max(1, round(parameters.iops * (1 - WAL_IOPS_FRACTION))) if pitr_enabled else parameters.iops
+        data_iops, _ = split_iops(parameters.iops, pitr_enabled=pitr_enabled)
         storage_class_name = await ensure_branch_storage_class(branch_id, iops=data_iops)
         await restore_branch_database_volume_from_snapshot(
             source_branch_id=source_branch_id,
@@ -914,7 +914,7 @@ async def _restore_branch_environment_in_place_task(
             return
 
     try:
-        data_iops = max(1, round(parameters.iops * (1 - WAL_IOPS_FRACTION))) if pitr_enabled else parameters.iops
+        data_iops, _ = split_iops(parameters.iops, pitr_enabled=pitr_enabled)
         storage_class_name = await ensure_branch_storage_class(branch_id, iops=data_iops)
         await restore_branch_database_volume_from_snapshot(
             source_branch_id=source_branch_id,

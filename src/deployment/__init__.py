@@ -79,7 +79,22 @@ DATABASE_PVC_SUFFIX = "-db-pvc"
 AUTOSCALER_PVC_SUFFIX = "-block-data"
 AUTOSCALER_WAL_PVC_SUFFIX = "-pg-wal"
 PITR_WAL_PVC_SIZE = "100Gi"
-WAL_IOPS_FRACTION = 0.25
+_WAL_IOPS_FRACTION = 0.25
+
+
+def split_iops(total: int, *, pitr_enabled: bool) -> tuple[int, int]:
+    """
+    When PITR is disabled *wal_iops* is 0 and the full budget goes to data.
+    Both values are clamped to a minimum of 1 when PITR is active so that
+    neither volume is left with zero throughput.
+    """
+    if not pitr_enabled:
+        return total, 0
+    wal_iops = max(1, round(total * _WAL_IOPS_FRACTION))
+    data_iops = max(1, round(total * (1 - _WAL_IOPS_FRACTION)))
+    return data_iops, wal_iops
+
+
 _LOAD_BALANCER_TIMEOUT_SECONDS = float(600)
 _LOAD_BALANCER_POLL_INTERVAL_SECONDS = float(2)
 _OVERLAY_IP_TIMEOUT_SECONDS = float(300)
@@ -366,11 +381,7 @@ async def update_branch_volume_iops(branch_id: Identifier, iops: int) -> None:
     except VelaKubernetesError:
         pitr_active = False
 
-    if pitr_active:
-        data_iops = max(1, round(iops * (1 - WAL_IOPS_FRACTION)))
-        wal_iops = max(1, round(iops * WAL_IOPS_FRACTION))
-    else:
-        data_iops = iops
+    data_iops, wal_iops = split_iops(iops, pitr_enabled=pitr_active)
 
     try:
         async with create_simplyblock_api() as sb_api:
@@ -579,12 +590,7 @@ async def create_vela_config(
     postgresql_resource = resources.files(__package__).joinpath("postgresql.conf")
     values_content = _load_chart_values(chart)
 
-    if pitr_enabled:
-        data_iops = max(1, round(parameters.iops * (1 - WAL_IOPS_FRACTION)))
-        wal_iops = max(1, round(parameters.iops * WAL_IOPS_FRACTION))
-    else:
-        data_iops = parameters.iops
-        wal_iops = 0
+    data_iops, wal_iops = split_iops(parameters.iops, pitr_enabled=pitr_enabled)
     storage_class_name = await ensure_branch_storage_class(branch_id, iops=data_iops)
 
     if not use_existing_db_pvc:
