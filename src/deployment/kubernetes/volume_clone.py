@@ -272,7 +272,6 @@ class _VolumeCloneOperation:
         source_pvc = await kube_service.get_persistent_volume_claim(self.ids.source_namespace, pvc_name)
         new_manifest = build_pvc_manifest_from_existing(
             source_pvc,
-            branch_id=self.target_branch_id,
             volume_snapshot_name=snapshot_name,
         )
         new_manifest.spec.resources.requests["storage"] = str(self.target_database_size)
@@ -442,7 +441,6 @@ class _SnapshotRestoreOperation:
         source_pvc = await kube_service.get_persistent_volume_claim(self.ids.source_namespace, self.ids.pvc)
         new_manifest = build_pvc_manifest_from_existing(
             source_pvc,
-            branch_id=self.target_branch_id,
             volume_snapshot_name=self.ids.target_snapshot,
         )
         new_manifest.spec.resources.requests["storage"] = str(self.target_database_size)
