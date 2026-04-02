@@ -14,6 +14,7 @@ from .. import (
     AUTOSCALER_PVC_SUFFIX,
     AUTOSCALER_WAL_PVC_SUFFIX,
     PITR_WAL_PVC_SIZE,
+    SIMPLYBLOCK_CSI_STORAGE_CLASS,
     get_autoscaler_vm_identity,
     kube_service,
 )
@@ -114,7 +115,6 @@ class _VolumeCloneOperation:
     source_branch_id: Identifier
     target_branch_id: Identifier
     snapshot_class: str
-    storage_class_name: str
     target_database_size: int
     timeouts: CloneTimeouts
     volume_label: str = "data"
@@ -275,9 +275,9 @@ class _VolumeCloneOperation:
             volume_snapshot_name=snapshot_name,
         )
         new_manifest.spec.resources.requests["storage"] = str(self.target_database_size)
-        new_manifest.spec.storage_class_name = self.storage_class_name
+        new_manifest.spec.storage_class_name = SIMPLYBLOCK_CSI_STORAGE_CLASS
         if hasattr(new_manifest.spec, "storageClassName"):
-            new_manifest.spec.storageClassName = self.storage_class_name
+            new_manifest.spec.storageClassName = SIMPLYBLOCK_CSI_STORAGE_CLASS
         annotations = dict(getattr(new_manifest.metadata, "annotations", {}) or {})
         annotations["meta.helm.sh/release-name"] = get_settings().deployment_release_name
         annotations["meta.helm.sh/release-namespace"] = namespace
@@ -320,7 +320,6 @@ class _SnapshotRestoreOperation:
     snapshot_name: str
     snapshot_content_name: str | None
     snapshot_class: str
-    storage_class_name: str
     target_database_size: int
     timeouts: CloneTimeouts
     pvc_suffix: str = AUTOSCALER_PVC_SUFFIX
@@ -444,9 +443,9 @@ class _SnapshotRestoreOperation:
             volume_snapshot_name=self.ids.target_snapshot,
         )
         new_manifest.spec.resources.requests["storage"] = str(self.target_database_size)
-        new_manifest.spec.storage_class_name = self.storage_class_name
+        new_manifest.spec.storage_class_name = SIMPLYBLOCK_CSI_STORAGE_CLASS
         if hasattr(new_manifest.spec, "storageClassName"):
-            new_manifest.spec.storageClassName = self.storage_class_name
+            new_manifest.spec.storageClassName = SIMPLYBLOCK_CSI_STORAGE_CLASS
         annotations = dict(getattr(new_manifest.metadata, "annotations", {}) or {})
         annotations["meta.helm.sh/release-name"] = get_settings().deployment_release_name
         annotations["meta.helm.sh/release-namespace"] = self.ids.target_namespace
@@ -487,7 +486,6 @@ async def clone_branch_database_volume(
     source_branch_id: Identifier,
     target_branch_id: Identifier,
     snapshot_class: str,
-    storage_class_name: str,
     snapshot_timeout_seconds: float,
     snapshot_poll_interval_seconds: float,
     pvc_timeout_seconds: float,
@@ -510,7 +508,6 @@ async def clone_branch_database_volume(
         source_branch_id=source_branch_id,
         target_branch_id=target_branch_id,
         snapshot_class=snapshot_class,
-        storage_class_name=storage_class_name,
         target_database_size=database_size,
         timeouts=timeouts,
         volume_label="pgdata",
@@ -523,7 +520,6 @@ async def clone_branch_database_volume(
             source_branch_id=source_branch_id,
             target_branch_id=target_branch_id,
             snapshot_class=snapshot_class,
-            storage_class_name=storage_class_name,
             target_database_size=_PITR_WAL_PVC_SIZE_BYTES,
             timeouts=timeouts,
             volume_label="wal",
@@ -540,7 +536,6 @@ async def restore_branch_database_volume_from_snapshot(
     snapshot_name: str,
     snapshot_content_name: str | None,
     snapshot_class: str,
-    storage_class_name: str,
     database_size: int,
     snapshot_timeout_seconds: float,
     snapshot_poll_interval_seconds: float,
@@ -557,7 +552,6 @@ async def restore_branch_database_volume_from_snapshot(
         snapshot_name=snapshot_name,
         snapshot_content_name=snapshot_content_name,
         snapshot_class=snapshot_class,
-        storage_class_name=storage_class_name,
         target_database_size=database_size,
         timeouts=CloneTimeouts(
             snapshot_ready=snapshot_timeout_seconds,
@@ -576,7 +570,6 @@ async def restore_branch_wal_volume_from_snapshot(
     snapshot_namespace: str,
     snapshot_name: str,
     snapshot_class: str,
-    storage_class_name: str,
     snapshot_timeout_seconds: float,
     snapshot_poll_interval_seconds: float,
     pvc_timeout_seconds: float,
@@ -593,7 +586,6 @@ async def restore_branch_wal_volume_from_snapshot(
         snapshot_name=snapshot_name,
         snapshot_content_name=None,
         snapshot_class=snapshot_class,
-        storage_class_name=storage_class_name,
         target_database_size=_PITR_WAL_PVC_SIZE_BYTES,
         pvc_suffix=AUTOSCALER_WAL_PVC_SUFFIX,
         timeouts=CloneTimeouts(

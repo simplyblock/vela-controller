@@ -350,7 +350,6 @@ def _load_chart_values(chart_root: Any) -> dict[str, Any]:
 
 async def _create_fresh_pvcs(
     namespace: str,
-    storage_class_name: str,
     parameters: DeploymentParameters,
     *,
     pitr_enabled: bool,
@@ -368,7 +367,7 @@ async def _create_fresh_pvcs(
             ),
             spec=kubernetes_client.V1PersistentVolumeClaimSpec(
                 access_modes=access_modes,
-                storage_class_name=storage_class_name,
+                storage_class_name=SIMPLYBLOCK_CSI_STORAGE_CLASS,
                 volume_mode="Block",
                 resources=kubernetes_client.V1VolumeResourceRequirements(requests={"storage": size}),
             ),
@@ -389,7 +388,6 @@ def _configure_vela_values(
     jwt_secret: str,
     database_admin_password: str,
     pgbouncer_admin_password: str,
-    storage_class_name: str,
     pgbouncer_config: Mapping[str, int] | None,
     enable_file_storage: bool,
     pitr_enabled: bool,
@@ -434,7 +432,7 @@ def _configure_vela_values(
         storage_persistence["size"] = str(parameters.storage_size)
     else:
         storage_persistence.pop("size", None)
-    storage_persistence["storageClassName"] = storage_class_name
+    storage_persistence["storageClassName"] = SIMPLYBLOCK_CSI_STORAGE_CLASS
     storage_persistence["annotations"] = simplyblock_iops_annotations(parameters.iops)
     storage_spec["enabled"] = enable_file_storage
 
@@ -443,7 +441,7 @@ def _configure_vela_values(
     pg_wal_spec["enabled"] = pitr_enabled
     wal_persistence = pg_wal_spec.setdefault("persistence", {})
     wal_persistence["size"] = PITR_WAL_PVC_SIZE
-    wal_persistence["storageClassName"] = storage_class_name
+    wal_persistence["storageClassName"] = SIMPLYBLOCK_CSI_STORAGE_CLASS
     wal_persistence["claimName"] = wal_persistence.get("claimName") or (
         f"{_autoscaler_vm_name()}{AUTOSCALER_WAL_PVC_SUFFIX}"
     )
@@ -452,7 +450,7 @@ def _configure_vela_values(
 
     db_persistence = db_spec.setdefault("persistence", {})
     db_persistence["size"] = str(parameters.database_size)
-    db_persistence["storageClassName"] = storage_class_name
+    db_persistence["storageClassName"] = SIMPLYBLOCK_CSI_STORAGE_CLASS
     db_persistence["annotations"] = simplyblock_iops_annotations(parameters.iops)
 
     autoscaler_spec = values_content.setdefault("autoscalerVm", {})
@@ -471,7 +469,7 @@ def _configure_vela_values(
     autoscaler_persistence = autoscaler_spec.setdefault("persistence", {})
     autoscaler_persistence["claimName"] = f"{_autoscaler_vm_name()}{AUTOSCALER_PVC_SUFFIX}"
     autoscaler_persistence["size"] = str(parameters.database_size)
-    autoscaler_persistence["storageClassName"] = storage_class_name
+    autoscaler_persistence["storageClassName"] = SIMPLYBLOCK_CSI_STORAGE_CLASS
     autoscaler_persistence["annotations"] = simplyblock_iops_annotations(parameters.iops)
     autoscaler_persistence.setdefault("accessModes", ["ReadWriteMany"])
 
@@ -512,10 +510,8 @@ async def create_vela_config(
     postgresql_resource = resources.files(__package__).joinpath("postgresql.conf")
     values_content = _load_chart_values(chart)
 
-    storage_class_name = SIMPLYBLOCK_CSI_STORAGE_CLASS
-
     if not use_existing_db_pvc:
-        await _create_fresh_pvcs(namespace, storage_class_name, parameters, pitr_enabled=pitr_enabled)
+        await _create_fresh_pvcs(namespace, parameters, pitr_enabled=pitr_enabled)
 
     values_content = _configure_vela_values(
         values_content,
@@ -523,7 +519,6 @@ async def create_vela_config(
         jwt_secret=jwt_secret,
         database_admin_password=database_admin_password,
         pgbouncer_admin_password=pgbouncer_admin_password,
-        storage_class_name=storage_class_name,
         pgbouncer_config=pgbouncer_config,
         enable_file_storage=parameters.enable_file_storage,
         pitr_enabled=pitr_enabled,

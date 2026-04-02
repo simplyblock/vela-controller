@@ -25,7 +25,6 @@ from ....._util import DEFAULT_DB_NAME, DEFAULT_DB_USER, Identifier, storage_bac
 from ....._util.crypto import encrypt_with_passphrase, generate_keys
 from .....database import AsyncSessionLocal, SessionDep
 from .....deployment import (
-    SIMPLYBLOCK_CSI_STORAGE_CLASS,
     DeploymentParameters,
     ResizeParameters,
     branch_api_domain,
@@ -772,7 +771,6 @@ async def _clone_branch_environment_task(
                 source_branch_id=source_branch_id,
                 target_branch_id=branch_id,
                 snapshot_class=_VOLUME_SNAPSHOT_CLASS,
-                storage_class_name=SIMPLYBLOCK_CSI_STORAGE_CLASS,
                 snapshot_timeout_seconds=_SNAPSHOT_TIMEOUT_SECONDS,
                 snapshot_poll_interval_seconds=_SNAPSHOT_POLL_INTERVAL_SECONDS,
                 pvc_timeout_seconds=_PVC_CLONE_TIMEOUT_SECONDS,
@@ -850,7 +848,6 @@ async def _restore_branch_environment_task(
             snapshot_name=snapshot_name,
             snapshot_content_name=snapshot_content_name,
             snapshot_class=_VOLUME_SNAPSHOT_CLASS,
-            storage_class_name=SIMPLYBLOCK_CSI_STORAGE_CLASS,
             snapshot_timeout_seconds=_SNAPSHOT_TIMEOUT_SECONDS,
             snapshot_poll_interval_seconds=_SNAPSHOT_POLL_INTERVAL_SECONDS,
             pvc_timeout_seconds=_PVC_TIMEOUT_SECONDS,
@@ -864,7 +861,6 @@ async def _restore_branch_environment_task(
                 snapshot_namespace=snapshot_namespace,
                 snapshot_name=wal_snapshot_name,
                 snapshot_class=_VOLUME_SNAPSHOT_CLASS,
-                storage_class_name=SIMPLYBLOCK_CSI_STORAGE_CLASS,
                 snapshot_timeout_seconds=_SNAPSHOT_TIMEOUT_SECONDS,
                 snapshot_poll_interval_seconds=_SNAPSHOT_POLL_INTERVAL_SECONDS,
                 pvc_timeout_seconds=_PVC_TIMEOUT_SECONDS,
@@ -943,7 +939,6 @@ async def _restore_branch_environment_in_place_task(
             snapshot_name=snapshot_name,
             snapshot_content_name=snapshot_content_name,
             snapshot_class=_VOLUME_SNAPSHOT_CLASS,
-            storage_class_name=SIMPLYBLOCK_CSI_STORAGE_CLASS,
             snapshot_timeout_seconds=_SNAPSHOT_TIMEOUT_SECONDS,
             snapshot_poll_interval_seconds=_SNAPSHOT_POLL_INTERVAL_SECONDS,
             pvc_timeout_seconds=_PVC_TIMEOUT_SECONDS,
