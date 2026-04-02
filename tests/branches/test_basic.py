@@ -46,16 +46,6 @@ def _check_postgres_connection(db_info: dict, password: str) -> None:
 
 
 @pytest.fixture(scope="module")
-def org(make_org):
-    return make_org("test-org-branches")
-
-
-@pytest.fixture(scope="module")
-def project(make_project, org):
-    return make_project(org, "test-project-branches")
-
-
-@pytest.fixture(scope="module")
 def branch_id(client, make_branch, org, project):
     bid = make_branch(
         org,

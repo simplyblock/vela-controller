@@ -31,11 +31,6 @@ _org_available: dict = {}
 
 
 @pytest.fixture(scope="module")
-def org(make_org):
-    return make_org("test-org-resources")
-
-
-@pytest.fixture(scope="module")
 def project(make_project, org):
     return make_project(org, "test-project-resources")
 

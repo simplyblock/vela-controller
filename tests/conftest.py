@@ -119,6 +119,16 @@ def make_project(client):
 
 
 @pytest.fixture(scope="session")
+def org(make_org):
+    return make_org("test-org", max_backups=10)
+
+
+@pytest.fixture(scope="session")
+def project(make_project, org):
+    return make_project(org, "test-project", max_backups=10)
+
+
+@pytest.fixture(scope="module")
 def make_branch(client):
     """Factory that creates a branch, waits for ACTIVE_HEALTHY, and deletes on teardown.
 

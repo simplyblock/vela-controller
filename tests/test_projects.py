@@ -1,14 +1,8 @@
-import pytest
 from conftest import _id
 
 _PROJECT_NAME = "test-project-lifecycle"
 _PROJECT_UPDATED = "test-project-lifecycle-upd"
 _state: dict = {}
-
-
-@pytest.fixture(scope="module")
-def org(make_org):
-    return make_org("test-org-projects")
 
 
 def test_project_list_empty(client, org):

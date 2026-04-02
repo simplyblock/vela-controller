@@ -12,16 +12,6 @@ _BACKUP_TIMEOUT_SEC = 300
 
 
 @pytest.fixture(scope="module")
-def org(make_org):
-    return make_org("test-org-schedules", max_backups=10)
-
-
-@pytest.fixture(scope="module")
-def project(make_project, org):
-    return make_project(org, "test-project-schedules", max_backups=10)
-
-
-@pytest.fixture(scope="module")
 def branch_id(make_branch, org, project):
     return make_branch(org, project, "test-branch-schedules")
 

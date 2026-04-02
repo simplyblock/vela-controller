@@ -5,16 +5,6 @@ pytestmark = pytest.mark.branch
 
 
 @pytest.fixture(scope="module")
-def org(make_org):
-    return make_org("test-org-start-stop")
-
-
-@pytest.fixture(scope="module")
-def project(make_project, org):
-    return make_project(org, "test-project-start-stop")
-
-
-@pytest.fixture(scope="module")
 def branch_id(make_branch, org, project):
     return make_branch(org, project, "test-branch-start-stop")
 

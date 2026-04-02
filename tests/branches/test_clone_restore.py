@@ -44,16 +44,6 @@ def _execute_sql(db_info: dict, password: str, *statements: str) -> list[tuple]:
 
 
 @pytest.fixture(scope="module")
-def org(make_org):
-    return make_org("test-org-backup", max_backups=10)
-
-
-@pytest.fixture(scope="module")
-def project(make_project, org):
-    return make_project(org, "test-project-backup", max_backups=10)
-
-
-@pytest.fixture(scope="module")
 def branch_id(make_branch, org, project):
     return make_branch(
         org,
