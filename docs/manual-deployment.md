@@ -46,6 +46,13 @@ spec:
           containers:
             - name: proxy
               image: kong/kong-gateway:3.9
+              resources:
+                limits:
+                  cpu: 2
+                  memory: 2Gi
+                requests:
+                  cpu: 500m
+                  memory: 512Mi
               env:
                 - name: KONG_NGINX_HTTP_LARGE_CLIENT_HEADER_BUFFERS
                   value: "8 32k"
