@@ -108,7 +108,20 @@ spec:
       certificateRefs:
       - group: ""
         kind: Secret
-        name: vela-staging-cert
+        name: vela-run-wildcard-tls
+      mode: Terminate
+  - allowedRoutes:
+      namespaces:
+        from: All
+    hostname: postbrain.simplyblock.ai
+    name: postbrainhttps
+    port: 443
+    protocol: HTTPS
+    tls:
+      certificateRefs:
+      - group: ""
+        kind: Secret
+        name: postbrain-cert-secret
       mode: Terminate
 EOF
 ```
