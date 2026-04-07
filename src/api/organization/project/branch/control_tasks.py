@@ -1,10 +1,10 @@
-"""Celery task for branch start/stop/pause/resume lifecycle management.
+"""Celery task for branch start/stop lifecycle management.
 
-For start/resume the task polls the health monitor until the branch is
-ACTIVE_HEALTHY, then writes that status and clears itself from the branch.
-For stop/pause the task waits for the NeonVM phase to reach stopped/succeeded.
+For start the task polls the health monitor until the branch is ACTIVE_HEALTHY,
+then writes that status and clears itself from the branch.
+For stop the task waits for the NeonVM phase to reach stopped/succeeded.
 While the task is running any status query returns the in-progress shadow
-status (STARTING/RESUMING/STOPPING/PAUSING) instead of the DB value.
+status (STARTING/STOPPING) instead of the DB value.
 """
 
 import asyncio
@@ -27,27 +27,21 @@ from .....worker import app
 logger = logging.getLogger(__name__)
 
 _CONTROL_TO_POWER_STATE: dict[str, PowerState] = {
-    "pause": "Stopped",
-    "resume": "Running",
     "start": "Running",
     "stop": "Stopped",
 }
 
 _CONTROL_TRANSITION_INITIAL: dict[str, BranchServiceStatus] = {
-    "pause": BranchServiceStatus.PAUSING,
-    "resume": BranchServiceStatus.RESUMING,
     "start": BranchServiceStatus.STARTING,
     "stop": BranchServiceStatus.STOPPING,
 }
 
 _CONTROL_TRANSITION_FINAL: dict[str, BranchServiceStatus] = {
-    "pause": BranchServiceStatus.PAUSED,
     "stop": BranchServiceStatus.STOPPED,
 }
 
 _DESIRED_PHASES: dict[str, set[Phase]] = {
     "stop": {Phase.stopped, Phase.succeeded},
-    "pause": {Phase.stopped, Phase.succeeded},
 }
 
 _POLL_INTERVAL_SEC = 5
@@ -96,7 +90,7 @@ async def _async_perform_control(branch_id: str, action: str) -> dict:
         try:
             await set_virtualmachine_power_state(namespace, name, _CONTROL_TO_POWER_STATE[action])
 
-            if action in ("start", "resume"):
+            if action == "start":
                 while True:
                     current = await query_deployment_status(namespace, name)
                     if current == BranchServiceStatus.ACTIVE_HEALTHY:
