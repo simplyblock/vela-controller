@@ -112,13 +112,11 @@ _TRANSITIONAL_BRANCH_STATUSES: set[BranchServiceStatus] = {
     BranchServiceStatus.STARTING,
     BranchServiceStatus.STOPPING,
     BranchServiceStatus.RESTARTING,
-    BranchServiceStatus.PAUSING,
-    BranchServiceStatus.RESUMING,
     BranchServiceStatus.UPDATING,
     BranchServiceStatus.DELETING,
     BranchServiceStatus.RESIZING,
 }
-_PROTECTED_BRANCH_STATUSES: set[BranchServiceStatus] = {BranchServiceStatus.PAUSED}
+_PROTECTED_BRANCH_STATUSES: set[BranchServiceStatus] = {BranchServiceStatus.STOPPED, BranchServiceStatus.PAUSED}
 _CREATING_STATUS_ERROR_GRACE_PERIOD = timedelta(minutes=5)
 _STARTING_STATUS_ERROR_GRACE_PERIOD = timedelta(minutes=5)
 
@@ -1957,6 +1955,7 @@ async def control_branch(
     branch: BranchDep,
 ):
     action = request.scope["route"].name.split(":")[-1]
+    action = {"pause": "stop", "resume": "start"}.get(action, action)
     assert action in _CONTROL_TO_POWER_STATE
     task_id = dispatch_control(str(branch.id), action)
     branch.control_task_id = task_id
