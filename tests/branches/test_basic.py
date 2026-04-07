@@ -202,9 +202,10 @@ def test_branch_delete_lifecycle(client, org, project, branch_id):
     if r.status_code == 200:
         assert any(t["task_type"] == "delete" for t in r.json())
 
-    # A second DELETE while delete_task_id is set must be rejected
+    # A second DELETE while the branch is in DELETING state must be rejected.
+    # BranchDep raises 409 for any operation on a DELETING branch.
     r = client.delete(f"{base}/")
-    assert r.status_code == 400
+    assert r.status_code == 409
 
     # Wait for the background job to finish — branch must disappear
     wait_for_deletion(client, f"{base}/", BRANCH_TIMEOUT_SEC)
