@@ -73,7 +73,7 @@ from .....models.branch import (
 )
 from .....models.resources import ResourceLimitsPublic, ResourceType
 from ...._util import Conflict, Forbidden, NotFound, Unauthenticated, url_path_for
-from ...._util.backups import copy_branch_backup_schedules, delete_branch_backups, ensure_branch_pitr_schedule
+from ...._util.backups import copy_branch_backup_schedules, ensure_branch_pitr_schedule
 from ...._util.resourcelimit import (
     apply_branch_resource_allocation,
     check_available_resources_limits,
@@ -94,13 +94,14 @@ from ....keycloak import realm_admin
 from ....settings import get_settings as get_api_settings
 from .api_keys import api as api_key_api
 from .auth import api as auth_api
-from .control_tasks import (
+from .tasks import (
     _CONTROL_TO_POWER_STATE,
     dispatch_control,
+    dispatch_delete,
+    dispatch_resize,
     get_control_in_progress_status,
 )
-from .resize_tasks import dispatch_resize
-from .tasks import task_api
+from .tasks import api as task_api
 
 api = APIRouter(tags=["branch"])
 
@@ -1682,31 +1683,34 @@ async def update(
 @instance_api.delete(
     "/",
     name="organizations:projects:branch:delete",
-    status_code=204,
-    responses={401: Unauthenticated, 403: Forbidden, 404: NotFound},
+    status_code=202,
+    responses={401: Unauthenticated, 403: Forbidden, 404: NotFound, 400: {"description": "Delete already in progress"}},
 )
 async def delete(
     session: SessionDep,
-    _organization: OrganizationDep,
-    _project: ProjectDep,
+    request: Request,
+    organization: OrganizationDep,
+    project: ProjectDep,
     branch: BranchDep,
 ):
-    branch_id = branch.id
-    await _set_branch_status(session, branch, BranchServiceStatus.DELETING)
-    await delete_deployment(branch_id)
-    try:
-        await realm_admin("master").a_delete_realm(str(branch_id))
-    except KeycloakError as exc:
-        if getattr(exc, "response_code", None) == 404:
-            logger.error("Keycloak realm not found for branch %s during delete; continuing.", branch_id, exc_info=True)
-        else:
-            raise
-    await delete_branch_provisioning(session, branch_id)
-    await delete_branch_backups(session, branch_id)
-    await session.delete(branch)
+    if branch.delete_task_id is not None:
+        raise HTTPException(status_code=400, detail="A delete operation is already in progress")
+
+    task_id = dispatch_delete(str(branch.id))
+
+    branch.set_status(BranchServiceStatus.DELETING)
+    branch.delete_task_id = task_id
     await session.commit()
 
-    return Response(status_code=204)
+    task_url = url_path_for(
+        request,
+        "organizations:projects:branch:tasks:detail",
+        organization_id=await organization.awaitable_attrs.id,
+        project_id=await project.awaitable_attrs.id,
+        branch_id=await branch.awaitable_attrs.id,
+        task_id=task_id,
+    )
+    return Response(status_code=202, headers={"Location": task_url})
 
 
 @instance_api.post(

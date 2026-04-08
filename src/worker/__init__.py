@@ -22,6 +22,6 @@ app.conf.task_chord_propagates = False
 app.conf.beat_schedule_filename = "/tmp/celerybeat-schedule"
 
 # Register tasks — must be imported after `app` is defined.
-from ..api.organization.project.branch import control_tasks as _api_control_tasks  # noqa: E402, F401
-from ..api.organization.project.branch import resize_tasks as _api_resize_tasks  # noqa: E402, F401
+from ..api.organization.project.branch import tasks as _api_branch_tasks  # noqa: E402, F401
+from ..deployment import delete as _deployment_delete  # noqa: E402, F401
 from ..deployment import resize as _deployment_resize  # noqa: E402, F401

@@ -2,7 +2,7 @@ import time
 
 import psycopg
 import pytest
-from conftest import BRANCH_TIMEOUT_SEC, wait_for_status
+from conftest import BRANCH_TIMEOUT_SEC, wait_for_deletion, wait_for_status
 
 pytestmark = pytest.mark.branch
 
@@ -182,3 +182,33 @@ def test_branch_apikey_list(client, org, project, branch_id):
     assert r.status_code == 200
     ids = [k["id"] for k in r.json()]
     assert _state["api_key_id"] in ids
+
+
+def test_branch_delete_lifecycle(client, org, project, branch_id):
+    base = f"organizations/{org}/projects/{project}/branches/{branch_id}"
+
+    # DELETE returns 202 with a Location pointing at the task
+    r = client.delete(f"{base}/")
+    assert r.status_code == 202
+    assert "Location" in r.headers
+
+    # Branch detail reflects the DELETING status immediately
+    r = client.get(f"{base}/")
+    if r.status_code == 200:
+        assert r.json()["status"] == "DELETING"
+
+    # Task is listed on the branch while deletion is in progress
+    r = client.get(f"{base}/tasks/")
+    if r.status_code == 200:
+        assert any(t["task_type"] == "delete" for t in r.json())
+
+    # A second DELETE while the branch is in DELETING state must be rejected.
+    # BranchDep raises 409 for any operation on a DELETING branch.
+    r = client.delete(f"{base}/")
+    assert r.status_code == 409
+
+    # Wait for the background job to finish — branch must disappear
+    wait_for_deletion(client, f"{base}/", BRANCH_TIMEOUT_SEC)
+
+    r = client.get(f"{base}/")
+    assert r.status_code == 404

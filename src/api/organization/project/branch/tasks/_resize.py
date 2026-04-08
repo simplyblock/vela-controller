@@ -14,13 +14,13 @@ from asgiref.sync import async_to_sync
 from celery import chord
 from ulid import ULID
 
-from .....database import AsyncSessionLocal
-from .....deployment.health import collect_branch_service_health, derive_branch_status_from_services
-from .....deployment.resize import resize_cpu_memory, resize_database_pvc, resize_iops, resize_storage_pvc
-from .....models.branch import Branch
-from .....models.resources import ResourceLimitsPublic
-from .....worker import app
-from ...._util.resourcelimit import apply_branch_resource_allocation
+from ......database import AsyncSessionLocal
+from ......deployment.health import collect_branch_service_health, derive_branch_status_from_services
+from ......deployment.resize import resize_cpu_memory, resize_database_pvc, resize_iops, resize_storage_pvc
+from ......models.branch import Branch
+from ......models.resources import ResourceLimitsPublic
+from ......worker import app
+from ....._util.resourcelimit import apply_branch_resource_allocation
 
 logger = logging.getLogger(__name__)
 
