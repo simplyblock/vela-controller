@@ -33,8 +33,8 @@ spec:
             - name: controller
               resources:
                 limits:
-                  cpu: 500m
-                  memory: 500Mi
+                  cpu: 400m
+                  memory: 200Mi
   dataPlaneOptions:
     network:
       services:
