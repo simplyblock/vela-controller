@@ -3,8 +3,6 @@ from datetime import datetime
 
 import pytest
 
-pytestmark = pytest.mark.backup
-
 _state: dict = {}
 
 _BACKUP_POLL_SEC = 15

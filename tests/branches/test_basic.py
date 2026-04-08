@@ -4,8 +4,6 @@ import psycopg
 import pytest
 from conftest import BRANCH_TIMEOUT_SEC, wait_for_status
 
-pytestmark = pytest.mark.branch
-
 _BRANCH_PASSWORD = "SecurePass1!"
 _BRANCH_NAME = "test-branch"
 _BRANCH_RENAMED = "test-branch-renamed"
