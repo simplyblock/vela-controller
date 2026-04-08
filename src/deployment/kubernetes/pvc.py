@@ -97,9 +97,7 @@ def build_pvc_manifest_from_existing(
         annotations.pop(noisy, None)
 
     access_modes = list(getattr(spec, "access_modes", None) or [])
-    storage_class_name = getattr(spec, "storage_class_name", None) or getattr(spec, "storageClassName", None)
-    if not storage_class_name:
-        storage_class_name = SIMPLYBLOCK_CSI_STORAGE_CLASS
+    storage_class_name = getattr(spec, "storage_class_name", None) or SIMPLYBLOCK_CSI_STORAGE_CLASS
 
     resources = getattr(spec, "resources", None)
     requests = getattr(resources, "requests", {}) if resources else {}
