@@ -5,10 +5,14 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from ...._util import Forbidden, NotFound, Unauthenticated
-from ....dependencies import BranchDep, OrganizationDep, ProjectDep
-from .control_tasks import perform_control
-from .resize_tasks import finalize_resize
+from ....._util import Forbidden, NotFound, Unauthenticated
+from .....dependencies import BranchDep, OrganizationDep, ProjectDep
+from ._control import _CONTROL_TO_POWER_STATE as _CONTROL_TO_POWER_STATE
+from ._control import dispatch_control as dispatch_control
+from ._control import get_control_in_progress_status as get_control_in_progress_status
+from ._control import perform_control
+from ._resize import dispatch_resize as dispatch_resize
+from ._resize import finalize_resize
 
 api = APIRouter(tags=["branch"])
 

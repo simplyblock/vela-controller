@@ -94,12 +94,12 @@ from ....keycloak import realm_admin
 from ....settings import get_settings as get_api_settings
 from .api_keys import api as api_key_api
 from .auth import api as auth_api
-from .control_tasks import (
+from .tasks import (
     _CONTROL_TO_POWER_STATE,
     dispatch_control,
+    dispatch_resize,
     get_control_in_progress_status,
 )
-from .resize_tasks import dispatch_resize
 from .tasks import api as task_api
 
 api = APIRouter(tags=["branch"])
