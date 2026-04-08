@@ -3,8 +3,6 @@ import time
 import psycopg
 import pytest
 
-pytestmark = pytest.mark.backup
-
 _BRANCH_PASSWORD = "SecurePass1!"
 
 

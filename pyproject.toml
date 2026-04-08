@@ -91,6 +91,10 @@ testpaths = [
     "tests/test_resources.py",
     "tests/branches",
 ]
+markers = [
+    "branch: branch lifecycle tests",
+    "backup: clone and restore tests",
+]
 
 [tool.ruff]
 target-version = 'py313'

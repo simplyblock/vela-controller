@@ -1,8 +1,6 @@
 import pytest
 from conftest import BRANCH_TIMEOUT_SEC, wait_for_status
 
-pytestmark = pytest.mark.branch
-
 
 @pytest.fixture(scope="module")
 def org(make_org):
