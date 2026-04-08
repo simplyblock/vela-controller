@@ -100,7 +100,7 @@ from .control_tasks import (
     get_control_in_progress_status,
 )
 from .resize_tasks import dispatch_resize
-from .tasks import task_api
+from .tasks import api as task_api
 
 api = APIRouter(tags=["branch"])
 
