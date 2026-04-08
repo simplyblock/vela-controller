@@ -33,7 +33,6 @@ from .....deployment import (
     branch_service_name,
     delete_deployment,
     deploy_branch_environment,
-    ensure_branch_storage_class,
     get_autoscaler_vm_identity,
     kube_service,
     resolve_branch_database_volume_size,
@@ -765,20 +764,18 @@ async def _clone_branch_environment_task(
     initial_password: str | None,
 ) -> None:
     await _persist_branch_status(branch_id, BranchServiceStatus.CREATING)
-    storage_class_name: str | None = None
     if copy_data:
         try:
-            storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
             await clone_branch_database_volume(
                 source_branch_id=source_branch_id,
                 target_branch_id=branch_id,
                 snapshot_class=_VOLUME_SNAPSHOT_CLASS,
-                storage_class_name=storage_class_name,
                 snapshot_timeout_seconds=_SNAPSHOT_TIMEOUT_SECONDS,
                 snapshot_poll_interval_seconds=_SNAPSHOT_POLL_INTERVAL_SECONDS,
                 pvc_timeout_seconds=_PVC_CLONE_TIMEOUT_SECONDS,
                 pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
                 database_size=parameters.database_size,
+                iops=parameters.iops,
                 pitr_enabled=pitr_enabled,
             )
         except VelaError:
@@ -842,9 +839,7 @@ async def _restore_branch_environment_task(
     initial_password: str | None,
 ) -> None:
     await _persist_branch_status(branch_id, BranchServiceStatus.CREATING)
-    storage_class_name: str | None = None
     try:
-        storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
         await restore_branch_database_volume_from_snapshot(
             source_branch_id=source_branch_id,
             target_branch_id=branch_id,
@@ -852,12 +847,12 @@ async def _restore_branch_environment_task(
             snapshot_name=snapshot_name,
             snapshot_content_name=snapshot_content_name,
             snapshot_class=_VOLUME_SNAPSHOT_CLASS,
-            storage_class_name=storage_class_name,
             snapshot_timeout_seconds=_SNAPSHOT_TIMEOUT_SECONDS,
             snapshot_poll_interval_seconds=_SNAPSHOT_POLL_INTERVAL_SECONDS,
             pvc_timeout_seconds=_PVC_TIMEOUT_SECONDS,
             pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
             database_size=restore_database_size,
+            iops=parameters.iops,
         )
         if wal_snapshot_name is not None:
             await restore_branch_wal_volume_from_snapshot(
@@ -866,11 +861,11 @@ async def _restore_branch_environment_task(
                 snapshot_namespace=snapshot_namespace,
                 snapshot_name=wal_snapshot_name,
                 snapshot_class=_VOLUME_SNAPSHOT_CLASS,
-                storage_class_name=storage_class_name,
                 snapshot_timeout_seconds=_SNAPSHOT_TIMEOUT_SECONDS,
                 snapshot_poll_interval_seconds=_SNAPSHOT_POLL_INTERVAL_SECONDS,
                 pvc_timeout_seconds=_PVC_TIMEOUT_SECONDS,
                 pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
+                iops=parameters.iops,
             )
     except VelaError:
         await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
@@ -937,7 +932,6 @@ async def _restore_branch_environment_in_place_task(
             return
 
     try:
-        storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
         await restore_branch_database_volume_from_snapshot(
             source_branch_id=source_branch_id,
             target_branch_id=branch_id,
@@ -945,12 +939,12 @@ async def _restore_branch_environment_in_place_task(
             snapshot_name=snapshot_name,
             snapshot_content_name=snapshot_content_name,
             snapshot_class=_VOLUME_SNAPSHOT_CLASS,
-            storage_class_name=storage_class_name,
             snapshot_timeout_seconds=_SNAPSHOT_TIMEOUT_SECONDS,
             snapshot_poll_interval_seconds=_SNAPSHOT_POLL_INTERVAL_SECONDS,
             pvc_timeout_seconds=_PVC_TIMEOUT_SECONDS,
             pvc_poll_interval_seconds=_PVC_POLL_INTERVAL_SECONDS,
             database_size=parameters.database_size,
+            iops=parameters.iops,
         )
     except VelaError:
         await _persist_branch_status(branch_id, BranchServiceStatus.ERROR)
