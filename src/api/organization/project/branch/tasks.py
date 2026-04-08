@@ -1,12 +1,5 @@
-"""Branch task list/detail endpoints.
-
-Exposes Celery task state (resize and control) under:
-  GET .../branches/{branch_id}/tasks
-  GET .../branches/{branch_id}/tasks/{task_id}
-"""
-
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
@@ -17,7 +10,9 @@ from ....dependencies import BranchDep, OrganizationDep, ProjectDep
 from .control_tasks import perform_control
 from .resize_tasks import finalize_resize
 
-task_api = APIRouter(tags=["branch"])
+api = APIRouter(tags=["branch"])
+
+TaskType = Literal["control", "resize"]
 
 _CELERY_STATE_TO_STATUS: dict[str, str] = {
     "PENDING": "PENDING",
@@ -38,14 +33,20 @@ class BranchTaskPublic(BaseModel):
     date_done: datetime | None
 
 
-def _build_resize_task_public(task_id: UUID) -> BranchTaskPublic:
-    result = finalize_resize.AsyncResult(str(task_id))
+def _build_task_public(task_id: UUID, task_type: TaskType) -> BranchTaskPublic:
+    tasks = {
+        "control": perform_control,
+        "resize": finalize_resize,
+    }
+    result = tasks[task_type].AsyncResult(str(task_id))
+
     state = result.state
     status = _CELERY_STATE_TO_STATUS.get(state, state)
     kwargs: dict = result.kwargs or {}
+    task_type = task_type if task_type != "control" else kwargs["action"]
     return BranchTaskPublic(
         id=task_id,
-        task_type="resize",
+        task_type=task_type,
         status=status,
         parameters=kwargs.get("effective_parameters", {}),
         result=result.result if state == "SUCCESS" else None,
@@ -54,24 +55,7 @@ def _build_resize_task_public(task_id: UUID) -> BranchTaskPublic:
     )
 
 
-def _build_control_task_public(task_id: UUID) -> BranchTaskPublic:
-    result = perform_control.AsyncResult(str(task_id))
-    state = result.state
-    status = _CELERY_STATE_TO_STATUS.get(state, state)
-    kwargs: dict = result.kwargs or {}
-    action = kwargs.get("action", "control")
-    return BranchTaskPublic(
-        id=task_id,
-        task_type=action,
-        status=status,
-        parameters={"action": action},
-        result=result.result if state == "SUCCESS" else None,
-        error=str(result.traceback) if state == "FAILURE" and result.traceback else None,
-        date_done=result.date_done,
-    )
-
-
-@task_api.get(
+@api.get(
     "/",
     name="organizations:projects:branch:tasks:list",
     response_model=list[BranchTaskPublic],
@@ -82,15 +66,14 @@ async def list_tasks(
     _project: ProjectDep,
     branch: BranchDep,
 ) -> list[BranchTaskPublic]:
-    tasks = []
-    if branch.resize_task_id is not None:
-        tasks.append(_build_resize_task_public(branch.resize_task_id))
-    if branch.control_task_id is not None:
-        tasks.append(_build_control_task_public(branch.control_task_id))
-    return tasks
+    tasks: list[tuple[UUID | None, TaskType]] = [
+        (branch.control_task_id, "control"),
+        (branch.resize_task_id, "resize"),
+    ]
+    return [_build_task_public(task_id, task_type) for task_id, task_type in tasks if task_id is not None]
 
 
-@task_api.get(
+@api.get(
     "/{task_id}",
     name="organizations:projects:branch:tasks:detail",
     response_model=BranchTaskPublic,
@@ -103,7 +86,7 @@ async def get_task(
     task_id: UUID,
 ) -> BranchTaskPublic:
     if branch.resize_task_id == task_id:
-        return _build_resize_task_public(task_id)
+        return _build_task_public(task_id, "resize")
     if branch.control_task_id == task_id:
-        return _build_control_task_public(task_id)
+        return _build_task_public(task_id, "control")
     raise HTTPException(status_code=404, detail="Task not found")
