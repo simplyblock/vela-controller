@@ -1801,7 +1801,7 @@ async def update_pgbouncer_config(
     host = _pgbouncer_host_for_namespace(namespace)
     update_commands = parameters.model_dump(exclude_defaults=True)
 
-    config_map_name = f"{vmi_name}-pgbouncer"
+    config_map_name = f"{vmi_name}-config"
     try:
         await _update_pgbouncer_config_map(
             namespace=namespace,
