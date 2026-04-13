@@ -3,9 +3,8 @@ from typing import Any
 from kubernetes_asyncio import client as kubernetes_client
 from kubernetes_asyncio.client.exceptions import ApiException
 
-from ..._util import Identifier
 from ...exceptions import VelaKubernetesError
-from .. import branch_storage_class_name, kube_service
+from .. import SIMPLYBLOCK_CSI_STORAGE_CLASS, kube_service
 from ._util import core_v1_client
 from ._wait import wait_for_condition
 
@@ -76,7 +75,6 @@ async def wait_for_pvc_bound(
 def build_pvc_manifest_from_existing(
     pvc: Any,
     *,
-    branch_id: Identifier,
     volume_snapshot_name: str,
 ) -> kubernetes_client.V1PersistentVolumeClaim:
     """Build a PVC manifest equivalent to the input but sourced from the given snapshot."""
@@ -99,9 +97,7 @@ def build_pvc_manifest_from_existing(
         annotations.pop(noisy, None)
 
     access_modes = list(getattr(spec, "access_modes", None) or [])
-    storage_class_name = getattr(spec, "storage_class_name", None) or getattr(spec, "storageClassName", None)
-    if not storage_class_name:
-        storage_class_name = branch_storage_class_name(branch_id)
+    storage_class_name = getattr(spec, "storage_class_name", None) or SIMPLYBLOCK_CSI_STORAGE_CLASS
 
     resources = getattr(spec, "resources", None)
     requests = getattr(resources, "requests", {}) if resources else {}
