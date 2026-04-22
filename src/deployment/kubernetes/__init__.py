@@ -47,25 +47,6 @@ class KubernetesService:
                 if exc.status != 409:
                     raise
 
-    async def check_namespace_status(self, namespace: str) -> dict[str, str]:
-        """
-        Check if all pods in the namespace are running.
-
-        Raises
-        - KeyError if namespace is missing
-        - urllib3.exceptions.HTTPError on failed access to the kubernetes API
-        - kubernetes_asyncio.client.rest.ApiException on API failure
-        """
-
-        async with core_v1_client() as core_v1:
-            namespaces = await core_v1.list_namespace()
-
-            if namespace not in {ns.metadata.name for ns in namespaces.items}:
-                raise KeyError(f"Namespace {namespace} not found")
-
-            pods = await core_v1.list_namespaced_pod(namespace)
-        return {pod.metadata.name: pod.status.phase for pod in pods.items}
-
     async def apply_http_routes(self, namespace: str, routes: list[dict[str, Any]]) -> None:
         async with custom_api_client() as custom:
             for route in routes:
@@ -131,38 +112,6 @@ class KubernetesService:
                 else:
                     raise
 
-    async def apply_kong_consumer(self, namespace: str, consumer: dict[str, Any]) -> None:
-        group, version = consumer["apiVersion"].split("/")
-        plural = "kongconsumers"
-
-        async with custom_api_client() as custom:
-            try:
-                await custom.create_namespaced_custom_object(
-                    group=group,
-                    version=version,
-                    namespace=namespace,
-                    plural=plural,
-                    body=consumer,
-                )
-                logger.info("Created KongConsumer %s in %s", consumer["metadata"]["name"], namespace)
-            except client.exceptions.ApiException as exc:
-                if exc.status == 409:
-                    logger.info(
-                        "KongConsumer %s already exists in %s; replacing",
-                        consumer["metadata"]["name"],
-                        namespace,
-                    )
-                    await custom.replace_namespaced_custom_object(
-                        group=group,
-                        version=version,
-                        namespace=namespace,
-                        plural=plural,
-                        name=consumer["metadata"]["name"],
-                        body=consumer,
-                    )
-                else:
-                    raise
-
     async def ensure_endpoint_slice(
         self,
         namespace: str,
@@ -221,36 +170,6 @@ class KubernetesService:
                     f"Failed to create EndpointSlice {slice_name} for {service_name} in {namespace}: {exc.reason}"
                 ) from exc
 
-    async def apply_secret(self, namespace: str, secret: dict[str, Any]) -> None:
-        name = secret["metadata"]["name"]
-        async with core_v1_client() as core_v1:
-            try:
-                await core_v1.create_namespaced_secret(namespace=namespace, body=secret)
-                logger.info("Created Secret %s in %s", name, namespace)
-            except client.exceptions.ApiException as exc:
-                if exc.status == 409:
-                    logger.info("Secret %s already exists in %s; replacing", name, namespace)
-                    await core_v1.replace_namespaced_secret(
-                        name=name,
-                        namespace=namespace,
-                        body=secret,
-                    )
-                else:
-                    raise
-
-    async def apply_storage_class(self, manifest: dict[str, Any]) -> None:
-        name = manifest["metadata"]["name"]
-        async with storage_v1_client() as storage_v1:
-            try:
-                await storage_v1.create_storage_class(body=manifest)
-                logger.info("Created StorageClass %s", name)
-            except client.exceptions.ApiException as exc:
-                if exc.status == 409:
-                    logger.info("StorageClass %s already exists; replacing", name)
-                    await storage_v1.replace_storage_class(name=name, body=manifest)
-                else:
-                    raise
-
     async def get_storage_class(self, name: str) -> Any:
         async with storage_v1_client() as storage_v1:
             try:
@@ -258,17 +177,6 @@ class KubernetesService:
             except client.exceptions.ApiException as exc:
                 if exc.status == 404:
                     raise VelaKubernetesError(f"StorageClass {name!r} not found") from exc
-                raise
-
-    async def delete_storage_class(self, name: str) -> None:
-        async with storage_v1_client() as storage_v1:
-            try:
-                await storage_v1.delete_storage_class(name)
-                logger.info("Deleted StorageClass %s", name)
-            except client.exceptions.ApiException as exc:
-                if exc.status == 404:
-                    logger.info("StorageClass %s not found; skipping delete", name)
-                    return
                 raise
 
     async def get_service(self, namespace: str, name: str) -> Any:
