@@ -79,6 +79,22 @@ DATABASE_PVC_SUFFIX = "-db-pvc"
 AUTOSCALER_PVC_SUFFIX = "-block-data"
 AUTOSCALER_WAL_PVC_SUFFIX = "-pg-wal"
 PITR_WAL_PVC_SIZE = "100Gi"
+_WAL_IOPS_FRACTION = 0.25
+
+
+def split_iops(total: int, *, pitr_enabled: bool) -> tuple[int, int]:
+    """
+    When PITR is disabled *wal_iops* is 0 and the full budget goes to data.
+    Both values are clamped to a minimum of 1 when PITR is active so that
+    neither volume is left with zero throughput.
+    """
+    if not pitr_enabled:
+        return total, 0
+    wal_iops = max(1, round(total * _WAL_IOPS_FRACTION))
+    data_iops = max(1, round(total * (1 - _WAL_IOPS_FRACTION)))
+    return data_iops, wal_iops
+
+
 _LOAD_BALANCER_TIMEOUT_SECONDS = float(600)
 _LOAD_BALANCER_POLL_INTERVAL_SECONDS = float(2)
 _OVERLAY_IP_TIMEOUT_SECONDS = float(300)
@@ -356,13 +372,35 @@ async def update_branch_volume_iops(branch_id: Identifier, iops: int) -> None:
     namespace = deployment_namespace(branch_id)
 
     volume, _ = await resolve_autoscaler_volume_identifiers(namespace)
+
+    # Detect PITR by checking whether the WAL PVC exists.
+    wal_pvc_name = f"{_autoscaler_vm_name()}{AUTOSCALER_WAL_PVC_SUFFIX}"
+    try:
+        await kube_service.get_persistent_volume_claim(namespace, wal_pvc_name)
+        pitr_active = True
+    except VelaKubernetesError:
+        pitr_active = False
+
+    data_iops, wal_iops = split_iops(iops, pitr_enabled=pitr_active)
+
     try:
         async with create_simplyblock_api() as sb_api:
-            await sb_api.update_volume(volume=volume, payload={"max_rw_iops": iops})
+            await sb_api.update_volume(volume=volume, payload={"max_rw_iops": data_iops})
     except VelaSimplyblockAPIError as exc:
         raise VelaDeploymentError("Failed to update volume") from exc
 
-    logger.info("Updated Simplyblock volume %s IOPS to %s", volume, iops)
+    logger.info("Updated Simplyblock data volume %s IOPS to %s", volume, data_iops)
+
+    if pitr_active:
+        wal_volume, _ = await resolve_autoscaler_wal_volume_identifiers(namespace)
+        try:
+            async with create_simplyblock_api() as sb_api:
+                await sb_api.update_volume(volume=wal_volume, payload={"max_rw_iops": wal_iops})
+        except VelaSimplyblockAPIError as exc:
+            raise VelaDeploymentError("Failed to update WAL volume") from exc
+        logger.info("Updated Simplyblock WAL volume %s IOPS to %s", wal_volume, wal_iops)
+    else:
+        logger.info("WAL PVC absent for branch %s; full IOPS budget applied to data volume", branch_id)
 
 
 async def ensure_branch_storage_class(branch_id: Identifier, *, iops: int) -> str:
@@ -397,15 +435,18 @@ async def _create_fresh_pvcs(
     parameters: DeploymentParameters,
     *,
     pitr_enabled: bool,
+    wal_iops: int = 0,
 ) -> None:
     """Create empty block PVCs for a brand-new deployment before helm install."""
     from .kubernetes.pvc import create_pvc
 
     access_modes = ["ReadWriteMany"]
 
-    def _pvc(name: str, size: str) -> kubernetes_client.V1PersistentVolumeClaim:
+    def _pvc(
+        name: str, size: str, annotations: dict[str, str] | None = None
+    ) -> kubernetes_client.V1PersistentVolumeClaim:
         return kubernetes_client.V1PersistentVolumeClaim(
-            metadata=kubernetes_client.V1ObjectMeta(name=name),
+            metadata=kubernetes_client.V1ObjectMeta(name=name, annotations=annotations),
             spec=kubernetes_client.V1PersistentVolumeClaimSpec(
                 access_modes=access_modes,
                 storage_class_name=storage_class_name,
@@ -419,7 +460,8 @@ async def _create_fresh_pvcs(
 
     if pitr_enabled:
         wal_pvc_name = f"{_autoscaler_vm_name()}{AUTOSCALER_WAL_PVC_SUFFIX}"
-        await create_pvc(namespace, _pvc(wal_pvc_name, PITR_WAL_PVC_SIZE))
+        wal_annotations = {"simplybk/qos-rw-iops": str(wal_iops)} if wal_iops > 0 else None
+        await create_pvc(namespace, _pvc(wal_pvc_name, PITR_WAL_PVC_SIZE, annotations=wal_annotations))
 
 
 def _configure_vela_values(
@@ -548,10 +590,13 @@ async def create_vela_config(
     postgresql_resource = resources.files(__package__).joinpath("postgresql.conf")
     values_content = _load_chart_values(chart)
 
-    storage_class_name = await ensure_branch_storage_class(branch_id, iops=parameters.iops)
+    data_iops, wal_iops = split_iops(parameters.iops, pitr_enabled=pitr_enabled)
+    storage_class_name = await ensure_branch_storage_class(branch_id, iops=data_iops)
 
     if not use_existing_db_pvc:
-        await _create_fresh_pvcs(namespace, storage_class_name, parameters, pitr_enabled=pitr_enabled)
+        await _create_fresh_pvcs(
+            namespace, storage_class_name, parameters, pitr_enabled=pitr_enabled, wal_iops=wal_iops
+        )
 
     values_content = _configure_vela_values(
         values_content,
